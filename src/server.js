@@ -471,6 +471,25 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
+      // Probe endpoint — force a fleet-wide quota and spend probe on demand.
+      if (req.method === 'POST' && (req.url === '/teamclaude/probe' || req.url === '/teamclaude/api/probe')) {
+        if (!hooks.probeQuota) {
+          res.writeHead(501, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'probe not supported' }));
+          return;
+        }
+        try {
+          await hooks.probeQuota();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          console.error('[TeamClaude] Probe failed:', err.message);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'probe failed; see the proxy log' }));
+        }
+        return;
+      }
+
       // Switch endpoint — make one account the preferred one, the headless
       // equivalent of picking it with 's' in the TUI. Both do the same single
       // thing: move currentIndex. That is a preference, and a weak one: _select
