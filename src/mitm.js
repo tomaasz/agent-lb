@@ -20,7 +20,7 @@ import tls from 'node:tls';
 import http2 from 'node:http2';
 import { getConfigPath } from './config.js';
 import { generateCertChain } from './x509.js';
-import { createProxyRequestListener, resolveClientAuth, loopbackExempt, relayUpgrade, resolveAccountPin, describeConnectError } from './server.js';
+import { createProxyRequestListener, resolveClientAuth, loopbackExempt, tailnetExempt, relayUpgrade, resolveAccountPin, describeConnectError } from './server.js';
 import { interceptHostsFor, isNeverIntercepted } from './provider.js';
 import { forwardRefusal, guardedLookup, FORBIDDEN_FORWARD } from './forward-target.js';
 import { safeLine } from './safe-text.js';
@@ -496,7 +496,7 @@ export function resolveConnectAuth(req, socket, proxyConfig) {
   // still names it (matching the HTTP gate, where a local caller with a client
   // key is attributed like any other). Same exemption as the other two gates,
   // so a forwarded request or `trustLoopback: false` closes it here too.
-  if (!auth.ok && loopbackExempt(req?.headers, socket?.remoteAddress, proxyConfig)) return { ok: true, client: null };
+  if (!auth.ok && (loopbackExempt(req?.headers, socket?.remoteAddress, proxyConfig) || tailnetExempt(req?.headers, socket?.remoteAddress, proxyConfig))) return { ok: true, client: null };
   return auth;
 }
 

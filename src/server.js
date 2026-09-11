@@ -182,6 +182,48 @@ export function loopbackExempt(headers, remoteAddress, proxyConfig) {
   return !isForwardedRequest(headers);
 }
 
+export function isTailnetAddr(addr) {
+  if (typeof addr !== 'string') return false;
+  const clean = addr.replace(/^::ffff:/, '').trim().toLowerCase();
+  if (clean === '127.0.0.1' || clean === '::1') return true;
+  if (clean.startsWith('fd7a:115c:a1e0:')) return true;
+  const parts = clean.split('.').map(Number);
+  if (parts.length === 4 && !parts.some(n => isNaN(n) || n < 0 || n > 255)) {
+    return parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127;
+  }
+  return false;
+}
+
+/**
+ * Whether a key-less caller is admitted because it connects from the operator's Tailnet.
+ * Admitted when:
+ * 1. Immediate socket is loopback or a Tailnet address (100.64.0.0/10 or fd7a:115c:a1e0::/48).
+ * 2. If direct (no forwarding headers), remoteAddress is in Tailnet.
+ * 3. If forwarded through a reverse proxy (e.g. Caddy on debianovh), the proxy connection
+ *    must come from Tailnet and either:
+ *    - carry the verified 'x-from-tailnet: 1' header set by Caddy's @tailnet block, OR
+ *    - have a Tailnet address in the client position of 'x-forwarded-for'.
+ */
+export function tailnetExempt(headers, remoteAddress, proxyConfig) {
+  if (proxyConfig?.trustTailnet === false) return false;
+  if (!isLoopbackAddr(remoteAddress) && !isTailnetAddr(remoteAddress)) return false;
+
+  if (!isForwardedRequest(headers)) {
+    return isTailnetAddr(remoteAddress);
+  }
+
+  if (headers?.['x-from-tailnet'] === '1') return true;
+
+  const fwd = headers?.['x-forwarded-for'] || headers?.['x-real-ip'];
+  if (typeof fwd === 'string') {
+    const clientIp = fwd.split(',')[0].trim();
+    if (isTailnetAddr(clientIp)) return true;
+  }
+
+  return false;
+}
+
+
 /**
  * Which identity a presented key authenticates as, checked against the shared
  * `proxy.apiKey` and every `proxy.clientKeys` entry ({ name, key }).
@@ -289,14 +331,16 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Auth check — skip for localhost connections. `config.proxy` is read per
+      // Auth check — skip for localhost and Tailnet connections. `config.proxy` is read per
       // request (not captured at creation) so a reload that edits clientKeys
       // applies to a running server, matching how eventLogging/blockedModels
       // are read live further down the pipeline.
       const clientKey = req.headers['x-api-key'];
       const isLocal = loopbackExempt(req.headers, req.socket.remoteAddress, config.proxy);
+      const isTailnet = tailnetExempt(req.headers, req.socket.remoteAddress, config.proxy);
+      const isTrustedOrigin = isLocal || isTailnet;
       const auth = resolveClientAuth(config.proxy, clientKey);
-      if (!auth.ok && !isLocal) {
+      if (!auth.ok && !isTrustedOrigin) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           type: 'error',
@@ -304,8 +348,8 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }));
         return;
       }
-      // Client identity for per-client usage. A loopback caller that presented
-      // a valid client key is attributed like any other; loopback without one
+      // Client identity for per-client usage. A loopback/tailnet caller that presented
+      // a valid client key is attributed like any other; loopback/tailnet without one
       // passed only via the exemption and stays unattributed.
       req.tcClient = auth.ok ? auth.client : null;
 
@@ -489,14 +533,14 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         reqPath.startsWith('/teamclaude/oauth');
 
       if (isControlEndpoint) {
-        if (!clientKey && config.proxy?.apiKey) {
+        if (!clientKey && config.proxy?.apiKey && !isTrustedOrigin) {
           res.writeHead(401, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'authorization required: provide x-api-key header' }));
           return;
         }
         const isAdmin = config.proxy?.apiKey
-          ? safeKeyEqual(clientKey, config.proxy.apiKey)
-          : isLocal;
+          ? (safeKeyEqual(clientKey, config.proxy.apiKey) || isTrustedOrigin)
+          : isTrustedOrigin;
 
         if (!isAdmin) {
           res.writeHead(403, { 'Content-Type': 'application/json' });
@@ -1283,6 +1327,9 @@ export function isLocalHostHeader(host, bindHost = null) {
   const name = hostnameOf(host);
   if (name == null) return false;
   if (LOCAL_HOSTNAMES.has(name)) return true;
+  if (name === 'teamclaude.gotova.pl' || name.endsWith('.gotova.pl')) return true;
+  if (name.endsWith('.ts.net')) return true;
+  if (isTailnetAddr(name)) return true;
   const bound = typeof bindHost === 'string' ? hostnameOf(bindHost) : null;
   return bound != null && !WILDCARD_BINDS.has(bound) && bound === name;
 }
@@ -2012,7 +2059,8 @@ export function resolveUpgradeAuth(req, socket, proxyConfig) {
   // loopback-sourced too. What it cannot forge is `Origin`, which a browser
   // sets on every handshake and a CLI never sends, nor `Host`, which a
   // rebound name (attacker.example → 127.0.0.1) leaves naming the attacker.
-  if (!loopbackExempt(req?.headers, socket?.remoteAddress, proxyConfig)) return auth;
+  if (!loopbackExempt(req?.headers, socket?.remoteAddress, proxyConfig) &&
+      !tailnetExempt(req?.headers, socket?.remoteAddress, proxyConfig)) return auth;
   const bindHost = proxyConfig?.host;
   const origin = req?.headers?.origin;
   if (origin) {

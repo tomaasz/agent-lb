@@ -442,7 +442,7 @@ const PAGE = `<!doctype html>
 </head>
 <body>
 <main>
-  <div id="keybox">
+  <div id="keybox" style="display:none">
     <h1>TeamClaude</h1>
     <p class="sub">Wprowadź swój klucz proxy (proxy.apiKey), aby uzyskać dostęp do panelu.</p>
     <div id="keyboxErr" style="display:none;margin:10px 0;padding:8px 12px;border-radius:6px;background:rgba(239,68,68,0.12);border:1px solid var(--bad);color:var(--bad);font-size:13px;text-align:left"></div>
@@ -1078,18 +1078,19 @@ ${SHARED_HELPERS}
 
   function apiCall(url, method, body) {
     var key = localStorage.getItem(KEY) || '';
+    var headers = {
+      'content-type': 'application/json',
+    };
+    if (key) headers['x-api-key'] = key;
     var init = {
       method: method || 'GET',
-      headers: {
-        'x-api-key': key,
-        'content-type': 'application/json',
-      },
+      headers: headers,
     };
     if (body != null) init.body = JSON.stringify(body);
     return fetch(url, init).then(function (res) {
-      if (res.status === 401) {
-        localStorage.removeItem(KEY);
-        showKeybox();
+      if (res.status === 401 || res.status === 403) {
+        if (key) localStorage.removeItem(KEY);
+        showKeybox('Wymagana autoryzacja administracyjna. Wprowadź klucz proxy (proxy.apiKey).');
         return null;
       }
       return res.json().catch(function () {
@@ -1521,7 +1522,11 @@ ${SHARED_HELPERS}
     var r = switchRequest(name, localStorage.getItem(KEY));
     fetch(r.url, r.init)
       .then(function (res) {
-        if (res.status === 401) { localStorage.removeItem(KEY); showKeybox(); return null; }
+        if (res.status === 401 || res.status === 403) {
+          if (localStorage.getItem(KEY)) localStorage.removeItem(KEY);
+          showKeybox('Wymagana autoryzacja administracyjna. Wprowadź klucz proxy (proxy.apiKey).');
+          return null;
+        }
         return res.json().catch(function () { return { ok: false, error: 'status ' + res.status }; });
       })
       .then(function (json) {
@@ -1552,11 +1557,17 @@ ${SHARED_HELPERS}
 
   function poll() {
     var apiKey = localStorage.getItem(KEY) || '';
-    fetch('/teamclaude/status', { headers: { 'x-api-key': apiKey } })
+    var headers = {};
+    if (apiKey) headers['x-api-key'] = apiKey;
+    fetch('/teamclaude/status', { headers: headers })
       .then(function (res) {
         if (res.status === 401 || res.status === 403) {
-          localStorage.removeItem(KEY);
-          showKeybox('Nieprawidłowy klucz proxy API. Upewnij się, że podajesz klucz administracyjny (proxy.apiKey).');
+          if (apiKey) {
+            localStorage.removeItem(KEY);
+            showKeybox('Nieprawidłowy klucz proxy API. Upewnij się, że podajesz klucz administracyjny (proxy.apiKey).');
+          } else {
+            showKeybox();
+          }
           return null;
         }
         if (!res.ok) throw new Error('status ' + res.status);
@@ -1570,7 +1581,9 @@ ${SHARED_HELPERS}
         render(s);
 
         // Also fetch full client keys info with live stats
-        fetch('/teamclaude/api/keys', { headers: { 'x-api-key': apiKey } })
+        var apiHeaders = {};
+        if (apiKey) apiHeaders['x-api-key'] = apiKey;
+        fetch('/teamclaude/api/keys', { headers: apiHeaders })
           .then(function (kr) { return kr.ok ? kr.json() : null; })
           .then(function (kd) {
             if (kd && Array.isArray(kd.keys)) {
@@ -1724,7 +1737,7 @@ ${SHARED_HELPERS}
     }
   });
 
-  if (localStorage.getItem(KEY)) start(); else showKeybox();
+  start();
 })();
 </script>
 </body>
