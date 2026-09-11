@@ -17,11 +17,12 @@ import { tunnelTls } from './sx.js';
 import { createEgressGuard } from './egress-guard.js';
 import { safeLine } from './safe-text.js';
 import { forwardRefusal, guardedLookup, FORBIDDEN_FORWARD } from './forward-target.js';
+import { homedir } from 'node:os';
 import { renderDashboardHtml, dashboardCsp } from './dashboard.js';
 import { createUsageRecorder, resolveUsageDimensions, usageDimensionHeaderNames } from './client-usage.js';
 import { atomicConfigUpdate } from './config.js';
 import {
-  fetchProfile, parseAuthCode, exchangeCodeForTokens,
+  fetchProfile, parseAuthCode, exchangeCodeForTokens, importCredentials,
   DEFAULT_CLIENT_ID, OAUTH_AUTHORIZE, OAUTH_SCOPES, MANUAL_LOGIN_REDIRECT_URI,
 } from './oauth.js';
 import { sameIdentity, findUpsertTarget } from './identity.js';
@@ -464,20 +465,45 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
       const reqPath = (req.url || '').split('?')[0];
 
-      // Client Keys: List
-      if (req.method === 'GET' && reqPath === '/teamclaude/client-keys') {
-        const clientKeys = (config.proxy?.clientKeys || []).map(k => ({
-          name: k.name,
-          key: k.key,
-          created: k.created || null,
-        }));
+      const isControlEndpoint = reqPath.startsWith('/teamclaude/api/') ||
+        reqPath.startsWith('/teamclaude/accounts') ||
+        reqPath.startsWith('/teamclaude/client-keys') ||
+        reqPath.startsWith('/teamclaude/oauth');
+
+      if (isControlEndpoint) {
+        const isAdmin = config.proxy?.apiKey
+          ? safeKeyEqual(clientKey, config.proxy.apiKey)
+          : isLocal;
+
+        if (!isAdmin) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'admin authorization required: x-api-key must match proxy.apiKey' }));
+          return;
+        }
+      }
+
+      // Client Keys: List (GET /teamclaude/api/keys & GET /teamclaude/client-keys)
+      if (req.method === 'GET' && (reqPath === '/teamclaude/api/keys' || reqPath === '/teamclaude/client-keys')) {
+        const clientsStats = clientUsage?.export() || hooks.getStatusExtra?.()?.clients || {};
+        const keys = (config.proxy?.clientKeys || []).map(k => {
+          const raw = k.key || '';
+          const masked = raw.length > 8 ? `${raw.slice(0, 5)}...${raw.slice(-4)}` : (raw ? '***' : '');
+          const stat = clientsStats[k.name] || { requests: 0, connections: 0, inputTokens: 0, outputTokens: 0, lastUsed: null };
+          return {
+            name: k.name,
+            key: masked,
+            rawKey: raw,
+            created: k.created || null,
+            stats: stat,
+          };
+        });
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, clientKeys }));
+        res.end(JSON.stringify({ ok: true, keys, clientKeys: keys }));
         return;
       }
 
-      // Client Keys: Add or Update
-      if (req.method === 'POST' && (reqPath === '/teamclaude/client-keys/add' || reqPath === '/teamclaude/client-keys')) {
+      // Client Keys: Create / Add (POST /teamclaude/api/keys/create & POST /teamclaude/client-keys/add)
+      if (req.method === 'POST' && (reqPath === '/teamclaude/api/keys/create' || reqPath === '/teamclaude/client-keys/add' || reqPath === '/teamclaude/client-keys')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -498,6 +524,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
         const customKey = typeof body?.key === 'string' ? body.key.trim() : '';
         const key = customKey || ('tc-' + randomBytes(24).toString('base64url'));
+        const nowIso = new Date().toISOString();
 
         await atomicConfigUpdate(disk => {
           if (!disk.proxy) disk.proxy = {};
@@ -506,7 +533,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           if (idx >= 0) {
             disk.proxy.clientKeys[idx].key = key;
           } else {
-            disk.proxy.clientKeys.push({ name, key, created: new Date().toISOString() });
+            disk.proxy.clientKeys.push({ name, key, created: nowIso });
           }
         });
 
@@ -516,19 +543,19 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         if (memIdx >= 0) {
           config.proxy.clientKeys[memIdx].key = key;
         } else {
-          config.proxy.clientKeys.push({ name, key, created: new Date().toISOString() });
+          config.proxy.clientKeys.push({ name, key, created: nowIso });
         }
 
         if (hooks.reload) await hooks.reload();
-        console.log(`[TeamClaude] Added/updated client access key for "${name}" (web control)`);
+        console.log(`[TeamClaude] Created/updated client access key for "${name}" (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, client: { name, key } }));
+        res.end(JSON.stringify({ ok: true, name, key, client: { name, key } }));
         return;
       }
 
-      // Client Keys: Remove
-      if ((req.method === 'POST' && reqPath === '/teamclaude/client-keys/remove') ||
-          (req.method === 'DELETE' && reqPath === '/teamclaude/client-keys')) {
+      // Client Keys: Delete / Remove (POST /teamclaude/api/keys/delete & POST /teamclaude/client-keys/remove)
+      if ((req.method === 'POST' && (reqPath === '/teamclaude/api/keys/delete' || reqPath === '/teamclaude/client-keys/remove')) ||
+          (req.method === 'DELETE' && (reqPath === '/teamclaude/client-keys' || reqPath === '/teamclaude/api/keys'))) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -540,32 +567,32 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
 
-        const name = typeof body?.name === 'string' ? body.name.trim() : '';
-        if (!name) {
+        const target = typeof body?.name === 'string' ? body.name.trim() : (typeof body?.key === 'string' ? body.key.trim() : '');
+        if (!target) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'missing "name"' }));
+          res.end(JSON.stringify({ ok: false, error: 'missing "name" or "key"' }));
           return;
         }
 
         await atomicConfigUpdate(disk => {
           if (Array.isArray(disk.proxy?.clientKeys)) {
-            disk.proxy.clientKeys = disk.proxy.clientKeys.filter(k => k.name !== name);
+            disk.proxy.clientKeys = disk.proxy.clientKeys.filter(k => k.name !== target && k.key !== target);
           }
         });
 
         if (Array.isArray(config.proxy?.clientKeys)) {
-          config.proxy.clientKeys = config.proxy.clientKeys.filter(k => k.name !== name);
+          config.proxy.clientKeys = config.proxy.clientKeys.filter(k => k.name !== target && k.key !== target);
         }
 
         if (hooks.reload) await hooks.reload();
-        console.log(`[TeamClaude] Removed client access key for "${name}" (web control)`);
+        console.log(`[TeamClaude] Removed client access key "${target}" (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, removed: name }));
+        res.end(JSON.stringify({ ok: true, removed: target }));
         return;
       }
 
       // Client Keys: Rotate
-      if (req.method === 'POST' && reqPath === '/teamclaude/client-keys/rotate') {
+      if (req.method === 'POST' && (reqPath === '/teamclaude/client-keys/rotate' || reqPath === '/teamclaude/api/keys/rotate')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -613,8 +640,8 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Accounts: Toggle disable/enable
-      if (req.method === 'POST' && reqPath === '/teamclaude/accounts/toggle') {
+      // Accounts: Toggle disable/enable (POST /teamclaude/api/accounts/toggle & POST /teamclaude/accounts/toggle)
+      if (req.method === 'POST' && (reqPath === '/teamclaude/api/accounts/toggle' || reqPath === '/teamclaude/accounts/toggle')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -626,10 +653,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
 
-        const target = body?.account || body?.id || body?.name;
+        const target = body?.id || body?.name || body?.account;
         if (typeof target !== 'string' || !target.trim()) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'missing "account"' }));
+          res.end(JSON.stringify({ ok: false, error: 'missing "id", "name" or "account"' }));
           return;
         }
 
@@ -660,12 +687,12 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
         console.log(`[TeamClaude] Account "${mgr.name}" ${newDisabled ? 'disabled' : 'enabled'} (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, account: mgr.name, disabled: newDisabled }));
+        res.end(JSON.stringify({ ok: true, account: mgr.name, id: mgr.id, disabled: newDisabled }));
         return;
       }
 
       // Accounts: Set priority
-      if (req.method === 'POST' && reqPath === '/teamclaude/accounts/priority') {
+      if (req.method === 'POST' && (reqPath === '/teamclaude/api/accounts/priority' || reqPath === '/teamclaude/accounts/priority')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -705,12 +732,12 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
         console.log(`[TeamClaude] Set priority of "${mgr.name}" to ${prio} (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, account: mgr.name, priority: prio }));
+        res.end(JSON.stringify({ ok: true, account: mgr.name, id: mgr.id, priority: prio }));
         return;
       }
 
-      // Accounts: Remove
-      if (req.method === 'POST' && reqPath === '/teamclaude/accounts/remove') {
+      // Accounts: Remove (POST /teamclaude/api/accounts/remove & POST /teamclaude/accounts/remove)
+      if (req.method === 'POST' && (reqPath === '/teamclaude/api/accounts/remove' || reqPath === '/teamclaude/accounts/remove')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -722,10 +749,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
 
-        const target = body?.account || body?.id || body?.name;
+        const target = body?.id || body?.name || body?.account;
         if (typeof target !== 'string' || !target.trim()) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'missing "account"' }));
+          res.end(JSON.stringify({ ok: false, error: 'missing "id", "name" or "account"' }));
           return;
         }
 
@@ -753,12 +780,12 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         if (hooks.reload) await hooks.reload();
         console.log(`[TeamClaude] Removed account "${name}" (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, account: name }));
+        res.end(JSON.stringify({ ok: true, account: name, id }));
         return;
       }
 
-      // Accounts: Add (API key or OAuth Credentials)
-      if (req.method === 'POST' && reqPath === '/teamclaude/accounts/add') {
+      // Accounts: Add (POST /teamclaude/api/accounts/add & POST /teamclaude/accounts/add)
+      if (req.method === 'POST' && (reqPath === '/teamclaude/api/accounts/add' || reqPath === '/teamclaude/accounts/add')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -770,10 +797,12 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
 
-        const type = body?.type || 'apikey';
+        const rawType = (body?.type || '').toLowerCase();
+        const type = rawType || (body?.importFrom ? 'import' : (body?.apiKey ? 'api' : 'oauth'));
         const priority = Number.isInteger(body?.priority) ? body.priority : (parseInt(body?.priority, 10) || 0);
 
-        if (type === 'apikey') {
+        // 1. Anthropic API Key (type: "api" or "apikey")
+        if (type === 'api' || type === 'apikey') {
           const apiKey = typeof body?.apiKey === 'string' ? body.apiKey.trim() : '';
           if (!apiKey) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -803,23 +832,83 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           if (hooks.reload) await hooks.reload();
           console.log(`[TeamClaude] Added API key account "${name}" (web control)`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, account: name, type: 'apikey' }));
+          res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'api' }));
           return;
         }
 
+        // 3. Import from file path on server (importFrom or type: "import")
+        if (type === 'import' || body?.importFrom) {
+          const fromPath = (typeof body?.importFrom === 'string' ? body.importFrom : (body?.fromPath || '~/.claude/.credentials.json')).trim();
+          let creds = null;
+          try {
+            creds = await importCredentials(fromPath);
+          } catch (err) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: `Failed to import credentials from "${fromPath}": ${err.message}` }));
+            return;
+          }
+
+          let profile = null;
+          if (creds?.accessToken) {
+            try {
+              profile = await fetchProfile(creds.accessToken);
+            } catch { /* best effort */ }
+          }
+
+          let name = typeof body?.name === 'string' ? body.name.trim() : '';
+          if (!name && profile?.email) name = profile.email;
+          if (!name) {
+            const count = (config.accounts || []).filter(a => a.name.startsWith('account-')).length + 1;
+            name = `account-${count}`;
+          }
+
+          const newAccount = {
+            id: mintAccountId(),
+            name,
+            type: 'oauth',
+            importFrom: fromPath,
+            source: 'import',
+            accessToken: creds?.accessToken,
+            refreshToken: creds?.refreshToken || null,
+            expiresAt: creds?.expiresAt || null,
+            accountUuid: profile?.accountUuid || null,
+            orgUuid: profile?.orgUuid || null,
+            orgName: profile?.orgName || null,
+            organizationType: profile?.organizationType || null,
+            rateLimitTier: profile?.rateLimitTier || null,
+            seatTier: profile?.seatTier || null,
+            hasClaudeMax: profile?.hasClaudeMax ?? null,
+            hasClaudePro: profile?.hasClaudePro ?? null,
+            priority,
+          };
+
+          await atomicConfigUpdate(disk => {
+            if (!Array.isArray(disk.accounts)) disk.accounts = [];
+            disk.accounts.push(newAccount);
+          });
+
+          if (hooks.reload) await hooks.reload();
+          console.log(`[TeamClaude] Imported account "${name}" from ${fromPath} (web control)`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'oauth', importFrom: fromPath }));
+          return;
+        }
+
+        // 2. OAuth session (pasted tokens or credentials JSON)
         if (type === 'oauth') {
           let accessToken = typeof body?.accessToken === 'string' ? body.accessToken.trim() : '';
           let refreshToken = typeof body?.refreshToken === 'string' ? body.refreshToken.trim() : null;
           let expiresAt = typeof body?.expiresAt === 'number' ? body.expiresAt : null;
           let name = typeof body?.name === 'string' ? body.name.trim() : '';
 
-          if (body?.credentialsJson) {
+          const jsonInput = body?.credentialsJson || body?.credentials;
+          if (jsonInput) {
             try {
-              const parsed = typeof body.credentialsJson === 'string' ? JSON.parse(body.credentialsJson) : body.credentialsJson;
+              const parsed = typeof jsonInput === 'string' ? JSON.parse(jsonInput) : jsonInput;
               const data = parsed.claudeAiOauth || parsed;
               if (data.accessToken) accessToken = data.accessToken;
               if (data.refreshToken) refreshToken = data.refreshToken;
-              if (data.expiresAt) expiresAt = data.expiresAt;
+              if (data.expiresAt) expiresAt = typeof data.expiresAt === 'number' ? data.expiresAt : (typeof data.expiresAt === 'string' ? new Date(data.expiresAt).getTime() : null);
             } catch (e) {
               res.writeHead(400, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ ok: false, error: 'invalid credentials JSON: ' + e.message }));
@@ -849,6 +938,9 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             name,
             type: 'oauth',
             source: 'web',
+            accessToken,
+            refreshToken,
+            expiresAt,
             accountUuid: profile?.accountUuid || null,
             orgUuid: profile?.orgUuid || null,
             orgName: profile?.orgName || null,
@@ -857,9 +949,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             seatTier: profile?.seatTier || null,
             hasClaudeMax: profile?.hasClaudeMax ?? null,
             hasClaudePro: profile?.hasClaudePro ?? null,
-            accessToken,
-            refreshToken,
-            expiresAt,
             priority,
           };
 
@@ -878,7 +967,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           if (hooks.reload) await hooks.reload();
           console.log(`[TeamClaude] Added/updated OAuth account "${name}" (web control)`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, account: name, type: 'oauth', email: profile?.email }));
+          res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'oauth', email: profile?.email }));
           return;
         }
 

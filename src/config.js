@@ -1,4 +1,4 @@
-import { readFile, open, mkdir, chmod, rename, unlink, realpath } from 'node:fs/promises';
+import { readFile, open, mkdir, chmod, rename, unlink, realpath, stat } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
@@ -173,28 +173,72 @@ export async function saveConfig(config) {
   await writeJsonAtomic(getConfigPath(), config);
 }
 
-// Serialize config updates. atomicConfigUpdate is a read-modify-write, so two
-// concurrent callers can both read the same config and then save in turn, and
-// the later save silently drops the earlier caller's change. This bites hardest
-// on startup, when several OAuth accounts refresh their tokens at once: only the
-// last writer's rotated refresh token persists, and the other accounts keep a
-// token that was just rotated away, so they fail on the next restart with
-// invalid_grant and need a re-login. Chaining the updates keeps every write.
+export function getLockPath() {
+  return `${getConfigPath()}.lock`;
+}
+
+/**
+ * Acquire filesystem lock on teamclaude.json.lock to coordinate with external tools and processes.
+ */
+export async function acquireConfigLock(timeoutMs = 5000) {
+  const lockPath = getLockPath();
+  const start = Date.now();
+  while (true) {
+    try {
+      const fh = await open(lockPath, 'wx', 0o600);
+      try {
+        await fh.writeFile(`${process.pid}\n`);
+      } finally {
+        await fh.close();
+      }
+      return async () => {
+        await unlink(lockPath).catch(() => {});
+      };
+    } catch (err) {
+      if (err.code === 'EEXIST') {
+        try {
+          const st = await stat(lockPath);
+          if (Date.now() - st.mtimeMs > 30000) {
+            await unlink(lockPath).catch(() => {});
+            continue;
+          }
+        } catch { /* ignore */ }
+        if (Date.now() - start > timeoutMs) {
+          console.warn(`[TeamClaude] Breaking stale lock on ${lockPath}`);
+          await unlink(lockPath).catch(() => {});
+          continue;
+        }
+        await new Promise(r => setTimeout(r, 50));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 let configUpdateChain = Promise.resolve();
 
 /**
- * Atomically update the config: re-reads from disk, calls updater(config),
- * then saves. Returns the updated config. This prevents overwriting changes
- * made by other processes (e.g. `teamclaude import` while the server runs), and
- * serializes concurrent callers so simultaneous updates queue instead of
- * clobbering one another.
+ * Atomically update the config: acquires file lock on teamclaude.json.lock,
+ * re-reads from disk, calls updater(config), then saves atomically.
+ * Returns the updated config.
  */
 export function atomicConfigUpdate(updater) {
   const run = async () => {
-    const config = await loadConfig() || createDefaultConfig();
-    await updater(config);
-    await saveConfig(config);
-    return config;
+    let release = null;
+    try {
+      release = await acquireConfigLock();
+    } catch (e) {
+      console.warn('[TeamClaude] Warning: could not acquire config lock:', e.message);
+    }
+    try {
+      const config = await loadConfig() || createDefaultConfig();
+      await updater(config);
+      await saveConfig(config);
+      return config;
+    } finally {
+      if (release) await release();
+    }
   };
   const result = configUpdateChain.then(run, run);
   configUpdateChain = result.then(() => {}, () => {});

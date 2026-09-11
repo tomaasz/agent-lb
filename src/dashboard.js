@@ -321,17 +321,19 @@ const PAGE = `<!doctype html>
     --ok: #3fb950; --warn: #d29922; --bad: #f85149;
   }
   * { box-sizing: border-box; margin: 0; }
-  body { background: var(--bg); color: var(--text); font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 24px; }
-  main { max-width: 860px; margin: 0 auto; }
-  h1 { font-size: 18px; margin-bottom: 4px; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 24px 16px; }
+  main { max-width: 860px; margin: 0 auto; width: 100%; }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 2px; }
   h2 { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; margin: 24px 0 8px; }
-  .sub { color: var(--dim); margin-bottom: 16px; }
+  .sub { color: var(--dim); margin-bottom: 12px; font-size: 13px; }
   .sub b { color: var(--text); font-weight: 600; }
+  .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; }
-  .row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .name { font-weight: 600; }
   .tag { font-size: 12px; color: var(--dim); }
-  .badge { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
   .badge.active { color: var(--ok); border-color: var(--ok); }
   .badge.throttled { color: var(--warn); border-color: var(--warn); }
   .badge.error, .badge.exhausted { color: var(--bad); border-color: var(--bad); }
@@ -344,18 +346,21 @@ const PAGE = `<!doctype html>
   .bar i.warn { background: var(--warn); }
   .bar i.bad { background: var(--bad); }
   table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 6px 10px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 10px; font-variant-numeric: tabular-nums; }
   th { color: var(--dim); font-size: 12px; font-weight: 500; border-bottom: 1px solid var(--line); }
   td { border-bottom: 1px solid var(--line); }
   tr:last-child td { border-bottom: none; }
   td.num, th.num { text-align: right; }
+  .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .usage { color: var(--dim); font-size: 12px; margin-top: 6px; }
   .blocked { color: var(--warn); font-size: 12px; margin-top: 6px; }
-  .act { font: inherit; font-size: 12px; padding: 1px 10px; border-radius: 999px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; margin-left: auto; }
+  .act { font: inherit; font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; margin-left: auto; }
   .act:hover { background: var(--accent); color: var(--bg); }
   .act:disabled { opacity: .5; cursor: default; }
-  #note { font-size: 12px; margin: 8px 0; display: none; }
-  #note.ok { color: var(--ok); } #note.warn { color: var(--warn); } #note.error { color: var(--bad); }
+  #note { font-size: 13px; margin: 10px 0; padding: 8px 12px; border-radius: 6px; display: none; }
+  #note.ok { background: rgba(63,185,80,.15); color: var(--ok); border: 1px solid var(--ok); }
+  #note.warn { background: rgba(210,153,34,.15); color: var(--warn); border: 1px solid var(--warn); }
+  #note.error { background: rgba(248,81,73,.15); color: var(--bad); border: 1px solid var(--bad); }
   .filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
   .filters label { color: var(--dim); font-size: 12px; display: flex; align-items: center; gap: 6px; }
   .filters select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; font-size: 12px; padding: 4px 8px; }
@@ -373,201 +378,115 @@ const PAGE = `<!doctype html>
   #problems div { border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; }
   #problems .bad { background: rgba(248,81,73,.12); border: 1px solid var(--bad); color: var(--bad); }
   #problems .warn { background: rgba(210,153,34,.12); border: 1px solid var(--warn); color: var(--warn); }
-  .sec-head { display: flex; align-items: center; justify-content: space-between; margin: 24px 0 8px; }
+  .sec-head { display: flex; align-items: center; justify-content: space-between; margin: 24px 0 8px; flex-wrap: wrap; gap: 8px; }
   .sec-head h2 { margin: 0; }
-  .btn { font: inherit; font-size: 12px; padding: 3px 12px; border-radius: 6px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+  .btn { font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--text); display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
   .btn:hover { background: var(--line); }
   .btn:disabled { opacity: .5; cursor: default; }
   .btn-accent { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
   .btn-accent:hover { filter: brightness(1.1); }
-  .btn-sm { padding: 2px 8px; font-size: 11px; border-radius: 4px; }
+  .btn-sm { padding: 4px 8px; font-size: 11px; border-radius: 4px; }
   .btn-warn { border-color: var(--warn); color: var(--warn); background: transparent; }
   .btn-warn:hover { background: var(--warn); color: var(--bg); }
   .btn-bad { border-color: var(--bad); color: var(--bad); background: transparent; }
   .btn-bad:hover { background: var(--bad); color: var(--bg); }
   .btn-ok { border-color: var(--ok); color: var(--ok); background: transparent; }
   .btn-ok:hover { background: var(--ok); color: var(--bg); }
-  .panel-form { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
-  .form-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
-  .form-grid input, .form-grid textarea, .form-grid select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; font-size: 12px; padding: 6px 10px; }
-  .form-grid input:focus, .form-grid textarea:focus, .form-grid select:focus { border-color: var(--accent); outline: none; }
-  .actions-group { display: flex; gap: 6px; align-items: center; margin-left: auto; }
+  .actions-group { display: flex; gap: 6px; align-items: center; margin-left: auto; flex-wrap: wrap; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
   #keybox { display: none; margin: 40px auto; max-width: 420px; text-align: center; }
   #keybox input { width: 100%; padding: 10px 12px; margin: 12px 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; }
   #keybox button { padding: 8px 20px; background: var(--accent); border: 0; border-radius: 6px; color: #06121f; font: inherit; font-weight: 600; cursor: pointer; }
+
+  /* Modal Overlay & Tabs Styles */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.78); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px; }
+  .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto; padding: 18px 20px; box-shadow: 0 16px 40px rgba(0,0,0,0.6); }
+  .tabs-bar { display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab-btn { font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--dim); cursor: pointer; white-space: nowrap; }
+  .tab-btn.active { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
+  .form-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
+  .form-row { display: flex; gap: 10px; align-items: flex-end; }
+  .form-grid label { display: block; font-size: 12px; color: var(--dim); margin-bottom: 4px; }
+  .form-grid input, .form-grid textarea, .form-grid select { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; font-size: 13px; padding: 8px 10px; box-sizing: border-box; }
+  .form-grid input:focus, .form-grid textarea:focus, .form-grid select:focus { border-color: var(--accent); outline: none; }
   footer { color: var(--dim); font-size: 12px; margin-top: 24px; }
+
+  /* Mobile-first / Responsive media queries */
+  @media (max-width: 768px) {
+    body { padding: 12px 8px; font-size: 13px; }
+    main { max-width: 100%; }
+    .header-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .header-actions { width: 100%; }
+    .header-actions .btn { width: 100%; min-height: 38px; }
+    .sec-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .sec-head .row { width: 100%; }
+    .card { padding: 10px 12px; }
+    .quota { grid-template-columns: 50px 1fr 90px; gap: 6px; font-size: 11px; }
+    .quota .lbl, .quota .val { font-size: 11px; }
+    .actions-group { width: 100%; justify-content: flex-start; flex-wrap: wrap; margin-top: 8px; margin-left: 0; }
+    .actions-group .btn { flex: 1 1 auto; text-align: center; }
+    .btn { min-height: 38px; padding: 6px 12px; font-size: 12px; }
+    .btn-sm { min-height: 34px; padding: 5px 10px; font-size: 12px; }
+    .form-row { flex-direction: column; gap: 8px; }
+    .form-row > div { width: 100% !important; }
+    .modal-box { padding: 14px 12px; width: 100%; max-height: 94vh; }
+    .tabs-bar { padding-bottom: 6px; }
+    .tab-btn { padding: 6px 10px; font-size: 11px; }
+    #keybox { width: 100%; max-width: 100%; padding: 0 8px; margin: 20px auto; }
+    #keybox input { min-height: 44px; font-size: 16px; }
+    #keybox button { width: 100%; min-height: 44px; }
+    table { font-size: 12px; }
+    th, td { padding: 8px 6px; }
+  }
 </style>
 </head>
 <body>
 <main>
   <div id="keybox">
     <h1>TeamClaude</h1>
-    <p class="sub">Enter your proxy key to view status.</p>
+    <p class="sub">Wprowadź swój klucz proxy (proxy.apiKey), aby uzyskać dostęp do panelu.</p>
     <input id="key" type="password" placeholder="tc-..." autocomplete="off">
-    <br><button id="go">Connect</button>
+    <br><button id="go">Połącz</button>
   </div>
   <div id="app" style="display:none">
-    <h1>TeamClaude</h1>
-    <p class="sub" id="summary"></p>
+    <div class="header-row">
+      <div>
+        <h1>TeamClaude</h1>
+        <p class="sub" id="summary"></p>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-sm" id="btnReloadFleet" title="Przeładuj flotę kont z dysku">🔄 Przeładuj flotę</button>
+      </div>
+    </div>
     <div id="err"></div>
     <div id="problems"></div>
     <div id="note"></div>
     <div id="routesWrap" style="display:none">
       <h2>Routing</h2>
-      <div class="card" style="padding:4px 6px"><table id="routes"></table></div>
+      <div class="card table-responsive" style="padding:4px 6px"><table id="routes"></table></div>
     </div>
+
+    <!-- ACCOUNTS SECTION -->
     <div class="sec-head">
-      <h2>Accounts</h2>
+      <h2>Accounts (Konta Claude)</h2>
       <div class="row" style="gap:8px;">
-        <button class="btn btn-sm" id="btnReloadDisk">↻ Reload</button>
-        <button class="btn btn-sm btn-accent" id="btnShowAddAccount">+ Add Account</button>
-      </div>
-    </div>
-    <div id="addAccountPanel" class="panel-form" style="display:none;">
-      <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:600;">Add Claude Account</span>
-        <button class="btn btn-sm" id="btnCloseAddAccount">✕ Close</button>
-      </div>
-      <div class="row" style="gap:8px; margin-bottom:12px;">
-        <button class="btn btn-sm btn-accent" id="tabBtnApiKey">Anthropic API Key</button>
-        <button class="btn btn-sm" id="tabBtnOAuth">Browser OAuth</button>
-        <button class="btn btn-sm" id="tabBtnImport">Import JSON / Tokens</button>
-      </div>
-
-      <div id="tabContentApiKey">
-        <div class="form-grid">
-          <div>
-            <label style="display:block; font-size:12px; color:var(--dim); margin-bottom:4px;">Anthropic API Key *</label>
-            <input id="inApiKey" type="password" placeholder="sk-ant-api03-..." style="width:100%;">
-          </div>
-          <div class="row" style="gap:10px;">
-            <div style="flex:1;">
-              <label style="display:block; font-size:12px; color:var(--dim); margin-bottom:4px;">Account Name (optional)</label>
-              <input id="inApiKeyName" type="text" placeholder="e.g. api-main" style="width:100%;">
-            </div>
-            <div style="width:110px;">
-              <label style="display:block; font-size:12px; color:var(--dim); margin-bottom:4px;">Priority</label>
-              <input id="inApiKeyPrio" type="number" value="0" style="width:100%;">
-            </div>
-          </div>
-          <div style="margin-top:6px;">
-            <button class="btn btn-accent" id="btnSubmitApiKey">Add API Key Account</button>
-          </div>
-        </div>
-      </div>
-
-      <div id="tabContentOAuth" style="display:none;">
-        <div class="form-grid">
-          <p style="color:var(--dim); font-size:12px;">
-            Authenticate directly with your Anthropic Claude subscription (Pro, Max, Team, Enterprise).
-          </p>
-          <div id="oauthStep1">
-            <button class="btn btn-accent" id="btnStartOAuth">Start Claude Login Flow</button>
-          </div>
-          <div id="oauthStep2" style="display:none;">
-            <p style="font-size:12px; margin-bottom:6px;">
-              1. <a id="oauthLink" href="#" target="_blank" style="color:var(--accent); text-decoration:underline;">Click here to open Claude.ai login page in a new tab ↗</a>
-            </p>
-            <p style="font-size:12px; color:var(--dim); margin-bottom:8px;">
-              2. Log in and authorize. You will see a success screen or redirect URL. Copy the authorization code or full URL and paste it below:
-            </p>
-            <div>
-              <label style="display:block; font-size:12px; color:var(--dim); margin-bottom:4px;">Authorization Code or Callback URL *</label>
-              <input id="inOAuthCode" type="text" placeholder="Paste code or URL here..." style="width:100%;">
-            </div>
-            <div class="row" style="gap:10px; margin-top:8px;">
-              <div style="flex:1;">
-                <label style="display:block; font-size:12px; color:var(--dim); margin-bottom:4px;">Account Name (optional)</label>
-                <input id="inOAuthName" type="text" placeholder="Auto-detected from profile if blank" style="width:100%;">
-              </div>
-              <div style="width:110px;">
-                <label style="display:block; font-size:12px; color:var(--dim); margin-bottom:4px;">Priority</label>
-                <input id="inOAuthPrio" type="number" value="0" style="width:100%;">
-              </div>
-            </div>
-            <div style="margin-top:8px;">
-              <button class="btn btn-accent" id="btnCompleteOAuth">Complete Login & Add Account</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div id="tabContentImport" style="display:none;">
-        <div class="form-grid">
-          <p style="color:var(--dim); font-size:12px;">
-            Paste credentials from <code>~/.claude/.credentials.json</code> or OAuth token JSON.
-          </p>
-          <div>
-            <label style="display:block; font-size:12px; color:var(--dim); margin-bottom:4px;">Credentials JSON *</label>
-            <textarea id="inImportJson" rows="4" placeholder='{"claudeAiOauth":{"accessToken":"...","refreshToken":"...","expiresAt":...}}' style="width:100%; font-family:monospace;"></textarea>
-          </div>
-          <div class="row" style="gap:10px;">
-            <div style="flex:1;">
-              <label style="display:block; font-size:12px; color:var(--dim); margin-bottom:4px;">Account Name (optional)</label>
-              <input id="inImportName" type="text" placeholder="Auto-detected from profile if blank" style="width:100%;">
-            </div>
-            <div style="width:110px;">
-              <label style="display:block; font-size:12px; color:var(--dim); margin-bottom:4px;">Priority</label>
-              <input id="inImportPrio" type="number" value="0" style="width:100%;">
-            </div>
-          </div>
-          <div style="margin-top:6px;">
-            <button class="btn btn-accent" id="btnSubmitImport">Import Credentials</button>
-          </div>
-        </div>
+        <button class="btn btn-sm btn-accent" id="btnShowAddAccount">➕ Dodaj konto</button>
       </div>
     </div>
     <div id="accounts"></div>
 
+    <!-- CLIENT API KEYS SECTION -->
     <div class="sec-head">
-      <h2>Client Access Keys (proxy.clientKeys)</h2>
-      <button class="btn btn-sm btn-accent" id="btnShowAddClientKey">+ Add Client Key</button>
+      <h2>CLIENT API KEYS</h2>
+      <button class="btn btn-sm btn-accent" id="btnShowAddClientKey">➕ Utwórz klucz klienta</button>
     </div>
-    <div id="keyNoticeBox" class="card" style="display:none; border-color:var(--ok); background:rgba(63,185,80,.08); margin-bottom:12px;">
-      <div class="row" style="justify-content:space-between; margin-bottom:6px;">
-        <span style="color:var(--ok); font-weight:600;">Access Key Ready for Client: <b id="keyNoticeName"></b></span>
-        <button class="btn btn-sm" id="btnCloseKeyNotice">✕ Dismiss</button>
-      </div>
-      <div style="margin:8px 0;">
-        <span class="mono" id="keyNoticeVal" style="font-weight:600; font-size:13px; color:var(--text); word-break:break-all;"></span>
-      </div>
-      <div class="row" style="gap:8px;">
-        <button class="btn btn-sm btn-accent" id="btnCopyNoticeKey">Copy Key</button>
-        <button class="btn btn-sm" id="btnCopyNoticeEnv">Copy Shell Env</button>
-        <button class="btn btn-sm" id="btnCopyNoticeVSCode">Copy VS Code JSON</button>
-      </div>
-    </div>
-    <div id="addClientKeyPanel" class="panel-form" style="display:none;">
-      <div class="row" style="justify-content:space-between; margin-bottom:10px;">
-        <span style="font-weight:600;">Create Client Access Key</span>
-        <button class="btn btn-sm" id="btnCloseAddClientKey">✕ Close</button>
-      </div>
-      <div class="form-grid">
-        <p style="color:var(--dim); font-size:12px;">
-          Generate a dedicated access key for a machine, developer, or CI runner. Request metrics and token usage are tracked per client name.
-        </p>
-        <div class="row" style="gap:10px;">
-          <div style="flex:1;">
-            <label style="display:block; font-size:12px; color:var(--dim); margin-bottom:4px;">Client Name *</label>
-            <input id="inClientName" type="text" placeholder="e.g. laptop-macbook, dev-worker" style="width:100%;">
-          </div>
-          <div style="flex:1;">
-            <label style="display:block; font-size:12px; color:var(--dim); margin-bottom:4px;">Custom Key (optional)</label>
-            <input id="inClientCustomKey" type="text" placeholder="Leave empty for auto-generated tc-..." style="width:100%; font-family:monospace;">
-          </div>
-        </div>
-        <div style="margin-top:6px;">
-          <button class="btn btn-accent" id="btnSubmitClientKey">Create Client Key</button>
-        </div>
-      </div>
-    </div>
-    <div class="card" style="padding:4px 6px; margin-bottom:14px;">
+    <div class="card table-responsive" style="padding:4px 6px; margin-bottom:14px;">
       <table id="clientKeysTable"></table>
     </div>
+
     <div id="clientsWrap" style="display:none">
       <h2>Clients</h2>
-      <div class="card" style="padding:4px 6px"><table id="clients"></table></div>
+      <div class="card table-responsive" style="padding:4px 6px"><table id="clients"></table></div>
     </div>
     <div id="dimensionsWrap"></div>
     <div id="sessionsWrap" style="display:none">
@@ -578,10 +497,207 @@ const PAGE = `<!doctype html>
           <label>Client <select id="fClient"></select></label>
           <span class="hint" id="sessionCount"></span>
         </div>
-        <div style="padding:4px 6px"><table id="sessions"></table></div>
+        <div class="table-responsive" style="padding:4px 6px"><table id="sessions"></table></div>
       </div>
     </div>
     <footer id="foot"></footer>
+  </div>
+
+  <!-- MODAL: ADD ACCOUNT -->
+  <div id="modalAddAccount" class="modal-backdrop" style="display:none;">
+    <div class="modal-box">
+      <div class="row" style="justify-content:space-between; margin-bottom:12px;">
+        <span style="font-weight:600; font-size:15px;">➕ Dodaj konto Claude</span>
+        <button class="btn btn-sm" id="btnCloseAddAccount">✕ Zamknij</button>
+      </div>
+      <div class="tabs-bar">
+        <button class="tab-btn active" id="tabBtnApiKey">Klucz API Console</button>
+        <button class="tab-btn" id="tabBtnOAuth">Wklej sesję OAuth</button>
+        <button class="tab-btn" id="tabBtnImport">Import ze ścieżki</button>
+        <button class="tab-btn" id="tabBtnBrowserOAuth">Logowanie w przeglądarce</button>
+      </div>
+
+      <!-- Tab 1: API Key -->
+      <div id="tabContentApiKey" class="tab-content">
+        <div class="form-grid">
+          <div>
+            <label>Klucz API Anthropic Console (sk-ant-...) *</label>
+            <input id="inApiKey" type="password" placeholder="sk-ant-api03-..." autocomplete="off">
+          </div>
+          <div class="form-row">
+            <div style="flex:1;">
+              <label>Nazwa konta (opcjonalnie)</label>
+              <input id="inApiKeyName" type="text" placeholder="np. api-console-1">
+            </div>
+            <div style="width:110px;">
+              <label>Priorytet</label>
+              <input id="inApiKeyPrio" type="number" value="0">
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <button class="btn btn-accent" id="btnSubmitApiKey">Dodaj konto API</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: OAuth paste JSON/tokens -->
+      <div id="tabContentOAuth" class="tab-content" style="display:none;">
+        <div class="form-grid">
+          <p style="color:var(--dim); font-size:12px;">
+            Wklej zawartość pliku <code>~/.claude/.credentials.json</code> lub podaj tokeny z sesji OAuth:
+          </p>
+          <div>
+            <label>Wklej cały JSON poświadczeń (.credentials.json)</label>
+            <textarea id="inOAuthJson" rows="4" placeholder='{"claudeAiOauth":{"accessToken":"...","refreshToken":"...","expiresAt":...}}' class="mono"></textarea>
+          </div>
+          <div class="form-row">
+            <div style="flex:1;">
+              <label>AccessToken (jeśli nie wklejasz JSON)</label>
+              <input id="inOAuthAccess" type="password" placeholder="ey..." autocomplete="off">
+            </div>
+            <div style="flex:1;">
+              <label>RefreshToken (opcjonalnie)</label>
+              <input id="inOAuthRefresh" type="password" placeholder="ey..." autocomplete="off">
+            </div>
+          </div>
+          <div class="form-row">
+            <div style="flex:1;">
+              <label>Nazwa konta (opcjonalnie)</label>
+              <input id="inOAuthName" type="text" placeholder="np. dev@firma.pl">
+            </div>
+            <div style="width:110px;">
+              <label>Priorytet</label>
+              <input id="inOAuthPrio" type="number" value="0">
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <button class="btn btn-accent" id="btnSubmitOAuth">Zapisz sesję OAuth</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Import from server file path -->
+      <div id="tabContentImport" class="tab-content" style="display:none;">
+        <div class="form-grid">
+          <p style="color:var(--dim); font-size:12px;">
+            Wczytaj poświadczenia bezpośrednio z pliku na serwerze:
+          </p>
+          <div>
+            <label>Ścieżka do pliku na serwerze *</label>
+            <input id="inImportPath" type="text" value="~/.claude/.credentials.json" class="mono">
+          </div>
+          <div class="form-row">
+            <div style="flex:1;">
+              <label>Nazwa konta (opcjonalnie)</label>
+              <input id="inImportPathName" type="text" placeholder="np. claude-local">
+            </div>
+            <div style="width:110px;">
+              <label>Priorytet</label>
+              <input id="inImportPathPrio" type="number" value="0">
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <button class="btn btn-accent" id="btnSubmitImportPath">Importuj z pliku</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 4: Browser OAuth -->
+      <div id="tabContentBrowserOAuth" class="tab-content" style="display:none;">
+        <div class="form-grid">
+          <div id="oauthStep1">
+            <p style="color:var(--dim); font-size:12px; margin-bottom:10px;">
+              Zaloguj się na konto Claude w przeglądarce za pomocą bezpiecznego przepływu PKCE.
+            </p>
+            <button class="btn btn-accent" id="btnStartOAuth">Rozpocznij logowanie Claude</button>
+          </div>
+          <div id="oauthStep2" style="display:none;">
+            <p style="font-size:12px; margin-bottom:6px;">
+              1. Jeśli okno logowania się nie otworzyło, <a id="oauthLink" href="#" target="_blank" style="color:var(--accent); text-decoration:underline;">kliknij tutaj ↗</a>.
+            </p>
+            <p style="font-size:12px; color:var(--dim); margin-bottom:8px;">
+              2. Zaloguj się w Claude.ai i skopiuj kod autoryzacyjny lub pełny adres URL:
+            </p>
+            <div>
+              <label>Kod autoryzacyjny lub callback URL *</label>
+              <input id="inOAuthCode" type="text" placeholder="Wklej kod lub URL callback..." class="mono">
+            </div>
+            <div class="form-row" style="margin-top:8px;">
+              <div style="flex:1;">
+                <label>Nazwa konta (opcjonalnie)</label>
+                <input id="inOAuthFlowName" type="text" placeholder="np. konto-osobiste">
+              </div>
+              <div style="width:110px;">
+                <label>Priorytet</label>
+                <input id="inOAuthFlowPrio" type="number" value="0">
+              </div>
+            </div>
+            <div class="row" style="gap:8px; margin-top:10px;">
+              <button class="btn btn-accent" id="btnCompleteOAuth">Dokończ autoryzację</button>
+              <button class="btn" id="btnCancelOAuth">Wróć</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD CLIENT KEY -->
+  <div id="modalAddClientKey" class="modal-backdrop" style="display:none;">
+    <div class="modal-box">
+      <div class="row" style="justify-content:space-between; margin-bottom:12px;">
+        <span style="font-weight:600; font-size:15px;">➕ Utwórz klucz klienta</span>
+        <button class="btn btn-sm" id="btnCloseAddClientKey">✕ Zamknij</button>
+      </div>
+      <div class="form-grid">
+        <p style="color:var(--dim); font-size:12px;">
+          Wygeneruj dedykowany klucz dostępu dla maszyny, developera lub agenta. Statystyki zapytań i tokenów będą zliczane dla tej nazwy.
+        </p>
+        <div>
+          <label>Nazwa użytkownika / urządzenia *</label>
+          <input id="inClientName" type="text" placeholder="np. Laptop Tomasz, Jan Kowalski, CI Worker" required>
+        </div>
+        <div>
+          <label>Własny klucz (opcjonalnie)</label>
+          <input id="inClientCustomKey" type="text" placeholder="Pozostaw puste dla losowego tc-..." class="mono">
+        </div>
+        <div style="margin-top:8px;">
+          <button class="btn btn-accent" id="btnSubmitClientKey">Utwórz klucz</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CLIENT KEY CREATED -->
+  <div id="modalKeyCreated" class="modal-backdrop" style="display:none;">
+    <div class="modal-box">
+      <div class="row" style="justify-content:space-between; margin-bottom:12px;">
+        <span style="font-weight:600; color:var(--ok); font-size:15px;">🔑 Klucz klienta został utworzony</span>
+        <button class="btn btn-sm" id="btnCloseKeyModal">✕ Zamknij</button>
+      </div>
+      <p style="color:var(--dim); font-size:12px; margin-bottom:8px;">
+        Klucz dla klienta: <b id="createdClientName" style="color:var(--text)"></b>. Skopiuj go teraz — pełna wartość nie zostanie powtórnie wyświetlona:
+      </p>
+      <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px; margin-bottom:10px;">
+        <div class="mono" id="createdClientKey" style="font-size:13px; word-break:break-all; color:var(--accent);"></div>
+      </div>
+      <div class="row" style="gap:8px; margin-bottom:14px;">
+        <button class="btn btn-sm btn-accent" id="btnCopyCreatedKey">📋 Kopiuj klucz</button>
+      </div>
+
+      <div style="margin-bottom:6px; font-size:12px; color:var(--dim); font-weight:600;">Gotowa komenda konfiguracji klienta:</div>
+      <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px; margin-bottom:10px;">
+        <code class="mono" id="createdClientSetupCmd" style="display:block; font-size:12px; word-break:break-all;"></code>
+      </div>
+      <div class="row" style="gap:8px; margin-bottom:14px; flex-wrap:wrap;">
+        <button class="btn btn-sm" id="btnCopySetupCmd">📋 Kopiuj komendę setup</button>
+        <button class="btn btn-sm" id="btnCopyShellEnv">📋 Kopiuj export ENV</button>
+        <button class="btn btn-sm" id="btnCopyVSCode">📋 Kopiuj VS Code JSON</button>
+      </div>
+      <div style="text-align:right;">
+        <button class="btn" id="btnDoneKeyModal">Gotowe</button>
+      </div>
+    </div>
   </div>
 </main>
 <script>
@@ -682,23 +798,23 @@ ${SHARED_HELPERS}
     // Action buttons group
     var acts = el('div', 'actions-group');
     if (a.name !== current) {
-      var btnSwitch = el('button', 'btn btn-sm', 'switch');
-      btnSwitch.title = 'Make preferred account';
+      var btnSwitch = el('button', 'btn btn-sm btn-accent', '⚡ Aktywuj');
+      btnSwitch.title = 'Ustaw jako preferowane konto w rotacji';
       btnSwitch.addEventListener('click', function () { doSwitch(a.name, btnSwitch); });
       acts.appendChild(btnSwitch);
     }
-    var btnToggle = el('button', 'btn btn-sm ' + (a.disabled ? 'btn-ok' : 'btn-warn'), a.disabled ? 'enable' : 'disable');
-    btnToggle.title = a.disabled ? 'Re-enable account for rotation' : 'Disable account (skip in rotation)';
+    var btnToggle = el('button', 'btn btn-sm ' + (a.disabled ? 'btn-ok' : 'btn-warn'), a.disabled ? '▶️ Włącz' : '⏸️ Wyłącz');
+    btnToggle.title = a.disabled ? 'Włącz konto do rotacji' : 'Wyłącz konto z rotacji';
     btnToggle.addEventListener('click', function () { doToggleDisabled(a.name, !!a.disabled, btnToggle); });
     acts.appendChild(btnToggle);
 
     var btnPrio = el('button', 'btn btn-sm', 'prio: ' + (a.priority || 0));
-    btnPrio.title = 'Click to change priority';
+    btnPrio.title = 'Zmień priorytet konta';
     btnPrio.addEventListener('click', function () { doSetPriority(a.name, a.priority || 0); });
     acts.appendChild(btnPrio);
 
-    var btnDel = el('button', 'btn btn-sm btn-bad', '✕');
-    btnDel.title = 'Remove account from TeamClaude';
+    var btnDel = el('button', 'btn btn-sm btn-bad', '🗑️ Usuń');
+    btnDel.title = 'Usuń konto z konfiguracji TeamClaude';
     btnDel.addEventListener('click', function () { doRemoveAccount(a.name, btnDel); });
     acts.appendChild(btnDel);
 
@@ -1009,84 +1125,94 @@ ${SHARED_HELPERS}
     document.body.removeChild(ta);
   }
 
+  function openModal(id) {
+    var m = document.getElementById(id);
+    if (m) m.style.display = 'flex';
+  }
+
+  function closeModal(id) {
+    var m = document.getElementById(id);
+    if (m) m.style.display = 'none';
+  }
+
   function doToggleDisabled(name, currentDisabled, btn) {
     btn.disabled = true;
-    apiCall('/teamclaude/accounts/toggle', 'POST', { account: name, disabled: !currentDisabled })
+    apiCall('/teamclaude/api/accounts/toggle', 'POST', { id: name, account: name, disabled: !currentDisabled })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Account "' + name + '" ' + (res.disabled ? 'disabled' : 're-enabled'));
+          note('ok', 'Konto "' + name + '" ' + (res.disabled ? 'wyłączone' : 'włączone'));
           poll();
         } else {
-          note('error', 'Toggle failed: ' + (res.error || 'unknown error'));
+          note('error', 'Błąd przełączania: ' + (res.error || 'nieznany błąd'));
           btn.disabled = false;
         }
       })
       .catch(function (e) {
-        note('error', 'Toggle failed: ' + e.message);
+        note('error', 'Błąd: ' + e.message);
         btn.disabled = false;
       });
   }
 
   function doSetPriority(name, currentPrio) {
-    var input = prompt('Enter new priority for "' + name + '" (integer, lower value = higher priority):', currentPrio || 0);
+    var input = prompt('Podaj nowy priorytet dla konta "' + name + '" (liczba całkowita, niższa wartość = wyższy priorytet):', currentPrio || 0);
     if (input == null) return;
     var prio = parseInt(input.trim(), 10);
     if (isNaN(prio)) {
-      note('error', 'Priority must be an integer');
+      note('error', 'Priorytet musi być liczbą całkowitą');
       return;
     }
-    apiCall('/teamclaude/accounts/priority', 'POST', { account: name, priority: prio })
+    apiCall('/teamclaude/api/accounts/priority', 'POST', { id: name, account: name, priority: prio })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Updated priority of "' + name + '" to ' + res.priority);
+          note('ok', 'Zmieniono priorytet konta "' + name + '" na ' + res.priority);
           poll();
         } else {
-          note('error', 'Set priority failed: ' + (res.error || 'unknown error'));
+          note('error', 'Błąd zmiany priorytetu: ' + (res.error || 'nieznany błąd'));
         }
       })
       .catch(function (e) {
-        note('error', 'Set priority failed: ' + e.message);
+        note('error', 'Błąd: ' + e.message);
       });
   }
 
   function doRemoveAccount(name, btn) {
-    if (!confirm('Are you sure you want to remove account "' + name + '" from TeamClaude?')) return;
+    if (!confirm('Czy na pewno chcesz usunąć konto "' + name + '" z konfiguracji TeamClaude?')) return;
     if (btn) btn.disabled = true;
-    apiCall('/teamclaude/accounts/remove', 'POST', { account: name })
+    apiCall('/teamclaude/api/accounts/remove', 'POST', { id: name, account: name })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Removed account "' + name + '"');
+          note('ok', 'Usunięto konto "' + name + '"');
           poll();
         } else {
-          note('error', 'Remove failed: ' + (res.error || 'unknown error'));
+          note('error', 'Błąd usuwania konta: ' + (res.error || 'nieznany błąd'));
           if (btn) btn.disabled = false;
         }
       })
       .catch(function (e) {
-        note('error', 'Remove failed: ' + e.message);
+        note('error', 'Błąd: ' + e.message);
         if (btn) btn.disabled = false;
       });
   }
 
-  function doReloadFromDisk(btn) {
+  function doReloadFleet(btn) {
     if (btn) btn.disabled = true;
     apiCall('/teamclaude/reload', 'POST')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Reloaded config from disk (' + (res.added || 0) + ' new account' + (res.added === 1 ? '' : 's') + ')');
+          note('ok', 'Przeładowano flotę kont z dysku (' + (res.added || 0) + ' nowych kont)');
           poll();
         } else {
-          note('error', 'Reload failed: ' + (res.error || 'unknown error'));
+          note('error', 'Błąd przeładowania: ' + (res.error || 'nieznany błąd'));
         }
       })
       .catch(function (e) {
         if (btn) btn.disabled = false;
-        note('error', 'Reload failed: ' + e.message);
+        note('error', 'Błąd przeładowania: ' + e.message);
       });
   }
 
@@ -1095,27 +1221,96 @@ ${SHARED_HELPERS}
     var name = document.getElementById('inApiKeyName').value.trim();
     var prio = parseInt(document.getElementById('inApiKeyPrio').value.trim(), 10) || 0;
     if (!key) {
-      note('error', 'Anthropic API key is required');
+      note('error', 'Klucz API Anthropic jest wymagany');
       return;
     }
     btn.disabled = true;
-    apiCall('/teamclaude/accounts/add', 'POST', { type: 'apikey', apiKey: key, name: name, priority: prio })
+    apiCall('/teamclaude/api/accounts/add', 'POST', { type: 'api', apiKey: key, name: name, priority: prio })
       .then(function (res) {
         btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Added API key account "' + res.account + '"');
+          note('ok', 'Dodano konto API "' + res.account + '"');
           document.getElementById('inApiKey').value = '';
           document.getElementById('inApiKeyName').value = '';
-          document.getElementById('addAccountPanel').style.display = 'none';
+          closeModal('modalAddAccount');
           poll();
         } else {
-          note('error', 'Add account failed: ' + (res.error || 'unknown error'));
+          note('error', 'Błąd dodawania konta: ' + (res.error || 'nieznany błąd'));
         }
       })
       .catch(function (e) {
         btn.disabled = false;
-        note('error', 'Add account failed: ' + e.message);
+        note('error', 'Błąd dodawania konta: ' + e.message);
+      });
+  }
+
+  function doAddOAuth(btn) {
+    var jsonStr = document.getElementById('inOAuthJson').value.trim();
+    var access = document.getElementById('inOAuthAccess').value.trim();
+    var refresh = document.getElementById('inOAuthRefresh').value.trim();
+    var name = document.getElementById('inOAuthName').value.trim();
+    var prio = parseInt(document.getElementById('inOAuthPrio').value.trim(), 10) || 0;
+
+    if (!jsonStr && !access) {
+      note('error', 'Podaj token AccessToken lub wklej JSON poświadczeń');
+      return;
+    }
+    btn.disabled = true;
+    apiCall('/teamclaude/api/accounts/add', 'POST', {
+      type: 'oauth',
+      credentialsJson: jsonStr || null,
+      accessToken: access || null,
+      refreshToken: refresh || null,
+      name: name,
+      priority: prio
+    })
+      .then(function (res) {
+        btn.disabled = false;
+        if (!res) return;
+        if (res.ok) {
+          note('ok', 'Dodano konto OAuth "' + res.account + '"');
+          document.getElementById('inOAuthJson').value = '';
+          document.getElementById('inOAuthAccess').value = '';
+          document.getElementById('inOAuthRefresh').value = '';
+          document.getElementById('inOAuthName').value = '';
+          closeModal('modalAddAccount');
+          poll();
+        } else {
+          note('error', 'Błąd dodawania konta: ' + (res.error || 'nieznany błąd'));
+        }
+      })
+      .catch(function (e) {
+        btn.disabled = false;
+        note('error', 'Błąd dodawania konta: ' + e.message);
+      });
+  }
+
+  function doAddImportPath(btn) {
+    var path = document.getElementById('inImportPath').value.trim();
+    var name = document.getElementById('inImportPathName').value.trim();
+    var prio = parseInt(document.getElementById('inImportPathPrio').value.trim(), 10) || 0;
+    if (!path) {
+      note('error', 'Ścieżka do pliku poświadczeń jest wymagana');
+      return;
+    }
+    btn.disabled = true;
+    apiCall('/teamclaude/api/accounts/add', 'POST', { type: 'import', importFrom: path, name: name, priority: prio })
+      .then(function (res) {
+        btn.disabled = false;
+        if (!res) return;
+        if (res.ok) {
+          note('ok', 'Zaimportowano konto "' + res.account + '" z pliku ' + path);
+          document.getElementById('inImportPathName').value = '';
+          closeModal('modalAddAccount');
+          poll();
+        } else {
+          note('error', 'Błąd importu konta: ' + (res.error || 'nieznany błąd'));
+        }
+      })
+      .catch(function (e) {
+        btn.disabled = false;
+        note('error', 'Błąd importu konta: ' + e.message);
       });
   }
 
@@ -1125,7 +1320,7 @@ ${SHARED_HELPERS}
       .then(function (res) {
         btn.disabled = false;
         if (!res || !res.ok) {
-          note('error', 'Could not initiate OAuth: ' + (res ? res.error : 'unknown error'));
+          note('error', 'Nie można zainicjować logowania: ' + (res ? res.error : 'nieznany błąd'));
           return;
         }
         pendingOAuthState = res.state;
@@ -1137,20 +1332,20 @@ ${SHARED_HELPERS}
       })
       .catch(function (e) {
         btn.disabled = false;
-        note('error', 'OAuth start failed: ' + e.message);
+        note('error', 'Błąd logowania OAuth: ' + e.message);
       });
   }
 
   function doCompleteOAuth(btn) {
     var code = document.getElementById('inOAuthCode').value.trim();
-    var name = document.getElementById('inOAuthName').value.trim();
-    var prio = parseInt(document.getElementById('inOAuthPrio').value.trim(), 10) || 0;
+    var name = document.getElementById('inOAuthFlowName').value.trim();
+    var prio = parseInt(document.getElementById('inOAuthFlowPrio').value.trim(), 10) || 0;
     if (!code) {
-      note('error', 'Please paste the authorization code or callback URL');
+      note('error', 'Wklej kod autoryzacyjny lub pełny adres URL');
       return;
     }
     if (!pendingOAuthState) {
-      note('error', 'No active OAuth session. Click "Start Claude Login Flow" again.');
+      note('error', 'Brak aktywnej sesji logowania. Rozpocznij logowanie ponownie.');
       return;
     }
     btn.disabled = true;
@@ -1159,128 +1354,78 @@ ${SHARED_HELPERS}
         btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Authenticated Claude account "' + res.account + '"' + (res.email ? ' (' + res.email + ')' : ''));
+          note('ok', 'Zautoryzowano konto Claude "' + res.account + '"' + (res.email ? ' (' + res.email + ')' : ''));
           document.getElementById('inOAuthCode').value = '';
-          document.getElementById('inOAuthName').value = '';
+          document.getElementById('inOAuthFlowName').value = '';
           document.getElementById('oauthStep1').style.display = 'block';
           document.getElementById('oauthStep2').style.display = 'none';
-          document.getElementById('addAccountPanel').style.display = 'none';
+          closeModal('modalAddAccount');
           pendingOAuthState = null;
           poll();
         } else {
-          note('error', 'OAuth completion failed: ' + (res.error || 'unknown error'));
+          note('error', 'Błąd autoryzacji: ' + (res.error || 'nieznany błąd'));
         }
       })
       .catch(function (e) {
         btn.disabled = false;
-        note('error', 'OAuth completion failed: ' + e.message);
+        note('error', 'Błąd autoryzacji: ' + e.message);
       });
   }
 
-  function doImportJson(btn) {
-    var jsonStr = document.getElementById('inImportJson').value.trim();
-    var name = document.getElementById('inImportName').value.trim();
-    var prio = parseInt(document.getElementById('inImportPrio').value.trim(), 10) || 0;
-    if (!jsonStr) {
-      note('error', 'Please paste credentials JSON');
-      return;
-    }
-    btn.disabled = true;
-    apiCall('/teamclaude/accounts/add', 'POST', { type: 'oauth', credentialsJson: jsonStr, name: name, priority: prio })
-      .then(function (res) {
-        btn.disabled = false;
-        if (!res) return;
-        if (res.ok) {
-          note('ok', 'Imported credentials for "' + res.account + '"');
-          document.getElementById('inImportJson').value = '';
-          document.getElementById('inImportName').value = '';
-          document.getElementById('addAccountPanel').style.display = 'none';
-          poll();
-        } else {
-          note('error', 'Import failed: ' + (res.error || 'unknown error'));
-        }
-      })
-      .catch(function (e) {
-        btn.disabled = false;
-        note('error', 'Import failed: ' + e.message);
-      });
-  }
-
-  function showKeyNotice(name, key) {
-    var box = document.getElementById('keyNoticeBox');
-    if (!box) return;
-    box.style.display = 'block';
-    document.getElementById('keyNoticeName').textContent = name;
-    document.getElementById('keyNoticeVal').textContent = key;
+  function showKeyModal(name, key) {
+    document.getElementById('createdClientName').textContent = name;
+    document.getElementById('createdClientKey').textContent = key;
+    var setupCmd = './teamclaude-setup.sh --key ' + key;
+    document.getElementById('createdClientSetupCmd').textContent = setupCmd;
+    openModal('modalKeyCreated');
   }
 
   function doAddClientKey(btn) {
     var name = document.getElementById('inClientName').value.trim();
     var customKey = document.getElementById('inClientCustomKey').value.trim();
     if (!name) {
-      note('error', 'Client name is required');
+      note('error', 'Nazwa klienta / urządzenia jest wymagana');
       return;
     }
     btn.disabled = true;
-    apiCall('/teamclaude/client-keys/add', 'POST', { name: name, key: customKey })
+    apiCall('/teamclaude/api/keys/create', 'POST', { name: name, key: customKey })
       .then(function (res) {
         btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Created client access key for "' + res.client.name + '"');
-          showKeyNotice(res.client.name, res.client.key);
+          note('ok', 'Utworzono klucz klienta dla "' + res.name + '"');
+          closeModal('modalAddClientKey');
           document.getElementById('inClientName').value = '';
           document.getElementById('inClientCustomKey').value = '';
-          document.getElementById('addClientKeyPanel').style.display = 'none';
+          showKeyModal(res.name, res.key);
           poll();
         } else {
-          note('error', 'Create client key failed: ' + (res.error || 'unknown error'));
+          note('error', 'Błąd tworzenia klucza: ' + (res.error || 'nieznany błąd'));
         }
       })
       .catch(function (e) {
         btn.disabled = false;
-        note('error', 'Create client key failed: ' + e.message);
-      });
-  }
-
-  function doRotateClientKey(name, btn) {
-    if (!confirm('Rotate access key for client "' + name + '"? The old key will immediately stop working.')) return;
-    if (btn) btn.disabled = true;
-    apiCall('/teamclaude/client-keys/rotate', 'POST', { name: name })
-      .then(function (res) {
-        if (btn) btn.disabled = false;
-        if (!res) return;
-        if (res.ok) {
-          note('ok', 'Rotated key for client "' + res.client.name + '"');
-          showKeyNotice(res.client.name, res.client.key);
-          poll();
-        } else {
-          note('error', 'Rotate key failed: ' + (res.error || 'unknown error'));
-        }
-      })
-      .catch(function (e) {
-        if (btn) btn.disabled = false;
-        note('error', 'Rotate key failed: ' + e.message);
+        note('error', 'Błąd tworzenia klucza: ' + e.message);
       });
   }
 
   function doRemoveClientKey(name, btn) {
-    if (!confirm('Are you sure you want to remove client access key for "' + name + '"?')) return;
+    if (!confirm('Czy na pewno chcesz unieważnić klucz klienta dla "' + name + '"? Ruch z tego urządzenia zostanie natychmiast odrzucony.')) return;
     if (btn) btn.disabled = true;
-    apiCall('/teamclaude/client-keys/remove', 'POST', { name: name })
+    apiCall('/teamclaude/api/keys/delete', 'POST', { name: name })
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Removed client access key for "' + name + '"');
+          note('ok', 'Unieważniono klucz klienta "' + name + '"');
           poll();
         } else {
-          note('error', 'Remove client key failed: ' + (res.error || 'unknown error'));
+          note('error', 'Błąd unieważniania klucza: ' + (res.error || 'nieznany błąd'));
         }
       })
       .catch(function (e) {
         if (btn) btn.disabled = false;
-        note('error', 'Remove client key failed: ' + e.message);
+        note('error', 'Błąd unieważniania klucza: ' + e.message);
       });
   }
 
@@ -1292,17 +1437,17 @@ ${SHARED_HELPERS}
 
     if (!list.length) {
       var emptyTr = el('tr');
-      var td = el('td', 'dim', 'No client keys configured yet. Click "+ Add Client Key" above to generate one.');
+      var td = el('td', 'dim', 'Brak zdefiniowanych kluczy klientów. Kliknij „➕ Utwórz klucz klienta” powyżej.');
       td.colSpan = 5;
-      td.style.padding = '12px 10px';
+      td.style.padding = '14px 10px';
       emptyTr.appendChild(td);
       table.appendChild(emptyTr);
       return;
     }
 
     var hr = el('tr');
-    ['Client Name', 'API Key (ANTHROPIC_API_KEY)', 'Requests', 'Tokens', 'Actions'].forEach(function (h, i) {
-      hr.appendChild(el('th', (i === 2 || i === 3) ? 'num' : (i === 4 ? 'num' : ''), h));
+    ['Klient', 'Klucz API', 'Zapytania', 'Tokeny (In / Out)', 'Akcje'].forEach(function (h, i) {
+      hr.appendChild(el('th', (i === 2 || i === 3 || i === 4) ? 'num' : '', h));
     });
     table.appendChild(hr);
 
@@ -1314,52 +1459,48 @@ ${SHARED_HELPERS}
       var row = el('div', 'row');
       row.style.gap = '6px';
       var isRevealed = !!revealedKeys[k.name];
-      var masked = isRevealed ? k.key : (k.key && k.key.length > 8 ? k.key.slice(0, 6) + '••••••••' + k.key.slice(-4) : '••••••••');
+      var raw = k.rawKey || k.key || '';
+      var masked = isRevealed ? raw : (raw.length > 8 ? raw.slice(0, 5) + '••••••••' + raw.slice(-4) : '••••••••');
       row.appendChild(el('span', 'mono', masked));
 
-      var btnToggle = el('button', 'btn btn-sm', isRevealed ? 'Hide' : 'Show');
-      btnToggle.addEventListener('click', function () {
-        revealedKeys[k.name] = !revealedKeys[k.name];
-        renderClientKeys(keys, clients);
-      });
-      row.appendChild(btnToggle);
+      if (raw && raw !== masked) {
+        var btnToggle = el('button', 'btn btn-sm', isRevealed ? 'Ukryj' : 'Pokaż');
+        btnToggle.addEventListener('click', function () {
+          revealedKeys[k.name] = !revealedKeys[k.name];
+          renderClientKeys(keys, clients);
+        });
+        row.appendChild(btnToggle);
+      }
 
-      var btnCopy = el('button', 'btn btn-sm', 'Copy');
+      var btnCopy = el('button', 'btn btn-sm', '📋 Kopiuj');
       btnCopy.addEventListener('click', function () {
-        copyToClipboard(k.key, 'Client key for ' + k.name);
+        copyToClipboard(raw, 'Klucz klienta ' + k.name);
       });
       row.appendChild(btnCopy);
       keyTd.appendChild(row);
       tr.appendChild(keyTd);
 
-      var c = (clients && clients[k.name]) || {};
-      tr.appendChild(el('td', 'num', fmtNum(c.requests || 0)));
+      var stat = (k.stats) || (clients && clients[k.name]) || {};
+      tr.appendChild(el('td', 'num', fmtNum(stat.requests || 0)));
 
-      var toks = (c.inputTokens || 0) + (c.outputTokens || 0);
-      tr.appendChild(el('td', 'num', toks ? fmtNum(toks) : '—'));
+      var inT = stat.inputTokens || 0;
+      var outT = stat.outputTokens || 0;
+      var tokText = (inT || outT) ? (fmtNum(inT) + ' / ' + fmtNum(outT)) : '—';
+      tr.appendChild(el('td', 'num', tokText));
 
       var actTd = el('td', 'num');
       var acts = el('div', 'actions-group');
       acts.style.justifyContent = 'flex-end';
 
-      var btnEnv = el('button', 'btn btn-sm', 'Env');
-      btnEnv.title = 'Copy shell export commands';
-      btnEnv.addEventListener('click', function () {
-        var hostUrl = window.location.origin;
-        var envText = 'export ANTHROPIC_BASE_URL="' + hostUrl + '"\nexport ANTHROPIC_API_KEY="' + k.key + '"';
-        copyToClipboard(envText, 'Shell env for ' + k.name);
+      var btnSetup = el('button', 'btn btn-sm', '⚙️ Setup');
+      btnSetup.title = 'Pokaż polecenie setup klienta';
+      btnSetup.addEventListener('click', function () {
+        showKeyModal(k.name, raw);
       });
-      acts.appendChild(btnEnv);
+      acts.appendChild(btnSetup);
 
-      var btnRot = el('button', 'btn btn-sm btn-warn', 'Rotate');
-      btnRot.title = 'Generate a new key for this client';
-      btnRot.addEventListener('click', function () {
-        doRotateClientKey(k.name, btnRot);
-      });
-      acts.appendChild(btnRot);
-
-      var btnDel = el('button', 'btn btn-sm btn-bad', '✕');
-      btnDel.title = 'Remove client key';
+      var btnDel = el('button', 'btn btn-sm btn-bad', '🗑️ Unieważnij');
+      btnDel.title = 'Unieważnij i usuń ten klucz';
       btnDel.addEventListener('click', function () {
         doRemoveClientKey(k.name, btnDel);
       });
@@ -1367,7 +1508,6 @@ ${SHARED_HELPERS}
 
       actTd.appendChild(acts);
       tr.appendChild(actTd);
-
       table.appendChild(tr);
     });
   }
@@ -1387,8 +1527,6 @@ ${SHARED_HELPERS}
         if (!json) return;
         var out = switchOutcome(json);
         note(out.kind, out.text);
-        // Re-enabled on any non-success, whether the server refused or the
-        // fetch threw, so the two failure paths leave the button in one state.
         if (out.kind !== 'ok') btn.disabled = false;
         poll();
       })
@@ -1403,7 +1541,8 @@ ${SHARED_HELPERS}
   }
 
   function poll() {
-    fetch('/teamclaude/status', { headers: { 'x-api-key': localStorage.getItem(KEY) || '' } })
+    var apiKey = localStorage.getItem(KEY) || '';
+    fetch('/teamclaude/status', { headers: { 'x-api-key': apiKey } })
       .then(function (res) {
         if (res.status === 401) { localStorage.removeItem(KEY); showKeybox(); return null; }
         if (!res.ok) throw new Error('status ' + res.status);
@@ -1415,6 +1554,16 @@ ${SHARED_HELPERS}
         document.getElementById('app').style.display = '';
         document.getElementById('err').style.display = 'none';
         render(s);
+
+        // Also fetch full client keys info with live stats
+        fetch('/teamclaude/api/keys', { headers: { 'x-api-key': apiKey } })
+          .then(function (kr) { return kr.ok ? kr.json() : null; })
+          .then(function (kd) {
+            if (kd && Array.isArray(kd.keys)) {
+              renderClientKeys(kd.keys, s.clients);
+            }
+          })
+          .catch(function () { /* best effort */ });
       })
       .catch(function (e) {
         var err = document.getElementById('err');
@@ -1445,29 +1594,48 @@ ${SHARED_HELPERS}
     });
   });
 
-  document.getElementById('btnReloadDisk').addEventListener('click', function () {
-    doReloadFromDisk(this);
-  });
+  // Header button: Reload fleet
+  var btnReloadFleet = document.getElementById('btnReloadFleet');
+  if (btnReloadFleet) {
+    btnReloadFleet.addEventListener('click', function () { doReloadFleet(this); });
+  }
 
+  // Modals opening/closing
   document.getElementById('btnShowAddAccount').addEventListener('click', function () {
-    var p = document.getElementById('addAccountPanel');
-    p.style.display = p.style.display === 'none' ? 'block' : 'none';
+    openModal('modalAddAccount');
   });
   document.getElementById('btnCloseAddAccount').addEventListener('click', function () {
-    document.getElementById('addAccountPanel').style.display = 'none';
+    closeModal('modalAddAccount');
   });
 
+  document.getElementById('btnShowAddClientKey').addEventListener('click', function () {
+    openModal('modalAddClientKey');
+  });
+  document.getElementById('btnCloseAddClientKey').addEventListener('click', function () {
+    closeModal('modalAddClientKey');
+  });
+
+  document.getElementById('btnCloseKeyModal').addEventListener('click', function () {
+    closeModal('modalKeyCreated');
+  });
+  document.getElementById('btnDoneKeyModal').addEventListener('click', function () {
+    closeModal('modalKeyCreated');
+  });
+
+  // Tab switching in modalAddAccount
   function selectTab(tab) {
-    var tabs = ['ApiKey', 'OAuth', 'Import'];
+    var tabs = ['ApiKey', 'OAuth', 'Import', 'BrowserOAuth'];
     tabs.forEach(function (t) {
       var btn = document.getElementById('tabBtn' + t);
       var content = document.getElementById('tabContent' + t);
-      if (t === tab) {
-        btn.className = 'btn btn-sm btn-accent';
-        content.style.display = 'block';
-      } else {
-        btn.className = 'btn btn-sm';
-        content.style.display = 'none';
+      if (btn && content) {
+        if (t === tab) {
+          btn.className = 'tab-btn active';
+          content.style.display = 'block';
+        } else {
+          btn.className = 'tab-btn';
+          content.style.display = 'none';
+        }
       }
     });
   }
@@ -1475,41 +1643,62 @@ ${SHARED_HELPERS}
   document.getElementById('tabBtnApiKey').addEventListener('click', function () { selectTab('ApiKey'); });
   document.getElementById('tabBtnOAuth').addEventListener('click', function () { selectTab('OAuth'); });
   document.getElementById('tabBtnImport').addEventListener('click', function () { selectTab('Import'); });
+  document.getElementById('tabBtnBrowserOAuth').addEventListener('click', function () { selectTab('BrowserOAuth'); });
 
+  // Add Account submissions
   document.getElementById('btnSubmitApiKey').addEventListener('click', function () { doAddApiKey(this); });
+  document.getElementById('btnSubmitOAuth').addEventListener('click', function () { doAddOAuth(this); });
+  document.getElementById('btnSubmitImportPath').addEventListener('click', function () { doAddImportPath(this); });
   document.getElementById('btnStartOAuth').addEventListener('click', function () { doStartOAuth(this); });
   document.getElementById('btnCompleteOAuth').addEventListener('click', function () { doCompleteOAuth(this); });
-  document.getElementById('btnSubmitImport').addEventListener('click', function () { doImportJson(this); });
+  document.getElementById('btnCancelOAuth').addEventListener('click', function () {
+    document.getElementById('oauthStep1').style.display = 'block';
+    document.getElementById('oauthStep2').style.display = 'none';
+  });
 
-  document.getElementById('btnShowAddClientKey').addEventListener('click', function () {
-    var p = document.getElementById('addClientKeyPanel');
-    p.style.display = p.style.display === 'none' ? 'block' : 'none';
-  });
-  document.getElementById('btnCloseAddClientKey').addEventListener('click', function () {
-    document.getElementById('addClientKeyPanel').style.display = 'none';
-  });
+  // Create Client Key submission
   document.getElementById('btnSubmitClientKey').addEventListener('click', function () { doAddClientKey(this); });
 
-  document.getElementById('btnCloseKeyNotice').addEventListener('click', function () {
-    document.getElementById('keyNoticeBox').style.display = 'none';
+  // Key Created Modal copy actions
+  document.getElementById('btnCopyCreatedKey').addEventListener('click', function () {
+    var k = document.getElementById('createdClientKey').textContent;
+    copyToClipboard(k, 'Klucz klienta');
   });
-  document.getElementById('btnCopyNoticeKey').addEventListener('click', function () {
-    var k = document.getElementById('keyNoticeVal').textContent;
-    copyToClipboard(k, 'Client key');
+  document.getElementById('btnCopySetupCmd').addEventListener('click', function () {
+    var cmd = document.getElementById('createdClientSetupCmd').textContent;
+    copyToClipboard(cmd, 'Polecenie setup klienta');
   });
-  document.getElementById('btnCopyNoticeEnv').addEventListener('click', function () {
-    var k = document.getElementById('keyNoticeVal').textContent;
+  document.getElementById('btnCopyShellEnv').addEventListener('click', function () {
+    var k = document.getElementById('createdClientKey').textContent;
     var hostUrl = window.location.origin;
     copyToClipboard('export ANTHROPIC_BASE_URL="' + hostUrl + '"\nexport ANTHROPIC_API_KEY="' + k + '"', 'Shell env');
   });
-  document.getElementById('btnCopyNoticeVSCode').addEventListener('click', function () {
-    var k = document.getElementById('keyNoticeVal').textContent;
+  document.getElementById('btnCopyVSCode').addEventListener('click', function () {
+    var k = document.getElementById('createdClientKey').textContent;
     var hostUrl = window.location.origin;
     var snippet = JSON.stringify([
       { name: 'ANTHROPIC_BASE_URL', value: hostUrl },
       { name: 'ANTHROPIC_API_KEY', value: k },
     ], null, 2);
-    copyToClipboard(snippet, 'VS Code settings');
+    copyToClipboard(snippet, 'VS Code JSON');
+  });
+
+  // Close modals on Escape key or clicking backdrop
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      closeModal('modalAddAccount');
+      closeModal('modalAddClientKey');
+      closeModal('modalKeyCreated');
+    }
+  });
+
+  ['modalAddAccount', 'modalAddClientKey', 'modalKeyCreated'].forEach(function (id) {
+    var m = document.getElementById(id);
+    if (m) {
+      m.addEventListener('click', function (e) {
+        if (e.target === m) closeModal(id);
+      });
+    }
   });
 
   if (localStorage.getItem(KEY)) start(); else showKeybox();
