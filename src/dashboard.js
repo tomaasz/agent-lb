@@ -321,14 +321,25 @@ const PAGE = `<!doctype html>
     --ok: #3fb950; --warn: #d29922; --bad: #f85149;
   }
   * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; padding: 24px 16px; }
+  main { max-width: 860px; margin: 0 auto; width: 100%; }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 2px; }
+  h2 { font-size: 13px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; margin: 24px 0 8px; }
+  .sub { color: var(--dim); margin-bottom: 12px; font-size: 13px; }
   body { background: var(--bg); color: var(--text); font: 15.5px/1.6 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 28px 20px; }
   main { max-width: 980px; margin: 0 auto; width: 100%; }
   h1 { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
   h2 { font-size: 14px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; margin: 26px 0 10px; font-weight: 600; }
   .sub { color: var(--dim); margin-bottom: 14px; font-size: 14px; }
   .sub b { color: var(--text); font-weight: 600; }
+  .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
   .header-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
   .header-actions { display: flex; gap: 8px; align-items: center; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .name { font-weight: 600; }
+  .tag { font-size: 12px; color: var(--dim); }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); white-space: nowrap; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
   .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .name { font-size: 16px; font-weight: 600; }
@@ -338,6 +349,11 @@ const PAGE = `<!doctype html>
   .badge.throttled { color: var(--warn); border-color: var(--warn); }
   .badge.error, .badge.exhausted { color: var(--bad); border-color: var(--bad); }
   .badge.current { color: var(--accent); border-color: var(--accent); }
+  .quota { display: grid; grid-template-columns: 64px 1fr 170px; gap: 8px; align-items: center; margin-top: 6px; }
+  .quota .lbl { color: var(--dim); font-size: 12px; }
+  .quota .val { color: var(--dim); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 4px; background: var(--ok); }
   .badge-plan { color: #d2a8ff; border-color: rgba(210,168,255,0.4); background: rgba(210,168,255,0.1); font-weight: 500; }
   .quota { display: grid; grid-template-columns: 80px 1fr 210px; gap: 12px; align-items: center; margin-top: 8px; }
   .quota .lbl { color: var(--dim); font-size: 13.5px; font-weight: 500; }
@@ -346,6 +362,9 @@ const PAGE = `<!doctype html>
   .bar i { display: block; height: 100%; border-radius: 5px; background: var(--ok); }
   .bar i.warn { background: var(--warn); }
   .bar i.bad { background: var(--bad); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; font-variant-numeric: tabular-nums; }
+  th { color: var(--dim); font-size: 12px; font-weight: 500; border-bottom: 1px solid var(--line); }
   table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
   th, td { text-align: left; padding: 10px 12px; font-variant-numeric: tabular-nums; }
   th { color: var(--dim); font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--line); }
@@ -353,6 +372,9 @@ const PAGE = `<!doctype html>
   tr:last-child td { border-bottom: none; }
   td.num, th.num { text-align: right; }
   .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .usage { color: var(--dim); font-size: 12px; margin-top: 6px; }
+  .blocked { color: var(--warn); font-size: 12px; margin-top: 6px; }
+  .act { font: inherit; font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; margin-left: auto; }
   .usage { color: var(--dim); font-size: 13px; margin-top: 8px; }
   .spend-info { font-size: 13px; color: var(--dim); margin-top: 8px; display: flex; align-items: center; gap: 6px; }
   .spend-info.spend-warn { color: var(--warn); }
@@ -362,10 +384,15 @@ const PAGE = `<!doctype html>
   .act { font: inherit; font-size: 12.5px; padding: 3px 12px; border-radius: 999px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; margin-left: auto; }
   .act:hover { background: var(--accent); color: var(--bg); }
   .act:disabled { opacity: .5; cursor: default; }
+  #note { font-size: 13px; margin: 10px 0; padding: 8px 12px; border-radius: 6px; display: none; }
   #note { font-size: 13.5px; margin: 12px 0; padding: 10px 14px; border-radius: 8px; display: none; }
   #note.ok { background: rgba(63,185,80,.15); color: var(--ok); border: 1px solid var(--ok); }
   #note.warn { background: rgba(210,153,34,.15); color: var(--warn); border: 1px solid var(--warn); }
   #note.error { background: rgba(248,81,73,.15); color: var(--bad); border: 1px solid var(--bad); }
+  .filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .filters label { color: var(--dim); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  .filters select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; font-size: 12px; padding: 4px 8px; }
+  .hint { color: var(--dim); font-size: 12px; margin-left: auto; }
   .filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); }
   .filters label { color: var(--dim); font-size: 13px; display: flex; align-items: center; gap: 6px; }
   .filters select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; font-size: 13px; padding: 5px 10px; }
@@ -375,21 +402,28 @@ const PAGE = `<!doctype html>
   td.dim { color: var(--dim); }
   .ok { color: var(--ok); }
   .no { color: var(--dim); text-decoration: line-through; }
+  .pin { color: var(--accent); font-size: 12px; }
+  .warnt { color: var(--warn); font-size: 12px; }
   .pin { color: var(--accent); font-size: 13px; }
   .warnt { color: var(--warn); font-size: 13px; }
   .badt { color: var(--bad); }
+  #err { color: var(--bad); margin: 12px 0; display: none; }
   #err { color: var(--bad); margin: 12px 0; display: none; font-size: 14px; }
   #problems { display: none; margin: 0 0 16px; }
+  #problems div { border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; }
   #problems div { border-radius: 8px; padding: 10px 14px; margin-bottom: 6px; font-size: 13.5px; }
   #problems .bad { background: rgba(248,81,73,.12); border: 1px solid var(--bad); color: var(--bad); }
   #problems .warn { background: rgba(210,153,34,.12); border: 1px solid var(--warn); color: var(--warn); }
+  .sec-head { display: flex; align-items: center; justify-content: space-between; margin: 24px 0 8px; flex-wrap: wrap; gap: 8px; }
   .sec-head { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 10px; flex-wrap: wrap; gap: 10px; }
   .sec-head h2 { margin: 0; }
+  .btn { font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--text); display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
   .btn { font: inherit; font-size: 13px; padding: 6px 14px; min-height: 36px; border-radius: 7px; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--text); display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
   .btn:hover { background: var(--line); }
   .btn:disabled { opacity: .5; cursor: default; }
   .btn-accent { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
   .btn-accent:hover { filter: brightness(1.1); }
+  .btn-sm { padding: 4px 8px; font-size: 11px; border-radius: 4px; }
   .btn-sm { padding: 5px 11px; font-size: 12.5px; min-height: 30px; border-radius: 5px; }
   .btn-warn { border-color: var(--warn); color: var(--warn); background: transparent; }
   .btn-warn:hover { background: var(--warn); color: var(--bg); }
@@ -398,6 +432,10 @@ const PAGE = `<!doctype html>
   .btn-ok { border-color: var(--ok); color: var(--ok); background: transparent; }
   .btn-ok:hover { background: var(--ok); color: var(--bg); }
   .actions-group { display: flex; gap: 6px; align-items: center; margin-left: auto; flex-wrap: wrap; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+  #keybox { display: none; margin: 40px auto; max-width: 420px; text-align: center; }
+  #keybox input { width: 100%; padding: 10px 12px; margin: 12px 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; }
+  #keybox button { padding: 8px 20px; background: var(--accent); border: 0; border-radius: 6px; color: #06121f; font: inherit; font-weight: 600; cursor: pointer; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; }
   #keybox { display: none; margin: 40px auto; max-width: 440px; text-align: center; }
   #keybox input { width: 100%; padding: 12px 14px; margin: 12px 0; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; color: var(--text); font: inherit; font-size: 15px; }
@@ -405,41 +443,68 @@ const PAGE = `<!doctype html>
 
   /* Modal Overlay & Tabs Styles */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.78); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px; }
+  .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto; padding: 18px 20px; box-shadow: 0 16px 40px rgba(0,0,0,0.6); }
+  .tabs-bar { display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab-btn { font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--dim); cursor: pointer; white-space: nowrap; }
+  .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: 100%; max-width: 620px; max-height: 90vh; overflow-y: auto; padding: 18px 20px; box-shadow: 0 16px 40px rgba(0,0,0,0.6); }
+  .tabs-bar { display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tab-btn { font: inherit; font-size: 12px; padding: 6px 11px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--dim); cursor: pointer; white-space: nowrap; flex: 1 1 auto; text-align: center; }
   .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: 100%; max-width: 640px; max-height: 90vh; overflow-y: auto; padding: 22px 24px; box-shadow: 0 16px 40px rgba(0,0,0,0.6); }
   .tabs-bar { display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 16px; flex-wrap: wrap; }
   .tab-btn { font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 7px; border: 1px solid var(--line); background: transparent; color: var(--dim); cursor: pointer; white-space: nowrap; flex: 1 1 auto; text-align: center; }
   .tab-btn.active { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
+  .form-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
   .form-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
   .form-row { display: flex; gap: 10px; align-items: flex-end; }
+  .form-grid label { display: block; font-size: 12px; color: var(--dim); margin-bottom: 4px; }
+  .form-grid input, .form-grid textarea, .form-grid select { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; font-size: 13px; padding: 8px 10px; box-sizing: border-box; }
   .form-grid label { display: block; font-size: 13px; color: var(--dim); margin-bottom: 5px; }
   .form-grid input, .form-grid textarea, .form-grid select { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; color: var(--text); font: inherit; font-size: 14px; padding: 10px 12px; box-sizing: border-box; }
   .form-grid input:focus, .form-grid textarea:focus, .form-grid select:focus { border-color: var(--accent); outline: none; }
+  footer { color: var(--dim); font-size: 12px; margin-top: 24px; }
   footer { color: var(--dim); font-size: 13px; margin-top: 28px; }
 
   /* Mobile-first / Responsive media queries */
   @media (max-width: 768px) {
+    body { padding: 12px 8px; font-size: 13px; }
     body { padding: 14px 10px; font-size: 14px; }
     main { max-width: 100%; }
+    .header-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .header-actions { width: 100%; }
+    .header-actions .btn { width: 100%; min-height: 38px; }
+    .sec-head { flex-direction: column; align-items: flex-start; gap: 8px; }
     .header-row { flex-direction: column; align-items: flex-start; gap: 10px; }
     .header-actions { width: 100%; flex-wrap: wrap; }
     .header-actions .btn { flex: 1 1 auto; min-height: 40px; }
     .sec-head { flex-direction: column; align-items: flex-start; gap: 10px; }
     .sec-head .row { width: 100%; }
+    .card { padding: 10px 12px; }
+    .quota { grid-template-columns: 50px 1fr 90px; gap: 6px; font-size: 11px; }
+    .quota .lbl, .quota .val { font-size: 11px; }
+    .actions-group { width: 100%; justify-content: flex-start; flex-wrap: wrap; margin-top: 8px; margin-left: 0; }
     .card { padding: 14px 14px; }
     .quota { grid-template-columns: 60px 1fr 120px; gap: 8px; font-size: 12px; }
     .quota .lbl, .quota .val { font-size: 12px; }
     .actions-group { width: 100%; justify-content: flex-start; flex-wrap: wrap; margin-top: 10px; margin-left: 0; }
     .actions-group .btn { flex: 1 1 auto; text-align: center; }
+    .btn { min-height: 38px; padding: 6px 12px; font-size: 12px; }
+    .btn-sm { min-height: 34px; padding: 5px 10px; font-size: 12px; }
     .btn { min-height: 40px; padding: 8px 14px; font-size: 13px; }
     .btn-sm { min-height: 34px; padding: 6px 12px; font-size: 12.5px; }
     .form-row { flex-direction: column; gap: 8px; }
     .form-row > div { width: 100% !important; }
+    .modal-box { padding: 14px 12px; width: 100%; max-height: 94vh; }
+    .tabs-bar { padding-bottom: 6px; }
+    .tab-btn { padding: 6px 10px; font-size: 11px; }
     .modal-box { padding: 16px 14px; width: 100%; max-height: 94vh; }
     .tabs-bar { padding-bottom: 6px; flex-wrap: wrap; }
+    .tab-btn { padding: 6px 8px; font-size: 11px; flex: 1 1 calc(50% - 6px); text-align: center; }
     .tab-btn { padding: 7px 10px; font-size: 12px; flex: 1 1 calc(50% - 6px); text-align: center; }
     #keybox { width: 100%; max-width: 100%; padding: 0 8px; margin: 20px auto; }
     #keybox input { min-height: 44px; font-size: 16px; }
     #keybox button { width: 100%; min-height: 44px; }
+    table { font-size: 12px; }
+    th, td { padding: 8px 6px; }
     table { font-size: 13px; }
     th, td { padding: 9px 8px; }
   }
@@ -486,7 +551,19 @@ const PAGE = `<!doctype html>
     <!-- CLIENT API KEYS SECTION -->
     <div class="sec-head">
       <h2>CLIENT API KEYS</h2>
-      <button class="btn btn-sm btn-accent" id="btnShowAddClientKey">➕ Utwórz klucz klienta</button>
+      <div class="row" style="gap:8px;">
+        <button class="btn btn-sm" id="btnPullSetupRepo" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)">🔄 Aktualizuj instalator</button>
+        <button class="btn btn-sm btn-accent" id="btnShowAddClientKey">➕ Utwórz klucz klienta</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:12px; background:rgba(83,177,253,0.06); border-color:rgba(83,177,253,0.25); padding:12px 16px;">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <div>
+          <span style="font-weight:600; font-size:13.5px;">📦 Automatyczny instalator stacji roboczych:</span>
+          <a href="https://github.com/tomaasz/teamclaude-setup" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600; margin-left:6px;">tomaasz/teamclaude-setup ↗</a>
+          <div style="color:var(--dim); font-size:12.5px; margin-top:3px;">1-klikowa konfiguracja Claude Code CLI, rozszerzenia VS Code oraz zmiennych systemowych (Linux, macOS, WSL, Windows).</div>
+        </div>
+      </div>
     </div>
     <div class="card table-responsive" style="padding:4px 6px; margin-bottom:14px;">
       <table id="clientKeysTable"></table>
@@ -676,34 +753,80 @@ const PAGE = `<!doctype html>
     </div>
   </div>
 
-  <!-- MODAL: CLIENT KEY CREATED -->
+  <!-- MODAL: CLIENT KEY SETUP & CONNECT -->
   <div id="modalKeyCreated" class="modal-backdrop" style="display:none;">
-    <div class="modal-box">
+    <div class="modal-box" style="max-width:700px;">
       <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:600; color:var(--ok); font-size:15px;">🔑 Klucz klienta został utworzony</span>
+        <span style="font-weight:600; color:var(--ok); font-size:16px;">🚀 Podłączanie klienta Claude</span>
         <button class="btn btn-sm" id="btnCloseKeyModal">✕ Zamknij</button>
       </div>
-      <p style="color:var(--dim); font-size:12px; margin-bottom:8px;">
-        Klucz dla klienta: <b id="createdClientName" style="color:var(--text)"></b>. Skopiuj go teraz — pełna wartość nie zostanie powtórnie wyświetlona:
-      </p>
-      <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px; margin-bottom:10px;">
-        <div class="mono" id="createdClientKey" style="font-size:13px; word-break:break-all; color:var(--accent);"></div>
-      </div>
-      <div class="row" style="gap:8px; margin-bottom:14px;">
-        <button class="btn btn-sm btn-accent" id="btnCopyCreatedKey">📋 Kopiuj klucz</button>
+
+      <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px;">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <div>
+            <div style="color:var(--dim); font-size:12px;">Urządzenie / Klient: <b id="createdClientName" style="color:var(--text); font-size:13.5px;"></b></div>
+            <div class="mono" id="createdClientKey" style="font-size:13.5px; word-break:break-all; color:var(--accent); font-weight:600; margin-top:3px;"></div>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnCopyCreatedKey">📋 Kopiuj klucz</button>
+        </div>
       </div>
 
-      <div style="margin-bottom:6px; font-size:12px; color:var(--dim); font-weight:600;">Gotowa komenda konfiguracji klienta:</div>
-      <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px; margin-bottom:10px;">
-        <code class="mono" id="createdClientSetupCmd" style="display:block; font-size:12px; word-break:break-all;"></code>
+      <div style="margin-bottom:10px;">
+        <div class="tabs-bar" style="margin-bottom:12px;">
+          <button class="tab-btn active" id="tabSetupBash" type="button">🐧 Linux / macOS / WSL</button>
+          <button class="tab-btn" id="tabSetupPowershell" type="button">🪟 Windows (PowerShell)</button>
+          <button class="tab-btn" id="tabSetupNode" type="button">⚡ Node.js</button>
+          <button class="tab-btn" id="tabSetupGit" type="button">📦 Git Clone</button>
+          <button class="tab-btn" id="tabSetupManual" type="button">⚙️ Ręcznie</button>
+        </div>
+
+        <div id="contentSetupBash">
+          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">Automatyczna 1-linijkowa konfiguracja (CLI, VS Code, ENV) z serwera:</div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+            <code class="mono" id="cmdSetupBash" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupBash">📋 Kopiuj komendę curl | bash</button>
+        </div>
+
+        <div id="contentSetupPowershell" style="display:none;">
+          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">Uruchom w PowerShellu na stacji Windows (konfiguracja CLI, VS Code i Rejestru):</div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+            <code class="mono" id="cmdSetupPowershell" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupPowershell">📋 Kopiuj polecenie PowerShell</button>
+        </div>
+
+        <div id="contentSetupNode" style="display:none;">
+          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">Uniwersalny skrypt Node.js dla każdego systemu:</div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+            <code class="mono" id="cmdSetupNode" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupNode">📋 Kopiuj komendę Node.js</button>
+        </div>
+
+        <div id="contentSetupGit" style="display:none;">
+          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">Klonowanie prywatnego repozytorium GitHub (<a href="https://github.com/tomaasz/teamclaude-setup" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/teamclaude-setup</a>):</div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+            <code class="mono" id="cmdSetupGit" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupGit">📋 Kopiuj komendę Git</button>
+        </div>
+
+        <div id="contentSetupManual" style="display:none;">
+          <div style="font-size:13px; color:var(--dim); margin-bottom:8px;">Ręczna konfiguracja zmiennych środowiskowych i rozszerzenia VS Code:</div>
+          <div class="row" style="gap:8px; margin-bottom:10px;">
+            <button class="btn btn-sm" id="btnCopyShellEnv">📋 Kopiuj export ENV</button>
+            <button class="btn btn-sm" id="btnCopyVSCode">📋 Kopiuj VS Code JSON</button>
+          </div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px;">
+            <pre class="mono" id="boxManualConfig" style="margin:0; font-size:12px; color:#e6edf3; overflow-x:auto;"></pre>
+          </div>
+        </div>
       </div>
-      <div class="row" style="gap:8px; margin-bottom:14px; flex-wrap:wrap;">
-        <button class="btn btn-sm" id="btnCopySetupCmd">📋 Kopiuj komendę setup</button>
-        <button class="btn btn-sm" id="btnCopyShellEnv">📋 Kopiuj export ENV</button>
-        <button class="btn btn-sm" id="btnCopyVSCode">📋 Kopiuj VS Code JSON</button>
-      </div>
-      <div style="text-align:right;">
-        <button class="btn" id="btnDoneKeyModal">Gotowe</button>
+
+      <div class="row" style="justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--line); padding-top:12px;">
+        <span style="font-size:12px; color:var(--dim);">Repozytorium: <a href="https://github.com/tomaasz/teamclaude-setup" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/teamclaude-setup ↗</a></span>
+        <button class="btn" id="btnDoneKeyModal">Zamknij</button>
       </div>
     </div>
   </div>
@@ -1474,9 +1597,39 @@ ${SHARED_HELPERS}
   function showKeyModal(name, key) {
     document.getElementById('createdClientName').textContent = name;
     document.getElementById('createdClientKey').textContent = key;
-    var setupCmd = './teamclaude-setup.sh --key ' + key;
-    document.getElementById('createdClientSetupCmd').textContent = setupCmd;
+    var hostUrl = window.location.origin.includes('gotova.pl') ? 'https://teamclaude.gotova.pl' : window.location.origin;
+
+    var cmdBash = 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + key;
+    var cmdPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"';
+    var cmdNode = 'curl -fsSL ' + hostUrl + '/setup.js | node - --key ' + key;
+    var cmdGit = 'git clone https://github.com/tomaasz/teamclaude-setup.git && cd teamclaude-setup && ./teamclaude-setup.sh --key ' + key;
+    var manualText = 'export ANTHROPIC_BASE_URL="' + hostUrl + '"\nexport ANTHROPIC_API_KEY="' + key + '"';
+
+    document.getElementById('cmdSetupBash').textContent = cmdBash;
+    document.getElementById('cmdSetupPowershell').textContent = cmdPs;
+    document.getElementById('cmdSetupNode').textContent = cmdNode;
+    document.getElementById('cmdSetupGit').textContent = cmdGit;
+    document.getElementById('boxManualConfig').textContent = manualText;
+
+    selectSetupTab('Bash');
     openModal('modalKeyCreated');
+  }
+
+  function selectSetupTab(tab) {
+    var tabs = ['Bash', 'Powershell', 'Node', 'Git', 'Manual'];
+    tabs.forEach(function (t) {
+      var btn = document.getElementById('tabSetup' + t);
+      var content = document.getElementById('contentSetup' + t);
+      if (btn && content) {
+        if (t === tab) {
+          btn.classList.add('active');
+          content.style.display = 'block';
+        } else {
+          btn.classList.remove('active');
+          content.style.display = 'none';
+        }
+      }
+    });
   }
 
   function doAddClientKey(btn) {
@@ -1591,8 +1744,8 @@ ${SHARED_HELPERS}
       var acts = el('div', 'actions-group');
       acts.style.justifyContent = 'flex-end';
 
-      var btnSetup = el('button', 'btn btn-sm', '⚙️ Setup');
-      btnSetup.title = 'Pokaż polecenie setup klienta';
+      var btnSetup = el('button', 'btn btn-sm btn-accent', '🚀 Podłącz');
+      btnSetup.title = 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tego klienta';
       btnSetup.addEventListener('click', function () {
         showKeyModal(k.name, raw);
       });
@@ -1609,6 +1762,25 @@ ${SHARED_HELPERS}
       tr.appendChild(actTd);
       table.appendChild(tr);
     });
+  }
+
+  function doPullSetup(btn) {
+    if (btn) btn.disabled = true;
+    note('ok', 'Pobieranie aktualizacji repozytorium teamclaude-setup z GitHub...');
+    apiCall('/teamclaude/api/setup/pull', 'POST')
+      .then(function (res) {
+        if (btn) btn.disabled = false;
+        if (!res) return;
+        if (res.ok) {
+          note('ok', 'Zaktualizowano skrypty instalatora: ' + (res.output || 'Już aktualne.'));
+        } else {
+          note('error', 'Błąd git pull: ' + (res.error || 'nieznany błąd'));
+        }
+      })
+      .catch(function (e) {
+        if (btn) btn.disabled = false;
+        note('error', 'Błąd aktualizacji repozytorium: ' + e.message);
+      });
   }
 
   // One manual switch. The endpoint is a nudge, not a pin: it sets the current
@@ -1802,29 +1974,62 @@ ${SHARED_HELPERS}
   // Create Client Key submission
   document.getElementById('btnSubmitClientKey').addEventListener('click', function () { doAddClientKey(this); });
 
-  // Key Created Modal copy actions
-  document.getElementById('btnCopyCreatedKey').addEventListener('click', function () {
-    var k = document.getElementById('createdClientKey').textContent;
-    copyToClipboard(k, 'Klucz klienta');
+  // Setup tabs switching
+  ['Bash', 'Powershell', 'Node', 'Git', 'Manual'].forEach(function (t) {
+    var b = document.getElementById('tabSetup' + t);
+    if (b) {
+      b.addEventListener('click', function () {
+        selectSetupTab(t);
+      });
+    }
   });
-  document.getElementById('btnCopySetupCmd').addEventListener('click', function () {
-    var cmd = document.getElementById('createdClientSetupCmd').textContent;
-    copyToClipboard(cmd, 'Polecenie setup klienta');
-  });
-  document.getElementById('btnCopyShellEnv').addEventListener('click', function () {
-    var k = document.getElementById('createdClientKey').textContent;
-    var hostUrl = window.location.origin;
-    copyToClipboard('export ANTHROPIC_BASE_URL="' + hostUrl + '"\\nexport ANTHROPIC_API_KEY="' + k + '"', 'Shell env');
-  });
-  document.getElementById('btnCopyVSCode').addEventListener('click', function () {
-    var k = document.getElementById('createdClientKey').textContent;
-    var hostUrl = window.location.origin;
-    var snippet = JSON.stringify([
-      { name: 'ANTHROPIC_BASE_URL', value: hostUrl },
-      { name: 'ANTHROPIC_API_KEY', value: k },
-    ], null, 2);
-    copyToClipboard(snippet, 'VS Code JSON');
-  });
+
+  // Setup commands copy actions
+  var bindCopy = function (btnId, textId, label) {
+    var b = document.getElementById(btnId);
+    if (b) {
+      b.addEventListener('click', function () {
+        var el = document.getElementById(textId);
+        if (el) copyToClipboard(el.textContent, label);
+      });
+    }
+  };
+
+  bindCopy('btnCopyCreatedKey', 'createdClientKey', 'Klucz klienta');
+  bindCopy('btnCopySetupBash', 'cmdSetupBash', 'Polecenie Bash');
+  bindCopy('btnCopySetupPowershell', 'cmdSetupPowershell', 'Polecenie PowerShell');
+  bindCopy('btnCopySetupNode', 'cmdSetupNode', 'Polecenie Node.js');
+  bindCopy('btnCopySetupGit', 'cmdSetupGit', 'Polecenie Git');
+
+  var btnCopyShellEnv = document.getElementById('btnCopyShellEnv');
+  if (btnCopyShellEnv) {
+    btnCopyShellEnv.addEventListener('click', function () {
+      var k = document.getElementById('createdClientKey').textContent;
+      var hostUrl = window.location.origin.includes('gotova.pl') ? 'https://teamclaude.gotova.pl' : window.location.origin;
+      copyToClipboard('export ANTHROPIC_BASE_URL="' + hostUrl + '"\nexport ANTHROPIC_API_KEY="' + k + '"', 'Shell env');
+    });
+  }
+
+  var btnCopyVSCode = document.getElementById('btnCopyVSCode');
+  if (btnCopyVSCode) {
+    btnCopyVSCode.addEventListener('click', function () {
+      var k = document.getElementById('createdClientKey').textContent;
+      var hostUrl = window.location.origin.includes('gotova.pl') ? 'https://teamclaude.gotova.pl' : window.location.origin;
+      var snippet = JSON.stringify([
+        { name: 'ANTHROPIC_BASE_URL', value: hostUrl },
+        { name: 'ANTHROPIC_API_KEY', value: k }
+      ], null, 2);
+      copyToClipboard(snippet, 'VS Code JSON');
+    });
+  }
+
+  // Pull setup repo button in Client Keys header
+  var btnPullSetupRepo = document.getElementById('btnPullSetupRepo');
+  if (btnPullSetupRepo) {
+    btnPullSetupRepo.addEventListener('click', function () {
+      doPullSetup(this);
+    });
+  }
 
   // Close modals on Escape key or clicking backdrop
   document.addEventListener('keydown', function (e) {

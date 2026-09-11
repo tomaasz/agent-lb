@@ -2,7 +2,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { timingSafeEqual, randomBytes, createHash } from 'node:crypto';
 import { createWriteStream, mkdirSync, writeSync } from 'node:fs';
-import { readdir, stat, unlink } from 'node:fs/promises';
+import { readdir, stat, unlink, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ensureCerts, createConnectHandler, mitmHosts } from './mitm.js';
 import { patchAccountUuid } from './account-uuid-rewrite.js';
@@ -321,6 +321,44 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
+      // Serve client setup scripts from tomaasz/teamclaude-setup without auth
+      const setupScriptMatch = normPath.match(/^\/(?:teamclaude\/)?setup(?:\.(sh|ps1|js))?$/);
+      if ((req.method === 'GET' || req.method === 'HEAD') && setupScriptMatch) {
+        let ext = setupScriptMatch[1];
+        if (!ext) {
+          const ua = (req.headers['user-agent'] || '').toLowerCase();
+          ext = (ua.includes('powershell') || ua.includes('pwsh')) ? 'ps1' : 'sh';
+        }
+        const scriptName = `teamclaude-setup.${ext}`;
+        const scriptDirs = [
+          join(homedir(), 'teamclaude-setup'),
+          join(homedir(), 'bin'),
+        ];
+        let content = null;
+        for (const dir of scriptDirs) {
+          try {
+            content = await readFile(join(dir, scriptName), 'utf8');
+            if (content) break;
+          } catch {}
+        }
+        if (!content) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(`Script ${scriptName} not found\n`);
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'X-Content-Type-Options': 'nosniff',
+        });
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
+        res.end(content);
+        return;
+      }
+
       // Friendly redirect to dashboard for browser navigation to root or /teamclaude
       if ((req.method === 'GET' || req.method === 'HEAD') && (normPath === '/' || normPath === '/teamclaude')) {
         res.writeHead(307, {
@@ -487,6 +525,22 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'probe failed; see the proxy log' }));
         }
+        return;
+      }
+
+      // Pull latest teamclaude-setup scripts from GitHub repo
+      if (req.method === 'POST' && (req.url === '/teamclaude/api/setup/pull' || req.url === '/teamclaude/setup/pull')) {
+        const { exec } = await import('node:child_process');
+        const repoDir = join(homedir(), 'teamclaude-setup');
+        exec('git pull', { cwd: repoDir }, (err, stdout, stderr) => {
+          if (err) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: (stderr || err.message).trim() }));
+          } else {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, output: stdout.trim() }));
+          }
+        });
         return;
       }
 
