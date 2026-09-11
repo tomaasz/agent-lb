@@ -445,6 +445,7 @@ const PAGE = `<!doctype html>
   <div id="keybox">
     <h1>TeamClaude</h1>
     <p class="sub">Wprowadź swój klucz proxy (proxy.apiKey), aby uzyskać dostęp do panelu.</p>
+    <div id="keyboxErr" style="display:none;margin:10px 0;padding:8px 12px;border-radius:6px;background:rgba(239,68,68,0.12);border:1px solid var(--bad);color:var(--bad);font-size:13px;text-align:left"></div>
     <input id="key" type="password" placeholder="tc-..." autocomplete="off">
     <br><button id="go">Połącz</button>
   </div>
@@ -1533,10 +1534,19 @@ ${SHARED_HELPERS}
       .catch(function (e) { note('error', 'switch failed: ' + e.message); btn.disabled = false; });
   }
 
-  function showKeybox() {
+  function showKeybox(errMsg) {
     if (timer) { clearInterval(timer); timer = null; }
     document.getElementById('app').style.display = 'none';
     document.getElementById('keybox').style.display = 'block';
+    var kErr = document.getElementById('keyboxErr');
+    if (kErr) {
+      if (errMsg) {
+        kErr.textContent = errMsg;
+        kErr.style.display = 'block';
+      } else {
+        kErr.style.display = 'none';
+      }
+    }
     document.getElementById('key').focus();
   }
 
@@ -1544,7 +1554,11 @@ ${SHARED_HELPERS}
     var apiKey = localStorage.getItem(KEY) || '';
     fetch('/teamclaude/status', { headers: { 'x-api-key': apiKey } })
       .then(function (res) {
-        if (res.status === 401) { localStorage.removeItem(KEY); showKeybox(); return null; }
+        if (res.status === 401 || res.status === 403) {
+          localStorage.removeItem(KEY);
+          showKeybox('Nieprawidłowy klucz proxy API. Upewnij się, że podajesz klucz administracyjny (proxy.apiKey).');
+          return null;
+        }
         if (!res.ok) throw new Error('status ' + res.status);
         return res.json();
       })
@@ -1579,7 +1593,16 @@ ${SHARED_HELPERS}
 
   document.getElementById('go').addEventListener('click', function () {
     var v = document.getElementById('key').value.trim();
-    if (!v) return;
+    v = v.replace(/^export\s+ANTHROPIC_API_KEY\s*=\s*/i, '')
+         .replace(/^ANTHROPIC_API_KEY\s*=\s*/i, '')
+         .replace(/^["']|["']$/g, '')
+         .trim();
+    if (!v) {
+      showKeybox('Wprowadź klucz API przed połączeniem.');
+      return;
+    }
+    var kErr = document.getElementById('keyboxErr');
+    if (kErr) kErr.style.display = 'none';
     localStorage.setItem(KEY, v);
     start();
   });
@@ -1671,7 +1694,7 @@ ${SHARED_HELPERS}
   document.getElementById('btnCopyShellEnv').addEventListener('click', function () {
     var k = document.getElementById('createdClientKey').textContent;
     var hostUrl = window.location.origin;
-    copyToClipboard('export ANTHROPIC_BASE_URL="' + hostUrl + '"\nexport ANTHROPIC_API_KEY="' + k + '"', 'Shell env');
+    copyToClipboard('export ANTHROPIC_BASE_URL="' + hostUrl + '"\\nexport ANTHROPIC_API_KEY="' + k + '"', 'Shell env');
   });
   document.getElementById('btnCopyVSCode').addEventListener('click', function () {
     var k = document.getElementById('createdClientKey').textContent;

@@ -258,7 +258,11 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // page's own script with the key. A browser address bar cannot send
       // x-api-key, so gating the asset would just 401 every remote browser
       // without protecting anything.
-      if (req.method === 'GET' && req.url === '/teamclaude/dashboard') {
+      const rawPath = (req.url || '').split('?')[0];
+      const normPath = rawPath.replace(/\/+$/, '') || '/';
+      const isDashboardPath = normPath === '/teamclaude/dashboard';
+
+      if ((req.method === 'GET' || req.method === 'HEAD') && isDashboardPath) {
         // The page keeps the proxy key in localStorage; the policy is what
         // stops any script but its own from ever running next to it.
         res.writeHead(200, {
@@ -267,7 +271,21 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           'Content-Security-Policy': dashboardCsp(),
           'X-Content-Type-Options': 'nosniff',
         });
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
         res.end(renderDashboardHtml());
+        return;
+      }
+
+      // Friendly redirect to dashboard for browser navigation to root or /teamclaude
+      if ((req.method === 'GET' || req.method === 'HEAD') && (normPath === '/' || normPath === '/teamclaude')) {
+        res.writeHead(307, {
+          'Location': '/teamclaude/dashboard',
+          'Content-Type': 'text/plain',
+        });
+        res.end('Redirecting to /teamclaude/dashboard');
         return;
       }
 
