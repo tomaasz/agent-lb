@@ -471,6 +471,11 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         reqPath.startsWith('/teamclaude/oauth');
 
       if (isControlEndpoint) {
+        if (!clientKey && config.proxy?.apiKey) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'authorization required: provide x-api-key header' }));
+          return;
+        }
         const isAdmin = config.proxy?.apiKey
           ? safeKeyEqual(clientKey, config.proxy.apiKey)
           : isLocal;
@@ -492,7 +497,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return {
             name: k.name,
             key: masked,
-            rawKey: raw,
+            maskedKey: masked,
             created: k.created || null,
             stats: stat,
           };
