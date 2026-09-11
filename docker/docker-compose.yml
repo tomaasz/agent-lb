@@ -1,0 +1,19 @@
+services:
+  claude-lb:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ghcr.io/tomaasz/claude-lb:latest
+    container_name: claude-lb
+    restart: unless-stopped
+    ports:
+      - "3456:3456"
+    volumes:
+      # Mount persistent directory containing claude-lb.json config and state
+      - ./data:/data
+    environment:
+      - NODE_ENV=production
+      - CLAUDE_LB_PORT=3456
+      - CLAUDE_LB_HOST=0.0.0.0
+      # Optional: specify allowed hosts header for reverse proxies
+      # - CLAUDE_LB_HOST=your-domain.com

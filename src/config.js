@@ -1,4 +1,5 @@
 import { readFile, open, mkdir, chmod, rename, unlink, realpath, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
@@ -6,9 +7,15 @@ import { resolveUpstreamProxy, setUpstreamProxy } from './upstream-proxy.js';
 import { ensureAccountIds } from './account-id.js';
 
 export function getConfigPath() {
+  if (process.env.CLAUDE_LB_CONFIG) return process.env.CLAUDE_LB_CONFIG;
   if (process.env.TEAMCLAUDE_CONFIG) return process.env.TEAMCLAUDE_CONFIG;
   const configDir = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
-  return join(configDir, 'teamclaude.json');
+  const lbPath = join(configDir, 'claude-lb.json');
+  const tcPath = join(configDir, 'teamclaude.json');
+  if (existsSync(tcPath) && !existsSync(lbPath)) {
+    return tcPath;
+  }
+  return lbPath;
 }
 
 /**

@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Logs & temporary files
+*.log
+logs/
+*.tmp
+*.bak*
+
+# Environment & credentials (CRITICAL: ZERO SECRETS)
+.env
+*.env
+*.env.*
+*.credentials.json
+config.json
+data/
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test & coverage
+coverage/
+.nyc_output/

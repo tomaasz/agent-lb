@@ -568,7 +568,7 @@ const PAGE = `<!doctype html>
       <div class="row" style="justify-content:space-between; align-items:center;">
         <div>
           <span style="font-weight:600; font-size:13.5px;">📦 Automatyczny instalator stacji roboczych:</span>
-          <a href="https://github.com/tomaasz/teamclaude-setup" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600; margin-left:6px;">tomaasz/teamclaude-setup ↗</a>
+          <a href="https://github.com/tomaasz/claude-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600; margin-left:6px;">tomaasz/claude-lb ↗</a>
           <div style="color:var(--dim); font-size:12.5px; margin-top:3px;">1-klikowa konfiguracja Claude Code CLI, rozszerzenia VS Code oraz zmiennych systemowych (Linux, macOS, WSL, Windows).</div>
         </div>
       </div>
@@ -770,6 +770,7 @@ const PAGE = `<!doctype html>
           <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:12px 14px; margin-bottom:12px;">
             <div style="font-weight:600; font-size:13px; margin-bottom:4px;">Krok 2: Skopiuj i wklej kod autoryzacyjny</div>
             <div style="font-size:12.5px; color:var(--dim); line-height:1.4;">
+              Po zalogowaniu i zatwierdzeniu w Claude.ai, skopiuj wyświetlony kod autoryzacyjny (lub cały adres URL callback z paska adresu) i wklej poniżej:
               Po zalogowaniu i zatwierdzeniu na koncie (<b id="reloginStep2Email" style="color:var(--text);"></b>) w Claude.ai, skopiuj wyświetlony kod autoryzacyjny (lub cały adres URL callback z paska adresu) i wklej poniżej:
             </div>
             <div style="font-size:12px; margin-top:6px;">
@@ -891,7 +892,7 @@ const PAGE = `<!doctype html>
         </div>
 
         <div id="contentSetupGit" style="display:none;">
-          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">Klonowanie prywatnego repozytorium GitHub (<a href="https://github.com/tomaasz/teamclaude-setup" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/teamclaude-setup</a>):</div>
+          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">Klonowanie repozytorium GitHub (<a href="https://github.com/tomaasz/claude-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/claude-lb</a>):</div>
           <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
             <code class="mono" id="cmdSetupGit" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
           </div>
@@ -911,7 +912,7 @@ const PAGE = `<!doctype html>
       </div>
 
       <div class="row" style="justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--line); padding-top:12px;">
-        <span style="font-size:12px; color:var(--dim);">Repozytorium: <a href="https://github.com/tomaasz/teamclaude-setup" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/teamclaude-setup ↗</a></span>
+        <span style="font-size:12px; color:var(--dim);">Repozytorium: <a href="https://github.com/tomaasz/claude-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/claude-lb ↗</a></span>
         <button class="btn" id="btnDoneKeyModal">Zamknij</button>
       </div>
     </div>
@@ -1912,12 +1913,12 @@ ${SHARED_HELPERS}
   function showKeyModal(name, key) {
     document.getElementById('createdClientName').textContent = name;
     document.getElementById('createdClientKey').textContent = key;
-    var hostUrl = window.location.origin.includes('gotova.pl') ? 'https://teamclaude.gotova.pl' : window.location.origin;
+    var hostUrl = window.location.origin;
 
     var cmdBash = 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + key;
     var cmdPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"';
     var cmdNode = 'curl -fsSL ' + hostUrl + '/setup.js | node - --key ' + key;
-    var cmdGit = 'git clone https://github.com/tomaasz/teamclaude-setup.git && cd teamclaude-setup && ./teamclaude-setup.sh --key ' + key;
+    var cmdGit = 'git clone https://github.com/tomaasz/claude-lb.git && cd claude-lb && ./setup/setup.sh --key ' + key;
     var manualText = 'export ANTHROPIC_BASE_URL="' + hostUrl + '"\\nexport ANTHROPIC_API_KEY="' + key + '"';
 
     document.getElementById('cmdSetupBash').textContent = cmdBash;
@@ -2081,13 +2082,13 @@ ${SHARED_HELPERS}
 
   function doPullSetup(btn) {
     if (btn) btn.disabled = true;
-    note('ok', 'Pobieranie aktualizacji repozytorium teamclaude-setup z GitHub...');
+    note('ok', 'Pobieranie aktualizacji repozytorium claude-lb z GitHub...');
     apiCall('/teamclaude/api/setup/pull', 'POST')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Zaktualizowano skrypty instalatora: ' + (res.output || 'Już aktualne.'));
+          note('ok', 'Zaktualizowano repozytorium claude-lb: ' + (res.output || 'Już aktualne.'));
         } else {
           note('error', 'Błąd git pull: ' + (res.error || 'nieznany błąd'));
         }
@@ -2320,7 +2321,7 @@ ${SHARED_HELPERS}
   if (btnCopyShellEnv) {
     btnCopyShellEnv.addEventListener('click', function () {
       var k = document.getElementById('createdClientKey').textContent;
-      var hostUrl = window.location.origin.includes('gotova.pl') ? 'https://teamclaude.gotova.pl' : window.location.origin;
+      var hostUrl = window.location.origin;
       copyToClipboard('export ANTHROPIC_BASE_URL="' + hostUrl + '"\\nexport ANTHROPIC_API_KEY="' + k + '"', 'Shell env');
     });
   }
@@ -2329,7 +2330,7 @@ ${SHARED_HELPERS}
   if (btnCopyVSCode) {
     btnCopyVSCode.addEventListener('click', function () {
       var k = document.getElementById('createdClientKey').textContent;
-      var hostUrl = window.location.origin.includes('gotova.pl') ? 'https://teamclaude.gotova.pl' : window.location.origin;
+      var hostUrl = window.location.origin;
       var snippet = JSON.stringify([
         { name: 'ANTHROPIC_BASE_URL', value: hostUrl },
         { name: 'ANTHROPIC_API_KEY', value: k }

@@ -3,7 +3,9 @@ import https from 'node:https';
 import { timingSafeEqual, randomBytes, createHash } from 'node:crypto';
 import { createWriteStream, mkdirSync, writeSync } from 'node:fs';
 import { readdir, stat, unlink, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 import { ensureCerts, createConnectHandler, mitmHosts } from './mitm.js';
 import { patchAccountUuid } from './account-uuid-rewrite.js';
 import { sanitizeToolPairs } from './tool-pair-sanitize.js';
@@ -302,7 +304,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // without protecting anything.
       const rawPath = (req.url || '').split('?')[0];
       const normPath = rawPath.replace(/\/+$/, '') || '/';
-      const isDashboardPath = normPath === '/teamclaude/dashboard';
+      const isDashboardPath = normPath === '/teamclaude/dashboard' || normPath === '/claude-lb/dashboard' || normPath === '/dashboard';
 
       if ((req.method === 'GET' || req.method === 'HEAD') && isDashboardPath) {
         // The page keeps the proxy key in localStorage; the policy is what
@@ -321,31 +323,44 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Serve client setup scripts from tomaasz/teamclaude-setup without auth
-      const setupScriptMatch = normPath.match(/^\/(?:teamclaude\/)?setup(?:\.(sh|ps1|js))?$/);
+      // Serve client setup scripts without auth
+      const setupScriptMatch = normPath.match(/^\/(?:teamclaude\/|claude-lb\/)?setup(?:\.(sh|ps1|js))?$/);
       if ((req.method === 'GET' || req.method === 'HEAD') && setupScriptMatch) {
         let ext = setupScriptMatch[1];
         if (!ext) {
           const ua = (req.headers['user-agent'] || '').toLowerCase();
           ext = (ua.includes('powershell') || ua.includes('pwsh')) ? 'ps1' : 'sh';
         }
-        const scriptName = `teamclaude-setup.${ext}`;
+        const possibleNames = [`setup.${ext}`, `teamclaude-setup.${ext}`];
         const scriptDirs = [
+          join(__dirname, '..', 'setup'),
           join(homedir(), 'teamclaude-setup'),
           join(homedir(), 'bin'),
         ];
         let content = null;
         for (const dir of scriptDirs) {
-          try {
-            content = await readFile(join(dir, scriptName), 'utf8');
-            if (content) break;
-          } catch {}
+          for (const sName of possibleNames) {
+            try {
+              content = await readFile(join(dir, sName), 'utf8');
+              if (content) break;
+            } catch {}
+          }
+          if (content) break;
         }
         if (!content) {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-          res.end(`Script ${scriptName} not found\n`);
+          res.end(`Script setup.${ext} not found\n`);
           return;
         }
+
+        // Dynamically bake requesting server origin into script if requested over HTTP
+        const reqProto = req.headers['x-forwarded-proto'] || (req.socket.encrypted ? 'https' : 'http');
+        const reqHost = req.headers['x-forwarded-host'] || req.headers.host;
+        if (reqHost) {
+          const currentOrigin = `${reqProto}://${reqHost}`;
+          content = content.replace(/http:\/\/localhost:3456/g, currentOrigin);
+        }
+
         res.writeHead(200, {
           'Content-Type': 'text/plain; charset=utf-8',
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -359,8 +374,8 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Friendly redirect to dashboard for browser navigation to root or /teamclaude
-      if ((req.method === 'GET' || req.method === 'HEAD') && (normPath === '/' || normPath === '/teamclaude')) {
+      // Friendly redirect to dashboard for browser navigation to root or /teamclaude / /claude-lb
+      if ((req.method === 'GET' || req.method === 'HEAD') && (normPath === '/' || normPath === '/teamclaude' || normPath === '/claude-lb')) {
         res.writeHead(307, {
           'Location': '/teamclaude/dashboard',
           'Content-Type': 'text/plain',
@@ -460,7 +475,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Status endpoint
-      if (req.method === 'GET' && req.url === '/teamclaude/status') {
+      if (req.method === 'GET' && (req.url === '/teamclaude/status' || req.url === '/claude-lb/status' || req.url === '/status' || req.url === '/api/status')) {
         const status = accountManager.getStatus({ sessionDetail: config.proxy?.sessionDetail === true });
         const extra = hooks.getStatusExtra?.() || {};
         const clientKeys = (config.proxy?.clientKeys || []).map(k => ({
@@ -478,7 +493,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // Tier-weighted fleet quota for lightweight consumers such as a shell or
       // Claude Code status line. Unlike /teamclaude/status this omits routing,
       // usage counters and server diagnostics, and never reaches upstream.
-      if (req.method === 'GET' && req.url === '/teamclaude/quota') {
+      if (req.method === 'GET' && (req.url === '/teamclaude/quota' || req.url === '/claude-lb/quota' || req.url === '/quota' || req.url === '/api/quota')) {
         const extra = hooks.getQuotaExtra?.() || {};
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ...accountManager.getQuotaSummary(), ...extra }, null, 2));
@@ -488,7 +503,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // Reload endpoint — re-sync accounts from config without a restart. This
       // is the headless equivalent of pressing 'R' in the TUI. Local control
       // only (no upstream calls); the auth gate above already applies.
-      if (req.method === 'POST' && req.url === '/teamclaude/reload') {
+      if (req.method === 'POST' && (req.url === '/teamclaude/reload' || req.url === '/claude-lb/reload' || req.url === '/reload' || req.url === '/api/reload')) {
         if (!hooks.reload) {
           res.writeHead(501, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'reload not supported' }));
@@ -510,7 +525,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Probe endpoint — force a fleet-wide quota and spend probe on demand.
-      if (req.method === 'POST' && (req.url === '/teamclaude/probe' || req.url === '/teamclaude/api/probe')) {
+      if (req.method === 'POST' && (req.url === '/teamclaude/probe' || req.url === '/teamclaude/api/probe' || req.url === '/claude-lb/probe' || req.url === '/claude-lb/api/probe' || req.url === '/probe' || req.url === '/api/probe')) {
         if (!hooks.probeQuota) {
           res.writeHead(501, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'probe not supported' }));
@@ -528,10 +543,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Pull latest teamclaude-setup scripts from GitHub repo
-      if (req.method === 'POST' && (req.url === '/teamclaude/api/setup/pull' || req.url === '/teamclaude/setup/pull')) {
+      // Pull latest claude-lb code and scripts from GitHub repo
+      if (req.method === 'POST' && (req.url === '/teamclaude/api/setup/pull' || req.url === '/claude-lb/api/setup/pull' || req.url === '/api/setup/pull' || req.url === '/teamclaude/setup/pull')) {
         const { exec } = await import('node:child_process');
-        const repoDir = join(homedir(), 'teamclaude-setup');
+        const repoDir = join(__dirname, '..');
         exec('git pull', { cwd: repoDir }, (err, stdout, stderr) => {
           if (err) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -553,7 +568,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // that it was recorded. Body:
       // {"account": "<name|email|accountUuid|accountUuid/orgUuid|orgUuid>"}.
       // Local control only (no upstream calls); the auth gate above applies.
-      if (req.method === 'POST' && req.url === '/teamclaude/switch') {
+      if (req.method === 'POST' && (req.url === '/teamclaude/switch' || req.url === '/claude-lb/switch' || req.url === '/switch' || req.url === '/api/switch')) {
         const names = () => (accountManager.accounts || []).map(a => a.name);
         let target;
         try {
@@ -599,11 +614,12 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       const reqPath = (req.url || '').split('?')[0];
+      const normApiPath = reqPath.replace(/^\/(?:teamclaude|claude-lb)/, '');
 
-      const isControlEndpoint = reqPath.startsWith('/teamclaude/api/') ||
-        reqPath.startsWith('/teamclaude/accounts') ||
-        reqPath.startsWith('/teamclaude/client-keys') ||
-        reqPath.startsWith('/teamclaude/oauth');
+      const isControlEndpoint = normApiPath.startsWith('/api/') ||
+        normApiPath.startsWith('/accounts') ||
+        normApiPath.startsWith('/client-keys') ||
+        normApiPath.startsWith('/oauth');
 
       if (isControlEndpoint) {
         if (!clientKey && config.proxy?.apiKey && !isTrustedOrigin) {
@@ -623,7 +639,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Client Keys: List (GET /teamclaude/api/keys & GET /teamclaude/client-keys)
-      if (req.method === 'GET' && (reqPath === '/teamclaude/api/keys' || reqPath === '/teamclaude/client-keys')) {
+      if (req.method === 'GET' && (normApiPath === '/api/keys' || normApiPath === '/client-keys')) {
         const clientsStats = clientUsage?.export() || hooks.getStatusExtra?.()?.clients || {};
         const keys = (config.proxy?.clientKeys || []).map(k => {
           const raw = k.key || '';
@@ -643,7 +659,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Client Keys: Create / Add (POST /teamclaude/api/keys/create & POST /teamclaude/client-keys/add)
-      if (req.method === 'POST' && (reqPath === '/teamclaude/api/keys/create' || reqPath === '/teamclaude/client-keys/add' || reqPath === '/teamclaude/client-keys')) {
+      if (req.method === 'POST' && (normApiPath === '/api/keys/create' || normApiPath === '/client-keys/add' || normApiPath === '/client-keys')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -694,8 +710,8 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Client Keys: Delete / Remove (POST /teamclaude/api/keys/delete & POST /teamclaude/client-keys/remove)
-      if ((req.method === 'POST' && (reqPath === '/teamclaude/api/keys/delete' || reqPath === '/teamclaude/client-keys/remove')) ||
-          (req.method === 'DELETE' && (reqPath === '/teamclaude/client-keys' || reqPath === '/teamclaude/api/keys'))) {
+      if ((req.method === 'POST' && (normApiPath === '/api/keys/delete' || normApiPath === '/client-keys/remove')) ||
+          (req.method === 'DELETE' && (normApiPath === '/client-keys' || normApiPath === '/api/keys'))) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -732,7 +748,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Client Keys: Rotate
-      if (req.method === 'POST' && (reqPath === '/teamclaude/client-keys/rotate' || reqPath === '/teamclaude/api/keys/rotate')) {
+      if (req.method === 'POST' && (normApiPath === '/client-keys/rotate' || normApiPath === '/api/keys/rotate')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -781,7 +797,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Accounts: Toggle disable/enable (POST /teamclaude/api/accounts/toggle & POST /teamclaude/accounts/toggle)
-      if (req.method === 'POST' && (reqPath === '/teamclaude/api/accounts/toggle' || reqPath === '/teamclaude/accounts/toggle')) {
+      if (req.method === 'POST' && (normApiPath === '/api/accounts/toggle' || normApiPath === '/accounts/toggle')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -832,7 +848,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Accounts: Set priority
-      if (req.method === 'POST' && (reqPath === '/teamclaude/api/accounts/priority' || reqPath === '/teamclaude/accounts/priority')) {
+      if (req.method === 'POST' && (normApiPath === '/api/accounts/priority' || normApiPath === '/accounts/priority')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -877,7 +893,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Accounts: Remove (POST /teamclaude/api/accounts/remove & POST /teamclaude/accounts/remove)
-      if (req.method === 'POST' && (reqPath === '/teamclaude/api/accounts/remove' || reqPath === '/teamclaude/accounts/remove')) {
+      if (req.method === 'POST' && (normApiPath === '/api/accounts/remove' || normApiPath === '/accounts/remove')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -925,7 +941,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Accounts: Add (POST /teamclaude/api/accounts/add & POST /teamclaude/accounts/add)
-      if (req.method === 'POST' && (reqPath === '/teamclaude/api/accounts/add' || reqPath === '/teamclaude/accounts/add')) {
+      if (req.method === 'POST' && (normApiPath === '/api/accounts/add' || normApiPath === '/accounts/add')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -1117,7 +1133,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // OAuth Flow: Start
-      if (req.method === 'GET' && reqPath === '/teamclaude/oauth/start') {
+      if (req.method === 'GET' && (normApiPath === '/oauth/start' || reqPath === '/teamclaude/oauth/start')) {
         cleanExpiredOAuthStates();
         const codeVerifier = randomBytes(32).toString('base64url');
         const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
@@ -1146,7 +1162,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // OAuth Flow: Complete
-      if (req.method === 'POST' && reqPath === '/teamclaude/oauth/complete') {
+      if (req.method === 'POST' && (normApiPath === '/oauth/complete' || reqPath === '/teamclaude/oauth/complete')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -1395,14 +1411,16 @@ function hostnameOf(host) {
  * browser speaks HTTP/1.0 — while a hand-rolled local tool might. Refusing it
  * would break that tool without closing anything.
  */
-export function isLocalHostHeader(host, bindHost = null) {
+export function isLocalHostHeader(host, bindHost = null, allowedHosts = []) {
   if (host == null || host === '') return true;
   const name = hostnameOf(host);
   if (name == null) return false;
   if (LOCAL_HOSTNAMES.has(name)) return true;
-  if (name === 'teamclaude.gotova.pl' || name.endsWith('.gotova.pl')) return true;
   if (name.endsWith('.ts.net')) return true;
   if (isTailnetAddr(name)) return true;
+  const envHost = process.env.CLAUDE_LB_HOST || process.env.TEAMCLAUDE_HOST;
+  if (envHost && (name === hostnameOf(envHost) || name.endsWith('.' + hostnameOf(envHost)))) return true;
+  if (Array.isArray(allowedHosts) && allowedHosts.some(h => name === hostnameOf(h) || name.endsWith('.' + hostnameOf(h)))) return true;
   const bound = typeof bindHost === 'string' ? hostnameOf(bindHost) : null;
   return bound != null && !WILDCARD_BINDS.has(bound) && bound === name;
 }
