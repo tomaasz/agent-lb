@@ -3525,7 +3525,10 @@ export class AccountManager {
     if (!account || account.type !== 'oauth') return;
 
     account.credential = accessToken;
-    if (refreshToken) account.refreshToken = refreshToken;
+    if (refreshToken) {
+      account.refreshToken = refreshToken;
+      account._deadRefreshToken = null;
+    }
     account.expiresAt = expiresAt;
     if (account.status === 'error') account.status = 'active';
     console.log(`[TeamClaude] Updated tokens for account "${account.name}"`);

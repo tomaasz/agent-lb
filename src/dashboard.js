@@ -288,7 +288,15 @@ export function problems(status) {
   var ATTENTION = { error: 'needs a re-login', disabled: 'is disabled' };
   (s.accounts || []).forEach(function (a) {
     var why = ATTENTION[a.unavailable];
-    if (why) out.push({ severity: 'warn', kind: 'account', text: 'Account ' + a.name + ' ' + why + '.' });
+    if (why) out.push({
+      severity: 'warn',
+      kind: 'account',
+      text: 'Account ' + a.name + ' ' + why + '.',
+      accountName: a.name,
+      reason: a.unavailable,
+      type: a.type,
+      priority: a.priority || 0
+    });
   });
 
   // Deliberately no spend line. `usedMinor` is month-to-date overage, so on a
@@ -727,6 +735,84 @@ const PAGE = `<!doctype html>
     </div>
   </div>
 
+  <!-- MODAL: RE-LOGIN ACCOUNT -->
+  <div id="modalRelogin" class="modal-backdrop" style="display:none;">
+    <div class="modal-box" style="max-width:620px;">
+      <div class="row" style="justify-content:space-between; margin-bottom:12px;">
+        <span style="font-weight:600; font-size:16px;">🔐 Ponowne logowanie: <span id="reloginAccountTitle" class="mono" style="color:var(--accent);"></span></span>
+        <button class="btn btn-sm" id="btnCloseReloginModal">✕ Zamknij</button>
+      </div>
+      <p style="color:var(--dim); font-size:13px; margin-bottom:14px;">
+        Sesja tego konta wygasła lub token został odrzucony przez serwery Claude. Zaloguj się ponownie w Claude.ai, aby odnowić poświadczenia i natychmiast przywrócić konto do rotacji.
+      </p>
+
+      <div class="tabs-bar" style="margin-bottom:14px;">
+        <button class="tab-btn active" id="tabBtnReloginBrowser" type="button">🌐 Przeglądarka (OAuth)</button>
+        <button class="tab-btn" id="tabBtnReloginJson" type="button">📋 Wklej JSON / Token</button>
+        <button class="tab-btn" id="tabBtnReloginImport" type="button">📂 Plik na serwerze</button>
+      </div>
+
+      <!-- Tab 1: Browser OAuth -->
+      <div id="tabContentReloginBrowser">
+        <div id="reloginOAuthStep1">
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:12px 14px; margin-bottom:14px;">
+            <div style="font-weight:600; font-size:13.5px; margin-bottom:4px;">Krok 1: Otwórz stronę logowania Claude.ai</div>
+            <div style="font-size:12.5px; color:var(--dim); line-height:1.4;">
+              Kliknij poniższy przycisk. Otworzy się nowa karta z oficjalną stroną autoryzacji Claude.ai. Upewnij się, że logujesz się na właściwe konto (<b id="reloginStep1Email" style="color:var(--text);"></b>).
+            </div>
+          </div>
+          <button class="btn btn-accent" id="btnStartReloginOAuth" style="width:100%; justify-content:center; padding:10px 14px; font-weight:600;">
+            🌐 Otwórz logowanie Claude.ai w nowej karcie
+          </button>
+        </div>
+
+        <div id="reloginOAuthStep2" style="display:none;">
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:12px 14px; margin-bottom:12px;">
+            <div style="font-weight:600; font-size:13px; margin-bottom:4px;">Krok 2: Skopiuj i wklej kod autoryzacyjny</div>
+            <div style="font-size:12.5px; color:var(--dim); line-height:1.4;">
+              Po zalogowaniu i zatwierdzeniu w Claude.ai, skopiuj wyświetlony kod autoryzacyjny (lub cały adres URL callback z paska adresu) i wklej poniżej:
+            </div>
+            <div style="font-size:12px; margin-top:6px;">
+              <span style="color:var(--dim);">Okno logowania się nie otworzyło? </span>
+              <a id="reloginOAuthLink" href="#" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:underline;">Kliknij tutaj, aby otworzyć ↗</a>
+            </div>
+          </div>
+
+          <div style="margin-bottom:12px;">
+            <label style="font-size:12px; color:var(--dim); display:block; margin-bottom:4px;">Kod autoryzacyjny lub callback URL *</label>
+            <input id="inReloginOAuthCode" type="text" placeholder="Wklej kod lub URL callback (https://claude.ai/oauth/callback?code=...)" class="mono" style="width:100%;">
+          </div>
+
+          <div class="row" style="gap:8px;">
+            <button class="btn btn-accent" id="btnCompleteReloginOAuth">✅ Odnów sesję i zaloguj</button>
+            <button class="btn" id="btnRestartReloginOAuth">↺ Uruchom ponownie logowanie</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Paste JSON -->
+      <div id="tabContentReloginJson" style="display:none;">
+        <div style="font-size:12.5px; color:var(--dim); margin-bottom:8px;">
+          Wklej zawartość pliku <code>~/.claude/.credentials.json</code> lub JSON z tokenami sesji OAuth:
+        </div>
+        <textarea id="inReloginJson" rows="4" placeholder='{"claudeAiOauth":{"accessToken":"...","refreshToken":"..."}}' class="mono" style="width:100%; margin-bottom:10px;"></textarea>
+        <button class="btn btn-accent" id="btnSubmitReloginJson">Zapisz poświadczenia</button>
+      </div>
+
+      <!-- Tab 3: Import from file -->
+      <div id="tabContentReloginImport" style="display:none;">
+        <div style="font-size:12.5px; color:var(--dim); margin-bottom:8px;">
+          Wczytaj nowe poświadczenia z pliku zapisanego na serwerze (np. po <code>claude login</code> w konsoli):
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="font-size:12px; color:var(--dim); display:block; margin-bottom:4px;">Ścieżka do pliku *</label>
+          <input id="inReloginImportPath" type="text" value="~/.claude/.credentials.json" class="mono" style="width:100%;">
+        </div>
+        <button class="btn btn-accent" id="btnSubmitReloginImport">Importuj z pliku</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: ADD CLIENT KEY -->
   <div id="modalAddClientKey" class="modal-backdrop" style="display:none;">
     <div class="modal-box">
@@ -968,6 +1054,13 @@ ${SHARED_HELPERS}
       btnSwitch.addEventListener('click', function () { doSwitch(a.name, btnSwitch); });
       acts.appendChild(btnSwitch);
     }
+    if (a.type === 'oauth') {
+      var isErr = a.status === 'error' || a.unavailable === 'error';
+      var btnRelogin = el('button', 'btn btn-sm' + (isErr ? ' btn-accent' : ''), isErr ? '🔐 Zaloguj ponownie' : '🔐 Re-login');
+      btnRelogin.title = 'Zaloguj ponownie konto ' + a.name + ' przez Claude OAuth';
+      btnRelogin.addEventListener('click', function () { startReLogin(a.name, a.priority); });
+      acts.appendChild(btnRelogin);
+    }
     var btnToggle = el('button', 'btn btn-sm ' + (a.disabled ? 'btn-ok' : 'btn-warn'), a.disabled ? '▶️ Włącz' : '⏸️ Wyłącz');
     btnToggle.title = a.disabled ? 'Włącz konto do rotacji' : 'Wyłącz konto z rotacji';
     btnToggle.addEventListener('click', function () { doToggleDisabled(a.name, !!a.disabled, btnToggle); });
@@ -985,7 +1078,19 @@ ${SHARED_HELPERS}
 
     head.appendChild(acts);
     card.appendChild(head);
-    if (a.unavailable) card.appendChild(el('div', 'blocked', 'blocked: ' + (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable)));
+    if (a.unavailable) {
+      var bDiv = el('div', 'blocked', 'blocked: ' + (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable));
+      if (a.unavailable === 'error' || a.status === 'error') {
+        var fixBtn = el('button', 'btn btn-sm btn-accent', '🔐 Zaloguj ponownie');
+        fixBtn.style.marginLeft = '10px';
+        fixBtn.style.padding = '2px 8px';
+        fixBtn.style.fontSize = '12px';
+        fixBtn.title = 'Zaloguj ponownie konto ' + a.name + ' przez Claude.ai';
+        fixBtn.addEventListener('click', function () { startReLogin(a.name, a.priority); });
+        bDiv.appendChild(fixBtn);
+      }
+      card.appendChild(bDiv);
+    }
     var q = a.quota || {};
     if (q.unified5h != null || q.unified7d != null) {
       card.appendChild(quotaRow('Session', q.unified5h, q.unified5hReset));
@@ -1242,7 +1347,35 @@ ${SHARED_HELPERS}
     wrap.textContent = '';
     if (!list.length) { wrap.style.display = 'none'; return; }
     wrap.style.display = 'block';
-    list.forEach(function (p) { wrap.appendChild(el('div', p.severity, p.text)); });
+    list.forEach(function (p) {
+      var box = el('div', p.severity);
+      box.style.display = 'flex';
+      box.style.alignItems = 'center';
+      box.style.justifyContent = 'space-between';
+      box.style.flexWrap = 'wrap';
+      box.style.gap = '10px';
+
+      var msg = el('span', '', p.text);
+      box.appendChild(msg);
+
+      if (p.kind === 'account' && (p.reason === 'error' || (p.text && p.text.indexOf('needs a re-login') !== -1))) {
+        var btn = el('button', 'btn btn-sm btn-accent', '🔐 Zaloguj ponownie (Re-login)');
+        btn.style.whiteSpace = 'nowrap';
+        btn.title = 'Zaloguj ponownie konto ' + (p.accountName || '') + ' w Claude.ai';
+        btn.addEventListener('click', function () {
+          startReLogin(p.accountName, p.priority);
+        });
+        box.appendChild(btn);
+      } else if (p.kind === 'account' && p.reason === 'disabled') {
+        var btn = el('button', 'btn btn-sm btn-ok', '▶️ Włącz konto');
+        btn.style.whiteSpace = 'nowrap';
+        btn.addEventListener('click', function () {
+          doToggleDisabled(p.accountName, true, btn);
+        });
+        box.appendChild(btn);
+      }
+      wrap.appendChild(box);
+    });
   }
 
   function render(s) {
@@ -1537,23 +1670,32 @@ ${SHARED_HELPERS}
   }
 
   function doStartOAuth(btn) {
-    btn.disabled = true;
+    if (btn) btn.disabled = true;
+    var authWindow = null;
+    try {
+      authWindow = window.open('about:blank', '_blank');
+    } catch {}
+
     apiCall('/teamclaude/oauth/start', 'GET')
       .then(function (res) {
-        btn.disabled = false;
+        if (btn) btn.disabled = false;
         if (!res || !res.ok) {
+          if (authWindow) authWindow.close();
           note('error', 'Nie można zainicjować logowania: ' + (res ? res.error : 'nieznany błąd'));
           return;
         }
         pendingOAuthState = res.state;
+        if (authWindow) {
+          authWindow.location.href = res.authUrl;
+        }
         var link = document.getElementById('oauthLink');
-        link.href = res.authUrl;
+        if (link) link.href = res.authUrl;
         document.getElementById('oauthStep1').style.display = 'none';
         document.getElementById('oauthStep2').style.display = 'block';
-        window.open(res.authUrl, '_blank');
       })
       .catch(function (e) {
-        btn.disabled = false;
+        if (btn) btn.disabled = false;
+        if (authWindow) authWindow.close();
         note('error', 'Błąd logowania OAuth: ' + e.message);
       });
   }
@@ -1591,6 +1733,179 @@ ${SHARED_HELPERS}
       .catch(function (e) {
         btn.disabled = false;
         note('error', 'Błąd autoryzacji: ' + e.message);
+      });
+  }
+
+  var currentReloginAccount = null;
+  var currentReloginPriority = 0;
+
+  function selectReloginTab(tab) {
+    var tabs = ['Browser', 'Json', 'Import'];
+    tabs.forEach(function (t) {
+      var btn = document.getElementById('tabBtnRelogin' + t);
+      var content = document.getElementById('tabContentRelogin' + t);
+      if (btn && content) {
+        if (t === tab) {
+          btn.className = 'tab-btn active';
+          content.style.display = 'block';
+        } else {
+          btn.className = 'tab-btn';
+          content.style.display = 'none';
+        }
+      }
+    });
+  }
+
+  function startReLogin(accountName, priority) {
+    currentReloginAccount = accountName || '';
+    currentReloginPriority = priority != null ? priority : 0;
+
+    var titleEl = document.getElementById('reloginAccountTitle');
+    if (titleEl) titleEl.textContent = accountName;
+    var email1 = document.getElementById('reloginStep1Email');
+    if (email1) email1.textContent = accountName;
+    var email2 = document.getElementById('reloginStep2Email');
+    if (email2) email2.textContent = accountName;
+
+    var step1 = document.getElementById('reloginOAuthStep1');
+    if (step1) step1.style.display = 'block';
+    var step2 = document.getElementById('reloginOAuthStep2');
+    if (step2) step2.style.display = 'none';
+
+    var inCode = document.getElementById('inReloginOAuthCode');
+    if (inCode) inCode.value = '';
+    var inJson = document.getElementById('inReloginJson');
+    if (inJson) inJson.value = '';
+
+    selectReloginTab('Browser');
+    openModal('modalRelogin');
+  }
+
+  function doStartReloginOAuth(btn) {
+    if (btn) btn.disabled = true;
+    var authWindow = null;
+    try {
+      authWindow = window.open('about:blank', '_blank');
+    } catch {}
+
+    apiCall('/teamclaude/oauth/start', 'GET')
+      .then(function (res) {
+        if (btn) btn.disabled = false;
+        if (!res || !res.ok) {
+          if (authWindow) authWindow.close();
+          note('error', 'Nie można zainicjować logowania: ' + (res ? res.error : 'nieznany błąd'));
+          return;
+        }
+        pendingOAuthState = res.state;
+        if (authWindow) {
+          authWindow.location.href = res.authUrl;
+        }
+        var link = document.getElementById('reloginOAuthLink');
+        if (link) link.href = res.authUrl;
+        var step1 = document.getElementById('reloginOAuthStep1');
+        if (step1) step1.style.display = 'none';
+        var step2 = document.getElementById('reloginOAuthStep2');
+        if (step2) step2.style.display = 'block';
+      })
+      .catch(function (e) {
+        if (btn) btn.disabled = false;
+        if (authWindow) authWindow.close();
+        note('error', 'Błąd logowania OAuth: ' + e.message);
+      });
+  }
+
+  function doCompleteReloginOAuth(btn) {
+    var code = document.getElementById('inReloginOAuthCode').value.trim();
+    if (!code) {
+      note('error', 'Wklej kod autoryzacyjny lub pełny adres URL');
+      return;
+    }
+    if (!pendingOAuthState) {
+      note('error', 'Brak aktywnej sesji logowania. Rozpocznij logowanie ponownie.');
+      return;
+    }
+    if (btn) btn.disabled = true;
+    apiCall('/teamclaude/oauth/complete', 'POST', {
+      code: code,
+      state: pendingOAuthState,
+      name: currentReloginAccount,
+      priority: currentReloginPriority
+    })
+      .then(function (res) {
+        if (btn) btn.disabled = false;
+        if (!res) return;
+        if (res.ok) {
+          note('ok', 'Zalogowano pomyślnie! Sesja konta "' + res.account + '" została odnowiona.');
+          closeModal('modalRelogin');
+          pendingOAuthState = null;
+          poll();
+        } else {
+          note('error', 'Błąd autoryzacji: ' + (res.error || 'nieznany błąd'));
+        }
+      })
+      .catch(function (e) {
+        if (btn) btn.disabled = false;
+        note('error', 'Błąd autoryzacji: ' + e.message);
+      });
+  }
+
+  function doSubmitReloginJson(btn) {
+    var raw = document.getElementById('inReloginJson').value.trim();
+    if (!raw) {
+      note('error', 'Wklej treść JSON poświadczeń');
+      return;
+    }
+    if (btn) btn.disabled = true;
+    apiCall('/teamclaude/api/accounts/add', 'POST', {
+      type: 'oauth',
+      credentialsJson: raw,
+      name: currentReloginAccount,
+      priority: currentReloginPriority
+    })
+      .then(function (res) {
+        if (btn) btn.disabled = false;
+        if (!res) return;
+        if (res.ok) {
+          note('ok', 'Zaktualizowano poświadczenia dla konta "' + res.account + '"');
+          closeModal('modalRelogin');
+          poll();
+        } else {
+          note('error', 'Błąd aktualizacji konta: ' + (res.error || 'nieznany błąd'));
+        }
+      })
+      .catch(function (e) {
+        if (btn) btn.disabled = false;
+        note('error', 'Błąd: ' + e.message);
+      });
+  }
+
+  function doSubmitReloginImport(btn) {
+    var path = document.getElementById('inReloginImportPath').value.trim();
+    if (!path) {
+      note('error', 'Podaj ścieżkę do pliku na serwerze');
+      return;
+    }
+    if (btn) btn.disabled = true;
+    apiCall('/teamclaude/api/accounts/add', 'POST', {
+      type: 'import',
+      importFrom: path,
+      name: currentReloginAccount,
+      priority: currentReloginPriority
+    })
+      .then(function (res) {
+        if (btn) btn.disabled = false;
+        if (!res) return;
+        if (res.ok) {
+          note('ok', 'Zaimportowano nowe poświadczenia dla konta "' + res.account + '"');
+          closeModal('modalRelogin');
+          poll();
+        } else {
+          note('error', 'Błąd importu: ' + (res.error || 'nieznany błąd'));
+        }
+      })
+      .catch(function (e) {
+        if (btn) btn.disabled = false;
+        note('error', 'Błąd: ' + e.message);
       });
   }
 
@@ -2031,16 +2346,53 @@ ${SHARED_HELPERS}
     });
   }
 
+  // Re-login modal listeners
+  var btnCloseRelogin = document.getElementById('btnCloseReloginModal');
+  if (btnCloseRelogin) {
+    btnCloseRelogin.addEventListener('click', function () { closeModal('modalRelogin'); });
+  }
+  ['Browser', 'Json', 'Import'].forEach(function (t) {
+    var b = document.getElementById('tabBtnRelogin' + t);
+    if (b) {
+      b.addEventListener('click', function () { selectReloginTab(t); });
+    }
+  });
+  var btnStartRelogin = document.getElementById('btnStartReloginOAuth');
+  if (btnStartRelogin) {
+    btnStartRelogin.addEventListener('click', function () { doStartReloginOAuth(this); });
+  }
+  var btnCompleteRelogin = document.getElementById('btnCompleteReloginOAuth');
+  if (btnCompleteRelogin) {
+    btnCompleteRelogin.addEventListener('click', function () { doCompleteReloginOAuth(this); });
+  }
+  var btnRestartRelogin = document.getElementById('btnRestartReloginOAuth');
+  if (btnRestartRelogin) {
+    btnRestartRelogin.addEventListener('click', function () {
+      var s1 = document.getElementById('reloginOAuthStep1');
+      var s2 = document.getElementById('reloginOAuthStep2');
+      if (s1 && s2) { s1.style.display = 'block'; s2.style.display = 'none'; }
+    });
+  }
+  var btnSubmitReloginJson = document.getElementById('btnSubmitReloginJson');
+  if (btnSubmitReloginJson) {
+    btnSubmitReloginJson.addEventListener('click', function () { doSubmitReloginJson(this); });
+  }
+  var btnSubmitReloginImport = document.getElementById('btnSubmitReloginImport');
+  if (btnSubmitReloginImport) {
+    btnSubmitReloginImport.addEventListener('click', function () { doSubmitReloginImport(this); });
+  }
+
   // Close modals on Escape key or clicking backdrop
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
       closeModal('modalAddAccount');
       closeModal('modalAddClientKey');
       closeModal('modalKeyCreated');
+      closeModal('modalRelogin');
     }
   });
 
-  ['modalAddAccount', 'modalAddClientKey', 'modalKeyCreated'].forEach(function (id) {
+  ['modalAddAccount', 'modalAddClientKey', 'modalKeyCreated', 'modalRelogin'].forEach(function (id) {
     var m = document.getElementById(id);
     if (m) {
       m.addEventListener('click', function (e) {
