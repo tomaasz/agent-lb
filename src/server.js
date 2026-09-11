@@ -626,7 +626,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
 
-        const target = body?.account;
+        const target = body?.account || body?.id || body?.name;
         if (typeof target !== 'string' || !target.trim()) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'missing "account"' }));
@@ -677,7 +677,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
 
-        const target = body?.account;
+        const target = body?.account || body?.id || body?.name;
         const prio = parseInt(body?.priority, 10);
         if (typeof target !== 'string' || !target.trim() || isNaN(prio)) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -722,7 +722,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
 
-        const target = body?.account;
+        const target = body?.account || body?.id || body?.name;
         if (typeof target !== 'string' || !target.trim()) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'missing "account"' }));
@@ -1219,6 +1219,7 @@ export function resolveAccountPin(accountManager, token) {
 
   for (const i of [
     qualified,
+    at(a => a.id),
     at(a => a.accountUuid),
     at(a => a.orgUuid),
     at(a => a.name),
