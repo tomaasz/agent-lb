@@ -17,3 +17,4 @@ services:
       - CLAUDE_LB_HOST=0.0.0.0
       # Optional: specify allowed hosts header for reverse proxies
       # - CLAUDE_LB_HOST=your-domain.com
+
