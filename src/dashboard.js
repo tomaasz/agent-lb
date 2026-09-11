@@ -770,7 +770,7 @@ const PAGE = `<!doctype html>
           <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:12px 14px; margin-bottom:12px;">
             <div style="font-weight:600; font-size:13px; margin-bottom:4px;">Krok 2: Skopiuj i wklej kod autoryzacyjny</div>
             <div style="font-size:12.5px; color:var(--dim); line-height:1.4;">
-              Po zalogowaniu i zatwierdzeniu w Claude.ai, skopiuj wyświetlony kod autoryzacyjny (lub cały adres URL callback z paska adresu) i wklej poniżej:
+              Po zalogowaniu i zatwierdzeniu na koncie (<b id="reloginStep2Email" style="color:var(--text);"></b>) w Claude.ai, skopiuj wyświetlony kod autoryzacyjny (lub cały adres URL callback z paska adresu) i wklej poniżej:
             </div>
             <div style="font-size:12px; margin-top:6px;">
               <span style="color:var(--dim);">Okno logowania się nie otworzyło? </span>
@@ -1918,7 +1918,7 @@ ${SHARED_HELPERS}
     var cmdPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"';
     var cmdNode = 'curl -fsSL ' + hostUrl + '/setup.js | node - --key ' + key;
     var cmdGit = 'git clone https://github.com/tomaasz/teamclaude-setup.git && cd teamclaude-setup && ./teamclaude-setup.sh --key ' + key;
-    var manualText = 'export ANTHROPIC_BASE_URL="' + hostUrl + '"\nexport ANTHROPIC_API_KEY="' + key + '"';
+    var manualText = 'export ANTHROPIC_BASE_URL="' + hostUrl + '"\\nexport ANTHROPIC_API_KEY="' + key + '"';
 
     document.getElementById('cmdSetupBash').textContent = cmdBash;
     document.getElementById('cmdSetupPowershell').textContent = cmdPs;
@@ -2321,7 +2321,7 @@ ${SHARED_HELPERS}
     btnCopyShellEnv.addEventListener('click', function () {
       var k = document.getElementById('createdClientKey').textContent;
       var hostUrl = window.location.origin.includes('gotova.pl') ? 'https://teamclaude.gotova.pl' : window.location.origin;
-      copyToClipboard('export ANTHROPIC_BASE_URL="' + hostUrl + '"\nexport ANTHROPIC_API_KEY="' + k + '"', 'Shell env');
+      copyToClipboard('export ANTHROPIC_BASE_URL="' + hostUrl + '"\\nexport ANTHROPIC_API_KEY="' + k + '"', 'Shell env');
     });
   }
 
