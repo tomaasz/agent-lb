@@ -400,9 +400,9 @@ const PAGE = `<!doctype html>
 
   /* Modal Overlay & Tabs Styles */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.78); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px; }
-  .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: 100%; max-width: 540px; max-height: 90vh; overflow-y: auto; padding: 18px 20px; box-shadow: 0 16px 40px rgba(0,0,0,0.6); }
-  .tabs-bar { display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .tab-btn { font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--dim); cursor: pointer; white-space: nowrap; }
+  .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; width: 100%; max-width: 620px; max-height: 90vh; overflow-y: auto; padding: 18px 20px; box-shadow: 0 16px 40px rgba(0,0,0,0.6); }
+  .tabs-bar { display: flex; gap: 6px; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tab-btn { font: inherit; font-size: 12px; padding: 6px 11px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--dim); cursor: pointer; white-space: nowrap; flex: 1 1 auto; text-align: center; }
   .tab-btn.active { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
   .form-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
   .form-row { display: flex; gap: 10px; align-items: flex-end; }
@@ -430,8 +430,8 @@ const PAGE = `<!doctype html>
     .form-row { flex-direction: column; gap: 8px; }
     .form-row > div { width: 100% !important; }
     .modal-box { padding: 14px 12px; width: 100%; max-height: 94vh; }
-    .tabs-bar { padding-bottom: 6px; }
-    .tab-btn { padding: 6px 10px; font-size: 11px; }
+    .tabs-bar { padding-bottom: 6px; flex-wrap: wrap; }
+    .tab-btn { padding: 6px 8px; font-size: 11px; flex: 1 1 calc(50% - 6px); text-align: center; }
     #keybox { width: 100%; max-width: 100%; padding: 0 8px; margin: 20px auto; }
     #keybox input { min-height: 44px; font-size: 16px; }
     #keybox button { width: 100%; min-height: 44px; }
