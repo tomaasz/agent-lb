@@ -339,8 +339,8 @@ const PAGE = `<!doctype html>
   .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
   .header-actions { display: flex; gap: 6px; align-items: center; }
 
-  /* 3-column master dashboard grid: Col 1 Claude (1fr) | Col 2 Codex (1fr) | Col 3 Client Keys (compact 360px sidebar) */
-  .dashboard-grid { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr) minmax(280px, 360px); gap: 14px; align-items: start; margin-top: 6px; }
+  /* 3-column master dashboard grid: Col 1 Claude (1fr) | Col 2 Codex (1fr) | Col 3 Client Keys (compact 390px sidebar) */
+  .dashboard-grid { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr) minmax(320px, 390px); gap: 14px; align-items: start; margin-top: 6px; }
   .grid-head-accounts { grid-column: 1 / 3; grid-row: 1; min-width: 0; }
   .grid-head-clients { grid-column: 3 / 4; grid-row: 1; min-width: 0; }
   #colClaude { grid-column: 1 / 2; grid-row: 2; min-width: 0; }
@@ -365,6 +365,12 @@ const PAGE = `<!doctype html>
   .col-title.codex { color: #56d364; }
   .col-hint { font-size: 10.5px; color: var(--dim); font-weight: normal; }
   .account-list { display: flex; flex-direction: column; gap: 8px; }
+  .client-keys-list { display: flex; flex-direction: column; gap: 8px; }
+  .client-key-card { background: rgba(22, 27, 34, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; box-sizing: border-box; transition: border-color .15s ease; }
+  .client-key-card:hover { border-color: rgba(255, 255, 255, 0.15); }
+  .client-key-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .client-key-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.04); font-size: 11px; }
+  .client-key-stats { font-size: 11px; color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .card.draggable { cursor: grab; user-select: none; transition: opacity .15s ease, border-color .15s ease; }
   .card.draggable:active { cursor: grabbing; }
   .card.dragging { opacity: 0.35; border: 1px dashed var(--accent); }
@@ -604,11 +610,7 @@ const PAGE = `<!doctype html>
       <!-- Sekcja nagłówka kluczy klientów -->
       <div class="grid-head-clients">
         <div class="sec-head" style="margin:0 0 4px;">
-          <h2>Klucze klientów</h2>
-          <div class="row" style="gap:5px;">
-            <button class="btn btn-sm" id="btnPullSetupRepo" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)">🔄 Aktualizuj</button>
-            <button class="btn btn-sm btn-accent" id="btnShowAddClientKey" title="Utwórz nowy klucz klienta">➕ Nowy klucz</button>
-          </div>
+          <h2>Stacje robocze & Klucze</h2>
         </div>
       </div>
 
@@ -637,21 +639,29 @@ const PAGE = `<!doctype html>
       </div>
 
       <!-- Column 3: Klucze klientów & Narzędzia -->
-      <div class="dash-col-side">
-        <div class="card" style="margin-bottom:10px; background:rgba(83,177,253,0.06); border-color:rgba(83,177,253,0.22); padding:8px 12px;">
-          <div>
-            <div style="font-weight:600; font-size:12px; display:flex; align-items:center; justify-content:space-between;">
-              <span>📦 Instalator stacji</span>
-              <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600; font-size:11.5px;">tomaasz/agent-lb ↗</a>
-            </div>
-            <div style="color:var(--dim); font-size:11px; margin-top:2px; line-height:1.35;">1-klikowa konfiguracja Claude Code CLI i Codex CLI (Linux, macOS, WSL, Windows).</div>
+      <div class="account-col dash-col-side" id="colClients">
+        <div class="col-head">
+          <div class="row" style="gap:6px; align-items:center;">
+            <span class="col-title" style="color:#58a6ff;">🔑 Klucze klientów</span>
+            <span class="col-hint" id="countClientKeys">0 kluczy</span>
+          </div>
+          <div class="row" style="gap:4px;">
+            <button class="btn btn-sm" id="btnPullSetupRepo" style="padding:2px 7px; font-size:11px;" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)">🔄 Aktualizuj</button>
+            <button class="btn btn-sm btn-accent" id="btnShowAddClientKey" style="padding:2px 7px; font-size:11px;" title="Utwórz nowy klucz klienta">➕ Nowy klucz</button>
           </div>
         </div>
-        <div class="card table-responsive" style="padding:4px 6px; margin-bottom:12px;">
-          <table id="clientKeysTable"></table>
+
+        <div class="card" style="margin-bottom:8px; background:rgba(83,177,253,0.06); border-color:rgba(83,177,253,0.2); padding:8px 10px;">
+          <div style="font-weight:600; font-size:12px; display:flex; align-items:center; justify-content:space-between;">
+            <span>📦 Instalator stacji</span>
+            <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600; font-size:11.5px;">tomaasz/agent-lb ↗</a>
+          </div>
+          <div style="color:var(--dim); font-size:11px; margin-top:2px; line-height:1.35;">1-klikowa konfiguracja Claude Code CLI i Codex CLI (Linux, macOS, WSL, Windows).</div>
         </div>
 
-        <div id="clientsWrap" style="display:none">
+        <div id="clientKeysTable" class="client-keys-list"></div>
+
+        <div id="clientsWrap" style="display:none; margin-top:8px;">
           <h2>Clients</h2>
           <div class="card table-responsive" style="padding:4px 6px"><table id="clients"></table></div>
         </div>
@@ -2572,68 +2582,41 @@ ${SHARED_HELPERS}
   }
 
   function renderClientKeys(keys, clients) {
-    var table = document.getElementById('clientKeysTable');
-    if (!table) return;
-    table.textContent = '';
+    var container = document.getElementById('clientKeysTable');
+    if (!container) return;
+    container.textContent = '';
     var list = keys || [];
 
+    var countEl = document.getElementById('countClientKeys');
+    if (countEl) {
+      countEl.textContent = list.length + (list.length === 1 ? ' klucz' : ' kluczy');
+    }
+
     if (!list.length) {
-      var emptyTr = el('tr');
-      var td = el('td', 'dim', 'Brak zdefiniowanych kluczy klientów. Kliknij „➕ Utwórz klucz klienta” powyżej.');
-      td.colSpan = 5;
-      td.style.padding = '14px 10px';
-      emptyTr.appendChild(td);
-      table.appendChild(emptyTr);
+      var empty = el('div', '', 'Brak zdefiniowanych kluczy klientów. Kliknij „➕ Nowy klucz” powyżej.');
+      empty.style.cssText = 'padding:14px; text-align:center; color:var(--dim); font-size:12px; border:1px dashed var(--line); border-radius:6px;';
+      container.appendChild(empty);
       return;
     }
 
-    var hr = el('tr');
-    ['Klient', 'Klucz API', 'Req', 'Tokeny', 'Akcje'].forEach(function (h, i) {
-      hr.appendChild(el('th', (i === 2 || i === 3 || i === 4) ? 'num' : '', h));
-    });
-    table.appendChild(hr);
-
     list.forEach(function (k) {
-      var tr = el('tr');
-      tr.appendChild(el('td', '', k.name));
-
-      var keyTd = el('td');
-      var row = el('div', 'row');
-      row.style.gap = '4px';
-      var isRevealed = !!revealedKeys[k.name];
+      var card = el('div', 'client-key-card');
       var raw = k.rawKey || k.key || '';
-      var masked = isRevealed ? raw : (raw.length > 8 ? raw.slice(0, 5) + '••••••••' + raw.slice(-4) : '••••••••');
-      row.appendChild(el('span', 'mono', masked));
+      var isRevealed = !!revealedKeys[k.name];
 
-      if (raw && raw !== masked) {
-        var btnToggle = el('button', 'btn btn-xs', isRevealed ? 'Ukryj' : 'Pokaż');
-        btnToggle.addEventListener('click', function () {
-          revealedKeys[k.name] = !revealedKeys[k.name];
-          renderClientKeys(keys, clients);
-        });
-        row.appendChild(btnToggle);
-      }
+      // Top row: Name on left, Action buttons on right
+      var topRow = el('div', 'client-key-top');
 
-      var btnCopy = el('button', 'btn btn-xs', '📋 Kopiuj');
-      btnCopy.addEventListener('click', function () {
-        copyToClipboard(raw, 'Klucz klienta ' + k.name);
-      });
-      row.appendChild(btnCopy);
-      keyTd.appendChild(row);
-      tr.appendChild(keyTd);
+      var nameWrap = el('div', 'row');
+      nameWrap.style.gap = '5px';
+      var keyIcon = el('span', '', '🔑');
+      keyIcon.style.fontSize = '12px';
+      nameWrap.appendChild(keyIcon);
+      var nameEl = el('span', 'name', k.name);
+      nameWrap.appendChild(nameEl);
+      topRow.appendChild(nameWrap);
 
-      var stat = (k.stats) || (clients && clients[k.name]) || {};
-      tr.appendChild(el('td', 'num', fmtNum(stat.requests || 0)));
-
-      var inT = stat.inputTokens || 0;
-      var outT = stat.outputTokens || 0;
-      var tokText = (inT || outT) ? (fmtNum(inT) + ' / ' + fmtNum(outT)) : '—';
-      tr.appendChild(el('td', 'num', tokText));
-
-      var actTd = el('td', 'num');
-      var acts = el('div', 'actions-group');
-      acts.style.justifyContent = 'flex-end';
-      acts.style.gap = '4px';
+      var acts = el('div', 'card-actions');
 
       var btnSetup = el('button', 'btn btn-xs btn-accent', '🚀 Podłącz');
       btnSetup.title = 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tego klienta';
@@ -2649,9 +2632,44 @@ ${SHARED_HELPERS}
       });
       acts.appendChild(btnDel);
 
-      actTd.appendChild(acts);
-      tr.appendChild(actTd);
-      table.appendChild(tr);
+      topRow.appendChild(acts);
+      card.appendChild(topRow);
+
+      // Bottom row: Key + Show + Copy on left, Usage metrics on right
+      var bottomRow = el('div', 'client-key-bottom');
+
+      var keyWrap = el('div', 'row');
+      keyWrap.style.gap = '5px';
+      var masked = isRevealed ? raw : (raw.length > 8 ? raw.slice(0, 5) + '••••••••' + raw.slice(-4) : '••••••••');
+      var keySpan = el('span', 'mono', masked);
+      keySpan.style.fontSize = '11px';
+      keyWrap.appendChild(keySpan);
+
+      if (raw && raw !== masked) {
+        var btnToggle = el('button', 'btn btn-xs', isRevealed ? 'Ukryj' : 'Pokaż');
+        btnToggle.addEventListener('click', function () {
+          revealedKeys[k.name] = !revealedKeys[k.name];
+          renderClientKeys(keys, clients);
+        });
+        keyWrap.appendChild(btnToggle);
+      }
+
+      var btnCopy = el('button', 'btn btn-xs', '📋 Kopiuj');
+      btnCopy.addEventListener('click', function () {
+        copyToClipboard(raw, 'Klucz klienta ' + k.name);
+      });
+      keyWrap.appendChild(btnCopy);
+      bottomRow.appendChild(keyWrap);
+
+      var stat = (k.stats) || (clients && clients[k.name]) || {};
+      var inT = stat.inputTokens || 0;
+      var outT = stat.outputTokens || 0;
+      var tokText = (inT || outT) ? (fmtNum(inT) + ' / ' + fmtNum(outT)) : '0 tok';
+      var statSpan = el('span', 'client-key-stats', (stat.requests || 0) + ' req · ' + tokText);
+      bottomRow.appendChild(statSpan);
+
+      card.appendChild(bottomRow);
+      container.appendChild(card);
     });
   }
 
