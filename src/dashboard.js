@@ -2047,7 +2047,7 @@ ${SHARED_HELPERS}
     var cmdCodexPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/codexlb-setup.ps1))) -Key "' + key + '"';
     var cmdNode = 'curl -fsSL ' + hostUrl + '/setup.js | node - --key ' + key;
     var cmdGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/setup.sh --key ' + key;
-    var manualText = '# Claude Code CLI:\nexport ANTHROPIC_BASE_URL="' + hostUrl + '"\nexport ANTHROPIC_API_KEY="' + key + '"\n\n# OpenAI Codex CLI:\nexport CODEX_BASE_URL="' + hostUrl + '/backend-api/codex"\nexport CODEX_LB_API_KEY="' + key + '"\nexport OPENAI_BASE_URL="' + hostUrl + '/v1"';
+    var manualText = '# Claude Code CLI:\\nexport ANTHROPIC_BASE_URL="' + hostUrl + '"\\nexport ANTHROPIC_API_KEY="' + key + '"\\n\\n# OpenAI Codex CLI:\\nexport CODEX_BASE_URL="' + hostUrl + '/backend-api/codex"\\nexport CODEX_LB_API_KEY="' + key + '"\\nexport OPENAI_BASE_URL="' + hostUrl + '/v1"';
 
     document.getElementById('cmdSetupBash').textContent = cmdBash;
     document.getElementById('cmdSetupCodexBash').textContent = cmdCodexBash;

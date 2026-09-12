@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { renderDashboardHtml, dashboardCsp } from '../src/dashboard.js';
 import { resolveClientAuth, safeKeyEqual, isLocalHostHeader } from '../src/server.js';
 
@@ -74,6 +75,17 @@ describe('Dashboard Authentication and Layout', () => {
     } finally {
       delete process.env.AGENT_LB_HOST;
     }
+  });
+
+  it('renders valid JavaScript without syntax errors in dashboard script', () => {
+    const html = renderDashboardHtml();
+    const sStart = html.indexOf('<script>') + 8;
+    const sEnd = html.indexOf('</script>');
+    assert.ok(sStart > 7 && sEnd > sStart, 'script tags found in rendered HTML');
+    const script = html.slice(sStart, sEnd);
+    assert.doesNotThrow(() => {
+      new vm.Script(script);
+    }, 'dashboard script must compile without syntax errors');
   });
 });
 
