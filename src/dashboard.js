@@ -339,16 +339,26 @@ const PAGE = `<!doctype html>
   .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
   .header-actions { display: flex; gap: 6px; align-items: center; }
 
-  /* Master layout: Accounts on left, Side column (Client keys & Tools) on right */
-  .dashboard-columns { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-  @media (max-width: 1100px) { .dashboard-columns { grid-template-columns: 1fr; } }
-  .dash-col-main { min-width: 0; }
-  .dash-col-side { min-width: 0; }
-
-  /* 2-column accounts grid & Drag-and-drop */
-  .accounts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; margin-bottom: 12px; }
-  @media (max-width: 780px) { .accounts-grid { grid-template-columns: 1fr; } }
-  .account-col { background: rgba(22, 27, 34, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; }
+  /* 3-column master dashboard grid: Col 1 Claude | Col 2 Codex | Col 3 Client Keys */
+  .dashboard-grid { display: grid; grid-template-columns: minmax(290px, 1fr) minmax(290px, 1fr) minmax(340px, 1.15fr); gap: 14px; align-items: start; margin-top: 6px; }
+  .grid-head-accounts { grid-column: 1 / 3; grid-row: 1; min-width: 0; }
+  .grid-head-clients { grid-column: 3 / 4; grid-row: 1; min-width: 0; }
+  #colClaude { grid-column: 1 / 2; grid-row: 2; min-width: 0; }
+  #colCodex { grid-column: 2 / 3; grid-row: 2; min-width: 0; }
+  .dash-col-side { grid-column: 3 / 4; grid-row: 2; min-width: 0; }
+  @media (max-width: 1200px) {
+    .dashboard-grid { grid-template-columns: 1fr 1fr; }
+    .grid-head-accounts { grid-column: 1 / 3; grid-row: auto; }
+    #colClaude { grid-column: 1 / 2; grid-row: auto; }
+    #colCodex { grid-column: 2 / 3; grid-row: auto; }
+    .grid-head-clients { grid-column: 1 / 3; grid-row: auto; }
+    .dash-col-side { grid-column: 1 / 3; grid-row: auto; }
+  }
+  @media (max-width: 768px) {
+    .dashboard-grid { grid-template-columns: 1fr; }
+    .grid-head-accounts, .grid-head-clients, #colClaude, #colCodex, .dash-col-side { grid-column: 1 / 2; grid-row: auto; }
+  }
+  .account-col { background: rgba(22, 27, 34, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; min-width: 0; }
   .col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
   .col-title { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; display: inline-flex; align-items: center; gap: 6px; }
   .col-title.claude { color: #d2a8ff; }
@@ -580,50 +590,53 @@ const PAGE = `<!doctype html>
       <div class="card table-responsive" style="padding:4px 6px"><table id="routes"></table></div>
     </div>
 
-    <div class="dashboard-columns">
-      <!-- LEWA KOLUMNA: KONTA CLAUDE & CODEX -->
-      <div class="dash-col-main">
-        <div class="sec-head" style="margin-top:0;">
+    <div id="accounts" style="display:none"></div>
+    <div class="dashboard-grid" id="accountsGrid">
+      <!-- Sekcja nagłówka kont -->
+      <div class="grid-head-accounts">
+        <div class="sec-head" style="margin:0 0 4px;">
           <h2>Konta Claude & Codex</h2>
           <span style="font-size:11px; color:var(--dim);">💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet</span>
         </div>
-        <div id="accounts" style="display:none"></div>
-        <div class="accounts-grid" id="accountsGrid">
-          <!-- Column 1: Claude (Anthropic) -->
-          <div class="account-col" id="colClaude">
-            <div class="col-head">
-              <div class="row" style="gap:6px; align-items:center;">
-                <span class="col-title claude">🟣 Claude (Anthropic)</span>
-                <span class="col-hint" id="countClaude">0 kont</span>
-              </div>
-              <button class="btn btn-sm btn-accent" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto Claude (Anthropic)">➕ Dodaj konto</button>
-            </div>
-            <div class="account-list" id="listClaude" data-provider="anthropic"></div>
-          </div>
-
-          <!-- Column 2: OpenAI Codex -->
-          <div class="account-col" id="colCodex">
-            <div class="col-head">
-              <div class="row" style="gap:6px; align-items:center;">
-                <span class="col-title codex">🟢 OpenAI Codex</span>
-                <span class="col-hint" id="countCodex">0 kont</span>
-              </div>
-              <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto OpenAI Codex">➕ Dodaj konto</button>
-            </div>
-            <div class="account-list" id="listCodex" data-provider="codex"></div>
-          </div>
-        </div>
       </div>
 
-      <!-- PRAWA KOLUMNA (BOCZNA): KLUCZE KLIENTÓW & NARZĘDZIA -->
-      <div class="dash-col-side">
-        <div class="sec-head" style="margin-top:0;">
+      <!-- Sekcja nagłówka kluczy klientów -->
+      <div class="grid-head-clients">
+        <div class="sec-head" style="margin:0 0 4px;">
           <h2>Klucze klientów</h2>
           <div class="row" style="gap:6px;">
             <button class="btn btn-sm" id="btnPullSetupRepo" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)">🔄 Aktualizuj instalator</button>
             <button class="btn btn-sm btn-accent" id="btnShowAddClientKey">➕ Utwórz klucz klienta</button>
           </div>
         </div>
+      </div>
+
+      <!-- Column 1: Claude (Anthropic) -->
+      <div class="account-col" id="colClaude">
+        <div class="col-head">
+          <div class="row" style="gap:6px; align-items:center;">
+            <span class="col-title claude">🟣 Claude (Anthropic)</span>
+            <span class="col-hint" id="countClaude">0 kont</span>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto Claude (Anthropic)">➕ Dodaj konto</button>
+        </div>
+        <div class="account-list" id="listClaude" data-provider="anthropic"></div>
+      </div>
+
+      <!-- Column 2: OpenAI Codex -->
+      <div class="account-col" id="colCodex">
+        <div class="col-head">
+          <div class="row" style="gap:6px; align-items:center;">
+            <span class="col-title codex">🟢 OpenAI Codex</span>
+            <span class="col-hint" id="countCodex">0 kont</span>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto OpenAI Codex">➕ Dodaj konto</button>
+        </div>
+        <div class="account-list" id="listCodex" data-provider="codex"></div>
+      </div>
+
+      <!-- Column 3: Klucze klientów & Narzędzia -->
+      <div class="dash-col-side">
         <div class="card" style="margin-bottom:10px; background:rgba(83,177,253,0.06); border-color:rgba(83,177,253,0.22); padding:8px 12px;">
           <div class="row" style="justify-content:space-between; align-items:center;">
             <div>
