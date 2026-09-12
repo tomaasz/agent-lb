@@ -1049,10 +1049,13 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
 
         const mgr = accountManager.accounts[index];
-        if (prober) {
-          await prober.probeAccount(mgr);
+        if (hooks.probeAccount) {
+          await hooks.probeAccount(mgr);
+        } else if (hooks.probeQuota) {
+          await hooks.probeQuota();
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
+
         res.end(JSON.stringify({ ok: true, account: mgr.name, quota: mgr.quota }));
         return;
       }

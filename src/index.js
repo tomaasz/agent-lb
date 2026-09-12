@@ -470,6 +470,8 @@ async function serverCommand() {
       // `p` key: on-demand fleet-wide quota refresh. The prober is constructed
       // after the TUI, so this is a thunk over the closure variable.
       probeQuota: () => prober?.probeAll(),
+      probeAccount: (acct) => prober?.probeAccount(acct),
+
       // ctrl-c / q from the TUI: funnel through the same idempotent shutdown as
       // POSIX signals (defined below). In raw mode ctrl-c never reaches the OS as
       // a signal, so without this the process would only tear down via keypress.
@@ -530,6 +532,8 @@ async function serverCommand() {
   // Expose reload and probe to the proxy's control endpoint (works with or without TUI).
   hooks.reload = reloadAccounts;
   hooks.probeQuota = () => prober?.probeAll();
+  hooks.probeAccount = (acct) => prober?.probeAccount(acct);
+
   hooks.getStatusExtra = () => ({
     // Read live from the shared config (not a startup snapshot) so the TUI's
     // blocklist editor shows up in `status` immediately, the same way the
