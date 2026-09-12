@@ -110,6 +110,70 @@ export async function refreshCodexToken(refreshToken, endpoint = TOKEN_ENDPOINT)
   return tokenPairFromResponse(await res.json(), { previousRefreshToken: refreshToken });
 }
 
+export const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage';
+
+export function parseCodexWhamUsage(data) {
+  if (!data) return null;
+  const out = {};
+  if (data.plan_type) out.planType = data.plan_type;
+  const rl = data.rate_limit || {};
+  const pw = rl.primary_window;
+  const sw = rl.secondary_window;
+  if (pw && typeof pw.used_percent === 'number') {
+    out.fiveHour = {
+      utilization: pw.used_percent / 100,
+      resetAt: pw.reset_at ? pw.reset_at * 1000 : null,
+    };
+  }
+  if (sw && typeof sw.used_percent === 'number') {
+    out.sevenDay = {
+      utilization: sw.used_percent / 100,
+      resetAt: sw.reset_at ? sw.reset_at * 1000 : null,
+    };
+  }
+  const credits = data.credits || {};
+  const balance = credits.balance || '0';
+  const hasCredits = Boolean(credits.has_credits && balance !== '0');
+  const plan = data.plan_type ? data.plan_type.toUpperCase() : 'PLUS';
+  out.backend = {
+    label: 'Saldo',
+    text: hasCredits
+      ? `${balance} kredytów`
+      : `Abonament ChatGPT ${plan} (nielimitowany kwotowo)`,
+  };
+  return out;
+}
+
+/**
+ * Read account usage and rate limits from ChatGPT backend.
+ */
+export async function fetchCodexUsage(account) {
+  const timeoutMs = Number(process.env.TEAMCLAUDE_PROBE_TIMEOUT_MS) || 10_000;
+  const token = account.credential || account.accessToken;
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    'Accept': 'application/json',
+  };
+  if (account.accountId) headers['chatgpt-account-id'] = account.accountId;
+  try {
+    const res = await proxyFetch(CODEX_USAGE_URL, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (res.status === 401) return { status: 401, error: 'Unauthorized' };
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      return { status: res.status, error: `Codex usage fetch failed (${res.status}): ${text}` };
+    }
+    const data = await res.json();
+    return parseCodexWhamUsage(data);
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
 // ── Browser login ───────────────────────────────────────────────────────────
 
 /**

@@ -652,6 +652,8 @@ async function serverCommand() {
     profileFn: fetchProfile,
   });
   prober.start();
+  // Probe fleet-wide quota once on startup so dashboard displays live balances immediately
+  prober.probeAll().catch(() => {});
 
   // Start the opt-in keep-warm scheduler. Interval mode runs relative to server
   // startup; reset-target modes restore their next occurrence from config.

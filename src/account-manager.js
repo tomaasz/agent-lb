@@ -3242,6 +3242,32 @@ export class AccountManager {
   }
 
   /**
+   * Apply quota and balance learned from ChatGPT wham/usage probe for a Codex account.
+   */
+  applyCodexUsageData(accountIndex, usage) {
+    const account = this.accounts[accountIndex];
+    if (!account || !usage || usage.error) return;
+    const q = account.quota;
+
+    if (usage.fiveHour) {
+      if (usage.fiveHour.utilization != null) q.unified5h = usage.fiveHour.utilization;
+      if (usage.fiveHour.resetAt != null) q.unified5hReset = usage.fiveHour.resetAt;
+    }
+    if (usage.sevenDay) {
+      if (usage.sevenDay.utilization != null) q.unified7d = usage.sevenDay.utilization;
+      if (usage.sevenDay.resetAt != null) q.unified7dReset = usage.sevenDay.resetAt;
+    }
+    if (usage.planType) {
+      account.planType = usage.planType;
+      q.planType = usage.planType;
+    }
+    if (usage.backend) {
+      q.backend = usage.backend;
+    }
+    this._recomputeAccount(account);
+  }
+
+  /**
    * Apply quota learned from the OAuth usage endpoint (the background probe).
    * Updates utilization/reset for the 5h, 7d, Sonnet-7d, and Fable-7d buckets WITHOUT
    * touching usage counters — a probe is not real client traffic.

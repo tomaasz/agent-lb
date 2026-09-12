@@ -45,5 +45,46 @@ describe('Codex Provider Support', () => {
     assert.equal(headers.authorization, 'Bearer test-token');
     assert.equal(headers['chatgpt-account-id'], 'chatgpt-acc-123');
   });
+
+  it('correctly parses Codex /backend-api/wham/usage responses', async () => {
+    const { parseCodexWhamUsage } = await import('../src/codex-auth.js');
+    const sample = {
+      plan_type: 'plus',
+      rate_limit: {
+        primary_window: {
+          used_percent: 25,
+          reset_at: 1773352800,
+        },
+        secondary_window: {
+          used_percent: 43,
+          reset_at: 1773784800,
+        },
+      },
+      credits: {
+        has_credits: false,
+        balance: '0',
+      },
+    };
+
+    const parsed = parseCodexWhamUsage(sample);
+    assert.equal(parsed.planType, 'plus');
+    assert.equal(parsed.fiveHour.utilization, 0.25);
+    assert.equal(parsed.fiveHour.resetAt, 1773352800000);
+    assert.equal(parsed.sevenDay.utilization, 0.43);
+    assert.equal(parsed.sevenDay.resetAt, 1773784800000);
+    assert.equal(parsed.backend.label, 'Saldo');
+    assert.equal(parsed.backend.text, 'Abonament ChatGPT PLUS (nielimitowany kwotowo)');
+
+    const sampleWithCredits = {
+      plan_type: 'pro',
+      credits: {
+        has_credits: true,
+        balance: '150.50',
+      },
+    };
+    const parsedCredits = parseCodexWhamUsage(sampleWithCredits);
+    assert.equal(parsedCredits.backend.text, '150.50 kredytów');
+  });
 });
+
 

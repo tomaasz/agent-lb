@@ -8,6 +8,7 @@
 // probe reads a zero-spend endpoint and never consumes message quota.
 
 import { fetchUsage } from './oauth.js';
+import { fetchCodexUsage } from './codex-auth.js';
 import { fetchBackendQuota, hasBackendQuota } from './backend-quota.js';
 
 // Node's timers take a 32-bit signed delay: anything above 2^31-1 ms is
@@ -21,10 +22,11 @@ function clampInterval(ms) {
 }
 
 export class Prober {
-  constructor(accountManager, { intervalMs = 0, probeFn = fetchUsage, profileFn = null, backendFn = fetchBackendQuota, timeoutMs = 10_000, log = console.log } = {}) {
+  constructor(accountManager, { intervalMs = 0, probeFn = fetchUsage, codexProbeFn = fetchCodexUsage, profileFn = null, backendFn = fetchBackendQuota, timeoutMs = 10_000, log = console.log } = {}) {
     this.am = accountManager;
     this.intervalMs = clampInterval(intervalMs);
     this.probeFn = probeFn;
+    this.codexProbeFn = codexProbeFn;
     this.profileFn = profileFn;
     this.backendFn = backendFn;
     this.timeoutMs = timeoutMs;
@@ -124,6 +126,7 @@ export class Prober {
     // A third-party backend has no Anthropic usage to read; it publishes its own
     // figure, or none. Same schedule, same status row, different source.
     if (this._isBackendTarget(account)) return this._probeBackend(account, startedAt);
+    if (account.provider === 'codex') return this._probeCodex(account, startedAt);
     try {
       await this.am.ensureTokenFresh(account.index);
       let usage = await this._withTimeout(this.probeFn(account.credential));
@@ -152,6 +155,50 @@ export class Prober {
         const profile = await this._withTimeout(this.profileFn(account.credential));
         this.am.applyProfileData(account.index, profile);
       }
+      const finishedAt = Date.now();
+      this._recordAccount(account, {
+        status: 'ok',
+        error: null,
+        startedAt,
+        finishedAt,
+        durationMs: finishedAt - startedAt,
+      });
+    } catch (err) {
+      const finishedAt = Date.now();
+      this._recordAccount(account, {
+        status: 'error',
+        error: err?.message || String(err),
+        startedAt,
+        finishedAt,
+        durationMs: finishedAt - startedAt,
+      });
+    }
+  }
+
+  /** Read one Codex account's usage and rate limits from ChatGPT backend. */
+  async _probeCodex(account, startedAt) {
+    try {
+      await this.am.ensureTokenFresh(account.index);
+      let usage = await this._withTimeout(this.codexProbeFn(account));
+      if (usage?.status === 401) {
+        // Token rejected: force refresh and retry once.
+        await this.am.ensureTokenFresh(account.index, true);
+        usage = await this._withTimeout(this.codexProbeFn(account));
+      }
+
+      if (!usage || usage.error) {
+        const finishedAt = Date.now();
+        this._recordAccount(account, {
+          status: usage?.error ? 'error' : 'timeout',
+          error: usage?.error || 'probe timed out',
+          startedAt,
+          finishedAt,
+          durationMs: finishedAt - startedAt,
+        });
+        return;
+      }
+
+      this.am.applyCodexUsageData(account.index, usage);
       const finishedAt = Date.now();
       this._recordAccount(account, {
         status: 'ok',

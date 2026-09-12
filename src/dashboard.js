@@ -1108,6 +1108,7 @@ ${SHARED_HELPERS}
   function renderAccount(a, current) {
     var card = el('div', 'card');
     var head = el('div', 'row');
+    if (a.name) head.appendChild(el('span', 'name', a.name));
     // Provider badge
     var prov = a.provider || 'anthropic';
     head.appendChild(el('span', 'tag ' + (prov === 'codex' ? 'badge-codex' : 'badge-anthropic'), prov === 'codex' ? '🟢 OpenAI Codex' : '🟣 Anthropic'));
