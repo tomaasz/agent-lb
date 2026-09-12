@@ -340,50 +340,56 @@ const PAGE = `<!doctype html>
   .header-actions { display: flex; gap: 6px; align-items: center; }
 
   /* 2-column accounts grid & Drag-and-drop */
-  .accounts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; margin-bottom: 12px; }
+  .accounts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; margin-bottom: 12px; }
   @media (max-width: 980px) { .accounts-grid { grid-template-columns: 1fr; } }
-  .account-col { background: rgba(22, 27, 34, 0.45); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-height: 100px; }
-  .col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
-  .col-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; display: inline-flex; align-items: center; gap: 6px; }
+  .account-col { background: rgba(22, 27, 34, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; height: 100%; min-height: 100px; }
+  .col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+  .col-title { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; display: inline-flex; align-items: center; gap: 6px; }
   .col-title.claude { color: #d2a8ff; }
   .col-title.codex { color: #56d364; }
-  .col-hint { font-size: 11px; color: var(--dim); }
-  .account-list { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
+  .col-hint { font-size: 10.5px; color: var(--dim); font-weight: normal; }
+  .account-list { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 40px; }
   .card.draggable { cursor: grab; user-select: none; transition: opacity .15s ease, border-color .15s ease; }
   .card.draggable:active { cursor: grabbing; }
   .card.dragging { opacity: 0.35; border: 1px dashed var(--accent); }
   .card.drag-over-top { border-top: 2px solid var(--accent) !important; }
   .card.drag-over-bottom { border-bottom: 2px solid var(--accent) !important; }
-  .drag-handle { cursor: grab; display: inline-flex; align-items: center; justify-content: center; color: var(--dim); font-size: 14px; padding: 0 4px 0 0; user-select: none; line-height: 1; }
+  .drag-handle { cursor: grab; display: inline-flex; align-items: center; justify-content: center; color: var(--dim); font-size: 13px; padding: 0 2px 0 0; user-select: none; line-height: 1; opacity: 0.5; transition: opacity .15s ease; }
+  .drag-handle:hover { opacity: 1; color: var(--text); }
   .drag-handle:active { cursor: grabbing; }
-  .prio-badge { font-size: 10.5px; font-weight: 600; padding: 1.5px 6px; border-radius: 4px; background: rgba(88,166,255,0.12); border: 1px solid rgba(88,166,255,0.35); color: var(--accent); }
+  .prio-badge { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.3); color: var(--accent); line-height: 1.2; }
 
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; transition: border-color .15s ease; }
-  .card:hover { border-color: #384252; }
+  .card { background: rgba(22, 27, 34, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 6px; padding: 8px 12px; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; flex: 1; min-height: 115px; transition: border-color .15s ease; }
+  .card:hover { border-color: rgba(255, 255, 255, 0.15); }
+  .card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+  .card-title-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+  .card-actions { display: flex; align-items: center; gap: 3px; margin-left: auto; flex-shrink: 0; }
   .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .name { font-size: 13.5px; font-weight: 600; color: #f0f6fc; }
-  .tag { font-size: 11.5px; color: var(--dim); }
-  .badge { font-size: 11px; padding: 1.5px 7px; border-radius: 4px; border: 1px solid var(--line); white-space: nowrap; line-height: 1.35; font-weight: 500; }
-  .badge.active { color: var(--ok); border-color: rgba(63,185,80,0.4); background: rgba(63,185,80,0.08); }
-  .badge.throttled { color: var(--warn); border-color: rgba(210,153,34,0.4); background: rgba(210,153,34,0.08); }
-  .badge.error, .badge.exhausted { color: var(--bad); border-color: rgba(248,81,73,0.4); background: rgba(248,81,73,0.08); }
-  .badge.current { color: var(--accent); border-color: rgba(88,166,255,0.4); background: rgba(88,166,255,0.08); }
-  .badge-plan { color: #d2a8ff; border-color: rgba(210,168,255,0.3); background: rgba(210,168,255,0.08); }
-  .badge-codex { color: #56d364; border-color: rgba(86,211,100,0.3); background: rgba(86,211,100,0.08); }
-  .badge-anthropic { color: #d2a8ff; border-color: rgba(210,168,255,0.3); background: rgba(210,168,255,0.08); }
-  .badge-burn { color: #ff7b72; border-color: rgba(255,123,114,0.4); background: rgba(255,123,114,0.12); font-weight: 600; }
-  .quota { display: grid; grid-template-columns: 55px 1fr 180px; gap: 8px; align-items: center; margin-top: 5px; }
-  .quota .lbl { color: var(--dim); font-size: 11.5px; font-weight: 500; }
-  .quota .val { color: var(--dim); font-size: 11.5px; text-align: right; font-variant-numeric: tabular-nums; }
-  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
-  .bar i { display: block; height: 100%; border-radius: 3px; background: var(--ok); }
+  .name { font-size: 12.5px; font-weight: 600; color: #f0f6fc; letter-spacing: -0.01em; }
+  .tag { font-size: 11px; color: var(--dim); }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.08); white-space: nowrap; line-height: 1.3; font-weight: 500; }
+  .badge.active { color: var(--ok); border-color: rgba(63,185,80,0.3); background: rgba(63,185,80,0.06); }
+  .badge.throttled { color: var(--warn); border-color: rgba(210,153,34,0.35); background: rgba(210,153,34,0.08); }
+  .badge.error, .badge.exhausted, .badge.bad { color: var(--bad); border-color: rgba(248,81,73,0.35); background: rgba(248,81,73,0.08); }
+  .badge.current { color: var(--accent); border-color: rgba(88,166,255,0.4); background: rgba(88,166,255,0.1); font-weight: 600; }
+  .badge-plan { color: #d2a8ff; border-color: rgba(210,168,255,0.25); background: rgba(210,168,255,0.06); }
+  .badge-codex { color: #56d364; border-color: rgba(86,211,100,0.25); background: rgba(86,211,100,0.06); }
+  .badge-anthropic { color: #d2a8ff; border-color: rgba(210,168,255,0.25); background: rgba(210,168,255,0.06); }
+  .badge-burn { color: #ff7b72; border-color: rgba(255,123,114,0.35); background: rgba(255,123,114,0.1); font-weight: 600; }
+  .card-body { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 3px; margin: 3px 0; }
+  .quota { display: grid; grid-template-columns: 48px 1fr auto; gap: 8px; align-items: center; }
+  .quota .lbl { color: var(--dim); font-size: 10.5px; font-weight: 500; }
+  .quota .val { color: var(--dim); font-size: 10.5px; text-align: right; font-variant-numeric: tabular-nums; }
+  .bar { height: 4px; background: rgba(255, 255, 255, 0.06); border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 2px; background: var(--ok); transition: width .3s ease; }
   .bar i.warn { background: var(--warn); }
   .bar i.bad { background: var(--bad); }
-  .card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.04); font-size: 11.5px; color: var(--dim); }
-  .card-meta-item { display: inline-flex; align-items: center; gap: 4px; }
+  .card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255, 255, 255, 0.04); font-size: 11px; color: var(--dim); }
+  .card-meta-item { display: inline-flex; align-items: center; gap: 3px; }
   .card-meta-item.ok { color: var(--ok); }
   .card-meta-item.warn { color: var(--warn); }
   .card-meta-item.bad { color: var(--bad); }
+  .card-meta-item.dim { opacity: 0.7; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   th, td { text-align: left; padding: 6px 8px; font-variant-numeric: tabular-nums; }
   th { color: var(--dim); font-size: 11px; font-weight: 600; border-bottom: 1px solid var(--line); }
@@ -391,9 +397,9 @@ const PAGE = `<!doctype html>
   tr:last-child td { border-bottom: none; }
   td.num, th.num { text-align: right; }
   .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .usage { color: var(--dim); font-size: 11.5px; }
-  .blocked { color: var(--warn); font-size: 11.5px; margin: 4px 0 2px; }
-  .act { font: inherit; font-size: 11.5px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; margin-left: auto; }
+  .usage { color: var(--dim); font-size: 11px; }
+  .blocked { color: var(--warn); font-size: 11px; margin: 2px 0; }
+  .act { font: inherit; font-size: 11px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; margin-left: auto; }
   .act:hover { background: var(--accent); color: var(--bg); }
   .act:disabled { opacity: .5; cursor: default; }
   #note { font-size: 12px; margin: 8px 0; padding: 6px 10px; border-radius: 5px; display: none; }
@@ -425,6 +431,13 @@ const PAGE = `<!doctype html>
   .btn-accent { background: var(--accent); color: #06121f; border-color: var(--accent); font-weight: 600; }
   .btn-accent:hover { filter: brightness(1.1); }
   .btn-sm { padding: 2px 6px; font-size: 11px; min-height: 22px; border-radius: 4px; }
+  .btn-xs { font: inherit; font-size: 10.5px; padding: 1px 7px; min-height: 20px; border-radius: 3px; font-weight: 600; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--text); display: inline-flex; align-items: center; justify-content: center; gap: 3px; transition: all .12s ease; }
+  .btn-xs.btn-accent { background: var(--accent); color: #06121f; border-color: var(--accent); }
+  .btn-xs.btn-accent:hover { filter: brightness(1.1); }
+  .btn-icon { background: transparent; border: none; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1; color: var(--dim); border-radius: 4px; cursor: pointer; opacity: 0.65; transition: all .12s ease; }
+  .btn-icon:hover { opacity: 1; background: rgba(255,255,255,0.08); color: var(--text); }
+  .btn-icon.active { opacity: 1; color: #ff7b72; background: rgba(255,123,114,0.12); }
+  .btn-icon-del:hover { background: rgba(248,81,73,0.15); color: var(--bad); }
   .btn-warn { border-color: rgba(210,153,34,0.5); color: var(--warn); background: transparent; }
   .btn-warn:hover { background: var(--warn); color: var(--bg); }
   .btn-bad { border-color: rgba(248,81,73,0.5); color: var(--bad); background: transparent; }
@@ -575,7 +588,7 @@ const PAGE = `<!doctype html>
             <span class="col-title claude">🟣 Claude (Anthropic)</span>
             <span class="col-hint" id="countClaude">0 kont</span>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11.5px;" title="Dodaj konto Claude (Anthropic)">➕ Dodaj konto</button>
+          <button class="btn btn-sm btn-accent" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto Claude (Anthropic)">➕ Dodaj konto</button>
         </div>
         <div class="account-list" id="listClaude" data-provider="anthropic"></div>
       </div>
@@ -587,7 +600,7 @@ const PAGE = `<!doctype html>
             <span class="col-title codex">🟢 OpenAI Codex</span>
             <span class="col-hint" id="countCodex">0 kont</span>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11.5px;" title="Dodaj konto OpenAI Codex">➕ Dodaj konto</button>
+          <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto OpenAI Codex">➕ Dodaj konto</button>
         </div>
         <div class="account-list" id="listCodex" data-provider="codex"></div>
       </div>
@@ -1220,80 +1233,97 @@ ${SHARED_HELPERS}
     card.dataset.provider = prov;
     card.dataset.accountType = a.type || '';
 
-    var head = el('div', 'row');
+    var head = el('div', 'card-header');
+    var titleGroup = el('div', 'card-title-group');
 
     // Drag handle
     var dragHandle = el('span', 'drag-handle', '⠿');
     dragHandle.title = 'Przeciągnij myszką, aby zmienić priorytet w kolumnie';
-    head.appendChild(dragHandle);
+    titleGroup.appendChild(dragHandle);
 
     // Rank badge (#1, #2...)
     if (rankIndex != null) {
       var prioBadge = el('span', 'prio-badge', '#' + (rankIndex + 1));
-      prioBadge.title = 'Pozycja w hierarchii priorytetów (wyżej = priorytet 0)';
-      head.appendChild(prioBadge);
+      prioBadge.title = 'Pozycja #' + (rankIndex + 1) + ' w kolejności (przeciągnij kartę lub kliknij, aby zmienić priorytet)';
+      prioBadge.style.cursor = 'pointer';
+      prioBadge.addEventListener('click', function (e) {
+        e.stopPropagation();
+        doSetPriority(a.name, a.priority || 0);
+      });
+      titleGroup.appendChild(prioBadge);
     }
 
-    if (a.name) head.appendChild(el('span', 'name', a.name));
-
-    // Provider badge
-    head.appendChild(el('span', 'tag ' + (prov === 'codex' ? 'badge-codex' : 'badge-anthropic'), prov === 'codex' ? '🟢 OpenAI Codex' : '🟣 Anthropic'));
+    if (a.name) titleGroup.appendChild(el('span', 'name', a.name));
 
     // Subscription plan badge
-    var planName = a.hasClaudeMax ? 'Claude Max' : (a.hasClaudePro || a.organizationType === 'claude_pro' ? 'Claude Pro' : (a.planType ? 'ChatGPT ' + a.planType.toUpperCase() : (a.organizationType ? a.organizationType.replace(/_/g, ' ') : null)));
+    var planName = a.hasClaudeMax ? 'Claude Max' : (a.hasClaudePro || a.organizationType === 'claude_pro' ? 'Pro' : (a.planType ? (a.planType.toLowerCase() === 'plus' ? 'Plus' : a.planType.toUpperCase()) : (a.organizationType ? a.organizationType.replace(/_/g, ' ') : null)));
     if (planName) {
-      head.appendChild(el('span', 'badge badge-plan', '💎 ' + planName));
+      titleGroup.appendChild(el('span', 'badge badge-plan', planName));
     }
 
-    var prioTag = el('span', 'tag card-prio-tag', (a.type ? a.type + ' · ' : '') + 'prio ' + (a.priority || 0));
-    head.appendChild(prioTag);
-    if (a.routingPolicy === 'burn-first') head.appendChild(el('span', 'badge badge-burn', '🔥 Burn'));
-    if (a.name === current) head.appendChild(el('span', 'badge current', 'current'));
-    head.appendChild(el('span', 'badge ' + (a.status || ''), a.disabled ? 'disabled' : (a.status || 'unknown')));
-    if (a.sessions) head.appendChild(el('span', 'tag', a.sessions + ' active session' + (a.sessions > 1 ? 's' : '')));
+    if (a.routingPolicy === 'burn-first') titleGroup.appendChild(el('span', 'badge badge-burn', '🔥 Burn'));
+    if (a.name === current) titleGroup.appendChild(el('span', 'badge current', 'current'));
+    if (a.disabled) titleGroup.appendChild(el('span', 'badge bad', 'disabled'));
+    else if (a.status && a.status !== 'active' && a.status !== 'ready') {
+      titleGroup.appendChild(el('span', 'badge ' + a.status, a.status));
+    }
 
-    // Action buttons group
-    var acts = el('div', 'actions-group');
-    if (a.name !== current) {
-      var btnSwitch = el('button', 'btn btn-sm btn-accent', '⚡ Aktywuj');
+    if (a.unavailable) {
+      var unavailText = a.unavailable === 'switch_threshold' ? 'Próg switcha' : (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable);
+      var unavailBadge = el('span', 'badge ' + (a.unavailable === 'error' || a.status === 'error' ? 'error' : 'throttled'), '⚠️ ' + unavailText);
+      unavailBadge.title = 'Blokada konta: ' + (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable);
+      titleGroup.appendChild(unavailBadge);
+    }
+
+    head.appendChild(titleGroup);
+
+    // Action buttons group (right aligned in header)
+    var acts = el('div', 'card-actions');
+
+    if (a.name !== current && !a.disabled) {
+      var btnSwitch = el('button', 'btn btn-xs btn-accent', '⚡ Aktywuj');
       btnSwitch.title = 'Ustaw jako preferowane konto w rotacji';
       btnSwitch.addEventListener('click', function () { doSwitch(a.name, btnSwitch); });
       acts.appendChild(btnSwitch);
     }
+
     if (a.type === 'oauth') {
       var isErr = a.status === 'error' || a.unavailable === 'error';
-      var btnRelogin = el('button', 'btn btn-sm' + (isErr ? ' btn-accent' : ''), isErr ? '🔐 Zaloguj' : '🔐 Login');
-      btnRelogin.title = 'Zaloguj ponownie konto ' + a.name + ' przez ' + (prov === 'codex' ? 'OpenAI Codex' : 'Claude') + ' OAuth';
-      btnRelogin.addEventListener('click', function () { startReLogin(a.name, a.priority, a.provider); });
-      acts.appendChild(btnRelogin);
+      if (isErr) {
+        var btnRelogin = el('button', 'btn btn-xs btn-accent', '🔐 Zaloguj');
+        btnRelogin.title = 'Odnów sesję przez ' + (prov === 'codex' ? 'OpenAI Codex' : 'Claude') + ' OAuth';
+        btnRelogin.addEventListener('click', function () { startReLogin(a.name, a.priority, a.provider); });
+        acts.appendChild(btnRelogin);
+      } else {
+        var btnReloginIcon = el('button', 'btn-icon', '🔐');
+        btnReloginIcon.title = 'Zaloguj ponownie konto przez OAuth';
+        btnReloginIcon.addEventListener('click', function () { startReLogin(a.name, a.priority, a.provider); });
+        acts.appendChild(btnReloginIcon);
+      }
     }
-    var btnProbe = el('button', 'btn btn-sm', '⟳ Probe');
-    btnProbe.title = 'Wymuś natychmiastowe odpytanie limitów i salda dla tego konta';
+
+    var btnProbe = el('button', 'btn-icon', '⟳');
+    btnProbe.title = 'Odśwież salda i limity (Probe)';
     btnProbe.addEventListener('click', function () { doProbeSingle(a.name, btnProbe); });
     acts.appendChild(btnProbe);
 
     var isBurn = a.routingPolicy === 'burn-first';
-    var btnPolicy = el('button', 'btn btn-sm' + (isBurn ? ' btn-warn' : ''), isBurn ? '🔥 Burn' : 'Normal');
-    btnPolicy.title = isBurn ? 'Przełącz na normalną politykę routingu' : 'Włącz politykę "Burn first" (wyczerpuj to konto w pierwszej kolejności)';
+    var btnPolicy = el('button', 'btn-icon' + (isBurn ? ' active' : ''), '🔥');
+    btnPolicy.title = isBurn ? 'Polityka Burn-first: aktywna (kliknij, aby wyłączyć)' : 'Włącz politykę Burn-first (wyczerpuj to konto w pierwszej kolejności)';
     btnPolicy.addEventListener('click', function () { doSetPolicy(a.name, isBurn ? 'normal' : 'burn-first', btnPolicy); });
     acts.appendChild(btnPolicy);
 
-    var btnExport = el('button', 'btn btn-sm', '💾 Export');
-    btnExport.title = 'Eksportuj konfigurację i tokeny konta do pliku JSON';
-    btnExport.addEventListener('click', function () { doExportAccount(a.name); });
-    acts.appendChild(btnExport);
-
-    var btnToggle = el('button', 'btn btn-sm ' + (a.disabled ? 'btn-ok' : 'btn-warn'), a.disabled ? '▶️ Włącz' : '⏸️ Wyłącz');
+    var btnToggle = el('button', 'btn-icon', a.disabled ? '▶️' : '⏸️');
     btnToggle.title = a.disabled ? 'Włącz konto do rotacji' : 'Wyłącz konto z rotacji';
     btnToggle.addEventListener('click', function () { doToggleDisabled(a.name, !!a.disabled, btnToggle); });
     acts.appendChild(btnToggle);
 
-    var btnPrio = el('button', 'btn btn-sm btn-prio', 'prio ' + (a.priority || 0));
-    btnPrio.title = 'Zmień priorytet konta';
-    btnPrio.addEventListener('click', function () { doSetPriority(a.name, a.priority || 0); });
-    acts.appendChild(btnPrio);
+    var btnExport = el('button', 'btn-icon', '💾');
+    btnExport.title = 'Eksportuj konfigurację i tokeny konta do pliku JSON';
+    btnExport.addEventListener('click', function () { doExportAccount(a.name); });
+    acts.appendChild(btnExport);
 
-    var btnDel = el('button', 'btn btn-sm btn-bad', '🗑️ Usuń');
+    var btnDel = el('button', 'btn-icon btn-icon-del', '🗑️');
     btnDel.title = 'Usuń konto z konfiguracji Agent LB';
     btnDel.addEventListener('click', function () { doRemoveAccount(a.name, btnDel); });
     acts.appendChild(btnDel);
@@ -1301,31 +1331,18 @@ ${SHARED_HELPERS}
     head.appendChild(acts);
     card.appendChild(head);
     attachCardDragListeners(card);
-    if (a.unavailable) {
-      var bDiv = el('div', 'blocked', 'blocked: ' + (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable));
-      if (a.unavailable === 'error' || a.status === 'error') {
-        var fixBtn = el('button', 'btn btn-sm btn-accent', '🔐 Zaloguj ponownie');
-        fixBtn.style.marginLeft = '10px';
-        fixBtn.style.padding = '2px 8px';
-        fixBtn.style.fontSize = '11.5px';
-        fixBtn.title = 'Zaloguj ponownie konto ' + a.name;
-        fixBtn.addEventListener('click', function () { startReLogin(a.name, a.priority, a.provider); });
-        bDiv.appendChild(fixBtn);
-      }
-      card.appendChild(bDiv);
-    }
+
+    // Body: quota rows
+    var qBody = el('div', 'card-body');
     var q = a.quota || {};
     if (q.unified5h != null || q.unified7d != null) {
-      card.appendChild(quotaRow('Session', q.unified5h, q.unified5hReset));
-      card.appendChild(quotaRow('Weekly', q.unified7d, q.unified7dReset));
-      // Model-scoped weekly buckets are learned from the usage endpoint rather
-      // than declared, so hard-coding the two families that have dedicated
-      // fields drew an incomplete picture the moment upstream metered a third.
-      scopedWeeklyRows(q).forEach(function (r) { card.appendChild(quotaRow(r.label, r.utilization, r.resetAt)); });
+      qBody.appendChild(quotaRow('Session', q.unified5h, q.unified5hReset));
+      qBody.appendChild(quotaRow('Weekly', q.unified7d, q.unified7dReset));
+      scopedWeeklyRows(q).forEach(function (r) { qBody.appendChild(quotaRow(r.label, r.utilization, r.resetAt)); });
     } else if (q.tokensLimit != null && q.tokensRemaining != null) {
-      card.appendChild(quotaRow('Tokens', 1 - q.tokensRemaining / q.tokensLimit, q.resetsAt));
+      qBody.appendChild(quotaRow('Tokens', 1 - q.tokensRemaining / q.tokensLimit, q.resetsAt));
     } else {
-      card.appendChild(el('div', 'usage', 'quota unknown (no traffic observed yet)'));
+      qBody.appendChild(el('div', 'usage', 'quota unknown (no traffic observed yet)'));
     }
 
     // Saldo / Spend quota bar if limits exist
@@ -1336,10 +1353,11 @@ ${SHARED_HELPERS}
       var limitStr = fmtMoneyVal(sp.limitMinor, sp.currency, sp.exponent);
       var remMinor = Math.max(0, sp.limitMinor - (sp.usedMinor || 0));
       var remStr = fmtMoneyVal(remMinor, sp.currency, sp.exponent);
-      card.appendChild(spendQuotaRow('Saldo', ratio, Math.round(ratio * 100) + '% · wydano ' + usedStr + ' / ' + limitStr + ' (wolne: ' + remStr + ')'));
+      qBody.appendChild(spendQuotaRow('Saldo', ratio, Math.round(ratio * 100) + '% · wydano ' + usedStr + ' / ' + limitStr + ' (wolne: ' + remStr + ')'));
     }
+    card.appendChild(qBody);
 
-    // Compact meta line for spend text, reset credits, token validity, and usage
+    // Footer meta
     var meta = el('div', 'card-meta');
 
     // Saldo text if no limit progress bar
@@ -1347,24 +1365,20 @@ ${SHARED_HELPERS}
       var sp2 = q.spend;
       var usedVal = sp2.usedMinor ? fmtMoneyVal(sp2.usedMinor, sp2.currency, sp2.exponent) : null;
       if (sp2.disabledReason === 'out_of_credits') {
-        meta.appendChild(el('span', 'card-meta-item bad', '⚠️ Brak środków (out of credits)'));
+        meta.appendChild(el('span', 'card-meta-item bad', '⚠️ Brak środków'));
       } else if (sp2.disabledReason) {
         meta.appendChild(el('span', 'card-meta-item warn', '⚠️ ' + sp2.disabledReason));
       } else if (sp2.enabled) {
-        meta.appendChild(el('span', 'card-meta-item ok', '💳 Extra usage: aktywne' + (usedVal ? ' · wydano: ' + usedVal : '')));
+        meta.appendChild(el('span', 'card-meta-item ok', '💳 Extra: ok' + (usedVal ? ' · ' + usedVal : '')));
       } else if (planName) {
-        meta.appendChild(el('span', 'card-meta-item', '💳 Abonament ' + planName + (usedVal ? ' · wydano: ' + usedVal : '')));
+        meta.appendChild(el('span', 'card-meta-item', '💳 ' + planName + (usedVal ? ' · ' + usedVal : '')));
       } else {
-        meta.appendChild(el('span', 'card-meta-item', '💳 Abonament nielimitowany' + (usedVal ? ' · wydano: ' + usedVal : '')));
+        meta.appendChild(el('span', 'card-meta-item', '💳 Nielimitowany' + (usedVal ? ' · ' + usedVal : '')));
       }
     } else if (q.backend && (q.backend.text || q.backend.label)) {
       meta.appendChild(el('span', 'card-meta-item', '💳 ' + (q.backend.label || 'Saldo') + ': ' + q.backend.text));
     } else if (a.type === 'api') {
-      meta.appendChild(el('span', 'card-meta-item', '💳 Anthropic API Key (Pay-as-you-go)'));
-    } else if (a.type === 'oauth' && !q.spend) {
-      if (planName) {
-        meta.appendChild(el('span', 'card-meta-item', '💳 Plan: ' + planName));
-      }
+      meta.appendChild(el('span', 'card-meta-item', '💳 Anthropic API Key'));
     }
 
     // Codex Reset Credits
@@ -1373,12 +1387,13 @@ ${SHARED_HELPERS}
       var rcAvail = rc && typeof rc.available === 'number' ? rc.available : 0;
       if (rcAvail > 0) {
         var rcSpan = el('span', 'card-meta-item ok');
-        var expStr = rc.nearestExpiresAt ? ' · wygasa ' + fmtAgo(rc.nearestExpiresAt) : '';
+        var expStr = rc.nearestExpiresAt ? ' (' + fmtAgo(rc.nearestExpiresAt) + ')' : '';
         rcSpan.appendChild(el('span', '', '⚡ Reset 5h: ' + rcAvail + expStr + ' '));
-        var btnReset = el('button', 'btn btn-sm btn-accent', '🔄 Reset');
+        var btnReset = el('button', 'btn-xs btn-accent', '🔄 Reset');
         btnReset.title = 'Zużyj kredyt resetu OpenAI i natychmiast wyzeruj limit 5h';
-        btnReset.style.padding = '1px 5px';
-        btnReset.style.fontSize = '10.5px';
+        btnReset.style.padding = '0 4px';
+        btnReset.style.fontSize = '9.5px';
+        btnReset.style.minHeight = '16px';
         btnReset.addEventListener('click', function () { doConsumeResetCredit(a.name, btnReset); });
         rcSpan.appendChild(btnReset);
         meta.appendChild(rcSpan);
@@ -1393,19 +1408,23 @@ ${SHARED_HELPERS}
       if (a.expiresAt) {
         var msLeft = a.expiresAt - Date.now();
         var daysLeft = Math.round(msLeft / 86400000);
-        if (daysLeft > 1) tokenParts.push('Token: ~' + daysLeft + 'd');
-        else if (msLeft > 0) tokenParts.push('Token: <24h');
-        else tokenParts.push('Token wygasł');
+        if (daysLeft > 1) tokenParts.push('Token ~' + daysLeft + 'd');
+        else if (msLeft > 0) tokenParts.push('Token <24h');
+        else tokenParts.push('Wygasł');
       }
-      if (a.hasRefreshToken) tokenParts.push('Refresh: OK');
+      if (a.hasRefreshToken) tokenParts.push('Refresh OK');
       if (tokenParts.length) {
         meta.appendChild(el('span', 'card-meta-item', '🔑 ' + tokenParts.join(' · ')));
       }
     }
 
+    if (a.sessions) {
+      meta.appendChild(el('span', 'card-meta-item', '📡 ' + a.sessions + ' ses' + (a.sessions > 1 ? 'ji' : 'ja')));
+    }
+
     // Usage & request counts (pushed to right)
     var u = a.usage || {};
-    var last = u.lastUsed ? ' · last ' + fmtAgo(u.lastUsed) : '';
+    var last = u.lastUsed ? ' · ' + fmtAgo(u.lastUsed) : '';
     var usageSpan = el('span', 'card-meta-item', (u.totalRequests || 0) + ' req · ' + fmtNum(accountTokens(u)) + ' tok' + last);
     usageSpan.style.marginLeft = 'auto';
     meta.appendChild(usageSpan);
