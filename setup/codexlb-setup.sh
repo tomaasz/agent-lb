@@ -249,9 +249,12 @@ say "Klucz zapisany w $ENV_FILE (tylko dla Ciebie, chmod 600)."
 src_line=". \"$ENV_FILE\"  # codexlb"
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
 	[ -f "$rc" ] || continue
-	if ! grep -qF "# codexlb" "$rc"; then
-		printf '\n%s\n' "$src_line" >> "$rc"
-		say "Dopisalem wczytywanie klucza do $rc."
+	if [ -w "$rc" ]; then
+		if ! grep -qF "# codexlb" "$rc" 2>/dev/null; then
+			printf '\n%s\n' "$src_line" >> "$rc" 2>/dev/null && say "Dopisalem wczytywanie klucza do $rc." || true
+		fi
+	else
+		say "Pominieto $rc (brak uprawnien do zapisu)."
 	fi
 done
 

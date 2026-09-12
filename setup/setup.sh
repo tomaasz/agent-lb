@@ -12,9 +12,9 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd || pwd)"
 
-if command -v node >/dev/null 2>&1; then
+if [ -n "$SCRIPT_DIR" ] && command -v node >/dev/null 2>&1; then
 	if [ -f "$SCRIPT_DIR/setup.js" ]; then
 		exec node "$SCRIPT_DIR/setup.js" "$@"
 	elif [ -f "$SCRIPT_DIR/teamclaude-setup.js" ]; then
@@ -146,9 +146,12 @@ fi
 src_line=". \"$ENV_FILE\"  # teamclaude"
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
 	[ -f "$rc" ] || continue
-	if ! grep -qF "# teamclaude" "$rc"; then
-		printf '\n%s\n' "$src_line" >> "$rc"
-		say "Dopisano wczytywanie do ~/$rc."
+	if [ -w "$rc" ]; then
+		if ! grep -qF "# teamclaude" "$rc" 2>/dev/null; then
+			printf '\n%s\n' "$src_line" >> "$rc" 2>/dev/null && say "Dopisano wczytywanie do $rc." || true
+		fi
+	else
+		say "Pominięto $rc (brak uprawnień do zapisu)."
 	fi
 done
 
