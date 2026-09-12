@@ -564,9 +564,10 @@ const PAGE = `<!doctype html>
     <!-- ACCOUNTS SECTION -->
     <div class="sec-head">
       <h2>Konta Claude & Codex</h2>
-      <div class="row" style="gap:8px;">
+      <div class="row" style="gap:8px; align-items:center;">
         <span style="font-size:11px; color:var(--dim);">💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet</span>
-        <button class="btn btn-sm btn-accent" id="btnShowAddAccount">➕ Dodaj konto</button>
+        <button class="btn btn-sm" id="btnShowAddClaude" title="Dodaj konto Claude (Anthropic)">🟣 + Dodaj konto Claude</button>
+        <button class="btn btn-sm btn-accent" id="btnShowAddCodex" title="Dodaj konto OpenAI Codex">🟢 + Dodaj konto Codex</button>
       </div>
     </div>
     <div id="accounts" style="display:none"></div>
@@ -574,8 +575,11 @@ const PAGE = `<!doctype html>
       <!-- Column 1: Claude (Anthropic) -->
       <div class="account-col" id="colClaude">
         <div class="col-head">
-          <span class="col-title claude">🟣 Claude (Anthropic)</span>
-          <span class="col-hint" id="countClaude">0 kont</span>
+          <div class="row" style="gap:6px; align-items:center;">
+            <span class="col-title claude">🟣 Claude (Anthropic)</span>
+            <span class="col-hint" id="countClaude">0 kont</span>
+          </div>
+          <button class="btn btn-sm" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11.5px;" title="Dodaj konto Claude (Anthropic)">➕ Dodaj Claude</button>
         </div>
         <div class="account-list" id="listClaude" data-provider="anthropic"></div>
       </div>
@@ -583,8 +587,11 @@ const PAGE = `<!doctype html>
       <!-- Column 2: OpenAI Codex -->
       <div class="account-col" id="colCodex">
         <div class="col-head">
-          <span class="col-title codex">🟢 OpenAI Codex</span>
-          <span class="col-hint" id="countCodex">0 kont</span>
+          <div class="row" style="gap:6px; align-items:center;">
+            <span class="col-title codex">🟢 OpenAI Codex</span>
+            <span class="col-hint" id="countCodex">0 kont</span>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11.5px;" title="Dodaj konto OpenAI Codex">➕ Dodaj Codex</button>
         </div>
         <div class="account-list" id="listCodex" data-provider="codex"></div>
       </div>
@@ -634,7 +641,7 @@ const PAGE = `<!doctype html>
   <div id="modalAddAccount" class="modal-backdrop" style="display:none;">
     <div class="modal-box">
       <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:600; font-size:15px;">➕ Dodaj konto</span>
+        <span id="modalAddAccountTitle" style="font-weight:600; font-size:15px;">➕ Dodaj konto</span>
         <button class="btn btn-sm" id="btnCloseAddAccount">✕ Zamknij</button>
       </div>
       <div style="margin-bottom:12px; display:flex; align-items:center; gap:14px; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px;">
@@ -2111,6 +2118,11 @@ ${SHARED_HELPERS}
   function updateAddAccountProviderUI() {
     var isCodex = getSelectedAddProvider() === 'codex';
 
+    var titleEl = document.getElementById('modalAddAccountTitle');
+    if (titleEl) {
+      titleEl.textContent = isCodex ? '➕ Dodaj konto OpenAI Codex' : '➕ Dodaj konto Claude (Anthropic)';
+    }
+
     var lblApiKey = document.getElementById('lblApiKey');
     if (lblApiKey) lblApiKey.textContent = isCodex ? 'Klucz API OpenAI (sk-...) *' : 'Klucz API Anthropic Console (sk-ant-...) *';
     var inApiKey = document.getElementById('inApiKey');
@@ -2827,13 +2839,40 @@ ${SHARED_HELPERS}
     btnProbeQuota.addEventListener('click', function () { doProbeQuota(this); });
   }
 
-  // Modals opening/closing
-  document.getElementById('btnShowAddAccount').addEventListener('click', function () {
+  function openAddAccountModal(provider) {
+    var isCodex = provider === 'codex';
+    var rAnthropic = document.getElementById('radioProvAnthropic');
+    var rCodex = document.getElementById('radioProvCodex');
+    if (isCodex) {
+      if (rCodex) rCodex.checked = true;
+      if (rAnthropic) rAnthropic.checked = false;
+    } else {
+      if (rAnthropic) rAnthropic.checked = true;
+      if (rCodex) rCodex.checked = false;
+    }
+
     updateAddAccountProviderUI();
     document.getElementById('oauthStep1').style.display = 'block';
     document.getElementById('oauthStep2').style.display = 'none';
     openModal('modalAddAccount');
+  }
+
+  // Modals opening/closing
+  ['btnShowAddClaude', 'btnAddClaudeCol'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) b.addEventListener('click', function () { openAddAccountModal('anthropic'); });
   });
+
+  ['btnShowAddCodex', 'btnAddCodexCol'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) b.addEventListener('click', function () { openAddAccountModal('codex'); });
+  });
+
+  var bGenericAdd = document.getElementById('btnShowAddAccount');
+  if (bGenericAdd) {
+    bGenericAdd.addEventListener('click', function () { openAddAccountModal(getSelectedAddProvider()); });
+  }
+
   document.getElementById('btnCloseAddAccount').addEventListener('click', function () {
     closeModal('modalAddAccount');
   });
