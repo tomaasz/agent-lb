@@ -12,11 +12,12 @@
 
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { randomBytes, createHash } from 'node:crypto';
+import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { exec } from 'node:child_process';
 import http from 'node:http';
 import { proxyFetch } from './upstream-fetch.js';
 import { tokenPairFromResponse } from './oauth.js';
+
 
 export const DEFAULT_CODEX_CREDENTIALS_PATH = '~/.codex/auth.json';
 
@@ -144,6 +145,101 @@ export function parseCodexWhamUsage(data) {
   return out;
 }
 
+export const CODEX_RESET_CREDITS_URL = 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits';
+export const CODEX_RESET_CONSUME_URL = 'https://chatgpt.com/backend-api/wham/rate-limit-reset-credits/consume';
+
+export function parseCodexResetCredits(data) {
+  if (!data) return { available: 0, nearestExpiresAt: null, credits: [] };
+  const available = typeof data.available_count === 'number' ? data.available_count : (data.credits?.length || 0);
+  const credits = Array.isArray(data.credits) ? data.credits : [];
+  let nearestExpiresAt = null;
+  for (const c of credits) {
+    if (c.status === 'available' && c.expires_at) {
+      const ts = typeof c.expires_at === 'string' ? new Date(c.expires_at).getTime() : (c.expires_at * 1000);
+      if (!Number.isNaN(ts) && (nearestExpiresAt == null || ts < nearestExpiresAt)) {
+        nearestExpiresAt = ts;
+      }
+    }
+  }
+  return { available, nearestExpiresAt, credits };
+}
+
+/**
+ * Fetch available rate limit reset credits for a Codex account.
+ */
+export async function fetchCodexResetCredits(account) {
+  const timeoutMs = Number(process.env.TEAMCLAUDE_PROBE_TIMEOUT_MS) || 10_000;
+  const token = account.credential || account.accessToken;
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    'Accept': 'application/json',
+  };
+  if (account.accountId) headers['chatgpt-account-id'] = account.accountId;
+  try {
+    const res = await proxyFetch(CODEX_RESET_CREDITS_URL, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (res.status === 401) return { status: 401, error: 'Unauthorized' };
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      return { status: res.status, error: `Codex reset credits fetch failed (${res.status}): ${text}` };
+    }
+    const data = await res.json();
+    return parseCodexResetCredits(data);
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+/**
+ * Consume / redeem one available rate limit reset credit on OpenAI ChatGPT.
+ */
+export async function consumeCodexResetCredit(account, creditId = null) {
+  const timeoutMs = Number(process.env.TEAMCLAUDE_PROBE_TIMEOUT_MS) || 15_000;
+  const token = account.credential || account.accessToken;
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
+  if (account.accountId) headers['chatgpt-account-id'] = account.accountId;
+
+  let targetCreditId = creditId;
+  if (!targetCreditId) {
+    const listRes = await fetchCodexResetCredits(account);
+    const available = listRes?.credits?.find(c => c.status === 'available');
+    if (!available) {
+      return { ok: false, error: 'Brak dostępnych kredytów resetu dla tego konta.' };
+    }
+    targetCreditId = available.id;
+  }
+
+  const redeemRequestId = randomUUID();
+  try {
+    const res = await proxyFetch(CODEX_RESET_CONSUME_URL, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        credit_id: targetCreditId,
+        redeem_request_id: redeemRequestId,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      return { ok: false, status: res.status, error: `Konsumpcja kredytu resetu nie powiodła się (${res.status}): ${text}` };
+    }
+    const data = await res.json().catch(() => ({}));
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
 /**
  * Read account usage and rate limits from ChatGPT backend.
  */
@@ -168,7 +264,16 @@ export async function fetchCodexUsage(account) {
       return { status: res.status, error: `Codex usage fetch failed (${res.status}): ${text}` };
     }
     const data = await res.json();
-    return parseCodexWhamUsage(data);
+    const usage = parseCodexWhamUsage(data);
+    try {
+      const rc = await fetchCodexResetCredits(account);
+      if (rc && !rc.error) {
+        usage.resetCredits = rc;
+      }
+    } catch {
+      // non-fatal
+    }
+    return usage;
   } catch (err) {
     return { error: err.message };
   }

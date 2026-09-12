@@ -365,7 +365,10 @@ const PAGE = `<!doctype html>
   .badge-plan { color: #d2a8ff; border-color: rgba(210,168,255,0.4); background: rgba(210,168,255,0.1); font-weight: 500; }
   .badge-codex { color: #56d364; border-color: rgba(86,211,100,0.4); background: rgba(86,211,100,0.1); font-weight: 500; }
   .badge-anthropic { color: #d2a8ff; border-color: rgba(210,168,255,0.4); background: rgba(210,168,255,0.1); font-weight: 500; }
+  .badge-burn { color: #ff7b72; border-color: rgba(255,123,114,0.4); background: rgba(255,123,114,0.15); font-weight: 600; }
+  .token-info { font-size: 12px; margin-top: 4px; color: var(--dim); }
   .quota { display: grid; grid-template-columns: 80px 1fr 210px; gap: 12px; align-items: center; margin-top: 8px; }
+
   .quota .lbl { color: var(--dim); font-size: 13.5px; font-weight: 500; }
   .quota .val { color: var(--dim); font-size: 13.5px; text-align: right; font-variant-numeric: tabular-nums; }
   .bar { height: 10px; background: var(--line); border-radius: 5px; overflow: hidden; }
@@ -1120,6 +1123,7 @@ ${SHARED_HELPERS}
     }
 
     head.appendChild(el('span', 'tag', a.type + ' · prio ' + (a.priority || 0)));
+    if (a.routingPolicy === 'burn-first') head.appendChild(el('span', 'badge badge-burn', '🔥 Burn first'));
     if (a.name === current) head.appendChild(el('span', 'badge current', 'current'));
     head.appendChild(el('span', 'badge ' + (a.status || ''), a.disabled ? 'disabled' : (a.status || 'unknown')));
     if (a.sessions) head.appendChild(el('span', 'tag', a.sessions + ' active session' + (a.sessions > 1 ? 's' : '')));
@@ -1138,6 +1142,22 @@ ${SHARED_HELPERS}
       btnRelogin.addEventListener('click', function () { startReLogin(a.name, a.priority, a.provider); });
       acts.appendChild(btnRelogin);
     }
+    var btnProbe = el('button', 'btn btn-sm', '⟳ Probe');
+    btnProbe.title = 'Wymuś natychmiastowe odpytanie limitów i salda dla tego konta';
+    btnProbe.addEventListener('click', function () { doProbeSingle(a.name, btnProbe); });
+    acts.appendChild(btnProbe);
+
+    var isBurn = a.routingPolicy === 'burn-first';
+    var btnPolicy = el('button', 'btn btn-sm' + (isBurn ? ' btn-warn' : ''), isBurn ? '🔥 Burn first' : '⚖️ Normal');
+    btnPolicy.title = isBurn ? 'Przełącz na normalną politykę routingu' : 'Włącz politykę "Burn first" (wyczerpuj to konto w pierwszej kolejności)';
+    btnPolicy.addEventListener('click', function () { doSetPolicy(a.name, isBurn ? 'normal' : 'burn-first', btnPolicy); });
+    acts.appendChild(btnPolicy);
+
+    var btnExport = el('button', 'btn btn-sm', '💾 Export');
+    btnExport.title = 'Eksportuj konfigurację i tokeny konta do pliku JSON';
+    btnExport.addEventListener('click', function () { doExportAccount(a.name); });
+    acts.appendChild(btnExport);
+
     var btnToggle = el('button', 'btn btn-sm ' + (a.disabled ? 'btn-ok' : 'btn-warn'), a.disabled ? '▶️ Włącz' : '⏸️ Wyłącz');
     btnToggle.title = a.disabled ? 'Włącz konto do rotacji' : 'Wyłącz konto z rotacji';
     btnToggle.addEventListener('click', function () { doToggleDisabled(a.name, !!a.disabled, btnToggle); });
@@ -1217,6 +1237,42 @@ ${SHARED_HELPERS}
         card.appendChild(el('div', 'spend-info dim', '💳 Saldo: kliknij „⚡ Odśwież salda” aby pobrać stan konta'));
       }
     }
+
+    // Codex Reset Credits display
+    if (prov === 'codex') {
+      var rc = q.resetCredits;
+      var rcAvail = rc && typeof rc.available === 'number' ? rc.available : 0;
+      var rcRow = el('div', 'spend-info' + (rcAvail > 0 ? ' spend-ok' : ''));
+      if (rcAvail > 0) {
+        var expStr = rc.nearestExpiresAt ? ' · wygasa ' + fmtAgo(rc.nearestExpiresAt) : '';
+        rcRow.appendChild(el('span', '', '⚡ Kredyt resetu limitu: ' + rcAvail + ' dostępny' + expStr + ' '));
+        var btnReset = el('button', 'btn btn-sm btn-accent', '🔄 Reset (' + rcAvail + ')');
+        btnReset.title = 'Zużyj kredyt resetu OpenAI i natychmiast wyzeruj limit 5h';
+        btnReset.style.marginLeft = '8px';
+        btnReset.addEventListener('click', function () { doConsumeResetCredit(a.name, btnReset); });
+        rcRow.appendChild(btnReset);
+      } else {
+        rcRow.appendChild(el('span', 'dim', '⚡ Reset limitu 5h (OpenAI): 0 dostępnych'));
+      }
+      card.appendChild(rcRow);
+    }
+
+    // Token status indicators
+    if (a.type === 'oauth') {
+      var tokenParts = [];
+      if (a.expiresAt) {
+        var msLeft = a.expiresAt - Date.now();
+        var daysLeft = Math.round(msLeft / 86400000);
+        if (daysLeft > 1) tokenParts.push('Token ważny: ~' + daysLeft + 'd');
+        else if (msLeft > 0) tokenParts.push('Token ważny: <24h');
+        else tokenParts.push('Token wygasł');
+      }
+      if (a.hasRefreshToken) tokenParts.push('Refresh token: aktywny');
+      if (tokenParts.length) {
+        card.appendChild(el('div', 'token-info', '🔑 ' + tokenParts.join(' · ')));
+      }
+    }
+
     var u = a.usage || {};
     var last = u.lastUsed ? ' · last ' + fmtAgo(u.lastUsed) : '';
     card.appendChild(el('div', 'usage', (u.totalRequests || 0) + ' req · ' + fmtNum(accountTokens(u)) + ' tok' + last));
@@ -1616,7 +1672,97 @@ ${SHARED_HELPERS}
       });
   }
 
+  function doProbeSingle(name, btn) {
+    if (btn) btn.disabled = true;
+    note('ok', 'Odpytywanie limitów konta "' + name + '"...');
+    apiCall('/teamclaude/api/accounts/probe-single', 'POST', { account: name })
+      .then(function (res) {
+        if (!res) return;
+        if (res.ok) {
+          note('ok', 'Zaktualizowano limity konta "' + name + '"');
+          poll();
+        } else {
+          note('error', 'Błąd odświeżania: ' + (res.error || 'nieznany błąd'));
+        }
+      })
+      .catch(function (e) {
+        note('error', 'Błąd: ' + e.message);
+      })
+      .finally(function () {
+        if (btn) btn.disabled = false;
+      });
+  }
+
+  function doSetPolicy(name, policy, btn) {
+    if (btn) btn.disabled = true;
+    apiCall('/teamclaude/api/accounts/policy', 'POST', { account: name, policy: policy })
+      .then(function (res) {
+        if (!res) return;
+        if (res.ok) {
+          note('ok', 'Ustawiono politykę konta "' + name + '" na: ' + (policy === 'burn-first' ? 'Burn first' : 'Normal'));
+          poll();
+        } else {
+          note('error', 'Błąd zmiany polityki: ' + (res.error || 'nieznany błąd'));
+        }
+      })
+      .catch(function (e) {
+        note('error', 'Błąd: ' + e.message);
+      })
+      .finally(function () {
+        if (btn) btn.disabled = false;
+      });
+  }
+
+  function doConsumeResetCredit(name, btn) {
+    if (!confirm('UWAGA: Czy na pewno chcesz zużyć 1 kredyt resetu OpenAI dla konta "' + name + '"?\\n\\nSpowoduje to natychmiastowe wyzerowanie okna 5h (blokady limitu) w ChatGPT. Ta operacja jest nieodwracalna.')) return;
+    if (btn) btn.disabled = true;
+
+    note('ok', 'Wysyłanie żądania resetu limitu do OpenAI...');
+    apiCall('/teamclaude/api/accounts/consume-reset-credit', 'POST', { account: name })
+      .then(function (res) {
+        if (!res) return;
+        if (res.ok) {
+          note('ok', 'Pomyślnie zresetowano limit 5h dla konta "' + name + '"!');
+          poll();
+        } else {
+          note('error', 'Błąd resetowania: ' + (res.error || 'nieznany błąd'));
+        }
+      })
+      .catch(function (e) {
+        note('error', 'Błąd: ' + e.message);
+      })
+      .finally(function () {
+        if (btn) btn.disabled = false;
+      });
+  }
+
+  function doExportAccount(name) {
+    var key = localStorage.getItem(KEY) || '';
+    var url = '/teamclaude/api/accounts/export?account=' + encodeURIComponent(name);
+    var headers = {};
+    if (key) headers['x-api-key'] = key;
+    fetch(url, { headers: headers })
+      .then(function (res) {
+        if (!res.ok) throw new Error('Status ' + res.status);
+        return res.blob();
+      })
+      .then(function (blob) {
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name + '-export.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(a.href);
+        note('ok', 'Wyeksportowano konto "' + name + '"');
+      })
+      .catch(function (e) {
+        note('error', 'Błąd eksportu: ' + e.message);
+      });
+  }
+
   function doReloadFleet(btn) {
+
     if (btn) btn.disabled = true;
     apiCall('/teamclaude/reload', 'POST')
       .then(function (res) {

@@ -85,6 +85,61 @@ describe('Codex Provider Support', () => {
     const parsedCredits = parseCodexWhamUsage(sampleWithCredits);
     assert.equal(parsedCredits.backend.text, '150.50 kredytów');
   });
+
+  it('correctly parses Codex /backend-api/wham/rate-limit-reset-credits responses', async () => {
+    const { parseCodexResetCredits } = await import('../src/codex-auth.js');
+    const emptyRes = {
+      credits: [],
+      available_count: 0,
+      total_earned_count: 0,
+    };
+    assert.deepEqual(parseCodexResetCredits(emptyRes), {
+      available: 0,
+      nearestExpiresAt: null,
+      credits: [],
+    });
+
+    const activeRes = {
+      available_count: 1,
+      credits: [
+        {
+          id: 'credit-uuid-1',
+          status: 'available',
+          expires_at: '2026-10-05T00:59:35Z',
+        },
+      ],
+    };
+    const parsed = parseCodexResetCredits(activeRes);
+    assert.equal(parsed.available, 1);
+    assert.equal(parsed.nearestExpiresAt, new Date('2026-10-05T00:59:35Z').getTime());
+    assert.equal(parsed.credits.length, 1);
+  });
+
+  it('honors burn-first routing policy in AccountManager candidate selection', async () => {
+    const { AccountManager } = await import('../src/account-manager.js');
+    const accounts = [
+      { name: 'acct-normal', provider: 'codex', type: 'oauth', credential: 't1', priority: 0, routingPolicy: 'normal' },
+      { name: 'acct-burn', provider: 'codex', type: 'oauth', credential: 't2', priority: 0, routingPolicy: 'burn-first' },
+    ];
+    const am = new AccountManager(accounts);
+
+    // Candidates should prioritize acct-burn
+    const candidates = am._bandedCandidates();
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].name, 'acct-burn');
+
+    // Switch policy of acct-burn to normal
+    am.setRoutingPolicy(1, 'normal');
+    const bothCandidates = am._bandedCandidates();
+    assert.equal(bothCandidates.length, 2);
+
+    // Check status payload includes policy and token details
+    const status = am.getStatus();
+    const acctBurnStatus = status.accounts.find(a => a.name === 'acct-burn');
+    assert.equal(acctBurnStatus.routingPolicy, 'normal');
+    assert.equal(acctBurnStatus.hasRefreshToken, false);
+  });
 });
+
 
 

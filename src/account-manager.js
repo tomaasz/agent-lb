@@ -145,6 +145,7 @@ function emptyQuota() {
     // on this account rather than stopping it.
     spend: null,
     resetsAt: null,
+    resetCredits: null,
   };
 }
 
@@ -173,6 +174,7 @@ function makeAccount(acct, index) {
     // written before providers existed keep working untouched.
     provider: providerOf(acct),
     planType: acct.planType || null,
+    routingPolicy: acct.routingPolicy || 'normal',
     email: acct.email || null,
     // Codex scopes a token to one ChatGPT account via a request header; this is
     // that id. The Anthropic counterpart is `accountUuid`, which is patched
@@ -188,6 +190,7 @@ function makeAccount(acct, index) {
     hasClaudePro: acct.hasClaudePro ?? null,
     priority: acct.priority || 0,
     disabled: acct.disabled || false,
+
     maxUsage: acct.maxUsage ?? null,
     upstream: acct.upstream || null,
     modelMap: acct.modelMap || null,
@@ -2054,10 +2057,14 @@ export class AccountManager {
    * both selection loops so they cannot disagree on the candidate set.
    */
   _bandedCandidates(exclude = null, model = null, advisorModel = null) {
-    return this._topPressureBand(
-      this.accounts.filter(a => !exclude?.has(a.index) && this._isAvailable(a, model, advisorModel)),
-      model);
+    let available = this.accounts.filter(a => !exclude?.has(a.index) && this._isAvailable(a, model, advisorModel));
+    const burnFirst = available.filter(a => a.routingPolicy === 'burn-first' || a.routingPolicy === 'burn_first');
+    if (burnFirst.length > 0) {
+      available = burnFirst;
+    }
+    return this._topPressureBand(available, model);
   }
+
 
   /**
    * The accounts selection may choose from when expiry routing is on: those
@@ -3264,8 +3271,41 @@ export class AccountManager {
     if (usage.backend) {
       q.backend = usage.backend;
     }
+    if (usage.resetCredits) {
+      q.resetCredits = usage.resetCredits;
+    }
     this._recomputeAccount(account);
   }
+
+  /**
+   * Set routing policy ('normal' | 'burn-first') for an account.
+   */
+  setRoutingPolicy(accountIndex, policy) {
+    const account = this.accounts[accountIndex];
+    if (!account) return;
+    account.routingPolicy = policy === 'burn-first' ? 'burn-first' : 'normal';
+  }
+
+  /**
+   * Consume / redeem one available rate limit reset credit for a Codex account.
+   */
+  async consumeResetCredit(accountIndex, creditId = null) {
+    const account = this.accounts[accountIndex];
+    if (!account) return { ok: false, error: 'Nie znaleziono konta' };
+    if (account.provider !== 'codex') return { ok: false, error: 'Kredyty resetu dotyczą wyłącznie kont OpenAI Codex' };
+    const { consumeCodexResetCredit, fetchCodexUsage } = await import('./codex-auth.js');
+    await this.ensureTokenFresh(accountIndex);
+    const res = await consumeCodexResetCredit(account, creditId);
+    if (res.ok) {
+      // Force probe to immediately update limits
+      const updated = await fetchCodexUsage(account);
+      if (updated && !updated.error) {
+        this.applyCodexUsageData(accountIndex, updated);
+      }
+    }
+    return res;
+  }
+
 
   /**
    * Apply quota learned from the OAuth usage endpoint (the background probe).
@@ -3722,7 +3762,11 @@ export class AccountManager {
         hasClaudePro: a.hasClaudePro ?? null,
         priority: a.priority || 0,
         disabled: a.disabled || false,
+        routingPolicy: a.routingPolicy || 'normal',
+        expiresAt: a.expiresAt || null,
+        hasRefreshToken: Boolean(a.refreshToken),
         maxUsage: a.maxUsage ?? null,
+
         status: a.status,
         // Why the account is out of rotation right now (null = it can serve).
         // Distinguishes a local threshold decision from an upstream rejection —

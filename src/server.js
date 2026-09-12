@@ -1021,7 +1021,172 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
+      // Accounts: Probe single account (POST /api/accounts/probe-single & POST /accounts/probe-single)
+      if (req.method === 'POST' && (normApiPath === '/api/accounts/probe-single' || normApiPath === '/accounts/probe-single')) {
+        let body;
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch (err) {
+          const tooLarge = err.message === 'body too large';
+          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          return;
+        }
+
+        const target = body?.account || body?.id || body?.name;
+        if (typeof target !== 'string' || !target.trim()) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'missing "account"' }));
+          return;
+        }
+
+        const index = resolveAccountPin(accountManager, target);
+        if (index == null) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          return;
+        }
+
+        const mgr = accountManager.accounts[index];
+        if (prober) {
+          await prober.probeAccount(mgr);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, account: mgr.name, quota: mgr.quota }));
+        return;
+      }
+
+      // Accounts: Consume reset credit (POST /api/accounts/consume-reset-credit & POST /accounts/consume-reset-credit)
+      if (req.method === 'POST' && (normApiPath === '/api/accounts/consume-reset-credit' || normApiPath === '/accounts/consume-reset-credit')) {
+        let body;
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch (err) {
+          const tooLarge = err.message === 'body too large';
+          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          return;
+        }
+
+        const target = body?.account || body?.id || body?.name;
+        if (typeof target !== 'string' || !target.trim()) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'missing "account"' }));
+          return;
+        }
+
+        const index = resolveAccountPin(accountManager, target);
+        if (index == null) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          return;
+        }
+
+        const result = await accountManager.consumeResetCredit(index, body.credit_id);
+        if (!result.ok) {
+          res.writeHead(result.status || 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: result.error || 'Nie udało się zużyć kredytu resetu' }));
+          return;
+        }
+
+        console.log(`[TeamClaude] Consumed reset credit for account "${accountManager.accounts[index].name}"`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, account: accountManager.accounts[index].name, result }));
+        return;
+      }
+
+      // Accounts: Set routing policy (POST /api/accounts/policy & POST /accounts/policy)
+      if (req.method === 'POST' && (normApiPath === '/api/accounts/policy' || normApiPath === '/accounts/policy')) {
+        let body;
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch (err) {
+          const tooLarge = err.message === 'body too large';
+          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          return;
+        }
+
+        const target = body?.account || body?.id || body?.name;
+        const policy = body?.policy === 'burn-first' ? 'burn-first' : 'normal';
+        if (typeof target !== 'string' || !target.trim()) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'missing "account"' }));
+          return;
+        }
+
+        const index = resolveAccountPin(accountManager, target);
+        if (index == null) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          return;
+        }
+
+        const mgr = accountManager.accounts[index];
+        accountManager.setRoutingPolicy(index, policy);
+
+        await atomicConfigUpdate(disk => {
+          const dAcct = (disk.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === mgr.name);
+          if (dAcct) {
+            dAcct.routingPolicy = policy;
+          }
+        });
+
+        const cAcct = (config.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === mgr.name);
+        if (cAcct) {
+          cAcct.routingPolicy = policy;
+        }
+
+        console.log(`[TeamClaude] Account "${mgr.name}" routing policy set to "${policy}" (web control)`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, account: mgr.name, routingPolicy: policy }));
+        return;
+      }
+
+      // Accounts: Export (GET /api/accounts/export & GET /accounts/export)
+      if (req.method === 'GET' && (normApiPath === '/api/accounts/export' || normApiPath === '/accounts/export')) {
+        const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+        const target = urlObj.searchParams.get('account') || urlObj.searchParams.get('name') || urlObj.searchParams.get('id');
+        if (!target) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'missing "account" query parameter' }));
+          return;
+        }
+        const index = resolveAccountPin(accountManager, target);
+        if (index == null) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          return;
+        }
+        const mgr = accountManager.accounts[index];
+        const raw = (config.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === mgr.name) || mgr;
+        const exportData = {
+          name: mgr.name,
+          provider: mgr.provider,
+          type: mgr.type,
+          planType: mgr.planType,
+          email: mgr.email,
+          accountId: mgr.accountId,
+          priority: mgr.priority,
+          routingPolicy: mgr.routingPolicy || 'normal',
+          accessToken: raw.accessToken || raw.credential || mgr.credential,
+          refreshToken: raw.refreshToken || mgr.refreshToken,
+          expiresAt: raw.expiresAt || mgr.expiresAt,
+          exportedAt: new Date().toISOString(),
+        };
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Content-Disposition': `attachment; filename="${encodeURIComponent(mgr.name)}-export.json"`,
+        });
+        res.end(JSON.stringify(exportData, null, 2));
+        return;
+      }
+
       // Accounts: Add (POST /teamclaude/api/accounts/add & POST /teamclaude/accounts/add)
+
       if (req.method === 'POST' && (normApiPath === '/api/accounts/add' || normApiPath === '/accounts/add')) {
         let body;
         try {
