@@ -330,25 +330,31 @@ const PAGE = `<!doctype html>
     --ok: #3fb950; --warn: #d29922; --bad: #f85149;
   }
   * { box-sizing: border-box; margin: 0; }
-  body { background: var(--bg); color: var(--text); font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 18px 20px; }
-  main { max-width: 1320px; margin: 0 auto; width: 100%; }
+  body { background: var(--bg); color: var(--text); font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 14px 18px; }
+  main { max-width: 1720px; margin: 0 auto; width: 100%; }
   h1 { font-size: 18px; font-weight: 600; margin-bottom: 2px; display: inline-flex; align-items: center; gap: 8px; color: #f0f6fc; }
-  h2 { font-size: 11.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; margin: 18px 0 6px; font-weight: 600; }
-  .sub { color: var(--dim); margin-bottom: 12px; font-size: 12px; }
+  h2 { font-size: 11.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; margin: 12px 0 6px; font-weight: 600; }
+  .sub { color: var(--dim); margin-bottom: 10px; font-size: 12px; }
   .sub b { color: var(--text); font-weight: 500; }
-  .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
   .header-actions { display: flex; gap: 6px; align-items: center; }
 
+  /* Master layout: Accounts on left, Side column (Client keys & Tools) on right */
+  .dashboard-columns { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 1100px) { .dashboard-columns { grid-template-columns: 1fr; } }
+  .dash-col-main { min-width: 0; }
+  .dash-col-side { min-width: 0; }
+
   /* 2-column accounts grid & Drag-and-drop */
-  .accounts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; margin-bottom: 12px; }
-  @media (max-width: 980px) { .accounts-grid { grid-template-columns: 1fr; } }
-  .account-col { background: rgba(22, 27, 34, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; height: 100%; min-height: 100px; }
+  .accounts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; margin-bottom: 12px; }
+  @media (max-width: 780px) { .accounts-grid { grid-template-columns: 1fr; } }
+  .account-col { background: rgba(22, 27, 34, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; }
   .col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
   .col-title { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; display: inline-flex; align-items: center; gap: 6px; }
   .col-title.claude { color: #d2a8ff; }
   .col-title.codex { color: #56d364; }
   .col-hint { font-size: 10.5px; color: var(--dim); font-weight: normal; }
-  .account-list { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 40px; }
+  .account-list { display: flex; flex-direction: column; gap: 8px; }
   .card.draggable { cursor: grab; user-select: none; transition: opacity .15s ease, border-color .15s ease; }
   .card.draggable:active { cursor: grabbing; }
   .card.dragging { opacity: 0.35; border: 1px dashed var(--accent); }
@@ -359,13 +365,13 @@ const PAGE = `<!doctype html>
   .drag-handle:active { cursor: grabbing; }
   .prio-badge { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.3); color: var(--accent); line-height: 1.2; }
 
-  .card { background: rgba(22, 27, 34, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 6px; padding: 8px 12px; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; flex: 1; min-height: 115px; transition: border-color .15s ease; }
+  .card { background: rgba(22, 27, 34, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 6px; padding: 8px 12px; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; min-height: 114px; box-sizing: border-box; transition: border-color .15s ease; }
   .card:hover { border-color: rgba(255, 255, 255, 0.15); }
   .card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
-  .card-title-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+  .card-title-group { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; overflow: hidden; }
   .card-actions { display: flex; align-items: center; gap: 3px; margin-left: auto; flex-shrink: 0; }
   .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .name { font-size: 12.5px; font-weight: 600; color: #f0f6fc; letter-spacing: -0.01em; }
+  .name { font-size: 12.5px; font-weight: 600; color: #f0f6fc; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tag { font-size: 11px; color: var(--dim); }
   .badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.08); white-space: nowrap; line-height: 1.3; font-weight: 500; }
   .badge.active { color: var(--ok); border-color: rgba(63,185,80,0.3); background: rgba(63,185,80,0.06); }
@@ -384,8 +390,8 @@ const PAGE = `<!doctype html>
   .bar i { display: block; height: 100%; border-radius: 2px; background: var(--ok); transition: width .3s ease; }
   .bar i.warn { background: var(--warn); }
   .bar i.bad { background: var(--bad); }
-  .card-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255, 255, 255, 0.04); font-size: 11px; color: var(--dim); }
-  .card-meta-item { display: inline-flex; align-items: center; gap: 3px; }
+  .card-meta { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px 10px; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255, 255, 255, 0.04); font-size: 11px; color: var(--dim); overflow: hidden; }
+  .card-meta-item { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
   .card-meta-item.ok { color: var(--ok); }
   .card-meta-item.warn { color: var(--warn); }
   .card-meta-item.bad { color: var(--bad); }
@@ -574,73 +580,79 @@ const PAGE = `<!doctype html>
       <div class="card table-responsive" style="padding:4px 6px"><table id="routes"></table></div>
     </div>
 
-    <!-- ACCOUNTS SECTION -->
-    <div class="sec-head">
-      <h2>Konta Claude & Codex</h2>
-      <span style="font-size:11px; color:var(--dim);">💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet</span>
-    </div>
-    <div id="accounts" style="display:none"></div>
-    <div class="accounts-grid" id="accountsGrid">
-      <!-- Column 1: Claude (Anthropic) -->
-      <div class="account-col" id="colClaude">
-        <div class="col-head">
-          <div class="row" style="gap:6px; align-items:center;">
-            <span class="col-title claude">🟣 Claude (Anthropic)</span>
-            <span class="col-hint" id="countClaude">0 kont</span>
+    <div class="dashboard-columns">
+      <!-- LEWA KOLUMNA: KONTA CLAUDE & CODEX -->
+      <div class="dash-col-main">
+        <div class="sec-head" style="margin-top:0;">
+          <h2>Konta Claude & Codex</h2>
+          <span style="font-size:11px; color:var(--dim);">💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet</span>
+        </div>
+        <div id="accounts" style="display:none"></div>
+        <div class="accounts-grid" id="accountsGrid">
+          <!-- Column 1: Claude (Anthropic) -->
+          <div class="account-col" id="colClaude">
+            <div class="col-head">
+              <div class="row" style="gap:6px; align-items:center;">
+                <span class="col-title claude">🟣 Claude (Anthropic)</span>
+                <span class="col-hint" id="countClaude">0 kont</span>
+              </div>
+              <button class="btn btn-sm btn-accent" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto Claude (Anthropic)">➕ Dodaj konto</button>
+            </div>
+            <div class="account-list" id="listClaude" data-provider="anthropic"></div>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto Claude (Anthropic)">➕ Dodaj konto</button>
-        </div>
-        <div class="account-list" id="listClaude" data-provider="anthropic"></div>
-      </div>
 
-      <!-- Column 2: OpenAI Codex -->
-      <div class="account-col" id="colCodex">
-        <div class="col-head">
-          <div class="row" style="gap:6px; align-items:center;">
-            <span class="col-title codex">🟢 OpenAI Codex</span>
-            <span class="col-hint" id="countCodex">0 kont</span>
+          <!-- Column 2: OpenAI Codex -->
+          <div class="account-col" id="colCodex">
+            <div class="col-head">
+              <div class="row" style="gap:6px; align-items:center;">
+                <span class="col-title codex">🟢 OpenAI Codex</span>
+                <span class="col-hint" id="countCodex">0 kont</span>
+              </div>
+              <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto OpenAI Codex">➕ Dodaj konto</button>
+            </div>
+            <div class="account-list" id="listCodex" data-provider="codex"></div>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto OpenAI Codex">➕ Dodaj konto</button>
         </div>
-        <div class="account-list" id="listCodex" data-provider="codex"></div>
       </div>
-    </div>
 
-    <!-- CLIENT API KEYS SECTION -->
-    <div class="sec-head">
-      <h2>Klucze klientów</h2>
-      <div class="row" style="gap:8px;">
-        <button class="btn btn-sm" id="btnPullSetupRepo" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)">🔄 Aktualizuj instalator</button>
-        <button class="btn btn-sm btn-accent" id="btnShowAddClientKey">➕ Utwórz klucz klienta</button>
-      </div>
-    </div>
-    <div class="card" style="margin-bottom:12px; background:rgba(83,177,253,0.06); border-color:rgba(83,177,253,0.25); padding:12px 16px;">
-      <div class="row" style="justify-content:space-between; align-items:center;">
-        <div>
-          <span style="font-weight:600; font-size:13.5px;">📦 Automatyczny instalator stacji roboczych:</span>
-          <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600; margin-left:6px;">tomaasz/agent-lb ↗</a>
-          <div style="color:var(--dim); font-size:12.5px; margin-top:3px;">1-klikowa konfiguracja Claude Code CLI oraz OpenAI Codex CLI i rozszerzeń VS Code (Linux, macOS, WSL, Windows).</div>
+      <!-- PRAWA KOLUMNA (BOCZNA): KLUCZE KLIENTÓW & NARZĘDZIA -->
+      <div class="dash-col-side">
+        <div class="sec-head" style="margin-top:0;">
+          <h2>Klucze klientów</h2>
+          <div class="row" style="gap:6px;">
+            <button class="btn btn-sm" id="btnPullSetupRepo" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)">🔄 Aktualizuj instalator</button>
+            <button class="btn btn-sm btn-accent" id="btnShowAddClientKey">➕ Utwórz klucz klienta</button>
+          </div>
         </div>
-      </div>
-    </div>
-    <div class="card table-responsive" style="padding:4px 6px; margin-bottom:14px;">
-      <table id="clientKeysTable"></table>
-    </div>
+        <div class="card" style="margin-bottom:10px; background:rgba(83,177,253,0.06); border-color:rgba(83,177,253,0.22); padding:8px 12px;">
+          <div class="row" style="justify-content:space-between; align-items:center;">
+            <div>
+              <span style="font-weight:600; font-size:12.5px;">📦 Automatyczny instalator stacji roboczych:</span>
+              <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600; margin-left:6px;">tomaasz/agent-lb ↗</a>
+              <div style="color:var(--dim); font-size:11.5px; margin-top:2px;">1-klikowa konfiguracja Claude Code CLI oraz OpenAI Codex CLI i rozszerzeń VS Code (Linux, macOS, WSL, Windows).</div>
+            </div>
+          </div>
+        </div>
+        <div class="card table-responsive" style="padding:4px 6px; margin-bottom:12px;">
+          <table id="clientKeysTable"></table>
+        </div>
 
-    <div id="clientsWrap" style="display:none">
-      <h2>Clients</h2>
-      <div class="card table-responsive" style="padding:4px 6px"><table id="clients"></table></div>
-    </div>
-    <div id="dimensionsWrap"></div>
-    <div id="sessionsWrap" style="display:none">
-      <h2>Sessions</h2>
-      <div class="card" style="padding:0">
-        <div class="filters">
-          <label>Project <select id="fProject"></select></label>
-          <label>Client <select id="fClient"></select></label>
-          <span class="hint" id="sessionCount"></span>
+        <div id="clientsWrap" style="display:none">
+          <h2>Clients</h2>
+          <div class="card table-responsive" style="padding:4px 6px"><table id="clients"></table></div>
         </div>
-        <div class="table-responsive" style="padding:4px 6px"><table id="sessions"></table></div>
+        <div id="dimensionsWrap"></div>
+        <div id="sessionsWrap" style="display:none">
+          <h2>Sessions</h2>
+          <div class="card" style="padding:0">
+            <div class="filters">
+              <label>Project <select id="fProject"></select></label>
+              <label>Client <select id="fClient"></select></label>
+              <span class="hint" id="sessionCount"></span>
+            </div>
+            <div class="table-responsive" style="padding:4px 6px"><table id="sessions"></table></div>
+          </div>
+        </div>
       </div>
     </div>
     <footer id="foot"></footer>
