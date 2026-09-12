@@ -26,9 +26,10 @@ HIGH — auth, uprawnienia, sekrety, migracje/dane, schema DB, deployment, kryty
 - końcowy verifier potwierdził stan.
 
 ## Git
-- każde zadanie na osobnym branchu `ai/...`,
-- brak push/merge/deploy bez jawnej zgody,
-- brak force-push/reset --hard/clean -fd bez jawnej zgody.
+- każde zadanie na osobnym branchu `ai/...` (lub dedykowanej gałęzi roboczej),
+- po zakończeniu zadania i przejściu weryfikacji ZAWSZE commituj zmiany i pushuj na zdalne repozytorium (`origin`),
+- brak merge do chronionych/głównych gałęzi oraz brak deploy bez jawnej zgody,
+- brak niszczących poleceń: force-push, reset --hard, clean -fd bez jawnej zgody.
 
 ## Review
 Każdy finding: Severity, Evidence, Impact, Minimal fix.
