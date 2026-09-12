@@ -25,18 +25,20 @@ if (-not $Url) {
 }
 $Url = $Url.TrimEnd('/')
 
-# Delegacja do node jeśli dostępny
-$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
-$jsScript = Join-Path $PSScriptRoot "setup.js"
-if (-not (Test-Path $jsScript)) {
-	$jsScript = Join-Path $PSScriptRoot "teamclaude-setup.js"
-}
-if ($nodeCmd -and (Test-Path $jsScript)) {
-	$nodeArgs = @($jsScript, "--url", $Url)
-	if ($Key) { $nodeArgs += @("--key", $Key) }
-	if ($Test) { $nodeArgs += "--test" }
-	& node $nodeArgs
-	exit $LASTEXITCODE
+# Delegacja do node jeśli dostępny i uruchomiono z lokalnego repozytorium
+if ($PSScriptRoot) {
+	$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+	$jsScript = Join-Path $PSScriptRoot "setup.js"
+	if (-not (Test-Path $jsScript)) {
+		$jsScript = Join-Path $PSScriptRoot "teamclaude-setup.js"
+	}
+	if ($nodeCmd -and (Test-Path $jsScript)) {
+		$nodeArgs = @($jsScript, "--url", $Url)
+		if ($Key) { $nodeArgs += @("--key", $Key) }
+		if ($Test) { $nodeArgs += "--test" }
+		& node $nodeArgs
+		exit $LASTEXITCODE
+	}
 }
 
 function Say($msg) { Write-Host $msg }
@@ -85,7 +87,8 @@ try {
 }
 
 # -------------------------------------------------- zabezpieczenie OAuth
-$credsPath = Join-Path $HOME ".claude\.credentials.json"
+$homeDir = if ($HOME) { $HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } else { '.' }
+$credsPath = Join-Path $homeDir ".claude\.credentials.json"
 if (Test-Path $credsPath) {
 	$bak = "$credsPath.bak-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
 	Move-Item -Path $credsPath -Destination $bak -Force
@@ -93,7 +96,7 @@ if (Test-Path $credsPath) {
 }
 
 # -------------------------------------------------- ~/.claude/settings.json
-$claudeDir = Join-Path $HOME ".claude"
+$claudeDir = Join-Path $homeDir ".claude"
 if (-not (Test-Path $claudeDir)) { New-Item -ItemType Directory -Path $claudeDir -Force | Out-Null }
 $claudeSettingsPath = Join-Path $claudeDir "settings.json"
 $claudeSettings = @{}
@@ -109,7 +112,7 @@ $claudeSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $claudeSettingsPa
 Say "[OK] Zaktualizowano $claudeSettingsPath (CLI Claude Code)."
 
 # -------------------------------------------------- VS Code settings.json
-$appData = if ($env:APPDATA) { $env:APPDATA } else { Join-Path $HOME "AppData\Roaming" }
+$appData = if ($env:APPDATA) { $env:APPDATA } else { Join-Path $homeDir "AppData\Roaming" }
 $vsCodeDir = Join-Path $appData "Code\User"
 $vsCodeSettingsPath = Join-Path $vsCodeDir "settings.json"
 if (Test-Path $vsCodeDir) {

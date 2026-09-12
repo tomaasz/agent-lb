@@ -69,26 +69,27 @@ if ($Insecure) {
 	} catch {}
 }
 
-# Delegacja do node jeśli dostępny i plik JS istnieje (np. przy uruchomieniu z repozytorium)
-$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
-$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
-$jsScript = if ($scriptDir) { Join-Path $scriptDir "codexlb-setup.js" } else { $null }
-
-if ($nodeCmd -and $jsScript -and (Test-Path $jsScript)) {
-	$nodeArgs = @($jsScript, "--url", $Url, "--model", $Model, "--effort", $Effort)
-	if ($Key) { $nodeArgs += @("--key", $Key) }
-	if ($NoWs) { $nodeArgs += "--no-ws" }
-	if ($ProfileOnly) { $nodeArgs += "--profile-only" }
-	if ($Test) { $nodeArgs += "--test" }
-	if ($Clean) { $nodeArgs += "--clean" }
-	if ($Status) { $nodeArgs += "--status" }
-	if ($Restore) { $nodeArgs += "--restore" }
-	if ($Insecure) { $nodeArgs += "--insecure" }
-	& node $nodeArgs
-	exit $LASTEXITCODE
+# Delegacja do node jeśli dostępny i uruchomiono z lokalnego repozytorium
+if ($PSScriptRoot) {
+	$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+	$jsScript = Join-Path $PSScriptRoot "codexlb-setup.js"
+	if ($nodeCmd -and (Test-Path $jsScript)) {
+		$nodeArgs = @($jsScript, "--url", $Url, "--model", $Model, "--effort", $Effort)
+		if ($Key) { $nodeArgs += @("--key", $Key) }
+		if ($NoWs) { $nodeArgs += "--no-ws" }
+		if ($ProfileOnly) { $nodeArgs += "--profile-only" }
+		if ($Test) { $nodeArgs += "--test" }
+		if ($Clean) { $nodeArgs += "--clean" }
+		if ($Status) { $nodeArgs += "--status" }
+		if ($Restore) { $nodeArgs += "--restore" }
+		if ($Insecure) { $nodeArgs += "--insecure" }
+		& node $nodeArgs
+		exit $LASTEXITCODE
+	}
 }
 
-$codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME '.codex' }
+$homeDir = if ($HOME) { $HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } else { '.' }
+$codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $homeDir '.codex' }
 $config    = Join-Path $codexHome 'config.toml'
 $profFile  = Join-Path $codexHome 'codexlb.config.toml'
 $wsValue   = if ($NoWs) { 'false' } else { 'true' }
