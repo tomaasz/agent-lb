@@ -172,6 +172,8 @@ function makeAccount(acct, index) {
     // Which backend this account talks to. Absent means Anthropic, so configs
     // written before providers existed keep working untouched.
     provider: providerOf(acct),
+    planType: acct.planType || null,
+    email: acct.email || null,
     // Codex scopes a token to one ChatGPT account via a request header; this is
     // that id. The Anthropic counterpart is `accountUuid`, which is patched
     // into the request body instead.
@@ -3682,6 +3684,10 @@ export class AccountManager {
       accounts: this.accounts.map(a => ({
         name: a.name,
         type: a.type,
+        provider: a.provider || 'anthropic',
+        planType: a.planType || a.quota?.planType || null,
+        email: a.email || null,
+        accountId: a.accountId || null,
         orgName: a.orgName || null,
         organizationType: a.organizationType || null,
         rateLimitTier: a.rateLimitTier || null,
