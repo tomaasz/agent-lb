@@ -12,13 +12,14 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd || pwd)"
-
-if [ -n "$SCRIPT_DIR" ] && command -v node >/dev/null 2>&1; then
-	if [ -f "$SCRIPT_DIR/setup.js" ]; then
-		exec node "$SCRIPT_DIR/setup.js" "$@"
-	elif [ -f "$SCRIPT_DIR/teamclaude-setup.js" ]; then
-		exec node "$SCRIPT_DIR/teamclaude-setup.js" "$@"
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	if command -v node >/dev/null 2>&1; then
+		if [ -f "$SCRIPT_DIR/setup.js" ]; then
+			exec node "$SCRIPT_DIR/setup.js" "$@"
+		elif [ -f "$SCRIPT_DIR/teamclaude-setup.js" ]; then
+			exec node "$SCRIPT_DIR/teamclaude-setup.js" "$@"
+		fi
 	fi
 fi
 
@@ -59,9 +60,15 @@ if [ -z "$KEY" ] && [ -r "$HOME/.config/teamclaude.env" ]; then
 	[ -n "$KEY" ] && say "Używam klucza zapisanego w ~/.config/teamclaude.env."
 fi
 if [ -z "$KEY" ]; then
-	printf 'Klucz API z Claude-LB / TeamClaude (%s), wklej i Enter: ' "$URL"
-	read -rs KEY; printf '\n'
+	printf 'Klucz API z Agent LB (%s), wklej i Enter: ' "$URL"
+	if [ -e /dev/tty ]; then
+		read -rs KEY </dev/tty
+	else
+		read -rs KEY
+	fi
+	printf '\n'
 fi
+KEY="$(printf '%s' "${KEY:-}" | tr -d '\r\n\t ')"
 [ -n "$KEY" ] || die "nie podano klucza"
 
 say "Sprawdzam połączenie z $URL..."

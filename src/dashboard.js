@@ -665,7 +665,9 @@ const PAGE = `<!doctype html>
             <button class="btn btn-xs btn-accent" id="btnQuickCopyCmd" type="button" style="flex-shrink:0; padding:1px 7px;" title="Kopiuj polecenie do schowka">📋 Kopiuj</button>
           </div>
           <div style="display:flex; align-items:center; justify-content:space-between; margin-top:4px; font-size:10.5px; color:var(--dim);">
-            <span>1-klikowa konfiguracja CLI & VS Code</span>
+            <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none; color:var(--text);" title="Odznacz, jeśli chcesz uruchomić czystą komendę — instalator sam zapyta o wklejenie klucza">
+              <input type="checkbox" id="chkIncludeKeyInCmd" checked style="margin:0; cursor:pointer;"> Dołącz klucz
+            </label>
             <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-size:10.5px;">instrukcja GitHub ↗</a>
           </div>
         </div>
@@ -2604,13 +2606,22 @@ ${SHARED_HELPERS}
     }
     if (!key) key = '<KLUCZ_KLIENTA>';
 
+    var chk = document.getElementById('chkIncludeKeyInCmd');
+    var withKey = chk ? chk.checked : true;
+
     var cmd = '';
     if (currentQuickTab === 'codex') {
-      cmd = 'curl -fsSL ' + hostUrl + '/codexlb-setup.sh | bash -s -- --key ' + key;
+      cmd = withKey
+        ? 'curl -fsSL ' + hostUrl + '/codexlb-setup.sh | bash -s -- --key ' + key
+        : 'curl -fsSL ' + hostUrl + '/codexlb-setup.sh | bash';
     } else if (currentQuickTab === 'ps') {
-      cmd = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"';
+      cmd = withKey
+        ? '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"'
+        : 'irm ' + hostUrl + '/setup.ps1 | iex';
     } else {
-      cmd = 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + key;
+      cmd = withKey
+        ? 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + key
+        : 'curl -fsSL ' + hostUrl + '/setup.sh | bash';
     }
 
     var codeEl = document.getElementById('quickCmdText');
@@ -3146,6 +3157,12 @@ ${SHARED_HELPERS}
       b.addEventListener('click', function () { setQuickTab(t.toLowerCase()); });
     }
   });
+  var chkKey = document.getElementById('chkIncludeKeyInCmd');
+  if (chkKey) {
+    chkKey.addEventListener('change', function () {
+      updateQuickCmd();
+    });
+  }
 
   // Re-login modal listeners
   var btnCloseRelogin = document.getElementById('btnCloseReloginModal');

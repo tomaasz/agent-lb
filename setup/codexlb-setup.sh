@@ -19,11 +19,11 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd || pwd)"
-
-# Jeśli dostępny jest Node.js oraz plik JS (np. lokalne repo), deleguj
-if [ -n "${SCRIPT_DIR:-}" ] && command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/codexlb-setup.js" ]; then
-	exec node "$SCRIPT_DIR/codexlb-setup.js" "$@"
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+	if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/codexlb-setup.js" ]; then
+		exec node "$SCRIPT_DIR/codexlb-setup.js" "$@"
+	fi
 fi
 
 URL="${AGENT_LB_URL:-${CODEXLB_URL:-https://codexlb.gotova.pl}}"
@@ -41,6 +41,7 @@ STATUS=0
 RESTORE=0
 INSECURE=0
 CURL_INSECURE_FLAG=""
+KEY="${AGENT_LB_API_KEY:-${CODEX_LB_API_KEY:-}}"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -54,7 +55,14 @@ while [ $# -gt 0 ]; do
 		--model) MODEL="$2"; shift ;;
 		--effort) EFFORT="$2"; shift ;;
 		--url) URL="${2%/}"; shift ;;
-		-h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+		--key) KEY="$2"; shift ;;
+		-h|--help)
+			cat <<'EOF'
+Użycie: ./codexlb-setup.sh [--url URL] [--key KEY] [--model MODEL] [--effort EFFORT]
+                           [--profile-only] [--test] [--status] [--restore] [--clean] [--no-ws] [--insecure]
+EOF
+			exit 0
+			;;
 		*) echo "Nieznany argument: $1 (--help)" >&2; exit 2 ;;
 	esac
 	shift
@@ -192,7 +200,7 @@ fi
 command -v curl >/dev/null || die "brak curl"
 
 # ---------------------------------------------------------------- klucz API
-KEY="${AGENT_LB_API_KEY:-${CODEX_LB_API_KEY:-}}"
+KEY="${KEY:-${AGENT_LB_API_KEY:-${CODEX_LB_API_KEY:-}}}"
 if [ -z "$KEY" ] && [ -r "$ENV_FILE" ]; then
 	KEY="$(sed -n 's/^export \(?:AGENT_LB_API_KEY\|CODEX_LB_API_KEY\)=//p' "$ENV_FILE" 2>/dev/null | tr -d '"'\''' | head -1)"
 	[ -z "$KEY" ] && KEY="$(sed -n 's/^export CODEX_LB_API_KEY=//p' "$ENV_FILE" | tr -d '"'\''' | head -1)"
@@ -208,6 +216,7 @@ if [ -z "$KEY" ]; then
 		read -rs KEY; printf '\n'
 	fi
 fi
+KEY="$(printf '%s' "${KEY:-}" | tr -d '\r\n\t ')"
 [ -n "$KEY" ] || die "nie podano klucza"
 
 # ------------------------------------------------------- sprawdzenie klucza

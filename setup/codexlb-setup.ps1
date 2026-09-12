@@ -217,10 +217,11 @@ if (-not $Key) {
 	if ($Key) { Say "Uzywam klucza zapisanego wczesniej: $(Mask-Key $Key)" }
 }
 if (-not $Key) {
-	$secure = Read-Host -Prompt "Klucz API z panelu $Url (zakladka /apis), wklej i Enter" -AsSecureString
+	$secure = Read-Host -Prompt "Klucz API z panelu $Url, wklej i Enter" -AsSecureString
 	$Key = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
 		[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
 }
+if ($Key) { $Key = $Key.Trim() }
 if (-not $Key) { throw 'Nie podano klucza.' }
 
 # ------------------------------------------------------- sprawdzenie klucza

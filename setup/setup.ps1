@@ -48,10 +48,11 @@ if (-not $Key) {
 	elseif ($env:ANTHROPIC_API_KEY) { $Key = $env:ANTHROPIC_API_KEY }
 }
 if (-not $Key) {
-	$secure = Read-Host -Prompt "Klucz API z Claude-LB / TeamClaude ($Url), wklej i Enter" -AsSecureString
+	$secure = Read-Host -Prompt "Klucz API z Agent LB ($Url), wklej i Enter" -AsSecureString
 	$Key = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
 		[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
 }
+if ($Key) { $Key = $Key.Trim() }
 if (-not $Key) { throw 'Nie podano klucza.' }
 
 # ------------------------------------------------------- sprawdzenie klucza
