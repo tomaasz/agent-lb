@@ -7,15 +7,17 @@ import { resolveUpstreamProxy, setUpstreamProxy } from './upstream-proxy.js';
 import { ensureAccountIds } from './account-id.js';
 
 export function getConfigPath() {
+  if (process.env.AGENT_LB_CONFIG) return process.env.AGENT_LB_CONFIG;
   if (process.env.CLAUDE_LB_CONFIG) return process.env.CLAUDE_LB_CONFIG;
   if (process.env.TEAMCLAUDE_CONFIG) return process.env.TEAMCLAUDE_CONFIG;
   const configDir = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+  const agentPath = join(configDir, 'agent-lb.json');
   const lbPath = join(configDir, 'claude-lb.json');
   const tcPath = join(configDir, 'teamclaude.json');
-  if (existsSync(tcPath) && !existsSync(lbPath)) {
-    return tcPath;
-  }
-  return lbPath;
+  if (existsSync(agentPath)) return agentPath;
+  if (existsSync(lbPath)) return lbPath;
+  if (existsSync(tcPath)) return tcPath;
+  return agentPath;
 }
 
 /**

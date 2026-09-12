@@ -1,10 +1,12 @@
 {
-  "name": "claude-lb",
-  "version": "2.0.0",
-  "description": "Universal Multi-Account Load Balancer, Quota Rotator & Web Dashboard for Claude Code",
+  "name": "agent-lb",
+  "version": "2.1.0",
+  "description": "Universal Multi-Account Load Balancer, Quota Rotator & Web Dashboard for Claude Code & OpenAI Codex",
   "type": "module",
   "main": "src/index.js",
   "bin": {
+    "agent-lb": "src/index.js",
+    "agentlb": "src/index.js",
     "claude-lb": "src/index.js",
     "teamclaude": "src/index.js"
   },

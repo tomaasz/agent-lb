@@ -314,7 +314,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // without protecting anything.
       const rawPath = (req.url || '').split('?')[0];
       const normPath = rawPath.replace(/\/+$/, '') || '/';
-      const isDashboardPath = normPath === '/teamclaude/dashboard' || normPath === '/claude-lb/dashboard' || normPath === '/dashboard';
+      const isDashboardPath = normPath === '/agent-lb/dashboard' || normPath === '/teamclaude/dashboard' || normPath === '/claude-lb/dashboard' || normPath === '/dashboard';
 
       if ((req.method === 'GET' || req.method === 'HEAD') && isDashboardPath) {
         // The page keeps the proxy key in localStorage; the policy is what
@@ -334,63 +334,50 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Serve client setup scripts without auth
-      const setupScriptMatch = normPath.match(/^\/(?:teamclaude\/|claude-lb\/)?setup(?:\.(sh|ps1|js))?$/);
+      const setupScriptMatch = normPath.match(/^\/(?:agent-lb\/|teamclaude\/|claude-lb\/)?setup(?:\.(sh|ps1|js))?$/);
       if ((req.method === 'GET' || req.method === 'HEAD') && setupScriptMatch) {
         let ext = setupScriptMatch[1];
         if (!ext) {
           const ua = (req.headers['user-agent'] || '').toLowerCase();
           ext = (ua.includes('powershell') || ua.includes('pwsh')) ? 'ps1' : 'sh';
         }
-        const possibleNames = [`setup.${ext}`, `teamclaude-setup.${ext}`];
+        const possibleNames = [`setup.${ext}`, `agent-lb-setup.${ext}`, `teamclaude-setup.${ext}`];
         const scriptDirs = [
           join(__dirname, '..', 'setup'),
+          join(homedir(), 'agent-lb-setup'),
           join(homedir(), 'teamclaude-setup'),
           join(homedir(), 'bin'),
         ];
         let content = null;
         for (const dir of scriptDirs) {
-          for (const sName of possibleNames) {
-            try {
-              content = await readFile(join(dir, sName), 'utf8');
-              if (content) break;
-            } catch {}
+          for (const name of possibleNames) {
+            const p = join(dir, name);
+            if (existsSync(p)) {
+              try { content = readFileSync(p, 'utf8'); break; } catch {}
+            }
           }
           if (content) break;
         }
         if (!content) {
-          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-          res.end(`Script setup.${ext} not found\n`);
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end(`setup.${ext} not found on server`);
           return;
         }
-
-        // Dynamically bake requesting server origin into script if requested over HTTP
-        const reqProto = req.headers['x-forwarded-proto'] || (req.socket.encrypted ? 'https' : 'http');
-        const reqHost = req.headers['x-forwarded-host'] || req.headers.host;
-        if (reqHost) {
-          const currentOrigin = `${reqProto}://${reqHost}`;
-          content = content.replace(/http:\/\/localhost:3456/g, currentOrigin);
-        }
-
         res.writeHead(200, {
-          'Content-Type': 'text/plain; charset=utf-8',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'X-Content-Type-Options': 'nosniff',
+          'Content-Type': ext === 'ps1' ? 'text/plain; charset=utf-8' : 'application/x-sh',
+          'Cache-Control': 'no-cache',
         });
-        if (req.method === 'HEAD') {
-          res.end();
-          return;
-        }
         res.end(content);
         return;
       }
 
-      // Friendly redirect to dashboard for browser navigation to root or /teamclaude / /claude-lb
-      if ((req.method === 'GET' || req.method === 'HEAD') && (normPath === '/' || normPath === '/teamclaude' || normPath === '/claude-lb')) {
+      // Friendly redirect to dashboard for browser navigation to root or /agent-lb / /teamclaude / /claude-lb
+      if ((req.method === 'GET' || req.method === 'HEAD') && (normPath === '/' || normPath === '/agent-lb' || normPath === '/teamclaude' || normPath === '/claude-lb')) {
         res.writeHead(307, {
-          'Location': '/teamclaude/dashboard',
+          'Location': '/agent-lb/dashboard',
           'Content-Type': 'text/plain',
         });
-        res.end('Redirecting to /teamclaude/dashboard');
+        res.end('Redirecting to /agent-lb/dashboard');
         return;
       }
 
@@ -501,7 +488,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Status endpoint
-      if (req.method === 'GET' && (req.url === '/teamclaude/status' || req.url === '/claude-lb/status' || req.url === '/status' || req.url === '/api/status')) {
+      if (req.method === 'GET' && (req.url === '/agent-lb/status' || req.url === '/teamclaude/status' || req.url === '/claude-lb/status' || req.url === '/status' || req.url === '/api/status')) {
         const status = accountManager.getStatus({ sessionDetail: config.proxy?.sessionDetail === true });
         const extra = hooks.getStatusExtra?.() || {};
         const clientKeys = (config.proxy?.clientKeys || []).map(k => ({
@@ -519,7 +506,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // Tier-weighted fleet quota for lightweight consumers such as a shell or
       // Claude Code status line. Unlike /teamclaude/status this omits routing,
       // usage counters and server diagnostics, and never reaches upstream.
-      if (req.method === 'GET' && (req.url === '/teamclaude/quota' || req.url === '/claude-lb/quota' || req.url === '/quota' || req.url === '/api/quota')) {
+      if (req.method === 'GET' && (req.url === '/agent-lb/quota' || req.url === '/teamclaude/quota' || req.url === '/claude-lb/quota' || req.url === '/quota' || req.url === '/api/quota')) {
         const extra = hooks.getQuotaExtra?.() || {};
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ...accountManager.getQuotaSummary(), ...extra }, null, 2));
@@ -529,7 +516,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // Reload endpoint — re-sync accounts from config without a restart. This
       // is the headless equivalent of pressing 'R' in the TUI. Local control
       // only (no upstream calls); the auth gate above already applies.
-      if (req.method === 'POST' && (req.url === '/teamclaude/reload' || req.url === '/claude-lb/reload' || req.url === '/reload' || req.url === '/api/reload')) {
+      if (req.method === 'POST' && (req.url === '/agent-lb/reload' || req.url === '/teamclaude/reload' || req.url === '/claude-lb/reload' || req.url === '/reload' || req.url === '/api/reload')) {
         if (!hooks.reload) {
           res.writeHead(501, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'reload not supported' }));
@@ -551,7 +538,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Probe endpoint — force a fleet-wide quota and spend probe on demand.
-      if (req.method === 'POST' && (req.url === '/teamclaude/probe' || req.url === '/teamclaude/api/probe' || req.url === '/claude-lb/probe' || req.url === '/claude-lb/api/probe' || req.url === '/probe' || req.url === '/api/probe')) {
+      if (req.method === 'POST' && (req.url === '/agent-lb/probe' || req.url === '/agent-lb/api/probe' || req.url === '/teamclaude/probe' || req.url === '/teamclaude/api/probe' || req.url === '/claude-lb/probe' || req.url === '/claude-lb/api/probe' || req.url === '/probe' || req.url === '/api/probe')) {
         if (!hooks.probeQuota) {
           res.writeHead(501, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'probe not supported' }));
@@ -570,7 +557,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Pull latest claude-lb code and scripts from GitHub repo
-      if (req.method === 'POST' && (req.url === '/teamclaude/api/setup/pull' || req.url === '/claude-lb/api/setup/pull' || req.url === '/api/setup/pull' || req.url === '/teamclaude/setup/pull')) {
+      if (req.method === 'POST' && (req.url === '/agent-lb/api/setup/pull' || req.url === '/teamclaude/api/setup/pull' || req.url === '/claude-lb/api/setup/pull' || req.url === '/api/setup/pull' || req.url === '/teamclaude/setup/pull')) {
         const { exec } = await import('node:child_process');
         const repoDir = join(__dirname, '..');
         exec('git pull', { cwd: repoDir }, (err, stdout, stderr) => {
@@ -594,7 +581,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // that it was recorded. Body:
       // {"account": "<name|email|accountUuid|accountUuid/orgUuid|orgUuid>"}.
       // Local control only (no upstream calls); the auth gate above applies.
-      if (req.method === 'POST' && (req.url === '/teamclaude/switch' || req.url === '/claude-lb/switch' || req.url === '/switch' || req.url === '/api/switch')) {
+      if (req.method === 'POST' && (req.url === '/agent-lb/switch' || req.url === '/teamclaude/switch' || req.url === '/claude-lb/switch' || req.url === '/switch' || req.url === '/api/switch')) {
         const names = () => (accountManager.accounts || []).map(a => a.name);
         let target;
         try {
@@ -640,7 +627,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       const reqPath = (req.url || '').split('?')[0];
-      const normApiPath = reqPath.replace(/^\/(?:teamclaude|claude-lb)/, '');
+      const normApiPath = reqPath.replace(/^\/(?:agent-lb|teamclaude|claude-lb)/, '');
 
       // Auth verification & session endpoints for dashboard
       if (req.method === 'GET' && (normApiPath === '/api/auth/verify' || normApiPath === '/api/auth/session')) {
