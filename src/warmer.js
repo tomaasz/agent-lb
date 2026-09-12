@@ -24,6 +24,7 @@ import {
   ROLLING_NEAR_RESET_TOLERANCE_MS,
   ROLLING_POST_RESET_BUFFER_MS,
   resolveWarmupSchedule,
+  isWithinWorkingHours,
 } from './warmup-schedule.js';
 
 const SCHEDULE_TIMER_GRACE_MS = 60_000;
@@ -32,6 +33,7 @@ export class Warmer {
   constructor(accountManager, {
     intervalMs = 0,
     schedule = null,
+    workingHours = null,
     port,
     apiKey = null,
     model = 'haiku',
@@ -46,6 +48,7 @@ export class Warmer {
     this.am = accountManager;
     this.intervalMs = intervalMs;
     this.schedule = schedule;
+    this.workingHours = workingHours;
     this.port = port;
     this.apiKey = apiKey;
     this.model = model;
@@ -184,6 +187,9 @@ export class Warmer {
   async warmAll() {
     if (this._running) return;
     const now = this.nowFn();
+    if (this.workingHours && !isWithinWorkingHours(this.workingHours, now)) {
+      return;
+    }
     const generation = this._scheduleGeneration;
     const targets = [];
     const deferred = [];

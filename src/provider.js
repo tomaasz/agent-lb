@@ -73,7 +73,11 @@ export function isSubscriptionAccount(account) {
 // honours HTTPS_PROXY has no base-URL to redirect, so if the proxy will not
 // intercept the provider's host, that provider is simply unreachable through
 // it. Codex is exactly that case.
-const PROVIDER_HOSTS = { 'api.anthropic.com': 'anthropic', 'chatgpt.com': 'codex' };
+const PROVIDER_HOSTS = {
+  'api.anthropic.com': 'anthropic',
+  'chatgpt.com': 'codex',
+  'api.openai.com': 'codex',
+};
 
 // Hosts adjacent to a provider that must NOT be intercepted.
 //
@@ -126,15 +130,19 @@ export function isKnownProvider(id) {
 // the paths the ChatGPT backend already expects. That keeps this a pure
 // passthrough — the proxy forwards the path verbatim and never rewrites it —
 // and it keeps the Codex namespace clearly separated from Anthropic's `/v1/*`.
-const CODEX_PATHS = ['/backend-api/codex'];
+const CODEX_PATHS = [
+  '/backend-api/codex',
+  '/backend-api/wham',
+  '/v1/responses',
+  '/v1/chat/completions',
+];
 
 /**
  * Which provider should serve a request path.
  *
  * This is what lets one port serve both CLIs: Claude Code posts to
- * `/v1/messages` and Codex to `/backend-api/codex/responses`, so the path alone
- * says which pool of accounts is eligible. No second listener, no
- * client-supplied hint that could disagree with the body.
+ * `/v1/messages` and Codex to `/backend-api/codex/responses` (or `/v1/responses`),
+ * so the path alone says which pool of accounts is eligible.
  */
 export function providerForPath(url) {
   const path = String(url || '').split('?')[0];
@@ -182,6 +190,9 @@ export function applyAuthHeaders(headers, account) {
 export function upstreamFor(account, configuredUpstream) {
   if (account?.upstream) return account.upstream;
   const provider = providerOf(account);
+  if (provider === 'codex') {
+    return account?.type === 'api-key' ? 'https://api.openai.com' : PROVIDERS.codex.upstream;
+  }
   if (provider !== DEFAULT_PROVIDER) return PROVIDERS[provider].upstream;
   return configuredUpstream || PROVIDERS.anthropic.upstream;
 }

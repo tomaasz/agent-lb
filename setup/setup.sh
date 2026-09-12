@@ -27,15 +27,17 @@ URL="${CLAUDE_LB_URL:-${TEAMCLAUDE_URL:-http://localhost:3456}}"
 ENV_FILE="${CLAUDE_LB_ENV_FILE:-${TEAMCLAUDE_ENV_FILE:-$HOME/.config/claude-lb.env}}"
 BIN_DIR="${HOME}/bin"
 RUN_TEST=0
+SETUP_CODEX=0
 KEY="${CLAUDE_LB_API_KEY:-${TEAMCLAUDE_API_KEY:-${ANTHROPIC_API_KEY:-}}}"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--test) RUN_TEST=1 ;;
+		--codex) SETUP_CODEX=1 ;;
 		--url) URL="${2%/}"; shift ;;
 		--key) KEY="$2"; shift ;;
 		-h|--help)
-			echo "Użycie: ./teamclaude-setup.sh [--url URL] [--key KEY] [--test]"
+			echo "Użycie: ./setup.sh [--url URL] [--key KEY] [--codex] [--test]"
 			exit 0
 			;;
 		*) echo "Nieznany argument: $1" >&2; exit 2 ;;
@@ -90,6 +92,12 @@ cat > "$ENV_FILE" <<-EOF
 export ANTHROPIC_BASE_URL="$URL"
 export ANTHROPIC_API_KEY="$KEY"
 EOF
+if [ "$SETUP_CODEX" -eq 1 ] || [ -d "$HOME/.codex" ]; then
+cat >> "$ENV_FILE" <<-EOF
+export CODEX_BASE_URL="$URL/backend-api/codex"
+export OPENAI_BASE_URL="$URL/v1"
+EOF
+fi
 chmod 600 "$ENV_FILE"
 say "Zapisano $ENV_FILE."
 if [ "$ENV_FILE" != "$HOME/.config/teamclaude.env" ]; then
@@ -115,6 +123,23 @@ data['env']['ANTHROPIC_BASE_URL'] = '$URL'
 data['env']['ANTHROPIC_API_KEY'] = '$KEY'
 with open(p, 'w') as f: json.dump(data, f, indent=2)
 " 2>/dev/null && say "Zaktualizowano $CLAUDE_SETTINGS."
+fi
+
+# Konfiguracja ~/.codex/config.json (Codex CLI)
+if [ "$SETUP_CODEX" -eq 1 ] || [ -d "$HOME/.codex" ]; then
+	mkdir -p "$HOME/.codex"
+	CODEX_CONF="$HOME/.codex/config.json"
+	if command -v python3 >/dev/null 2>&1; then
+		python3 -c "
+import json
+p = '$CODEX_CONF'
+try:
+    with open(p, 'r') as f: data = json.load(f)
+except Exception: data = {}
+data['base_url'] = '$URL/backend-api/codex'
+with open(p, 'w') as f: json.dump(data, f, indent=2)
+" 2>/dev/null && say "Zaktualizowano $CODEX_CONF."
+	fi
 fi
 
 # Integracja z powłoką

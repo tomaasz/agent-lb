@@ -234,3 +234,59 @@ export function resolveWarmupConfig(config, now = Date.now()) {
   }
   return { enabled: false, mode: 'off' };
 }
+
+/**
+ * Check if the given timestamp falls within active working hours.
+ *
+ * @param {Object} [workingHours]
+ * @param {boolean} [workingHours.enabled] - Whether working hours gating is active (default false)
+ * @param {string} [workingHours.timezone] - IANA timezone (default 'UTC')
+ * @param {number[]} [workingHours.days] - Active days of week: 0=Sun, 1=Mon, ..., 6=Sat (default [1,2,3,4,5])
+ * @param {string} [workingHours.start] - 'HH:MM' start time (e.g. '08:30')
+ * @param {string} [workingHours.end] - 'HH:MM' end time (e.g. '18:00')
+ * @param {number} [workingHours.prewarmLeadMinutes] - Minutes before start to prewarm (default 30)
+ * @param {number} [now] - Epoch ms
+ * @returns {boolean}
+ */
+export function isWithinWorkingHours(workingHours, now = Date.now()) {
+  if (!workingHours || workingHours.enabled === false) return true;
+
+  const timezone = workingHours.timezone || 'UTC';
+  const activeDays = Array.isArray(workingHours.days) && workingHours.days.length > 0
+    ? workingHours.days
+    : [1, 2, 3, 4, 5]; // Mon-Fri default
+
+  const startMatch = /^(\d{1,2}):(\d{2})$/.exec(workingHours.start || '09:00');
+  const endMatch = /^(\d{1,2}):(\d{2})$/.exec(workingHours.end || '18:00');
+  const startHour = startMatch ? Number(startMatch[1]) : 9;
+  const startMin = startMatch ? Number(startMatch[2]) : 0;
+  const endHour = endMatch ? Number(endMatch[1]) : 18;
+  const endMin = endMatch ? Number(endMatch[2]) : 0;
+  const prewarmLead = Number.isFinite(Number(workingHours.prewarmLeadMinutes))
+    ? Math.max(0, Number(workingHours.prewarmLeadMinutes))
+    : 30;
+
+  const p = localParts(now, timezone);
+  const localDate = new Date(Date.UTC(p.year, p.month - 1, p.day));
+  const currentDayOfWeek = localDate.getUTCDay();
+
+  const currentMinutes = p.hour * 60 + p.minute;
+  const effectiveStart = startHour * 60 + startMin - prewarmLead;
+  const effectiveEnd = endHour * 60 + endMin;
+
+  if (activeDays.includes(currentDayOfWeek)) {
+    if (currentMinutes >= effectiveStart && currentMinutes <= effectiveEnd) {
+      return true;
+    }
+  }
+
+  const tomorrowDayOfWeek = (currentDayOfWeek + 1) % 7;
+  if (activeDays.includes(tomorrowDayOfWeek) && effectiveStart < 0) {
+    const wrappedPrewarmStart = 24 * 60 + effectiveStart;
+    if (currentMinutes >= wrappedPrewarmStart) {
+      return true;
+    }
+  }
+
+  return false;
+}

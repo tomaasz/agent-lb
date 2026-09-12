@@ -32,6 +32,7 @@ let apiKey = process.env.CLAUDE_LB_API_KEY || process.env.TEAMCLAUDE_API_KEY || 
 let runTest = false;
 let skipVscode = false;
 let skipEnv = false;
+let setupCodex = false;
 
 // Parsowanie argumentów
 const args = process.argv.slice(2);
@@ -43,6 +44,8 @@ for (let i = 0; i < args.length; i++) {
     apiKey = args[++i].trim();
   } else if (arg === '--test') {
     runTest = true;
+  } else if (arg === '--codex') {
+    setupCodex = true;
   } else if (arg === '--skip-vscode') {
     skipVscode = true;
   } else if (arg === '--skip-env') {
@@ -57,6 +60,7 @@ Użycie:
 Opcje:
   --url URL        Adres serwera proxy (domyślnie: ${targetUrl})
   --key KLUCZ      Klucz API proxy (tc-...)
+  --codex          Skonfiguruj również klienta OpenAI Codex CLI (~/.codex/config.json)
   --test           Wykonaj próbne uruchomienie claude po konfiguracji
   --skip-vscode    Pomiń konfigurację oficjalnego rozszerzenia VS Code
   --skip-env       Pomiń konfigurację zmiennych powłoki / systemu
@@ -301,12 +305,33 @@ async function main() {
     }
   }
 
+  // 5b. Konfiguracja OpenAI Codex CLI (~/.codex/config.json)
+  const codexDir = path.join(os.homedir(), '.codex');
+  if (setupCodex || fs.existsSync(codexDir)) {
+    const codexConfigFile = path.join(codexDir, 'config.json');
+    try {
+      if (!fs.existsSync(codexDir)) {
+        fs.mkdirSync(codexDir, { recursive: true, mode: 0o700 });
+      }
+      let codexConfig = safeReadJson(codexConfigFile) || {};
+      codexConfig.base_url = `${targetUrl}/backend-api/codex`;
+      fs.writeFileSync(codexConfigFile, JSON.stringify(codexConfig, null, 2) + '\n', { mode: 0o600 });
+      console.log(`[OK] Skonfigurowano ${codexConfigFile} (Codex CLI przekierowane na Claude-LB).`);
+    } catch (err) {
+      console.warn(`[Ostrzeżenie] Nie udało się zaktualizować konfiguracji Codex CLI: ${err.message}`);
+    }
+  }
+
   // 6. Zmienne systemowe / powłoki
   if (!skipEnv) {
     if (isWin) {
       try {
-        execSync(`powershell.exe -NoProfile -Command "[Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', '${targetUrl}', 'User'); [Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', '${apiKey}', 'User')"`);
-        console.log(`[OK] Zapisano zmienne ANTHROPIC_BASE_URL i ANTHROPIC_API_KEY w profilu użytkownika Windows.`);
+        let winCmd = `[Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', '${targetUrl}', 'User'); [Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', '${apiKey}', 'User')`;
+        if (setupCodex || fs.existsSync(codexDir)) {
+          winCmd += `; [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', '${targetUrl}/backend-api/codex', 'User'); [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', '${targetUrl}/v1', 'User')`;
+        }
+        execSync(`powershell.exe -NoProfile -Command "${winCmd}"`);
+        console.log(`[OK] Zapisano zmienne środowiskowe w profilu użytkownika Windows.`);
       } catch (err) {
         console.warn(`[Ostrzeżenie] Nie udało się ustawić zmiennych w Windows: ${err.message}`);
       }
@@ -317,7 +342,10 @@ async function main() {
       const legacyEnvFile = path.join(configDir, 'teamclaude.env');
       try {
         if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
-        const envContent = `# Claude-LB / TeamClaude environment configuration\nexport ANTHROPIC_BASE_URL="${targetUrl}"\nexport ANTHROPIC_API_KEY="${apiKey}"\n`;
+        let envContent = `# Claude-LB / TeamClaude environment configuration\nexport ANTHROPIC_BASE_URL="${targetUrl}"\nexport ANTHROPIC_API_KEY="${apiKey}"\n`;
+        if (setupCodex || fs.existsSync(codexDir)) {
+          envContent += `export CODEX_BASE_URL="${targetUrl}/backend-api/codex"\nexport OPENAI_BASE_URL="${targetUrl}/v1"\n`;
+        }
         fs.writeFileSync(envFile, envContent, { mode: 0o600 });
         fs.writeFileSync(legacyEnvFile, envContent, { mode: 0o600 });
         console.log(`[OK] Zapisano plik środowiskowy ${envFile} (oraz ${legacyEnvFile}).`);
@@ -363,6 +391,9 @@ async function main() {
   console.log('1. Claude Code CLI: będzie automatycznie łączyć się przez Claude-LB w każdym terminalu.');
   console.log('2. Rozszerzenie VS Code: po zrestartowaniu okna VS Code będzie używać Twojego proxy i klucza.');
   console.log('3. Inne narzędzia (Cursor, Cline, Continue, Roo Code): jako Base URL ustaw ' + targetUrl + ', a jako klucz swój tc-...');
+  if (setupCodex || fs.existsSync(codexDir)) {
+    console.log('4. OpenAI Codex CLI: skonfigurowano bazowy URL na ' + targetUrl + '/backend-api/codex.');
+  }
 }
 
 main().catch((err) => {

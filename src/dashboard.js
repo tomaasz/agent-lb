@@ -363,6 +363,8 @@ const PAGE = `<!doctype html>
   .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
   .bar i { display: block; height: 100%; border-radius: 4px; background: var(--ok); }
   .badge-plan { color: #d2a8ff; border-color: rgba(210,168,255,0.4); background: rgba(210,168,255,0.1); font-weight: 500; }
+  .badge-codex { color: #56d364; border-color: rgba(86,211,100,0.4); background: rgba(86,211,100,0.1); font-weight: 500; }
+  .badge-anthropic { color: #d2a8ff; border-color: rgba(210,168,255,0.4); background: rgba(210,168,255,0.1); font-weight: 500; }
   .quota { display: grid; grid-template-columns: 80px 1fr 210px; gap: 12px; align-items: center; margin-top: 8px; }
   .quota .lbl { color: var(--dim); font-size: 13.5px; font-weight: 500; }
   .quota .val { color: var(--dim); font-size: 13.5px; text-align: right; font-variant-numeric: tabular-nums; }
@@ -600,8 +602,17 @@ const PAGE = `<!doctype html>
   <div id="modalAddAccount" class="modal-backdrop" style="display:none;">
     <div class="modal-box">
       <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:600; font-size:15px;">➕ Dodaj konto Claude</span>
+        <span style="font-weight:600; font-size:15px;">➕ Dodaj konto</span>
         <button class="btn btn-sm" id="btnCloseAddAccount">✕ Zamknij</button>
+      </div>
+      <div style="margin-bottom:12px; display:flex; align-items:center; gap:14px; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px;">
+        <span style="font-size:13px; color:var(--dim); font-weight:600;">Dostawca:</span>
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
+          <input type="radio" name="addAccountProvider" value="anthropic" checked id="radioProvAnthropic"> 🟣 Anthropic (Claude)
+        </label>
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
+          <input type="radio" name="addAccountProvider" value="codex" id="radioProvCodex"> 🟢 OpenAI (Codex / ChatGPT)
+        </label>
       </div>
       <div class="tabs-bar">
         <button class="tab-btn active" id="tabBtnApiKey">Klucz API Console</button>
@@ -1035,10 +1046,12 @@ ${SHARED_HELPERS}
   function renderAccount(a, current) {
     var card = el('div', 'card');
     var head = el('div', 'row');
-    head.appendChild(el('span', 'name', a.name));
+    // Provider badge
+    var prov = a.provider || 'anthropic';
+    head.appendChild(el('span', 'tag ' + (prov === 'codex' ? 'badge-codex' : 'badge-anthropic'), prov === 'codex' ? '🟢 OpenAI Codex' : '🟣 Anthropic'));
 
     // Subscription plan badge
-    var planName = a.hasClaudeMax ? 'Claude Max' : (a.hasClaudePro || a.organizationType === 'claude_pro' ? 'Claude Pro' : (a.organizationType ? a.organizationType.replace(/_/g, ' ') : null));
+    var planName = a.hasClaudeMax ? 'Claude Max' : (a.hasClaudePro || a.organizationType === 'claude_pro' ? 'Claude Pro' : (a.planType ? 'ChatGPT ' + a.planType.toUpperCase() : (a.organizationType ? a.organizationType.replace(/_/g, ' ') : null)));
     if (planName) {
       head.appendChild(el('span', 'badge badge-plan', '💎 ' + planName));
     }
@@ -1058,8 +1071,8 @@ ${SHARED_HELPERS}
     if (a.type === 'oauth') {
       var isErr = a.status === 'error' || a.unavailable === 'error';
       var btnRelogin = el('button', 'btn btn-sm' + (isErr ? ' btn-accent' : ''), isErr ? '🔐 Zaloguj ponownie' : '🔐 Re-login');
-      btnRelogin.title = 'Zaloguj ponownie konto ' + a.name + ' przez Claude OAuth';
-      btnRelogin.addEventListener('click', function () { startReLogin(a.name, a.priority); });
+      btnRelogin.title = 'Zaloguj ponownie konto ' + a.name + ' przez ' + (prov === 'codex' ? 'OpenAI Codex' : 'Claude') + ' OAuth';
+      btnRelogin.addEventListener('click', function () { startReLogin(a.name, a.priority, a.provider); });
       acts.appendChild(btnRelogin);
     }
     var btnToggle = el('button', 'btn btn-sm ' + (a.disabled ? 'btn-ok' : 'btn-warn'), a.disabled ? '▶️ Włącz' : '⏸️ Wyłącz');
@@ -1086,8 +1099,8 @@ ${SHARED_HELPERS}
         fixBtn.style.marginLeft = '10px';
         fixBtn.style.padding = '2px 8px';
         fixBtn.style.fontSize = '12px';
-        fixBtn.title = 'Zaloguj ponownie konto ' + a.name + ' przez Claude.ai';
-        fixBtn.addEventListener('click', function () { startReLogin(a.name, a.priority); });
+        fixBtn.title = 'Zaloguj ponownie konto ' + a.name;
+        fixBtn.addEventListener('click', function () { startReLogin(a.name, a.priority, a.provider); });
         bDiv.appendChild(fixBtn);
       }
       card.appendChild(bDiv);
@@ -1362,9 +1375,9 @@ ${SHARED_HELPERS}
       if (p.kind === 'account' && (p.reason === 'error' || (p.text && p.text.indexOf('needs a re-login') !== -1))) {
         var btn = el('button', 'btn btn-sm btn-accent', '🔐 Zaloguj ponownie (Re-login)');
         btn.style.whiteSpace = 'nowrap';
-        btn.title = 'Zaloguj ponownie konto ' + (p.accountName || '') + ' w Claude.ai';
+        btn.title = 'Zaloguj ponownie konto ' + (p.accountName || '');
         btn.addEventListener('click', function () {
-          startReLogin(p.accountName, p.priority);
+          startReLogin(p.accountName, p.priority, p.provider);
         });
         box.appendChild(btn);
       } else if (p.kind === 'account' && p.reason === 'disabled') {
@@ -1579,16 +1592,27 @@ ${SHARED_HELPERS}
       });
   }
 
+  function getSelectedAddProvider() {
+    var codexRadio = document.getElementById('radioProvCodex');
+    return (codexRadio && codexRadio.checked) ? 'codex' : 'anthropic';
+  }
+
   function doAddApiKey(btn) {
     var key = document.getElementById('inApiKey').value.trim();
     var name = document.getElementById('inApiKeyName').value.trim();
     var prio = parseInt(document.getElementById('inApiKeyPrio').value.trim(), 10) || 0;
     if (!key) {
-      note('error', 'Klucz API Anthropic jest wymagany');
+      note('error', 'Klucz API jest wymagany');
       return;
     }
     btn.disabled = true;
-    apiCall('/teamclaude/api/accounts/add', 'POST', { type: 'api', apiKey: key, name: name, priority: prio })
+    apiCall('/teamclaude/api/accounts/add', 'POST', {
+      type: 'api',
+      apiKey: key,
+      name: name,
+      priority: prio,
+      provider: getSelectedAddProvider(),
+    })
       .then(function (res) {
         btn.disabled = false;
         if (!res) return;
@@ -1626,7 +1650,8 @@ ${SHARED_HELPERS}
       accessToken: access || null,
       refreshToken: refresh || null,
       name: name,
-      priority: prio
+      priority: prio,
+      provider: getSelectedAddProvider(),
     })
       .then(function (res) {
         btn.disabled = false;
@@ -1658,7 +1683,13 @@ ${SHARED_HELPERS}
       return;
     }
     btn.disabled = true;
-    apiCall('/teamclaude/api/accounts/add', 'POST', { type: 'import', importFrom: path, name: name, priority: prio })
+    apiCall('/teamclaude/api/accounts/add', 'POST', {
+      type: 'import',
+      importFrom: path,
+      name: name,
+      priority: prio,
+      provider: getSelectedAddProvider(),
+    })
       .then(function (res) {
         btn.disabled = false;
         if (!res) return;
@@ -1668,23 +1699,23 @@ ${SHARED_HELPERS}
           closeModal('modalAddAccount');
           poll();
         } else {
-          note('error', 'Błąd importu konta: ' + (res.error || 'nieznany błąd'));
+          note('error', 'Błąd importu: ' + (res.error || 'nieznany błąd'));
         }
       })
       .catch(function (e) {
         btn.disabled = false;
-        note('error', 'Błąd importu konta: ' + e.message);
+        note('error', 'Błąd importu: ' + e.message);
       });
   }
 
-  function doStartOAuth(btn) {
+  function doStartBrowserOAuth(btn) {
     if (btn) btn.disabled = true;
     var authWindow = null;
     try {
       authWindow = window.open('about:blank', '_blank');
     } catch {}
 
-    apiCall('/teamclaude/oauth/start', 'GET')
+    apiCall('/teamclaude/oauth/start?provider=' + encodeURIComponent(getSelectedAddProvider()), 'GET')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res || !res.ok) {
@@ -1721,12 +1752,18 @@ ${SHARED_HELPERS}
       return;
     }
     btn.disabled = true;
-    apiCall('/teamclaude/oauth/complete', 'POST', { code: code, state: pendingOAuthState, name: name, priority: prio })
+    apiCall('/teamclaude/oauth/complete', 'POST', {
+      code: code,
+      state: pendingOAuthState,
+      name: name,
+      priority: prio,
+      provider: getSelectedAddProvider(),
+    })
       .then(function (res) {
         btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Zautoryzowano konto Claude "' + res.account + '"' + (res.email ? ' (' + res.email + ')' : ''));
+          note('ok', 'Zautoryzowano konto "' + res.account + '"' + (res.email ? ' (' + res.email + ')' : ''));
           document.getElementById('inOAuthCode').value = '';
           document.getElementById('inOAuthFlowName').value = '';
           document.getElementById('oauthStep1').style.display = 'block';
@@ -1746,6 +1783,7 @@ ${SHARED_HELPERS}
 
   var currentReloginAccount = null;
   var currentReloginPriority = 0;
+  var currentReloginProvider = 'anthropic';
 
   function selectReloginTab(tab) {
     var tabs = ['Browser', 'Json', 'Import'];
@@ -1764,26 +1802,41 @@ ${SHARED_HELPERS}
     });
   }
 
-  function startReLogin(accountName, priority) {
+  function startReLogin(accountName, priority, provider) {
     currentReloginAccount = accountName || '';
     currentReloginPriority = priority != null ? priority : 0;
+    currentReloginProvider = provider || 'anthropic';
+    var isCodex = currentReloginProvider === 'codex';
 
     var titleEl = document.getElementById('reloginAccountTitle');
-    if (titleEl) titleEl.textContent = accountName;
+    if (titleEl) titleEl.textContent = accountName + (isCodex ? ' (OpenAI Codex)' : ' (Claude)');
     var email1 = document.getElementById('reloginStep1Email');
     if (email1) email1.textContent = accountName;
     var email2 = document.getElementById('reloginStep2Email');
     if (email2) email2.textContent = accountName;
 
+    var s1Btn = document.getElementById('btnStartReloginOAuth');
+    if (s1Btn) s1Btn.textContent = isCodex ? '🌐 Otwórz logowanie OpenAI Codex w nowej karcie' : '🌐 Otwórz logowanie Claude.ai w nowej karcie';
+
+    var inImportPath = document.getElementById('inReloginImportPath');
+    if (inImportPath) inImportPath.value = isCodex ? '~/.codex/auth.json' : '~/.claude/.credentials.json';
+
+    var inJson = document.getElementById('inReloginJson');
+    if (inJson) {
+      inJson.value = '';
+      inJson.placeholder = isCodex ? '{"tokens":{"access_token":"...","refresh_token":"...","account_id":"..."}}' : '{"claudeAiOauth":{"accessToken":"...","refreshToken":"..."}}';
+    }
+
+    var inCode = document.getElementById('inReloginOAuthCode');
+    if (inCode) {
+      inCode.value = '';
+      inCode.placeholder = isCodex ? 'Wklej kod lub URL callback (http://localhost:1455/auth/callback?code=...)' : 'Wklej kod lub URL callback (https://claude.ai/oauth/callback?code=...)';
+    }
+
     var step1 = document.getElementById('reloginOAuthStep1');
     if (step1) step1.style.display = 'block';
     var step2 = document.getElementById('reloginOAuthStep2');
     if (step2) step2.style.display = 'none';
-
-    var inCode = document.getElementById('inReloginOAuthCode');
-    if (inCode) inCode.value = '';
-    var inJson = document.getElementById('inReloginJson');
-    if (inJson) inJson.value = '';
 
     selectReloginTab('Browser');
     openModal('modalRelogin');
@@ -1796,7 +1849,8 @@ ${SHARED_HELPERS}
       authWindow = window.open('about:blank', '_blank');
     } catch {}
 
-    apiCall('/teamclaude/oauth/start', 'GET')
+    var startUrl = '/teamclaude/oauth/start?provider=' + encodeURIComponent(currentReloginProvider || 'anthropic');
+    apiCall(startUrl, 'GET')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res || !res.ok) {
@@ -1837,7 +1891,8 @@ ${SHARED_HELPERS}
       code: code,
       state: pendingOAuthState,
       name: currentReloginAccount,
-      priority: currentReloginPriority
+      priority: currentReloginPriority,
+      provider: currentReloginProvider,
     })
       .then(function (res) {
         if (btn) btn.disabled = false;
@@ -1848,7 +1903,7 @@ ${SHARED_HELPERS}
           pendingOAuthState = null;
           poll();
         } else {
-          note('error', 'Błąd autoryzacji: ' + (res.error || 'nieznany błąd'));
+          note('error', 'Błąd logowania: ' + (res.error || 'nieznany błąd'));
         }
       })
       .catch(function (e) {
@@ -1868,7 +1923,8 @@ ${SHARED_HELPERS}
       type: 'oauth',
       credentialsJson: raw,
       name: currentReloginAccount,
-      priority: currentReloginPriority
+      priority: currentReloginPriority,
+      provider: currentReloginProvider,
     })
       .then(function (res) {
         if (btn) btn.disabled = false;
@@ -1898,7 +1954,8 @@ ${SHARED_HELPERS}
       type: 'import',
       importFrom: path,
       name: currentReloginAccount,
-      priority: currentReloginPriority
+      priority: currentReloginPriority,
+      provider: currentReloginProvider,
     })
       .then(function (res) {
         if (btn) btn.disabled = false;

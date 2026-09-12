@@ -27,6 +27,11 @@ import {
   fetchProfile, parseAuthCode, exchangeCodeForTokens, importCredentials,
   DEFAULT_CLIENT_ID, OAUTH_AUTHORIZE, OAUTH_SCOPES, MANUAL_LOGIN_REDIRECT_URI,
 } from './oauth.js';
+import {
+  buildCodexAuthUrl, exchangeCodexCode, importCodexCredentials,
+} from './codex-auth.js';
+import { FairShareController } from './fair-share.js';
+import { ToolCallDedupeCache } from './tool-call-dedupe.js';
 import { sameIdentity, findUpsertTarget } from './identity.js';
 import { mintAccountId } from './account-id.js';
 
@@ -264,19 +269,24 @@ function usableClientKeys(clientKeys) {
 export function resolveClientAuth(proxyConfig, presented) {
   const shared = proxyConfig?.apiKey;
   const clientKeys = Array.isArray(proxyConfig?.clientKeys) ? usableClientKeys(proxyConfig.clientKeys) : [];
-  if (!shared && clientKeys.length === 0) return { ok: true, client: null };
+  if (!shared && clientKeys.length === 0) return { ok: true, client: null, entry: null };
   for (const entry of clientKeys) {
     if (safeKeyEqual(presented, entry.key)) {
-      return { ok: true, client: entry.name.trim() };
+      return { ok: true, client: entry.name.trim(), entry };
     }
   }
-  if (shared && safeKeyEqual(presented, shared)) return { ok: true, client: null };
-  return { ok: false, client: null };
+  if (shared && safeKeyEqual(presented, shared)) return { ok: true, client: null, entry: null };
+  return { ok: false, client: null, entry: null };
 }
 
 export function createProxyServer(accountManager, config, hooks = {}, sx = null, clientUsage = null, dimensionUsage = null) {
   const upstream = config.upstream || 'https://api.anthropic.com';
   const holdMs = (config.holdSeconds || 0) * 1000;
+  const fairShare = new FairShareController({
+    poolCapacity: config.poolCapacity || 32,
+    congestionThreshold: config.congestionThreshold || 0.75,
+  });
+  const toolDedupe = new ToolCallDedupeCache();
 
   // The log directory is made up front and synchronously, so a path that
   // cannot be a directory (a file sitting there, no permission) is reported
@@ -388,7 +398,9 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // request (not captured at creation) so a reload that edits clientKeys
       // applies to a running server, matching how eventLogging/blockedModels
       // are read live further down the pipeline.
-      const clientKey = req.headers['x-api-key'];
+      const rawAuth = req.headers['authorization'] || '';
+      const bearerMatch = /^Bearer\s+(\S+)$/i.exec(rawAuth);
+      const clientKey = req.headers['x-api-key'] || (bearerMatch ? bearerMatch[1] : null);
       const isLocal = loopbackExempt(req.headers, req.socket.remoteAddress, config.proxy);
       const isTailnet = tailnetExempt(req.headers, req.socket.remoteAddress, config.proxy);
       const isTrustedOrigin = isLocal || isTailnet;
@@ -401,10 +413,24 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }));
         return;
       }
-      // Client identity for per-client usage. A loopback/tailnet caller that presented
-      // a valid client key is attributed like any other; loopback/tailnet without one
-      // passed only via the exemption and stays unattributed.
+      req.clientKey = clientKey;
       req.tcClient = auth.ok ? auth.client : null;
+
+      // Check allowedProviders for the client key
+      const reqProvider = providerForPath(req.url);
+      if (auth.entry?.allowedProviders && Array.isArray(auth.entry.allowedProviders)) {
+        if (!auth.entry.allowedProviders.includes(reqProvider)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            type: 'error',
+            error: {
+              type: 'permission_error',
+              message: `API key "${auth.client}" is not authorized for provider "${reqProvider}"`,
+            },
+          }));
+          return;
+        }
+      }
 
       // Control-plane mutations are refused when the request was issued by a web
       // page. The gate above exempts loopback from the API key, so without this
@@ -995,6 +1021,52 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         // 3. Import from file path on server (importFrom or type: "import")
         if (type === 'import' || body?.importFrom) {
           const fromPath = (typeof body?.importFrom === 'string' ? body.importFrom : (body?.fromPath || '~/.claude/.credentials.json')).trim();
+          const reqProvider = body?.provider || (fromPath.toLowerCase().includes('codex') ? 'codex' : 'anthropic');
+
+          if (reqProvider === 'codex') {
+            let codexCreds = null;
+            try {
+              codexCreds = await importCodexCredentials(fromPath);
+            } catch (err) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ ok: false, error: `Failed to import Codex credentials from "${fromPath}": ${err.message}` }));
+              return;
+            }
+
+            let name = typeof body?.name === 'string' ? body.name.trim() : '';
+            if (!name && codexCreds?.email) name = codexCreds.email;
+            if (!name) {
+              const count = (config.accounts || []).filter(a => a.provider === 'codex').length + 1;
+              name = `codex-${count}`;
+            }
+
+            const newAccount = {
+              id: mintAccountId(),
+              name,
+              type: 'oauth',
+              provider: 'codex',
+              importFrom: fromPath,
+              source: 'import',
+              accessToken: codexCreds.accessToken,
+              refreshToken: codexCreds.refreshToken || null,
+              accountId: codexCreds.accountId || null,
+              email: codexCreds.email || null,
+              planType: codexCreds.planType || null,
+              priority,
+            };
+
+            await atomicConfigUpdate(disk => {
+              if (!Array.isArray(disk.accounts)) disk.accounts = [];
+              disk.accounts.push(newAccount);
+            });
+
+            if (hooks.reload) await hooks.reload();
+            console.log(`[TeamClaude] Imported Codex account "${name}" from ${fromPath} (web control)`);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'oauth', provider: 'codex', importFrom: fromPath, email: codexCreds?.email }));
+            return;
+          }
+
           let creds = null;
           try {
             creds = await importCredentials(fromPath);
@@ -1135,9 +1207,25 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // OAuth Flow: Start
       if (req.method === 'GET' && (normApiPath === '/oauth/start' || reqPath === '/teamclaude/oauth/start')) {
         cleanExpiredOAuthStates();
+        const reqUrl = new URL(req.url, 'http://localhost');
+        const provider = reqUrl.searchParams.get('provider') || 'anthropic';
         const codeVerifier = randomBytes(32).toString('base64url');
         const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
         const state = randomBytes(32).toString('base64url');
+
+        if (provider === 'codex') {
+          const authUrl = buildCodexAuthUrl({ state, codeChallenge });
+          pendingOAuthStates.set(state, { codeVerifier, createdAt: Date.now(), provider: 'codex' });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            ok: true,
+            authUrl,
+            state,
+            provider: 'codex',
+          }));
+          return;
+        }
+
         const redirectUri = MANUAL_LOGIN_REDIRECT_URI;
 
         const authUrl = new URL(OAUTH_AUTHORIZE);
@@ -1150,13 +1238,14 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         authUrl.searchParams.set('code_challenge_method', 'S256');
         authUrl.searchParams.set('state', state);
 
-        pendingOAuthStates.set(state, { codeVerifier, createdAt: Date.now() });
+        pendingOAuthStates.set(state, { codeVerifier, createdAt: Date.now(), provider: 'anthropic' });
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           ok: true,
           authUrl: authUrl.toString(),
           state,
+          provider: 'anthropic',
         }));
         return;
       }
@@ -1185,8 +1274,68 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
 
-        const { codeVerifier } = pendingOAuthStates.get(state);
+        const stored = pendingOAuthStates.get(state);
+        const { codeVerifier } = stored;
+        const provider = stored.provider || 'anthropic';
         pendingOAuthStates.delete(state);
+
+        if (provider === 'codex') {
+          let codeToExchange = rawCode;
+          if (rawCode.includes('code=')) {
+            try {
+              const u = new URL(rawCode.startsWith('http') ? rawCode : `http://localhost/${rawCode}`);
+              codeToExchange = u.searchParams.get('code') || rawCode;
+            } catch {}
+          }
+
+          let codexCreds;
+          try {
+            codexCreds = await exchangeCodexCode({ code: codeToExchange, codeVerifier });
+          } catch (err) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'Codex token exchange failed: ' + err.message }));
+            return;
+          }
+
+          if (!name && codexCreds?.email) name = codexCreds.email;
+          if (!name) {
+            const count = (config.accounts || []).filter(a => a.provider === 'codex').length + 1;
+            name = `codex-${count}`;
+          }
+
+          const newAccount = {
+            id: mintAccountId(),
+            name,
+            type: 'oauth',
+            provider: 'codex',
+            source: 'web-oauth',
+            accessToken: codexCreds.accessToken,
+            refreshToken: codexCreds.refreshToken || null,
+            accountId: codexCreds.accountId || null,
+            email: codexCreds.email || null,
+            planType: codexCreds.planType || null,
+            expiresAt: codexCreds.expiresAt || null,
+            priority,
+          };
+
+          await atomicConfigUpdate(disk => {
+            if (!Array.isArray(disk.accounts)) disk.accounts = [];
+            const idx = findUpsertTarget(disk.accounts, newAccount);
+            if (idx >= 0) {
+              const prev = disk.accounts[idx];
+              disk.accounts[idx] = { ...prev, ...newAccount, id: prev.id || newAccount.id, name: prev.name };
+              name = prev.name;
+            } else {
+              disk.accounts.push(newAccount);
+            }
+          });
+
+          if (hooks.reload) await hooks.reload();
+          console.log(`[TeamClaude] Successfully authenticated Codex OAuth account "${name}" (web control)`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, account: name, provider: 'codex', email: codexCreds?.email }));
+          return;
+        }
 
         let parsed;
         try {
@@ -1843,6 +1992,41 @@ export function createProxyRequestListener({ accountManager, upstream, logDir = 
       ctx.signal = requestAbort.signal;
       res.once('close', onRequestClose);
       if (clientGone(res)) onRequestClose();
+
+      const keyId = client || (req.clientKey ? req.clientKey.slice(0, 12) : 'anonymous');
+      const fsAdmission = fairShare.admit(keyId);
+      if (!fsAdmission.admitted) {
+        if (!res.headersSent) {
+          res.writeHead(429, {
+            'Content-Type': 'application/json',
+            'Retry-After': '2',
+          });
+          res.end(JSON.stringify({
+            type: 'error',
+            error: {
+              type: 'rate_limit_error',
+              message: `Stream pool congested (active: ${fairShare.totalStreams}, fair share: ${fsAdmission.fairShare}). Please retry shortly.`,
+            },
+          }));
+        }
+        accountManager.endSession(sessionId, null);
+        openEntry = null;
+        return;
+      }
+      fairShare.acquire(keyId);
+
+      let parsedBody = null;
+      try {
+        if (body && body.length > 0) parsedBody = JSON.parse(body.toString('utf8'));
+      } catch {}
+
+      if (parsedBody) {
+        const dedupeResult = toolDedupe.inspectRequest(parsedBody, sessionId);
+        if (dedupeResult.hasDuplicate) {
+          console.warn(`[TeamClaude] [ToolDedupe] Warning: detected replayed side-effect tool calls in session "${sessionId}": ${dedupeResult.duplicates.map(d => d.name).join(', ')}`);
+        }
+      }
+
       try {
         await forwardRequest(req, res, body, accountManager, upstream, 0, hooks, reqId, ctx, logDir, sx);
       } catch (err) {
@@ -1857,6 +2041,24 @@ export function createProxyRequestListener({ accountManager, upstream, logDir = 
           res.end(JSON.stringify({ type: 'error', error: { type: 'proxy_error', message: 'Internal proxy error' } }));
         }
       } finally {
+        fairShare.release(keyId);
+        if (parsedBody && ctx.status >= 200 && ctx.status < 300) {
+          const messages = Array.isArray(parsedBody.messages) ? parsedBody.messages : [];
+          for (const msg of messages) {
+            if (Array.isArray(msg?.content)) {
+              for (const block of msg.content) {
+                if (block?.type === 'tool_use') {
+                  toolDedupe.record(sessionId, block.id, block.name, block.input);
+                }
+              }
+            }
+            if (Array.isArray(msg?.tool_calls)) {
+              for (const call of msg.tool_calls) {
+                toolDedupe.record(sessionId, call.id, call.function?.name || call.name, call.function?.arguments);
+              }
+            }
+          }
+        }
         res.off('close', onRequestClose);
         // The signal fires only for a departure (see above), so this is the
         // status of a row whose client will never read anything. It says
