@@ -314,7 +314,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // without protecting anything.
       const rawPath = (req.url || '').split('?')[0];
       const normPath = rawPath.replace(/\/+$/, '') || '/';
-      const isDashboardPath = normPath === '/agent-lb/dashboard' || normPath === '/teamclaude/dashboard' || normPath === '/claude-lb/dashboard' || normPath === '/dashboard';
+      const isDashboardPath = normPath === '/' || normPath === '/dashboard' || normPath === '/agent-lb/dashboard' || normPath === '/teamclaude/dashboard' || normPath === '/claude-lb/dashboard' || normPath === '/agent-lb' || normPath === '/teamclaude' || normPath === '/claude-lb';
 
       if ((req.method === 'GET' || req.method === 'HEAD') && isDashboardPath) {
         // The page keeps the proxy key in localStorage; the policy is what
@@ -386,13 +386,13 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Friendly redirect to dashboard for browser navigation to root or /agent-lb / /teamclaude / /claude-lb
+      // Friendly redirect to dashboard for legacy browser navigation
       if ((req.method === 'GET' || req.method === 'HEAD') && (normPath === '/' || normPath === '/agent-lb' || normPath === '/teamclaude' || normPath === '/claude-lb')) {
         res.writeHead(307, {
-          'Location': '/agent-lb/dashboard',
+          'Location': '/dashboard',
           'Content-Type': 'text/plain',
         });
-        res.end('Redirecting to /agent-lb/dashboard');
+        res.end('Redirecting to /dashboard');
         return;
       }
 
