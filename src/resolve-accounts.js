@@ -17,8 +17,9 @@ export async function resolveAccounts(config) {
   const accounts = [];
   for (const acct of config.accounts) {
     if (acct.type === 'oauth') {
-      if (acct.importFrom || providerOf(acct) === 'codex') {
-        // A Codex account defaults to the Codex CLI's own credentials file, so
+      const hasDirectTokens = Boolean(acct.accessToken || acct.credential);
+      if (acct.importFrom || (!hasDirectTokens && providerOf(acct) === 'codex')) {
+        // A Codex account without stored tokens defaults to the Codex CLI's own credentials file, so
         // `{ "name": "...", "type": "oauth", "provider": "codex" }` is enough
         // to pool an already-signed-in Codex login.
         const isCodex = providerOf(acct) === 'codex';
@@ -38,7 +39,7 @@ export async function resolveAccounts(config) {
         } catch (err) {
           console.error(`Failed to import "${acct.name}": ${err.message}`);
         }
-      } else if (acct.accessToken) {
+      } else if (acct.accessToken || acct.credential) {
         accounts.push(acct);
       } else {
         console.error(`No token for "${acct.name}", skipping`);
