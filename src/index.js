@@ -107,6 +107,9 @@ switch (command) {
   case 'server':
     await serverCommand();
     break;
+  case 'headless':
+    await serverCommand();
+    break;
   case 'run':
     await runCommand();
     break;
@@ -239,20 +242,7 @@ async function serverCommand() {
   // --activity-log <file>
   const activityLogPath = argValue('--activity-log') || null;
 
-  if (config.accounts.length === 0) {
-    console.error('No accounts configured.\n');
-    console.error('Add an account first:');
-    console.error('  teamclaude import           Import from Claude Code');
-    console.error('  teamclaude login            OAuth login via browser');
-    console.error('  teamclaude login --api      Add an API key');
-    process.exit(1);
-  }
-
   const accounts = await resolveAccounts(config);
-  if (accounts.length === 0) {
-    console.error('No valid accounts after initialization');
-    process.exit(1);
-  }
 
   // `accounts[].models` (#74) is superseded by the `routes` table (#86). Routes
   // do the same job with glob matching, several accounts per rule and a bucket
@@ -352,7 +342,7 @@ async function serverCommand() {
   // bind explicitly with TEAMCLAUDE_HOST or config.proxy.host (e.g. '0.0.0.0'),
   // in which case set proxy.apiKey so the auth gate protects remote clients.
   const bindHost = process.env.TEAMCLAUDE_HOST || config.proxy.host || '127.0.0.1';
-  const headless = args.includes('--headless') || args.includes('--no-tui');
+  const headless = args.includes('--headless') || args.includes('--no-tui') || command === 'headless';
   const useTUI = !headless && process.stdout.isTTY && process.stdin.isTTY;
 
   // Opt-in background quota probe (config.quotaProbeSeconds, default 0 = off).
@@ -618,19 +608,31 @@ async function serverCommand() {
       const sep = '='.repeat(60);
       console.log('');
       console.log(sep);
-      console.log('  TeamClaude Proxy');
+      console.log('  Claude-LB Proxy');
       console.log(sep);
-      console.log(`  Bind:       ${bindHost}:${port}${bindHost === '127.0.0.1' ? ' (localhost only)' : ' (reachable off-box — ensure proxy.apiKey is set)'}`);
-      console.log(`  Accounts:   ${accounts.length}`);
-      console.log(`  Threshold:  ${(threshold * 100).toFixed(0)}%`);
-      console.log(`  Upstream:   ${config.upstream || 'https://api.anthropic.com'}`);
+      console.log(`  Bind:          ${bindHost}:${port}${bindHost === '127.0.0.1' ? ' (localhost only)' : ' (reachable off-box — ensure proxy.apiKey is set)'}`);
+      console.log(`  Accounts:      ${accounts.length}`);
+      console.log(`  Threshold:     ${(threshold * 100).toFixed(0)}%`);
+      console.log(`  Upstream:      ${config.upstream || 'https://api.anthropic.com'}`);
+      console.log(`  Web Dashboard: http://${bindHost === '0.0.0.0' ? 'localhost' : bindHost}:${port}/dashboard`);
+      if (config.proxy?.apiKey) {
+        console.log(`  Admin Key:     ${config.proxy.apiKey}`);
+      }
       console.log('');
-      accounts.forEach((a, i) => {
-        console.log(`  [${i + 1}] ${a.name} (${a.type})`);
-      });
-      console.log('');
-      console.log('  Run Claude through proxy:  teamclaude run');
-      console.log('  Show env vars:             teamclaude env');
+      if (accounts.length === 0) {
+        console.log('  ⚠️  No accounts configured yet.');
+        console.log('  Open the Web Dashboard above to add accounts, or run:');
+        console.log('    claude-lb import           Import from Claude Code');
+        console.log('    claude-lb login            OAuth login via browser');
+        console.log('    claude-lb login --api      Add an API key');
+      } else {
+        accounts.forEach((a, i) => {
+          console.log(`  [${i + 1}] ${a.name} (${a.type})`);
+        });
+        console.log('');
+        console.log('  Run Claude through proxy:  teamclaude run');
+        console.log('  Show env vars:             teamclaude env');
+      }
       console.log(sep);
       console.log('');
     }
@@ -1976,6 +1978,7 @@ Usage: teamclaude [command] [options]
 
 Commands:
   server              Start the proxy server (default; --headless to skip the TUI)
+  headless            Start the proxy server in headless mode (recommended for servers/Docker)
   import              Import credentials from Claude Code
   login               OAuth login via browser
   login --token       OAuth login via copy/paste (no local callback; for headless/remote)

@@ -2631,6 +2631,9 @@ export function isTransientUpstreamError(err, { otherHostAvailable = false } = {
  */
 export function exhaustedMessage(accountManager, model, retryAfter) {
   const accounts = accountManager.accounts || [];
+  if (accounts.length === 0) {
+    return 'No accounts configured in Claude-LB. Please add an account via the Web Dashboard or CLI.';
+  }
   const eligible = accounts.filter(a => !a.disabled);
   const disabled = accounts.length - eligible.length;
 

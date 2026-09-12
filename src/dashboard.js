@@ -1390,7 +1390,14 @@ ${SHARED_HELPERS}
     sum.appendChild(el('span', '', ' · ' + (sess.active || 0) + ' active / ' + (sess.known || 0) + ' known sessions' + (up ? ' · ' + up : '')));
     var acc = document.getElementById('accounts');
     acc.textContent = '';
-    (s.accounts || []).forEach(function (a) { acc.appendChild(renderAccount(a, s.currentAccount)); });
+    var accts = s.accounts || [];
+    if (accts.length === 0) {
+      var emptyNotice = el('div', '', 'Brak skonfigurowanych kont. Kliknij „+ Dodaj konto” u góry, aby połączyć konto Claude przez przeglądarkę, wkleić tokeny lub dodać klucz API.');
+      emptyNotice.style.cssText = 'padding: 24px; text-align: center; color: var(--muted); background: var(--card-bg, #1a1b26); border-radius: 8px; border: 1px dashed var(--border, #333); margin-bottom: 16px; font-size: 14px;';
+      acc.appendChild(emptyNotice);
+    } else {
+      accts.forEach(function (a) { acc.appendChild(renderAccount(a, s.currentAccount)); });
+    }
     renderProblems(s);
     renderRoutes(s);
     renderClientKeys(s.clientKeys, s.clients);
