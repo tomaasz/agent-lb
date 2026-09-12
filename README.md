@@ -1,13 +1,13 @@
-# ⚖️ claude-lb
+# ⚖️ agent-lb
 
-> **Universal Multi-Account Load Balancer, Quota Rotator & Modern Web Dashboard for Claude Code & Codex CLI.**
+> **Universal Multi-Account Load Balancer, Quota Rotator & Modern Web Dashboard for Claude Code & OpenAI Codex CLI.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)](https://nodejs.org)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](docker/Dockerfile)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-success.svg)](package.json)
 
-`claude-lb` acts as an intelligent proxy between your coding tools ([Claude Code](https://claude.ai/claude-code), [VS Code Claude Extension](https://marketplace.visualstudio.com/items?itemName=Anthropic.claude-code), Cursor, Roo Code) and upstream providers (Anthropic, OpenAI). It pools multiple Claude Max, Pro, Team, or API-key accounts and automatically rotates traffic when limits are approached — preventing interruptions and 429 quota exhaustion.
+`agent-lb` acts as an intelligent proxy between your coding tools ([Claude Code](https://claude.ai/claude-code), [VS Code Claude Extension](https://marketplace.visualstudio.com/items?itemName=Anthropic.claude-code), OpenAI Codex CLI, Cursor, Roo Code) and upstream providers (Anthropic, OpenAI). It pools multiple Claude (Max, Pro, Team, API-key) and OpenAI Codex accounts and automatically rotates traffic when limits are approached — preventing interruptions and 429 quota exhaustion.
 
 ---
 
@@ -79,8 +79,8 @@ flowchart TD
 Requires **Node.js 20+**:
 
 ```bash
-git clone https://github.com/tomaasz/claude-lb.git
-cd claude-lb
+git clone https://github.com/tomaasz/agent-lb.git
+cd agent-lb
 
 # Start interactive TUI server
 npm start
@@ -89,9 +89,9 @@ npm start
 node src/index.js headless
 ```
 
-On first startup, `claude-lb` generates a primary admin API key and prints the dashboard URL:
+On first startup, `agent-lb` generates a primary admin API key and prints the dashboard URL:
 ```text
-Claude-LB proxy listening on 0.0.0.0:3456
+Agent-LB proxy listening on 0.0.0.0:3456
 Web Dashboard: http://localhost:3456/dashboard
 Admin Key: tc-adm_xxxxxxxxxxxxxxxx
 ```
@@ -99,8 +99,8 @@ Admin Key: tc-adm_xxxxxxxxxxxxxxxx
 ### Option 2: Docker & Docker Compose
 
 ```bash
-git clone https://github.com/tomaasz/claude-lb.git
-cd claude-lb/docker
+git clone https://github.com/tomaasz/agent-lb.git
+cd agent-lb/docker
 
 # Start container in background
 docker compose up -d
@@ -141,31 +141,36 @@ systemctl --user enable --now claude-lb
 
 Connecting developer machines takes a single command. The server dynamically bakes its address into the installer script:
 
-### Linux / macOS / WSL
+### 1. Claude Code CLI & VS Code
 
-Run in your terminal:
+#### Linux / macOS / WSL:
 ```bash
-# Standard setup for Claude Code CLI & VS Code:
 curl -sSL http://your-server:3456/setup | bash
-
-# With OpenAI Codex CLI support (~/.codex/config.json):
-curl -sSL http://your-server:3456/setup | bash -s -- --codex
 ```
 
-### Windows (PowerShell)
-
-Run in PowerShell:
+#### Windows (PowerShell):
 ```powershell
 irm http://your-server:3456/setup.ps1 | iex
 ```
 
-### What the client installer does automatically:
-1. Prompts for your Client API Key (`tc-...`) or verifies connection with server.
-2. Backs up any existing OAuth tokens in `~/.claude/.credentials.json` to prevent Anthropic *"Auth conflict"* errors.
-3. Updates `~/.claude/settings.json` with `ANTHROPIC_BASE_URL` and `ANTHROPIC_API_KEY`.
-4. Configures official **VS Code Claude Code Extension** (`settings.json`).
-5. Configures **OpenAI Codex CLI** (`~/.codex/config.json` and `CODEX_BASE_URL`) when `--codex` is passed or `~/.codex` exists.
-6. Persists shell environment variables (`~/.config/claude-lb.env` loaded in `.bashrc`/`.zshrc` or Windows User Registry).
+### 2. OpenAI Codex CLI & VS Code (`codexlb-setup`)
+
+#### Linux / macOS / WSL:
+```bash
+curl -sSL http://your-server:3456/codexlb-setup.sh | bash
+```
+
+#### Windows (PowerShell):
+```powershell
+irm http://your-server:3456/codexlb-setup.ps1 | iex
+```
+
+### What the client installers do automatically:
+1. Prompts for your Client API Key (`tc-...`) and verifies live connection with the server (`/backend-api/codex/models` and `/status`).
+2. Backs up existing configs (`.bak`) and prevents OAuth *"Auth conflict"* errors.
+3. Automatically configures `~/.claude/settings.json` (for Claude Code) or `~/.codex/config.toml` and `~/.codex/codexlb.config.toml` (for Codex CLI 0.14+).
+4. Sets up official **VS Code extensions** (Claude Code & OpenAI Codex).
+5. Persists environment variables (`ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `CODEX_LB_API_KEY`, `CODEX_BASE_URL`) in shell configs or Windows Registry.
 
 ---
 
