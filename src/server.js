@@ -1707,7 +1707,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
   // Opt-in egress pin: null unless config.egress.pin is set, and then shared by
   // the base listener and the MITM one so both honour the same hold.
   const egress = createEgressGuard(config, console.error);
-  const forward = createProxyRequestListener({ accountManager, upstream, logDir, hooks, sx, holdMs, config, egress, clientUsage, dimensionUsage });
+  const forward = createProxyRequestListener({ accountManager, upstream, logDir, hooks, sx, holdMs, config, egress, clientUsage, dimensionUsage, fairShare, toolDedupe });
   const server = http.createServer(requestHandler);
 
   // What bounds a directory of one-shot dumps is deleting the expired ones, not
@@ -2047,7 +2047,17 @@ export function clientSessionId(headers) {
  * aware routing, and retry-on-quota behavior. Control endpoints (status/reload)
  * and the proxy-API-key gate live in the base server's wrapper, not here.
  */
-export function createProxyRequestListener({ accountManager, upstream, logDir = null, hooks = {}, sx = null, holdMs = 0, config = {}, forcedPin = null, egress = null, clientUsage = null, forcedClient = null, dimensionUsage = null }) {
+export function createProxyRequestListener({
+  accountManager, upstream, logDir = null, hooks = {}, sx = null, holdMs = 0,
+  config = {}, forcedPin = null, egress = null, clientUsage = null,
+  forcedClient = null, dimensionUsage = null, fairShare: injectedFairShare = null,
+  toolDedupe: injectedToolDedupe = null,
+}) {
+  const fairShare = injectedFairShare || new FairShareController({
+    poolCapacity: config?.poolCapacity || 32,
+    congestionThreshold: config?.congestionThreshold || 0.75,
+  });
+  const toolDedupe = injectedToolDedupe || new ToolCallDedupeCache();
   let counter = 0;
   return async (req, res) => {
     // The activity entry this request opened, while it is still open. Every
