@@ -376,6 +376,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           content = content.replace(/http:\/\/localhost:3456/g, currentOrigin);
           content = content.replace(/https:\/\/codexlb\.gotova\.pl/g, currentOrigin);
           content = content.replace(/https:\/\/teamclaude\.gotova\.pl/g, currentOrigin);
+          content = content.replace(/https:\/\/agentlb\.gotova\.pl/g, currentOrigin);
         }
 
         res.writeHead(200, {
