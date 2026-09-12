@@ -642,6 +642,43 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       const reqPath = (req.url || '').split('?')[0];
       const normApiPath = reqPath.replace(/^\/(?:teamclaude|claude-lb)/, '');
 
+      // Auth verification & session endpoints for dashboard
+      if (req.method === 'GET' && (normApiPath === '/api/auth/verify' || normApiPath === '/api/auth/session')) {
+        const hasAdminKey = Boolean(config.proxy?.apiKey);
+        if (!hasAdminKey) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, authenticated: true, passwordRequired: false, role: 'admin' }));
+          return;
+        }
+        const isValid = clientKey && safeKeyEqual(clientKey, config.proxy.apiKey);
+        if (isValid) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, authenticated: true, passwordRequired: true, role: 'admin' }));
+          return;
+        }
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, authenticated: false, passwordRequired: true, error: 'Wymagana autoryzacja administratora' }));
+        return;
+      }
+
+      if (req.method === 'POST' && normApiPath === '/api/auth/login') {
+        let body = {};
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch {}
+        const candidate = (body.key || body.password || clientKey || '').trim();
+        const hasAdminKey = Boolean(config.proxy?.apiKey);
+        if (!hasAdminKey || (candidate && safeKeyEqual(candidate, config.proxy.apiKey))) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, authenticated: true, role: 'admin' }));
+          return;
+        }
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, authenticated: false, error: 'Nieprawidłowe hasło lub klucz API' }));
+        return;
+      }
+
       const isControlEndpoint = normApiPath.startsWith('/api/') ||
         normApiPath.startsWith('/accounts') ||
         normApiPath.startsWith('/client-keys') ||

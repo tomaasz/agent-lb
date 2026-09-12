@@ -443,13 +443,48 @@ const PAGE = `<!doctype html>
   .btn-ok:hover { background: var(--ok); color: var(--bg); }
   .actions-group { display: flex; gap: 6px; align-items: center; margin-left: auto; flex-wrap: wrap; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
-  #keybox { display: none; margin: 40px auto; max-width: 420px; text-align: center; }
-  #keybox input { width: 100%; padding: 10px 12px; margin: 12px 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--text); font: inherit; }
-  #keybox button { padding: 8px 20px; background: var(--accent); border: 0; border-radius: 6px; color: #06121f; font: inherit; font-weight: 600; cursor: pointer; }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; }
-  #keybox { display: none; margin: 40px auto; max-width: 440px; text-align: center; }
-  #keybox input { width: 100%; padding: 12px 14px; margin: 12px 0; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; color: var(--text); font: inherit; font-size: 15px; }
-  #keybox button { padding: 10px 24px; background: var(--accent); border: 0; border-radius: 7px; color: #06121f; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+  #keybox {
+    display: none;
+    margin: 50px auto 20px;
+    max-width: 440px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 32px 28px;
+    box-shadow: 0 16px 36px rgba(0,0,0,0.38), 0 2px 8px rgba(0,0,0,0.2);
+    text-align: left;
+  }
+  .login-card-head { text-align: center; margin-bottom: 24px; }
+  .login-card-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 52px; height: 52px; border-radius: 12px;
+    background: rgba(83,177,253,0.12); border: 1px solid rgba(83,177,253,0.3);
+    color: var(--accent); margin-bottom: 14px;
+  }
+  .login-card-head h1 { font-size: 20px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
+  .login-card-head p { color: var(--dim); font-size: 13.5px; line-height: 1.5; margin: 0; }
+  .login-field { margin-bottom: 18px; }
+  .login-field label { display: block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 7px; }
+  #keybox input {
+    width: 100%; min-height: 42px; padding: 10px 14px;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    color: var(--text); font: inherit; font-size: 14px; outline: none;
+    box-sizing: border-box; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  #keybox input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(83,177,253,0.15); }
+  #keybox button#go {
+    width: 100%; min-height: 42px; padding: 10px 16px;
+    background: var(--accent); border: 0; border-radius: 8px;
+    color: #06121f; font: inherit; font-size: 14px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    gap: 8px; transition: filter 0.15s;
+  }
+  #keybox button#go:hover { filter: brightness(1.1); }
+  #keybox button#go:disabled { opacity: 0.6; cursor: not-allowed; }
+  .login-card-foot {
+    margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line);
+    text-align: center; font-size: 12px; color: var(--dim);
+  }
 
   /* Modal Overlay & Tabs Styles */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.78); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px; }
@@ -510,9 +545,9 @@ const PAGE = `<!doctype html>
     .tabs-bar { padding-bottom: 6px; flex-wrap: wrap; }
     .tab-btn { padding: 6px 8px; font-size: 11px; flex: 1 1 calc(50% - 6px); text-align: center; }
     .tab-btn { padding: 7px 10px; font-size: 12px; flex: 1 1 calc(50% - 6px); text-align: center; }
-    #keybox { width: 100%; max-width: 100%; padding: 0 8px; margin: 20px auto; }
+    #keybox { width: 100%; max-width: 100%; padding: 24px 16px; margin: 20px auto; }
     #keybox input { min-height: 44px; font-size: 16px; }
-    #keybox button { width: 100%; min-height: 44px; }
+    #keybox button#go { width: 100%; min-height: 44px; }
     table { font-size: 12px; }
     th, td { padding: 8px 6px; }
     table { font-size: 13px; }
@@ -523,21 +558,37 @@ const PAGE = `<!doctype html>
 <body>
 <main>
   <div id="keybox" style="display:none">
-    <h1>TeamClaude</h1>
-    <p class="sub">Wprowadź swój klucz proxy (proxy.apiKey), aby uzyskać dostęp do panelu.</p>
-    <div id="keyboxErr" style="display:none;margin:10px 0;padding:8px 12px;border-radius:6px;background:rgba(239,68,68,0.12);border:1px solid var(--bad);color:var(--bad);font-size:13px;text-align:left"></div>
-    <input id="key" type="password" placeholder="tc-..." autocomplete="off">
-    <br><button id="go">Połącz</button>
+    <div class="login-card-head">
+      <div class="login-card-icon">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+      <h1>Panel Zarządzania</h1>
+      <p>Wprowadź hasło lub klucz administracyjny (<code>proxy.apiKey</code>), aby uzyskać dostęp.</p>
+    </div>
+    <div id="keyboxErr" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(239,68,68,0.12);border:1px solid var(--bad);color:var(--bad);font-size:13px;text-align:left"></div>
+    <div id="keyboxInfo" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(63,185,80,0.12);border:1px solid var(--ok);color:var(--ok);font-size:13px;text-align:left"></div>
+    <div class="login-field">
+      <label for="key">Hasło / Klucz administracyjny</label>
+      <input id="key" type="password" placeholder="tc-..." autocomplete="current-password">
+    </div>
+    <button id="go">Zaloguj się</button>
+    <div class="login-card-foot">
+      AI Load Balancer &bull; Zabezpieczony dostęp administracyjny
+    </div>
   </div>
   <div id="app" style="display:none">
     <div class="header-row">
       <div>
-        <h1>TeamClaude</h1>
+        <h1>AI Load Balancer</h1>
         <p class="sub" id="summary"></p>
       </div>
       <div class="header-actions">
-        <button class="btn btn-sm" id="btnProbeQuota" title="Odpytaj Anthropic o aktualne zużycie limitów i salda kont">⚡ Odśwież salda</button>
+        <button class="btn btn-sm" id="btnProbeQuota" title="Odpytaj o aktualne zużycie limitów i salda kont">⚡ Odśwież salda</button>
         <button class="btn btn-sm" id="btnReloadFleet" title="Przeładuj flotę kont z dysku">🔄 Przeładuj flotę</button>
+        <button class="btn btn-sm btn-bad" id="btnLogout" title="Wyloguj z panelu">🚪 Wyloguj</button>
       </div>
     </div>
     <div id="err"></div>
@@ -550,9 +601,8 @@ const PAGE = `<!doctype html>
 
     <!-- ACCOUNTS SECTION -->
     <div class="sec-head">
-      <h2>Accounts (Konta Claude)</h2>
+      <h2>Accounts (Konta Claude & Codex)</h2>
       <div class="row" style="gap:8px;">
-        <button class="btn btn-sm" id="btnProbeQuotaSec" title="Odpytaj Anthropic o aktualne zużycie limitów i salda kont">⚡ Odśwież salda</button>
         <button class="btn btn-sm btn-accent" id="btnShowAddAccount">➕ Dodaj konto</button>
       </div>
     </div>
@@ -2188,7 +2238,7 @@ ${SHARED_HELPERS}
       .catch(function (e) { note('error', 'switch failed: ' + e.message); btn.disabled = false; });
   }
 
-  function showKeybox(errMsg) {
+  function showKeybox(errMsg, infoMsg) {
     if (timer) { clearInterval(timer); timer = null; }
     document.getElementById('app').style.display = 'none';
     document.getElementById('keybox').style.display = 'block';
@@ -2201,7 +2251,20 @@ ${SHARED_HELPERS}
         kErr.style.display = 'none';
       }
     }
-    document.getElementById('key').focus();
+    var kInfo = document.getElementById('keyboxInfo');
+    if (kInfo) {
+      if (infoMsg) {
+        kInfo.textContent = infoMsg;
+        kInfo.style.display = 'block';
+      } else {
+        kInfo.style.display = 'none';
+      }
+    }
+    var keyIn = document.getElementById('key');
+    if (keyIn) {
+      keyIn.value = '';
+      setTimeout(function () { keyIn.focus(); }, 50);
+    }
   }
 
   function poll() {
@@ -2253,24 +2316,90 @@ ${SHARED_HELPERS}
     if (!timer) timer = setInterval(poll, POLL_MS);
   }
 
+  function checkAuthAndStart() {
+    var apiKey = localStorage.getItem(KEY) || '';
+    if (!apiKey) {
+      fetch('/teamclaude/api/auth/verify')
+        .then(function (res) {
+          if (res.status === 200) {
+            document.getElementById('keybox').style.display = 'none';
+            document.getElementById('app').style.display = '';
+            start();
+          } else {
+            showKeybox();
+          }
+        })
+        .catch(function () {
+          showKeybox();
+        });
+      return;
+    }
+
+    fetch('/teamclaude/api/auth/verify', {
+      headers: { 'x-api-key': apiKey }
+    })
+      .then(function (res) {
+        if (res.ok) {
+          document.getElementById('keybox').style.display = 'none';
+          document.getElementById('app').style.display = '';
+          start();
+        } else {
+          localStorage.removeItem(KEY);
+          showKeybox('Sesja wygasła lub klucz API jest nieprawidłowy.');
+        }
+      })
+      .catch(function () {
+        start();
+      });
+  }
+
   document.getElementById('go').addEventListener('click', function () {
+    var btn = document.getElementById('go');
     var v = document.getElementById('key').value.trim();
     v = v.replace(/^export\s+ANTHROPIC_API_KEY\s*=\s*/i, '')
          .replace(/^ANTHROPIC_API_KEY\s*=\s*/i, '')
          .replace(/^["']|["']$/g, '')
          .trim();
     if (!v) {
-      showKeybox('Wprowadź klucz API przed połączeniem.');
+      showKeybox('Wprowadź hasło lub klucz API przed połączeniem.');
       return;
     }
-    var kErr = document.getElementById('keyboxErr');
-    if (kErr) kErr.style.display = 'none';
-    localStorage.setItem(KEY, v);
-    start();
+    btn.disabled = true;
+    btn.textContent = 'Logowanie...';
+
+    fetch('/teamclaude/api/auth/verify', {
+      headers: { 'x-api-key': v }
+    })
+      .then(function (res) {
+        if (res.ok) {
+          localStorage.setItem(KEY, v);
+          document.getElementById('keybox').style.display = 'none';
+          document.getElementById('app').style.display = '';
+          start();
+        } else {
+          showKeybox('Nieprawidłowe hasło lub klucz administracyjny.');
+        }
+      })
+      .catch(function (e) {
+        showKeybox('Błąd połączenia: ' + e.message);
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.textContent = 'Zaloguj się';
+      });
   });
+
   document.getElementById('key').addEventListener('keydown', function (e) {
     if (e.key === 'Enter') document.getElementById('go').click();
   });
+
+  var btnLogout = document.getElementById('btnLogout');
+  if (btnLogout) {
+    btnLogout.addEventListener('click', function () {
+      localStorage.removeItem(KEY);
+      showKeybox(null, 'Zostałeś pomyślnie wylogowany.');
+    });
+  }
 
   ['fProject', 'fClient'].forEach(function (id) {
     document.getElementById(id).addEventListener('change', function () {
@@ -2285,14 +2414,10 @@ ${SHARED_HELPERS}
     btnReloadFleet.addEventListener('click', function () { doReloadFleet(this); });
   }
 
-  // Header & section buttons: Probe quota & balances
+  // Header button: Probe quota & balances
   var btnProbeQuota = document.getElementById('btnProbeQuota');
   if (btnProbeQuota) {
     btnProbeQuota.addEventListener('click', function () { doProbeQuota(this); });
-  }
-  var btnProbeQuotaSec = document.getElementById('btnProbeQuotaSec');
-  if (btnProbeQuotaSec) {
-    btnProbeQuotaSec.addEventListener('click', function () { doProbeQuota(this); });
   }
 
   // Modals opening/closing
@@ -2466,7 +2591,7 @@ ${SHARED_HELPERS}
     }
   });
 
-  start();
+  checkAuthAndStart();
 })();
 </script>
 </body>
