@@ -331,13 +331,33 @@ const PAGE = `<!doctype html>
   }
   * { box-sizing: border-box; margin: 0; }
   body { background: var(--bg); color: var(--text); font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 18px 20px; }
-  main { max-width: 960px; margin: 0 auto; width: 100%; }
+  main { max-width: 1320px; margin: 0 auto; width: 100%; }
   h1 { font-size: 18px; font-weight: 600; margin-bottom: 2px; display: inline-flex; align-items: center; gap: 8px; color: #f0f6fc; }
   h2 { font-size: 11.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; margin: 18px 0 6px; font-weight: 600; }
   .sub { color: var(--dim); margin-bottom: 12px; font-size: 12px; }
   .sub b { color: var(--text); font-weight: 500; }
   .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
   .header-actions { display: flex; gap: 6px; align-items: center; }
+
+  /* 2-column accounts grid & Drag-and-drop */
+  .accounts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; margin-bottom: 12px; }
+  @media (max-width: 980px) { .accounts-grid { grid-template-columns: 1fr; } }
+  .account-col { background: rgba(22, 27, 34, 0.45); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-height: 100px; }
+  .col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .col-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; display: inline-flex; align-items: center; gap: 6px; }
+  .col-title.claude { color: #d2a8ff; }
+  .col-title.codex { color: #56d364; }
+  .col-hint { font-size: 11px; color: var(--dim); }
+  .account-list { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
+  .card.draggable { cursor: grab; user-select: none; transition: opacity .15s ease, border-color .15s ease; }
+  .card.draggable:active { cursor: grabbing; }
+  .card.dragging { opacity: 0.35; border: 1px dashed var(--accent); }
+  .card.drag-over-top { border-top: 2px solid var(--accent) !important; }
+  .card.drag-over-bottom { border-bottom: 2px solid var(--accent) !important; }
+  .drag-handle { cursor: grab; display: inline-flex; align-items: center; justify-content: center; color: var(--dim); font-size: 14px; padding: 0 4px 0 0; user-select: none; line-height: 1; }
+  .drag-handle:active { cursor: grabbing; }
+  .prio-badge { font-size: 10.5px; font-weight: 600; padding: 1.5px 6px; border-radius: 4px; background: rgba(88,166,255,0.12); border: 1px solid rgba(88,166,255,0.35); color: var(--accent); }
+
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; transition: border-color .15s ease; }
   .card:hover { border-color: #384252; }
   .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -545,10 +565,30 @@ const PAGE = `<!doctype html>
     <div class="sec-head">
       <h2>Konta Claude & Codex</h2>
       <div class="row" style="gap:8px;">
+        <span style="font-size:11px; color:var(--dim);">💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet</span>
         <button class="btn btn-sm btn-accent" id="btnShowAddAccount">➕ Dodaj konto</button>
       </div>
     </div>
-    <div id="accounts"></div>
+    <div id="accounts" style="display:none"></div>
+    <div class="accounts-grid" id="accountsGrid">
+      <!-- Column 1: Claude (Anthropic) -->
+      <div class="account-col" id="colClaude">
+        <div class="col-head">
+          <span class="col-title claude">🟣 Claude (Anthropic)</span>
+          <span class="col-hint" id="countClaude">0 kont</span>
+        </div>
+        <div class="account-list" id="listClaude" data-provider="anthropic"></div>
+      </div>
+
+      <!-- Column 2: OpenAI Codex -->
+      <div class="account-col" id="colCodex">
+        <div class="col-head">
+          <span class="col-title codex">🟢 OpenAI Codex</span>
+          <span class="col-hint" id="countCodex">0 kont</span>
+        </div>
+        <div class="account-list" id="listCodex" data-provider="codex"></div>
+      </div>
+    </div>
 
     <!-- CLIENT API KEYS SECTION -->
     <div class="sec-head">
@@ -1047,12 +1087,153 @@ ${SHARED_HELPERS}
     return row;
   }
 
-  function renderAccount(a, current) {
-    var card = el('div', 'card');
+  var draggedCard = null;
+
+  function attachCardDragListeners(card) {
+    card.addEventListener('dragstart', function (e) {
+      if (e.target && (e.target.tagName === 'BUTTON' || (e.target.closest && e.target.closest('button')))) {
+        e.preventDefault();
+        return;
+      }
+      draggedCard = card;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', card.dataset.accountName || '');
+    });
+
+    card.addEventListener('dragend', function () {
+      card.classList.remove('dragging');
+      draggedCard = null;
+      var indicators = document.querySelectorAll('.drag-over-top, .drag-over-bottom');
+      for (var i = 0; i < indicators.length; i++) {
+        indicators[i].classList.remove('drag-over-top', 'drag-over-bottom');
+      }
+    });
+
+    card.addEventListener('dragover', function (e) {
+      if (!draggedCard || draggedCard === card) return;
+      if (draggedCard.dataset.provider !== card.dataset.provider) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+
+      var rect = card.getBoundingClientRect();
+      var midY = rect.top + rect.height / 2;
+      if (e.clientY < midY) {
+        card.classList.add('drag-over-top');
+        card.classList.remove('drag-over-bottom');
+      } else {
+        card.classList.add('drag-over-bottom');
+        card.classList.remove('drag-over-top');
+      }
+    });
+
+    card.addEventListener('dragleave', function (e) {
+      if (e.relatedTarget && card.contains(e.relatedTarget)) return;
+      card.classList.remove('drag-over-top', 'drag-over-bottom');
+    });
+
+    card.addEventListener('drop', function (e) {
+      if (!draggedCard || draggedCard === card) return;
+      if (draggedCard.dataset.provider !== card.dataset.provider) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var isTop = card.classList.contains('drag-over-top');
+      card.classList.remove('drag-over-top', 'drag-over-bottom');
+
+      var parent = card.parentNode;
+      if (!parent) return;
+      if (isTop) {
+        parent.insertBefore(draggedCard, card);
+      } else {
+        parent.insertBefore(draggedCard, card.nextSibling);
+      }
+      saveReorderedList(parent);
+    });
+  }
+
+  function attachListDropTarget(listEl) {
+    if (!listEl || listEl._dndAttached) return;
+    listEl._dndAttached = true;
+
+    listEl.addEventListener('dragover', function (e) {
+      if (!draggedCard) return;
+      if (draggedCard.dataset.provider !== listEl.dataset.provider) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+
+    listEl.addEventListener('drop', function (e) {
+      if (!draggedCard) return;
+      if (draggedCard.dataset.provider !== listEl.dataset.provider) return;
+      e.preventDefault();
+      if (e.target === listEl) {
+        listEl.appendChild(draggedCard);
+        saveReorderedList(listEl);
+      }
+    });
+  }
+
+  function saveReorderedList(listEl) {
+    var cards = Array.prototype.slice.call(listEl.querySelectorAll('.card.draggable'));
+    var names = cards.map(function (c) { return c.dataset.accountName; }).filter(Boolean);
+    if (!names.length) return;
+
+    // Optimistically update badges in the DOM
+    cards.forEach(function (c, idx) {
+      var pb = c.querySelector('.prio-badge');
+      if (pb) pb.textContent = '#' + (idx + 1);
+      var prioTag = c.querySelector('.card-prio-tag');
+      if (prioTag) {
+        var typeStr = c.dataset.accountType || '';
+        prioTag.textContent = (typeStr ? typeStr + ' · ' : '') + 'prio ' + idx;
+      }
+      var prioBtn = c.querySelector('.btn-prio');
+      if (prioBtn) prioBtn.textContent = 'prio ' + idx;
+    });
+
+    note('ok', 'Zapisywanie nowego priorytetu kont...');
+    apiCall('/teamclaude/api/accounts/reorder', 'POST', { order: names })
+      .then(function (res) {
+        if (res && res.ok) {
+          note('ok', 'Zapisano nowy priorytet kont (' + names.length + ' kont)');
+          poll();
+        } else {
+          note('error', 'Błąd zapisu priorytetów: ' + (res && res.error ? res.error : 'nieznany błąd'));
+          poll();
+        }
+      })
+      .catch(function (e) {
+        note('error', 'Błąd: ' + e.message);
+        poll();
+      });
+  }
+
+  function renderAccount(a, current, rankIndex) {
+    var prov = (a.provider || 'anthropic').toLowerCase();
+    var card = el('div', 'card draggable');
+    card.draggable = true;
+    card.dataset.accountName = a.name || '';
+    card.dataset.provider = prov;
+    card.dataset.accountType = a.type || '';
+
     var head = el('div', 'row');
+
+    // Drag handle
+    var dragHandle = el('span', 'drag-handle', '⠿');
+    dragHandle.title = 'Przeciągnij myszką, aby zmienić priorytet w kolumnie';
+    head.appendChild(dragHandle);
+
+    // Rank badge (#1, #2...)
+    if (rankIndex != null) {
+      var prioBadge = el('span', 'prio-badge', '#' + (rankIndex + 1));
+      prioBadge.title = 'Pozycja w hierarchii priorytetów (wyżej = priorytet 0)';
+      head.appendChild(prioBadge);
+    }
+
     if (a.name) head.appendChild(el('span', 'name', a.name));
+
     // Provider badge
-    var prov = a.provider || 'anthropic';
     head.appendChild(el('span', 'tag ' + (prov === 'codex' ? 'badge-codex' : 'badge-anthropic'), prov === 'codex' ? '🟢 OpenAI Codex' : '🟣 Anthropic'));
 
     // Subscription plan badge
@@ -1061,11 +1242,13 @@ ${SHARED_HELPERS}
       head.appendChild(el('span', 'badge badge-plan', '💎 ' + planName));
     }
 
-    head.appendChild(el('span', 'tag', a.type + ' · prio ' + (a.priority || 0)));
+    var prioTag = el('span', 'tag card-prio-tag', (a.type ? a.type + ' · ' : '') + 'prio ' + (a.priority || 0));
+    head.appendChild(prioTag);
     if (a.routingPolicy === 'burn-first') head.appendChild(el('span', 'badge badge-burn', '🔥 Burn'));
     if (a.name === current) head.appendChild(el('span', 'badge current', 'current'));
     head.appendChild(el('span', 'badge ' + (a.status || ''), a.disabled ? 'disabled' : (a.status || 'unknown')));
     if (a.sessions) head.appendChild(el('span', 'tag', a.sessions + ' active session' + (a.sessions > 1 ? 's' : '')));
+
     // Action buttons group
     var acts = el('div', 'actions-group');
     if (a.name !== current) {
@@ -1102,7 +1285,7 @@ ${SHARED_HELPERS}
     btnToggle.addEventListener('click', function () { doToggleDisabled(a.name, !!a.disabled, btnToggle); });
     acts.appendChild(btnToggle);
 
-    var btnPrio = el('button', 'btn btn-sm', 'prio ' + (a.priority || 0));
+    var btnPrio = el('button', 'btn btn-sm btn-prio', 'prio ' + (a.priority || 0));
     btnPrio.title = 'Zmień priorytet konta';
     btnPrio.addEventListener('click', function () { doSetPriority(a.name, a.priority || 0); });
     acts.appendChild(btnPrio);
@@ -1114,6 +1297,7 @@ ${SHARED_HELPERS}
 
     head.appendChild(acts);
     card.appendChild(head);
+    attachCardDragListeners(card);
     if (a.unavailable) {
       var bDiv = el('div', 'blocked', 'blocked: ' + (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable));
       if (a.unavailable === 'error' || a.status === 'error') {
@@ -1459,7 +1643,72 @@ ${SHARED_HELPERS}
     });
   }
 
+  function renderAccountsGrid(s) {
+    var listClaude = document.getElementById('listClaude');
+    var listCodex = document.getElementById('listCodex');
+    if (!listClaude || !listCodex) return;
+
+    attachListDropTarget(listClaude);
+    attachListDropTarget(listCodex);
+
+    listClaude.textContent = '';
+    listCodex.textContent = '';
+
+    var accts = s.accounts || [];
+    var claudeAccts = [];
+    var codexAccts = [];
+
+    accts.forEach(function (a) {
+      if ((a.provider || '').toLowerCase() === 'codex') {
+        codexAccts.push(a);
+      } else {
+        claudeAccts.push(a);
+      }
+    });
+
+    // Sort by priority ascending (0 = highest priority)
+    claudeAccts.sort(function (a, b) {
+      return (a.priority || 0) - (b.priority || 0);
+    });
+    codexAccts.sort(function (a, b) {
+      return (a.priority || 0) - (b.priority || 0);
+    });
+
+    // Column counters
+    var countClaude = document.getElementById('countClaude');
+    if (countClaude) {
+      countClaude.textContent = claudeAccts.length + (claudeAccts.length === 1 ? ' konto' : ' kont');
+    }
+    var countCodex = document.getElementById('countCodex');
+    if (countCodex) {
+      countCodex.textContent = codexAccts.length + (codexAccts.length === 1 ? ' konto' : ' kont');
+    }
+
+    // Render Claude accounts
+    if (claudeAccts.length === 0) {
+      var emptyC = el('div', '', 'Brak kont Claude. Kliknij „➕ Dodaj konto” u góry.');
+      emptyC.style.cssText = 'padding:16px; text-align:center; color:var(--dim); font-size:12px; border:1px dashed var(--line); border-radius:6px;';
+      listClaude.appendChild(emptyC);
+    } else {
+      claudeAccts.forEach(function (a, idx) {
+        listClaude.appendChild(renderAccount(a, s.currentAccount, idx));
+      });
+    }
+
+    // Render Codex accounts
+    if (codexAccts.length === 0) {
+      var emptyX = el('div', '', 'Brak kont OpenAI Codex. Kliknij „➕ Dodaj konto” u góry.');
+      emptyX.style.cssText = 'padding:16px; text-align:center; color:var(--dim); font-size:12px; border:1px dashed var(--line); border-radius:6px;';
+      listCodex.appendChild(emptyX);
+    } else {
+      codexAccts.forEach(function (a, idx) {
+        listCodex.appendChild(renderAccount(a, s.currentAccount, idx));
+      });
+    }
+  }
+
   function render(s) {
+    if (draggedCard) return; // Prevent DOM replacement during drag
     lastStatus = s;
     var sess = s.sessions || {};
     var up = s.server && s.server.uptimeSeconds != null ? 'up ' + fmtIn(s.server.uptimeSeconds) : '';
@@ -1469,15 +1718,9 @@ ${SHARED_HELPERS}
     sum.appendChild(el('b', '', s.currentAccount || 'none'));
     sum.appendChild(el('span', '', ' · ' + (sess.active || 0) + ' active / ' + (sess.known || 0) + ' known sessions' + (up ? ' · ' + up : '')));
     var acc = document.getElementById('accounts');
-    acc.textContent = '';
-    var accts = s.accounts || [];
-    if (accts.length === 0) {
-      var emptyNotice = el('div', '', 'Brak skonfigurowanych kont. Kliknij „+ Dodaj konto” u góry, aby połączyć konto Claude przez przeglądarkę, wkleić tokeny lub dodać klucz API.');
-      emptyNotice.style.cssText = 'padding: 24px; text-align: center; color: var(--muted); background: var(--card-bg, #1a1b26); border-radius: 8px; border: 1px dashed var(--border, #333); margin-bottom: 16px; font-size: 14px;';
-      acc.appendChild(emptyNotice);
-    } else {
-      accts.forEach(function (a) { acc.appendChild(renderAccount(a, s.currentAccount)); });
-    }
+    if (acc) acc.textContent = '';
+
+    renderAccountsGrid(s);
     renderProblems(s);
     renderRoutes(s);
     renderClientKeys(s.clientKeys, s.clients);

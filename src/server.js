@@ -973,6 +973,67 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
+      // Accounts: Reorder and assign priorities (POST /api/accounts/reorder & POST /accounts/reorder)
+      if (req.method === 'POST' && (normApiPath === '/api/accounts/reorder' || normApiPath === '/accounts/reorder')) {
+        let body;
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch (err) {
+          const tooLarge = err.message === 'body too large';
+          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          return;
+        }
+
+        const order = Array.isArray(body?.order) ? body.order : null;
+        if (!order || !order.length) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'missing "order" array of account names' }));
+          return;
+        }
+
+        const nameToPrio = new Map();
+        order.forEach((name, idx) => {
+          if (typeof name === 'string' && name.trim()) {
+            nameToPrio.set(name.trim(), idx);
+          }
+        });
+
+        // Update in-memory accountManager
+        for (const acct of accountManager.accounts) {
+          if (nameToPrio.has(acct.name)) {
+            acct.priority = nameToPrio.get(acct.name);
+          }
+        }
+
+        // Update disk config atomically
+        await atomicConfigUpdate(disk => {
+          if (!disk.accounts) return;
+          for (const dAcct of disk.accounts) {
+            if (nameToPrio.has(dAcct.name)) {
+              dAcct.priority = nameToPrio.get(dAcct.name);
+            }
+          }
+          disk.accounts.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+        });
+
+        // Update in-memory config
+        if (config.accounts) {
+          for (const cAcct of config.accounts) {
+            if (nameToPrio.has(cAcct.name)) {
+              cAcct.priority = nameToPrio.get(cAcct.name);
+            }
+          }
+          config.accounts.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+        }
+
+        console.log(`[Agent-LB] Reordered ${nameToPrio.size} accounts (web control)`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, reordered: Array.from(nameToPrio.keys()) }));
+        return;
+      }
+
       // Accounts: Remove (POST /teamclaude/api/accounts/remove & POST /teamclaude/accounts/remove)
       if (req.method === 'POST' && (normApiPath === '/api/accounts/remove' || normApiPath === '/accounts/remove')) {
         let body;

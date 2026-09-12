@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { renderDashboardHtml, dashboardCsp } from '../src/dashboard.js';
-import { resolveClientAuth, safeKeyEqual, isLocalHostHeader } from '../src/server.js';
+import { resolveClientAuth, safeKeyEqual, isLocalHostHeader, createProxyServer } from '../src/server.js';
+
 
 describe('Dashboard Authentication and Layout', () => {
   it('renders modern login card and auth elements in dashboard HTML', () => {
@@ -87,5 +88,78 @@ describe('Dashboard Authentication and Layout', () => {
       new vm.Script(script);
     }, 'dashboard script must compile without syntax errors');
   });
+
+  it('renders 2-column layout and drag-and-drop elements for Claude and Codex accounts', () => {
+    const html = renderDashboardHtml();
+    assert.ok(html.includes('id="accountsGrid"'), 'contains #accountsGrid');
+    assert.ok(html.includes('id="colClaude"'), 'contains #colClaude');
+    assert.ok(html.includes('id="colCodex"'), 'contains #colCodex');
+    assert.ok(html.includes('id="listClaude"'), 'contains #listClaude');
+    assert.ok(html.includes('id="listCodex"'), 'contains #listCodex');
+    assert.ok(html.includes('data-provider="anthropic"'), 'listClaude has data-provider anthropic');
+    assert.ok(html.includes('data-provider="codex"'), 'listCodex has data-provider codex');
+    assert.ok(html.includes('renderAccountsGrid'), 'script defines renderAccountsGrid');
+    assert.ok(html.includes('/api/accounts/reorder'), 'script targets accounts reorder endpoint');
+  });
+
+  it('updates account priority and persists order on POST /api/accounts/reorder', async () => {
+    const fs = await import('node:fs/promises');
+    const os = await import('node:os');
+    const path = await import('node:path');
+
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-lb-test-'));
+    const tmpCfg = path.join(tmpDir, 'config.json');
+
+    const initialConfig = {
+      accounts: [
+        { name: 'konto-a', type: 'apikey', apiKey: 'sk-ant-test-a', priority: 0 },
+        { name: 'konto-b', type: 'apikey', apiKey: 'sk-ant-test-b', priority: 1 },
+      ],
+      proxy: { apiKey: 'admin-secret' }
+    };
+    await fs.writeFile(tmpCfg, JSON.stringify(initialConfig, null, 2));
+    process.env.AGENT_LB_CONFIG = tmpCfg;
+
+    const dummyAccountManager = {
+      accounts: [
+        { name: 'konto-a', priority: 0 },
+        { name: 'konto-b', priority: 1 },
+      ]
+    };
+
+    const server = createProxyServer(dummyAccountManager, initialConfig);
+    await new Promise(res => server.listen(0, '127.0.0.1', res));
+    const port = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/api/accounts/reorder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': 'admin-secret'
+        },
+        body: JSON.stringify({ order: ['konto-b', 'konto-a'] })
+      });
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.ok, true);
+      assert.deepEqual(data.reordered, ['konto-b', 'konto-a']);
+
+      // In-memory dummyAccountManager updated
+      assert.equal(dummyAccountManager.accounts.find(a => a.name === 'konto-b').priority, 0);
+      assert.equal(dummyAccountManager.accounts.find(a => a.name === 'konto-a').priority, 1);
+
+      // Disk config updated
+      const disk = JSON.parse(await fs.readFile(tmpCfg, 'utf8'));
+      assert.equal(disk.accounts.find(a => a.name === 'konto-b').priority, 0);
+      assert.equal(disk.accounts.find(a => a.name === 'konto-a').priority, 1);
+    } finally {
+      delete process.env.AGENT_LB_CONFIG;
+      await new Promise(res => server.close(res));
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
+
+
 
