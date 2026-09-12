@@ -620,8 +620,8 @@ const PAGE = `<!doctype html>
       <div class="row" style="justify-content:space-between; align-items:center;">
         <div>
           <span style="font-weight:600; font-size:13.5px;">📦 Automatyczny instalator stacji roboczych:</span>
-          <a href="https://github.com/tomaasz/claude-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600; margin-left:6px;">tomaasz/claude-lb ↗</a>
-          <div style="color:var(--dim); font-size:12.5px; margin-top:3px;">1-klikowa konfiguracja Claude Code CLI, rozszerzenia VS Code oraz zmiennych systemowych (Linux, macOS, WSL, Windows).</div>
+          <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600; margin-left:6px;">tomaasz/agent-lb ↗</a>
+          <div style="color:var(--dim); font-size:12.5px; margin-top:3px;">1-klikowa konfiguracja Claude Code CLI oraz OpenAI Codex CLI i rozszerzeń VS Code (Linux, macOS, WSL, Windows).</div>
         </div>
       </div>
     </div>
@@ -929,19 +929,31 @@ const PAGE = `<!doctype html>
         </div>
 
         <div id="contentSetupBash">
-          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">Automatyczna 1-linijkowa konfiguracja (CLI, VS Code, ENV) z serwera:</div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">1. Claude Code CLI & VS Code:</div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
             <code class="mono" id="cmdSetupBash" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupBash">📋 Kopiuj komendę curl | bash</button>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupBash" style="margin-bottom:14px;">📋 Kopiuj polecenie Claude</button>
+
+          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">2. OpenAI Codex CLI & VS Code (codexlb-setup):</div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
+            <code class="mono" id="cmdSetupCodexBash" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupCodexBash">📋 Kopiuj polecenie Codex</button>
         </div>
 
         <div id="contentSetupPowershell" style="display:none;">
-          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">Uruchom w PowerShellu na stacji Windows (konfiguracja CLI, VS Code i Rejestru):</div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">1. Claude Code na Windows (PowerShell):</div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
             <code class="mono" id="cmdSetupPowershell" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupPowershell">📋 Kopiuj polecenie PowerShell</button>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupPowershell" style="margin-bottom:14px;">📋 Kopiuj polecenie Claude (PS)</button>
+
+          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">2. OpenAI Codex na Windows (PowerShell):</div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
+            <code class="mono" id="cmdSetupCodexPowershell" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupCodexPowershell">📋 Kopiuj polecenie Codex (PS)</button>
         </div>
 
         <div id="contentSetupNode" style="display:none;">
@@ -953,7 +965,7 @@ const PAGE = `<!doctype html>
         </div>
 
         <div id="contentSetupGit" style="display:none;">
-          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">Klonowanie repozytorium GitHub (<a href="https://github.com/tomaasz/claude-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/claude-lb</a>):</div>
+          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">Klonowanie repozytorium GitHub (<a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/agent-lb</a>):</div>
           <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
             <code class="mono" id="cmdSetupGit" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
           </div>
@@ -2030,13 +2042,17 @@ ${SHARED_HELPERS}
     var hostUrl = window.location.origin;
 
     var cmdBash = 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + key;
+    var cmdCodexBash = 'curl -fsSL ' + hostUrl + '/codexlb-setup.sh | bash -s -- --key ' + key;
     var cmdPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"';
+    var cmdCodexPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/codexlb-setup.ps1))) -Key "' + key + '"';
     var cmdNode = 'curl -fsSL ' + hostUrl + '/setup.js | node - --key ' + key;
-    var cmdGit = 'git clone https://github.com/tomaasz/claude-lb.git && cd claude-lb && ./setup/setup.sh --key ' + key;
-    var manualText = 'export ANTHROPIC_BASE_URL="' + hostUrl + '"\\nexport ANTHROPIC_API_KEY="' + key + '"';
+    var cmdGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/setup.sh --key ' + key;
+    var manualText = '# Claude Code CLI:\nexport ANTHROPIC_BASE_URL="' + hostUrl + '"\nexport ANTHROPIC_API_KEY="' + key + '"\n\n# OpenAI Codex CLI:\nexport CODEX_BASE_URL="' + hostUrl + '/backend-api/codex"\nexport CODEX_LB_API_KEY="' + key + '"\nexport OPENAI_BASE_URL="' + hostUrl + '/v1"';
 
     document.getElementById('cmdSetupBash').textContent = cmdBash;
+    document.getElementById('cmdSetupCodexBash').textContent = cmdCodexBash;
     document.getElementById('cmdSetupPowershell').textContent = cmdPs;
+    document.getElementById('cmdSetupCodexPowershell').textContent = cmdCodexPs;
     document.getElementById('cmdSetupNode').textContent = cmdNode;
     document.getElementById('cmdSetupGit').textContent = cmdGit;
     document.getElementById('boxManualConfig').textContent = manualText;
@@ -2501,8 +2517,10 @@ ${SHARED_HELPERS}
   };
 
   bindCopy('btnCopyCreatedKey', 'createdClientKey', 'Klucz klienta');
-  bindCopy('btnCopySetupBash', 'cmdSetupBash', 'Polecenie Bash');
-  bindCopy('btnCopySetupPowershell', 'cmdSetupPowershell', 'Polecenie PowerShell');
+  bindCopy('btnCopySetupBash', 'cmdSetupBash', 'Polecenie Claude (Bash)');
+  bindCopy('btnCopySetupCodexBash', 'cmdSetupCodexBash', 'Polecenie Codex (Bash)');
+  bindCopy('btnCopySetupPowershell', 'cmdSetupPowershell', 'Polecenie Claude (PowerShell)');
+  bindCopy('btnCopySetupCodexPowershell', 'cmdSetupCodexPowershell', 'Polecenie Codex (PowerShell)');
   bindCopy('btnCopySetupNode', 'cmdSetupNode', 'Polecenie Node.js');
   bindCopy('btnCopySetupGit', 'cmdSetupGit', 'Polecenie Git');
 

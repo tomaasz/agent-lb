@@ -44,4 +44,18 @@ describe('Dashboard Authentication and Layout', () => {
     const badAuth = resolveClientAuth({ apiKey: adminKey }, 'bad-key');
     assert.equal(badAuth.ok, false);
   });
+
+  it('renders both Claude and Codex setup commands and scripts in setup directory', async () => {
+    const fs = await import('node:fs');
+    const html = renderDashboardHtml();
+    assert.ok(html.includes('id="cmdSetupCodexBash"'), 'contains Codex bash command element');
+    assert.ok(html.includes('id="cmdSetupCodexPowershell"'), 'contains Codex powershell command element');
+    assert.ok(html.includes('btnCopySetupCodexBash'), 'contains copy button for Codex bash');
+    assert.ok(html.includes('btnCopySetupCodexPowershell'), 'contains copy button for Codex powershell');
+
+    assert.ok(fs.existsSync('setup/codexlb-setup.sh'), 'setup/codexlb-setup.sh exists');
+    assert.ok(fs.existsSync('setup/codexlb-setup.ps1'), 'setup/codexlb-setup.ps1 exists');
+    assert.ok(fs.existsSync('setup/codexlb-setup.js'), 'setup/codexlb-setup.js exists');
+  });
 });
+

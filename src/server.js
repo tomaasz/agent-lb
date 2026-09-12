@@ -1,7 +1,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import { timingSafeEqual, randomBytes, createHash } from 'node:crypto';
-import { createWriteStream, mkdirSync, writeSync } from 'node:fs';
+import { createWriteStream, mkdirSync, writeSync, existsSync, readFileSync } from 'node:fs';
 import { readdir, stat, unlink, readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -333,15 +333,19 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Serve client setup scripts without auth
-      const setupScriptMatch = normPath.match(/^\/(?:agent-lb\/|teamclaude\/|claude-lb\/)?setup(?:\.(sh|ps1|js))?$/);
+      // Serve client setup scripts without auth (Claude Code & OpenAI Codex)
+      const setupScriptMatch = normPath.match(/^\/(?:agent-lb\/|teamclaude\/|claude-lb\/)?(setup|codexlb-setup|codex-setup|setup-codex)(?:\.(sh|ps1|js))?$/);
       if ((req.method === 'GET' || req.method === 'HEAD') && setupScriptMatch) {
-        let ext = setupScriptMatch[1];
+        const scriptBase = setupScriptMatch[1];
+        let ext = setupScriptMatch[2];
         if (!ext) {
           const ua = (req.headers['user-agent'] || '').toLowerCase();
           ext = (ua.includes('powershell') || ua.includes('pwsh')) ? 'ps1' : 'sh';
         }
-        const possibleNames = [`setup.${ext}`, `agent-lb-setup.${ext}`, `teamclaude-setup.${ext}`];
+        const isCodex = scriptBase.includes('codex');
+        const possibleNames = isCodex
+          ? [`codexlb-setup.${ext}`, `codex-setup.${ext}`]
+          : [`setup.${ext}`, `agent-lb-setup.${ext}`, `teamclaude-setup.${ext}`];
         const scriptDirs = [
           join(__dirname, '..', 'setup'),
           join(homedir(), 'agent-lb-setup'),
@@ -360,11 +364,21 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
         if (!content) {
           res.writeHead(404, { 'Content-Type': 'text/plain' });
-          res.end(`setup.${ext} not found on server`);
+          res.end(`setup script ${scriptBase}.${ext} not found on server`);
           return;
         }
+
+        // Dynamically bake requesting server origin into script if requested over HTTP
+        const reqProto = req.headers['x-forwarded-proto'] || (req.socket.encrypted ? 'https' : 'http');
+        const reqHost = req.headers['x-forwarded-host'] || req.headers.host;
+        if (reqHost) {
+          const currentOrigin = `${reqProto}://${reqHost}`;
+          content = content.replace(/http:\/\/localhost:3456/g, currentOrigin);
+          content = content.replace(/https:\/\/codexlb\.gotova\.pl/g, currentOrigin);
+        }
+
         res.writeHead(200, {
-          'Content-Type': ext === 'ps1' ? 'text/plain; charset=utf-8' : 'application/x-sh',
+          'Content-Type': ext === 'ps1' ? 'text/plain; charset=utf-8' : (ext === 'js' ? 'application/javascript; charset=utf-8' : 'application/x-sh'),
           'Cache-Control': 'no-cache',
         });
         res.end(content);
@@ -485,6 +499,22 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           }));
           return;
         }
+      }
+
+      // Codex models endpoint — live verification for Codex CLI & setup scripts
+      if (req.method === 'GET' && (req.url === '/backend-api/codex/models' || req.url === '/backend-api/codex/v1/models' || req.url === '/v1/models' || req.url === '/models')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          object: 'list',
+          data: [
+            { id: 'gpt-5.6-sol', object: 'model', name: 'GPT 5.6 Sol' },
+            { id: 'gpt-5.6', object: 'model', name: 'GPT 5.6' },
+            { id: 'o3-mini', object: 'model', name: 'o3-mini' },
+            { id: 'o1', object: 'model', name: 'o1' },
+            { id: 'gpt-4o', object: 'model', name: 'GPT-4o' }
+          ]
+        }));
+        return;
       }
 
       // Status endpoint
