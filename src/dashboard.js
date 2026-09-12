@@ -655,9 +655,8 @@ const PAGE = `<!doctype html>
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
             <span style="font-weight:600; font-size:11.5px; color:#f0f6fc;">⚡ Szybkie podłączenie stacji:</span>
             <div style="display:flex; gap:3px;">
-              <button class="btn btn-xs active" id="btnQuickTabBash" type="button" style="padding:1px 6px; font-size:10px;" title="Skrypt instalacyjny Claude Code CLI (Linux/macOS/WSL)">Claude</button>
-              <button class="btn btn-xs" id="btnQuickTabCodex" type="button" style="padding:1px 6px; font-size:10px;" title="Skrypt instalacyjny OpenAI Codex CLI (Linux/macOS/WSL)">Codex</button>
-              <button class="btn btn-xs" id="btnQuickTabPS" type="button" style="padding:1px 6px; font-size:10px;" title="Skrypt instalacyjny PowerShell (Windows)">Windows</button>
+              <button class="btn btn-xs active" id="btnQuickTabBash" type="button" style="padding:1px 7px; font-size:10px;" title="Skrypt instalacyjny Linux, macOS, WSL (Bash)">Linux / macOS</button>
+              <button class="btn btn-xs" id="btnQuickTabPS" type="button" style="padding:1px 7px; font-size:10px;" title="Skrypt instalacyjny Windows (PowerShell)">Windows</button>
             </div>
           </div>
           <div style="display:flex; align-items:center; gap:6px; background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:4px; padding:4px 7px;">
@@ -2610,11 +2609,7 @@ ${SHARED_HELPERS}
     var withKey = chk ? chk.checked : true;
 
     var cmd = '';
-    if (currentQuickTab === 'codex') {
-      cmd = withKey
-        ? 'curl -fsSL ' + hostUrl + '/codexlb-setup.sh | bash -s -- --key ' + key
-        : 'curl -fsSL ' + hostUrl + '/codexlb-setup.sh | bash';
-    } else if (currentQuickTab === 'ps') {
+    if (currentQuickTab === 'ps') {
       cmd = withKey
         ? '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"'
         : 'irm ' + hostUrl + '/setup.ps1 | iex';
@@ -2635,7 +2630,6 @@ ${SHARED_HELPERS}
     currentQuickTab = tab;
     var tabs = [
       { id: 'btnQuickTabBash', name: 'bash' },
-      { id: 'btnQuickTabCodex', name: 'codex' },
       { id: 'btnQuickTabPS', name: 'ps' }
     ];
     tabs.forEach(function (t) {
@@ -3151,7 +3145,7 @@ ${SHARED_HELPERS}
   if (btnQuickCopy) btnQuickCopy.addEventListener('click', copyQuickCmd);
   var quickCode = document.getElementById('quickCmdText');
   if (quickCode) quickCode.addEventListener('click', copyQuickCmd);
-  ['Bash', 'Codex', 'PS'].forEach(function (t) {
+  ['Bash', 'PS'].forEach(function (t) {
     var b = document.getElementById('btnQuickTab' + t);
     if (b) {
       b.addEventListener('click', function () { setQuickTab(t.toLowerCase()); });

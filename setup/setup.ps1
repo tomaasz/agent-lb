@@ -132,13 +132,46 @@ if (Test-Path $vsCodeDir) {
 	}
 }
 
+# -------------------------------------------------- ~/.codex/config.toml (Codex CLI)
+$codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $homeDir '.codex' }
+if (-not (Test-Path $codexHome)) { New-Item -ItemType Directory -Path $codexHome -Force | Out-Null }
+$codexToml = Join-Path $codexHome 'config.toml'
+$existingToml = if (Test-Path $codexToml) { Get-Content -Raw -Path $codexToml } else { '' }
+if ($existingToml -notmatch 'model_providers\.codex-lb') {
+	$tomlAppend = @"
+
+# >>> codexlb >>> (zarzadzane przez setup.ps1)
+[model_providers.codex-lb]
+name = "openai"
+base_url = "$Url/backend-api/codex"
+wire_api = "responses"
+supports_websockets = true
+requires_openai_auth = true
+env_key = "CODEX_LB_API_KEY"
+
+[profiles.codexlb]
+model = "gpt-5.6-sol"
+model_provider = "codex-lb"
+model_reasoning_effort = "xhigh"
+# <<< codexlb <<<
+"@
+	Add-Content -Path $codexToml -Value $tomlAppend -Encoding utf8
+	Say "[OK] Zaktualizowano $codexToml (profil codexlb dla Codex CLI)."
+}
+
 # --------------------------------------------------- zmienne środowiskowe
 Say "Ustawiam zmienne środowiskowe użytkownika Windows..."
 [Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $Url, 'User')
 [Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $Key, 'User')
+[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $Key, 'User')
+[Environment]::SetEnvironmentVariable('CODEX_BASE_URL', "$Url/backend-api/codex", 'User')
+[Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', "$Url/v1", 'User')
 $env:ANTHROPIC_BASE_URL = $Url
 $env:ANTHROPIC_API_KEY  = $Key
-Say "[OK] Zapisano zmienne ANTHROPIC_BASE_URL i ANTHROPIC_API_KEY w profilu użytkownika."
+$env:CODEX_LB_API_KEY   = $Key
+$env:CODEX_BASE_URL     = "$Url/backend-api/codex"
+$env:OPENAI_BASE_URL    = "$Url/v1"
+Say "[OK] Zapisano zmienne ANTHROPIC_* oraz CODEX_* w profilu użytkownika."
 
 # ------------------------------------------------------------------- test
 if ($Test) {

@@ -95,23 +95,20 @@ fi
 mkdir -p "$(dirname "$ENV_FILE")" "$BIN_DIR"
 umask 077
 cat > "$ENV_FILE" <<-EOF
-# Claude-LB / TeamClaude environment configuration
+# Agent LB environment configuration
 export ANTHROPIC_BASE_URL="$URL"
 export ANTHROPIC_API_KEY="$KEY"
-EOF
-if [ "$SETUP_CODEX" -eq 1 ] || [ -d "$HOME/.codex" ]; then
-cat >> "$ENV_FILE" <<-EOF
 export CODEX_BASE_URL="$URL/backend-api/codex"
 export OPENAI_BASE_URL="$URL/v1"
+export CODEX_LB_API_KEY="$KEY"
 EOF
-fi
 chmod 600 "$ENV_FILE"
 say "Zapisano $ENV_FILE."
 if [ "$ENV_FILE" != "$HOME/.config/teamclaude.env" ]; then
 	cp -f "$ENV_FILE" "$HOME/.config/teamclaude.env" 2>/dev/null || true
 fi
 
-# Konfiguracja ~/.claude/settings.json (CLI)
+# Konfiguracja ~/.claude/settings.json (CLI Claude Code)
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 mkdir -p "$HOME/.claude"
 if [ ! -f "$CLAUDE_SETTINGS" ]; then
@@ -132,12 +129,33 @@ with open(p, 'w') as f: json.dump(data, f, indent=2)
 " 2>/dev/null && say "Zaktualizowano $CLAUDE_SETTINGS."
 fi
 
-# Konfiguracja ~/.codex/config.json (Codex CLI)
-if [ "$SETUP_CODEX" -eq 1 ] || [ -d "$HOME/.codex" ]; then
-	mkdir -p "$HOME/.codex"
-	CODEX_CONF="$HOME/.codex/config.json"
-	if command -v python3 >/dev/null 2>&1; then
-		python3 -c "
+# Konfiguracja ~/.codex (OpenAI Codex CLI: config.toml oraz config.json)
+mkdir -p "$HOME/.codex"
+CODEX_TOML="$HOME/.codex/config.toml"
+if [ ! -f "$CODEX_TOML" ] || ! grep -qF "model_providers.codex-lb" "$CODEX_TOML" 2>/dev/null; then
+	cat >> "$CODEX_TOML" <<-EOF
+
+# >>> codexlb >>> (zarzadzane przez setup.sh)
+[model_providers.codex-lb]
+name = "openai"
+base_url = "$URL/backend-api/codex"
+wire_api = "responses"
+supports_websockets = true
+requires_openai_auth = true
+env_key = "CODEX_LB_API_KEY"
+
+[profiles.codexlb]
+model = "gpt-5.6-sol"
+model_provider = "codex-lb"
+model_reasoning_effort = "xhigh"
+# <<< codexlb <<<
+EOF
+	say "Zaktualizowano $CODEX_TOML (profil codexlb)."
+fi
+
+CODEX_CONF="$HOME/.codex/config.json"
+if command -v python3 >/dev/null 2>&1; then
+	python3 -c "
 import json
 p = '$CODEX_CONF'
 try:
@@ -146,7 +164,6 @@ except Exception: data = {}
 data['base_url'] = '$URL/backend-api/codex'
 with open(p, 'w') as f: json.dump(data, f, indent=2)
 " 2>/dev/null && say "Zaktualizowano $CODEX_CONF."
-	fi
 fi
 
 # Integracja z powłoką
