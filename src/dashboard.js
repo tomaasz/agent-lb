@@ -652,11 +652,22 @@ const PAGE = `<!doctype html>
         </div>
 
         <div class="card" style="margin-bottom:8px; background:rgba(83,177,253,0.06); border-color:rgba(83,177,253,0.2); padding:8px 10px;">
-          <div style="font-weight:600; font-size:12px; display:flex; align-items:center; justify-content:space-between;">
-            <span>📦 Instalator stacji</span>
-            <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600; font-size:11.5px;">tomaasz/agent-lb ↗</a>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
+            <span style="font-weight:600; font-size:11.5px; color:#f0f6fc;">⚡ Szybkie podłączenie stacji:</span>
+            <div style="display:flex; gap:3px;">
+              <button class="btn btn-xs active" id="btnQuickTabBash" type="button" style="padding:1px 6px; font-size:10px;" title="Skrypt instalacyjny Claude Code CLI (Linux/macOS/WSL)">Claude</button>
+              <button class="btn btn-xs" id="btnQuickTabCodex" type="button" style="padding:1px 6px; font-size:10px;" title="Skrypt instalacyjny OpenAI Codex CLI (Linux/macOS/WSL)">Codex</button>
+              <button class="btn btn-xs" id="btnQuickTabPS" type="button" style="padding:1px 6px; font-size:10px;" title="Skrypt instalacyjny PowerShell (Windows)">Windows</button>
+            </div>
           </div>
-          <div style="color:var(--dim); font-size:11px; margin-top:2px; line-height:1.35;">1-klikowa konfiguracja Claude Code CLI i Codex CLI (Linux, macOS, WSL, Windows).</div>
+          <div style="display:flex; align-items:center; gap:6px; background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:4px; padding:4px 7px;">
+            <code id="quickCmdText" class="mono" style="flex:1; font-size:10.5px; color:#58a6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" title="Kliknij, aby skopiować pełną komendę"></code>
+            <button class="btn btn-xs btn-accent" id="btnQuickCopyCmd" type="button" style="flex-shrink:0; padding:1px 7px;" title="Kopiuj polecenie do schowka">📋 Kopiuj</button>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:4px; font-size:10.5px; color:var(--dim);">
+            <span>1-klikowa konfiguracja CLI & VS Code</span>
+            <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-size:10.5px;">instrukcja GitHub ↗</a>
+          </div>
         </div>
 
         <div id="clientKeysTable" class="client-keys-list"></div>
@@ -2581,7 +2592,66 @@ ${SHARED_HELPERS}
       });
   }
 
+  var currentQuickTab = 'bash';
+  var currentQuickKey = '';
+
+  function updateQuickCmd(keys) {
+    var hostUrl = window.location.origin;
+    var list = keys || (lastStatus && lastStatus.clientKeys) || [];
+    var key = currentQuickKey;
+    if (!key && list.length) {
+      key = list[0].rawKey || list[0].key || '';
+    }
+    if (!key) key = '<KLUCZ_KLIENTA>';
+
+    var cmd = '';
+    if (currentQuickTab === 'codex') {
+      cmd = 'curl -fsSL ' + hostUrl + '/codexlb-setup.sh | bash -s -- --key ' + key;
+    } else if (currentQuickTab === 'ps') {
+      cmd = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"';
+    } else {
+      cmd = 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + key;
+    }
+
+    var codeEl = document.getElementById('quickCmdText');
+    if (codeEl) {
+      codeEl.textContent = cmd;
+      codeEl.dataset.fullCmd = cmd;
+    }
+  }
+
+  function setQuickTab(tab) {
+    currentQuickTab = tab;
+    var tabs = [
+      { id: 'btnQuickTabBash', name: 'bash' },
+      { id: 'btnQuickTabCodex', name: 'codex' },
+      { id: 'btnQuickTabPS', name: 'ps' }
+    ];
+    tabs.forEach(function (t) {
+      var btn = document.getElementById(t.id);
+      if (btn) {
+        if (t.name === tab) btn.classList.add('active');
+        else btn.classList.remove('active');
+      }
+    });
+    updateQuickCmd();
+  }
+
+  function copyQuickCmd() {
+    var codeEl = document.getElementById('quickCmdText');
+    var cmd = (codeEl && codeEl.dataset.fullCmd) || (codeEl && codeEl.textContent) || '';
+    if (!cmd) return;
+    copyToClipboard(cmd, 'Polecenie instalatora stacji');
+    var btn = document.getElementById('btnQuickCopyCmd');
+    if (btn) {
+      var old = btn.textContent;
+      btn.textContent = '✔ Skopiowano!';
+      setTimeout(function () { btn.textContent = old; }, 1800);
+    }
+  }
+
   function renderClientKeys(keys, clients) {
+    updateQuickCmd(keys);
     var container = document.getElementById('clientKeysTable');
     if (!container) return;
     container.textContent = '';
@@ -2621,6 +2691,8 @@ ${SHARED_HELPERS}
       var btnSetup = el('button', 'btn btn-xs btn-accent', '🚀 Podłącz');
       btnSetup.title = 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tego klienta';
       btnSetup.addEventListener('click', function () {
+        currentQuickKey = raw;
+        updateQuickCmd();
         showKeyModal(k.name, raw);
       });
       acts.appendChild(btnSetup);
@@ -3062,6 +3134,18 @@ ${SHARED_HELPERS}
       doPullSetup(this);
     });
   }
+
+  // Quick copy setup command listeners
+  var btnQuickCopy = document.getElementById('btnQuickCopyCmd');
+  if (btnQuickCopy) btnQuickCopy.addEventListener('click', copyQuickCmd);
+  var quickCode = document.getElementById('quickCmdText');
+  if (quickCode) quickCode.addEventListener('click', copyQuickCmd);
+  ['Bash', 'Codex', 'PS'].forEach(function (t) {
+    var b = document.getElementById('btnQuickTab' + t);
+    if (b) {
+      b.addEventListener('click', function () { setQuickTab(t.toLowerCase()); });
+    }
+  });
 
   // Re-login modal listeners
   var btnCloseRelogin = document.getElementById('btnCloseReloginModal');
