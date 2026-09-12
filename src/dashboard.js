@@ -339,8 +339,8 @@ const PAGE = `<!doctype html>
   .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
   .header-actions { display: flex; gap: 6px; align-items: center; }
 
-  /* 3-column master dashboard grid: Col 1 Claude | Col 2 Codex | Col 3 Client Keys */
-  .dashboard-grid { display: grid; grid-template-columns: minmax(290px, 1fr) minmax(290px, 1fr) minmax(340px, 1.15fr); gap: 14px; align-items: start; margin-top: 6px; }
+  /* 3-column master dashboard grid: Col 1 Claude (1fr) | Col 2 Codex (1fr) | Col 3 Client Keys (compact 360px sidebar) */
+  .dashboard-grid { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr) minmax(280px, 360px); gap: 14px; align-items: start; margin-top: 6px; }
   .grid-head-accounts { grid-column: 1 / 3; grid-row: 1; min-width: 0; }
   .grid-head-clients { grid-column: 3 / 4; grid-row: 1; min-width: 0; }
   #colClaude { grid-column: 1 / 2; grid-row: 2; min-width: 0; }
@@ -375,7 +375,8 @@ const PAGE = `<!doctype html>
   .drag-handle:active { cursor: grabbing; }
   .prio-badge { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.3); color: var(--accent); line-height: 1.2; }
 
-  .card { background: rgba(22, 27, 34, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 6px; padding: 8px 12px; margin-bottom: 0; display: flex; flex-direction: column; justify-content: space-between; min-height: 114px; box-sizing: border-box; transition: border-color .15s ease; }
+  .card { background: rgba(22, 27, 34, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 6px; padding: 8px 12px; margin-bottom: 0; box-sizing: border-box; transition: border-color .15s ease; }
+  .account-list .card { display: flex; flex-direction: column; justify-content: space-between; min-height: 114px; }
   .card:hover { border-color: rgba(255, 255, 255, 0.15); }
   .card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
   .card-title-group { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; overflow: hidden; }
@@ -594,7 +595,7 @@ const PAGE = `<!doctype html>
     <div class="dashboard-grid" id="accountsGrid">
       <!-- Sekcja nagłówka kont -->
       <div class="grid-head-accounts">
-        <div class="sec-head" style="margin:0 0 4px;">
+        <div class="sec-head" style="margin:0 0 4px; justify-content:flex-start; gap:12px;">
           <h2>Konta Claude & Codex</h2>
           <span style="font-size:11px; color:var(--dim);">💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet</span>
         </div>
@@ -604,9 +605,9 @@ const PAGE = `<!doctype html>
       <div class="grid-head-clients">
         <div class="sec-head" style="margin:0 0 4px;">
           <h2>Klucze klientów</h2>
-          <div class="row" style="gap:6px;">
-            <button class="btn btn-sm" id="btnPullSetupRepo" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)">🔄 Aktualizuj instalator</button>
-            <button class="btn btn-sm btn-accent" id="btnShowAddClientKey">➕ Utwórz klucz klienta</button>
+          <div class="row" style="gap:5px;">
+            <button class="btn btn-sm" id="btnPullSetupRepo" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)">🔄 Aktualizuj</button>
+            <button class="btn btn-sm btn-accent" id="btnShowAddClientKey" title="Utwórz nowy klucz klienta">➕ Nowy klucz</button>
           </div>
         </div>
       </div>
@@ -638,12 +639,12 @@ const PAGE = `<!doctype html>
       <!-- Column 3: Klucze klientów & Narzędzia -->
       <div class="dash-col-side">
         <div class="card" style="margin-bottom:10px; background:rgba(83,177,253,0.06); border-color:rgba(83,177,253,0.22); padding:8px 12px;">
-          <div class="row" style="justify-content:space-between; align-items:center;">
-            <div>
-              <span style="font-weight:600; font-size:12.5px;">📦 Automatyczny instalator stacji roboczych:</span>
-              <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600; margin-left:6px;">tomaasz/agent-lb ↗</a>
-              <div style="color:var(--dim); font-size:11.5px; margin-top:2px;">1-klikowa konfiguracja Claude Code CLI oraz OpenAI Codex CLI i rozszerzeń VS Code (Linux, macOS, WSL, Windows).</div>
+          <div>
+            <div style="font-weight:600; font-size:12px; display:flex; align-items:center; justify-content:space-between;">
+              <span>📦 Instalator stacji</span>
+              <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-weight:600; font-size:11.5px;">tomaasz/agent-lb ↗</a>
             </div>
+            <div style="color:var(--dim); font-size:11px; margin-top:2px; line-height:1.35;">1-klikowa konfiguracja Claude Code CLI i Codex CLI (Linux, macOS, WSL, Windows).</div>
           </div>
         </div>
         <div class="card table-responsive" style="padding:4px 6px; margin-bottom:12px;">
@@ -2587,7 +2588,7 @@ ${SHARED_HELPERS}
     }
 
     var hr = el('tr');
-    ['Klient', 'Klucz API', 'Zapytania', 'Tokeny (In / Out)', 'Akcje'].forEach(function (h, i) {
+    ['Klient', 'Klucz API', 'Req', 'Tokeny', 'Akcje'].forEach(function (h, i) {
       hr.appendChild(el('th', (i === 2 || i === 3 || i === 4) ? 'num' : '', h));
     });
     table.appendChild(hr);
@@ -2598,14 +2599,14 @@ ${SHARED_HELPERS}
 
       var keyTd = el('td');
       var row = el('div', 'row');
-      row.style.gap = '6px';
+      row.style.gap = '4px';
       var isRevealed = !!revealedKeys[k.name];
       var raw = k.rawKey || k.key || '';
       var masked = isRevealed ? raw : (raw.length > 8 ? raw.slice(0, 5) + '••••••••' + raw.slice(-4) : '••••••••');
       row.appendChild(el('span', 'mono', masked));
 
       if (raw && raw !== masked) {
-        var btnToggle = el('button', 'btn btn-sm', isRevealed ? 'Ukryj' : 'Pokaż');
+        var btnToggle = el('button', 'btn btn-xs', isRevealed ? 'Ukryj' : 'Pokaż');
         btnToggle.addEventListener('click', function () {
           revealedKeys[k.name] = !revealedKeys[k.name];
           renderClientKeys(keys, clients);
@@ -2613,7 +2614,7 @@ ${SHARED_HELPERS}
         row.appendChild(btnToggle);
       }
 
-      var btnCopy = el('button', 'btn btn-sm', '📋 Kopiuj');
+      var btnCopy = el('button', 'btn btn-xs', '📋 Kopiuj');
       btnCopy.addEventListener('click', function () {
         copyToClipboard(raw, 'Klucz klienta ' + k.name);
       });
@@ -2632,15 +2633,16 @@ ${SHARED_HELPERS}
       var actTd = el('td', 'num');
       var acts = el('div', 'actions-group');
       acts.style.justifyContent = 'flex-end';
+      acts.style.gap = '4px';
 
-      var btnSetup = el('button', 'btn btn-sm btn-accent', '🚀 Podłącz');
+      var btnSetup = el('button', 'btn btn-xs btn-accent', '🚀 Podłącz');
       btnSetup.title = 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tego klienta';
       btnSetup.addEventListener('click', function () {
         showKeyModal(k.name, raw);
       });
       acts.appendChild(btnSetup);
 
-      var btnDel = el('button', 'btn btn-sm btn-bad', '🗑️ Unieważnij');
+      var btnDel = el('button', 'btn btn-xs btn-bad', 'Unieważnij');
       btnDel.title = 'Unieważnij i usuń ten klucz';
       btnDel.addEventListener('click', function () {
         doRemoveClientKey(k.name, btnDel);
