@@ -657,7 +657,7 @@ const PAGE = `<!doctype html>
       <div id="tabContentApiKey" class="tab-content">
         <div class="form-grid">
           <div>
-            <label>Klucz API Anthropic Console (sk-ant-...) *</label>
+            <label id="lblApiKey">Klucz API Anthropic Console (sk-ant-...) *</label>
             <input id="inApiKey" type="password" placeholder="sk-ant-api03-..." autocomplete="off">
           </div>
           <div class="form-row">
@@ -679,7 +679,7 @@ const PAGE = `<!doctype html>
       <!-- Tab 2: OAuth paste JSON/tokens -->
       <div id="tabContentOAuth" class="tab-content" style="display:none;">
         <div class="form-grid">
-          <p style="color:var(--dim); font-size:12px;">
+          <p id="pOAuthHelp" style="color:var(--dim); font-size:12px;">
             Wklej zawartość pliku <code>~/.claude/.credentials.json</code> lub podaj tokeny z sesji OAuth:
           </p>
           <div>
@@ -742,7 +742,7 @@ const PAGE = `<!doctype html>
       <div id="tabContentBrowserOAuth" class="tab-content" style="display:none;">
         <div class="form-grid">
           <div id="oauthStep1">
-            <p style="color:var(--dim); font-size:12px; margin-bottom:10px;">
+            <p id="pBrowserOAuthHelp" style="color:var(--dim); font-size:12px; margin-bottom:10px;">
               Zaloguj się na konto Claude w przeglądarce za pomocą bezpiecznego przepływu PKCE.
             </p>
             <button class="btn btn-accent" id="btnStartOAuth">Rozpocznij logowanie Claude</button>
@@ -751,7 +751,7 @@ const PAGE = `<!doctype html>
             <p style="font-size:12px; margin-bottom:6px;">
               1. Jeśli okno logowania się nie otworzyło, <a id="oauthLink" href="#" target="_blank" style="color:var(--accent); text-decoration:underline;">kliknij tutaj ↗</a>.
             </p>
-            <p style="font-size:12px; color:var(--dim); margin-bottom:8px;">
+            <p id="pOAuthStep2Help" style="font-size:12px; color:var(--dim); margin-bottom:8px;">
               2. Zaloguj się w Claude.ai i skopiuj kod autoryzacyjny lub pełny adres URL:
             </p>
             <div>
@@ -2108,14 +2108,64 @@ ${SHARED_HELPERS}
       });
   }
 
-  function doStartBrowserOAuth(btn) {
+  function updateAddAccountProviderUI() {
+    var isCodex = getSelectedAddProvider() === 'codex';
+
+    var lblApiKey = document.getElementById('lblApiKey');
+    if (lblApiKey) lblApiKey.textContent = isCodex ? 'Klucz API OpenAI (sk-...) *' : 'Klucz API Anthropic Console (sk-ant-...) *';
+    var inApiKey = document.getElementById('inApiKey');
+    if (inApiKey) inApiKey.placeholder = isCodex ? 'sk-proj-...' : 'sk-ant-api03-...';
+
+    var pOAuth = document.getElementById('pOAuthHelp');
+    if (pOAuth) {
+      pOAuth.innerHTML = isCodex
+        ? 'Wklej zawartość pliku <code>~/.codex/auth.json</code> lub podaj tokeny z sesji OAuth:'
+        : 'Wklej zawartość pliku <code>~/.claude/.credentials.json</code> lub podaj tokeny z sesji OAuth:';
+    }
+    var inOAuthJson = document.getElementById('inOAuthJson');
+    if (inOAuthJson) {
+      inOAuthJson.placeholder = isCodex
+        ? '{"tokens":{"access_token":"...","refresh_token":"...","account_id":"..."}}'
+        : '{"claudeAiOauth":{"accessToken":"...","refreshToken":"...","expiresAt":...}}';
+    }
+
+    var inImportPath = document.getElementById('inImportPath');
+    if (inImportPath) {
+      if (!inImportPath.dataset.customized) {
+        inImportPath.value = isCodex ? '~/.codex/auth.json' : '~/.claude/.credentials.json';
+      }
+    }
+
+    var pBrowser = document.getElementById('pBrowserOAuthHelp');
+    if (pBrowser) {
+      pBrowser.textContent = isCodex
+        ? 'Zaloguj się na konto OpenAI Codex / ChatGPT w przeglądarce za pomocą bezpiecznego przepływu PKCE.'
+        : 'Zaloguj się na konto Claude w przeglądarce za pomocą bezpiecznego przepływu PKCE.';
+    }
+    var btnStart = document.getElementById('btnStartOAuth');
+    if (btnStart) {
+      btnStart.textContent = isCodex ? 'Rozpocznij logowanie OpenAI Codex' : 'Rozpocznij logowanie Claude';
+    }
+    var pStep2 = document.getElementById('pOAuthStep2Help');
+    if (pStep2) {
+      pStep2.textContent = isCodex
+        ? '2. Zaloguj się w OpenAI / ChatGPT i skopiuj kod autoryzacyjny lub adres URL (http://localhost:1455/auth/callback?code=...):'
+        : '2. Zaloguj się w Claude.ai i skopiuj kod autoryzacyjny lub pełny adres URL:';
+    }
+  }
+
+  function doStartOAuth(btn) {
     if (btn) btn.disabled = true;
     var authWindow = null;
     try {
       authWindow = window.open('about:blank', '_blank');
-    } catch {}
+    } catch (e) {
+      authWindow = null;
+    }
 
-    apiCall('/teamclaude/oauth/start?provider=' + encodeURIComponent(getSelectedAddProvider()), 'GET')
+    var prov = getSelectedAddProvider();
+    note('ok', 'Inicjowanie logowania w przeglądarce (' + (prov === 'codex' ? 'OpenAI Codex' : 'Claude') + ')...');
+    apiCall('/teamclaude/oauth/start?provider=' + encodeURIComponent(prov), 'GET')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res || !res.ok) {
@@ -2131,6 +2181,7 @@ ${SHARED_HELPERS}
         if (link) link.href = res.authUrl;
         document.getElementById('oauthStep1').style.display = 'none';
         document.getElementById('oauthStep2').style.display = 'block';
+        note('ok', 'Otwarto stronę logowania ' + (prov === 'codex' ? 'OpenAI' : 'Claude') + '. Po zatwierdzeniu wklej kod poniżej.');
       })
       .catch(function (e) {
         if (btn) btn.disabled = false;
@@ -2138,6 +2189,8 @@ ${SHARED_HELPERS}
         note('error', 'Błąd logowania OAuth: ' + e.message);
       });
   }
+  var doStartBrowserOAuth = doStartOAuth;
+
 
   function doCompleteOAuth(btn) {
     var code = document.getElementById('inOAuthCode').value.trim();
@@ -2776,11 +2829,30 @@ ${SHARED_HELPERS}
 
   // Modals opening/closing
   document.getElementById('btnShowAddAccount').addEventListener('click', function () {
+    updateAddAccountProviderUI();
+    document.getElementById('oauthStep1').style.display = 'block';
+    document.getElementById('oauthStep2').style.display = 'none';
     openModal('modalAddAccount');
   });
   document.getElementById('btnCloseAddAccount').addEventListener('click', function () {
     closeModal('modalAddAccount');
   });
+
+  ['radioProvAnthropic', 'radioProvCodex'].forEach(function (id) {
+    var r = document.getElementById(id);
+    if (r) {
+      r.addEventListener('change', function () {
+        updateAddAccountProviderUI();
+      });
+    }
+  });
+
+  var inImportPath = document.getElementById('inImportPath');
+  if (inImportPath) {
+    inImportPath.addEventListener('input', function () {
+      this.dataset.customized = 'true';
+    });
+  }
 
   document.getElementById('btnShowAddClientKey').addEventListener('click', function () {
     openModal('modalAddClientKey');

@@ -100,6 +100,9 @@ describe('Dashboard Authentication and Layout', () => {
     assert.ok(html.includes('data-provider="codex"'), 'listCodex has data-provider codex');
     assert.ok(html.includes('renderAccountsGrid'), 'script defines renderAccountsGrid');
     assert.ok(html.includes('/api/accounts/reorder'), 'script targets accounts reorder endpoint');
+    assert.ok(html.includes('function doStartOAuth'), 'script defines doStartOAuth');
+    assert.ok(html.includes('function doCompleteOAuth'), 'script defines doCompleteOAuth');
+    assert.ok(html.includes('function updateAddAccountProviderUI'), 'script defines updateAddAccountProviderUI');
   });
 
   it('updates account priority and persists order on POST /api/accounts/reorder', async () => {
