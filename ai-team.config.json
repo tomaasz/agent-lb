@@ -1,0 +1,56 @@
+{
+  "requireCleanWorkingTree": true,
+  "createBranchForEachRun": true,
+  "branchPrefix": "ai/",
+  "primaryProvider": "claude",
+  "models": {},
+  "agentTimeoutSeconds": 3600,
+  "runTimeoutSeconds": 14400,
+  "maxReviewRounds": 2,
+  "verification": {
+    "commands": [
+      {
+        "argv": ["node", "--test", "--test-timeout=120000"],
+        "cwd": ".",
+        "timeoutSeconds": 120
+      }
+    ],
+    "noChecksReason": ""
+  },
+  "riskPaths": {
+    "HIGH": [
+      "src/oauth.js",
+      "src/codex-auth.js",
+      "src/account-manager.js",
+      "src/x509.js",
+      "src/claude-env.js",
+      "setup/**",
+      "docker/**",
+      "*.json"
+    ],
+    "MEDIUM": [
+      "src/server.js",
+      "src/provider.js",
+      "src/forward-target.js",
+      "src/upstream-*",
+      "src/backend-quota.js",
+      "src/codex-quota.js",
+      "src/dashboard.js",
+      "src/mitm.js",
+      "src/egress-guard.js"
+    ]
+  },
+  "reviewPolicy": {
+    "LOW": [],
+    "MEDIUM": ["codex"],
+    "HIGH": ["codex", "agy"]
+  },
+  "antigravity": {
+    "triageEffort": "low",
+    "implementationEffort": "high",
+    "verificationEffort": "medium",
+    "sandbox": true,
+    "fullAuto": false,
+    "printTimeout": "60m"
+  }
+}

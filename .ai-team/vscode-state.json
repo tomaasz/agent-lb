@@ -1,0 +1,60 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "AI Team: Run prompt",
+      "type": "process",
+      "command": "ai-team",
+      "args": [
+        "run",
+        "${workspaceFolder}",
+        "--prompt",
+        "${input:aiPrompt}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "focus": true
+      }
+    },
+    {
+      "label": "AI Team: Doctor",
+      "type": "process",
+      "command": "ai-team",
+      "args": [
+        "doctor",
+        "${workspaceFolder}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "AI Team: Update",
+      "type": "process",
+      "command": "ai-team",
+      "args": [
+        "update",
+        "${workspaceFolder}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "aiPrompt",
+      "type": "promptString",
+      "description": "Co ma zrobić AI Engineering Team?",
+      "default": ""
+    }
+  ]
+}

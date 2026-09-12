@@ -1,0 +1,30 @@
+{
+  "frameworkVersion": "3.0.1",
+  "profile": "core",
+  "managed": {
+    ".agents/agents/architect.md": "419e6bcd432ffa98334ea641d18f547e157f951bbec955b788aecfc5cbbd8417",
+    ".agents/agents/implementer.md": "27465f03d179b049bf143192005caef49c65a94fd5d30472e413f5617a8ab598",
+    ".agents/agents/integrator.md": "0db39e629edd9108acda939a1866b699f31f872d5b41176f8745b053e452c027",
+    ".agents/agents/orchestrator.md": "7ad0c9d194f295691a12406ce68a003e1ba45c280f1908c7186c260c8f09e0de",
+    ".agents/agents/researcher.md": "bc8afe10c3f24f92130fde88967fff11d3569a14e9af0c3343573be5d4308123",
+    ".agents/agents/reviewer.md": "23d7145b5830053cf124dadd4fb9584944ffa990dc8073dd1eefe3580b5540bd",
+    ".agents/agents/test-engineer.md": "4dd635d1ae99e5ca120656dabcab0f4196cee5deb227aab23b094982922a3dc5",
+    ".agents/agents/triage.md": "c968fb3f33ac968d6773781d64989d6e22da90d7e07b07660bb724438111f16f",
+    ".agents/agents/verifier.md": "df2e91032f2e4dc497b9215cff27da36f07f2f426dfc1b2f7bba42e5f24488f2",
+    ".agents/skills/core/code-review/SKILL.md": "24ec396b944535649fa729b7d100b8ab3619ef78a5469be2cd5da96334290b1a",
+    ".agents/skills/core/task-planning/SKILL.md": "63fe22547fafd1107d3862a0419d0cee1735f1f5bb87bffd42b3eb7be7f4824b",
+    ".agents/skills/core/testing/SKILL.md": "ed56b6af8ed7a516df07917a750ab8a4bdb3ed1d6dd1ef8e9330cad8a3a12fb7",
+    ".claude/agents/debugger.md": "e8718361ff3fb462afbf034de3426c95227b9ffc6fd5d54a28b1ffdcfdefe58f",
+    ".claude/agents/independent-reviewer.md": "66160a25bf1ef3227cef9fc45ac64181a55bf60fd6675990763d8f77a085e813",
+    ".claude/skills/core/code-review/SKILL.md": "24ec396b944535649fa729b7d100b8ab3619ef78a5469be2cd5da96334290b1a",
+    ".claude/skills/core/task-planning/SKILL.md": "63fe22547fafd1107d3862a0419d0cee1735f1f5bb87bffd42b3eb7be7f4824b",
+    ".claude/skills/core/testing/SKILL.md": "ed56b6af8ed7a516df07917a750ab8a4bdb3ed1d6dd1ef8e9330cad8a3a12fb7",
+    ".vscode/tasks.json": "8a0e1a6c6f11ce4fb74a57f0194cee0f1abc3a533465c7c10c63b65450337c57",
+    "AGENTS.md": "04b69f1aba649d44fa5cd60c80699554893b30f0fd43923eb1f4529516b3cf9b",
+    "AI_TEAM.md": "d447ee985f82fd616b4bfc60650472a68f6dab0caaadfac1fff881d634301b85",
+    "CLAUDE.md": "9b3d6365741da9c03d4b61c88b0847629eb46db6c4d9c7e5f766d47b85fe8134",
+    "GEMINI.md": "5516613ff55dcb6d77fafc979b350386662f62a9cf9adb37c6c2091bb85dbdee"
+  },
+  "conflicts": [],
+  "kept": []
+}
