@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderDashboardHtml, dashboardCsp } from '../src/dashboard.js';
-import { resolveClientAuth, safeKeyEqual } from '../src/server.js';
+import { resolveClientAuth, safeKeyEqual, isLocalHostHeader } from '../src/server.js';
 
 describe('Dashboard Authentication and Layout', () => {
   it('renders modern login card and auth elements in dashboard HTML', () => {
@@ -56,6 +56,24 @@ describe('Dashboard Authentication and Layout', () => {
     assert.ok(fs.existsSync('setup/codexlb-setup.sh'), 'setup/codexlb-setup.sh exists');
     assert.ok(fs.existsSync('setup/codexlb-setup.ps1'), 'setup/codexlb-setup.ps1 exists');
     assert.ok(fs.existsSync('setup/codexlb-setup.js'), 'setup/codexlb-setup.js exists');
+  });
+
+  it('validates host header correctly for agentlb.gotova.pl and custom domains', () => {
+    assert.ok(isLocalHostHeader('localhost:3456'), 'localhost accepted');
+    assert.ok(isLocalHostHeader('127.0.0.1:3456'), '127.0.0.1 accepted');
+    assert.ok(isLocalHostHeader('agentlb.gotova.pl'), 'agentlb.gotova.pl accepted');
+    assert.ok(isLocalHostHeader('teamclaude.gotova.pl'), 'teamclaude.gotova.pl accepted');
+    assert.ok(isLocalHostHeader('debian-lite.tail7319.ts.net:3456'), 'tailscale host accepted');
+    assert.ok(!isLocalHostHeader('malicious-site.com'), 'malicious host rejected');
+
+    process.env.AGENT_LB_HOST = 'custom1.example.com, custom2.example.com';
+    try {
+      assert.ok(isLocalHostHeader('custom1.example.com'), 'custom1 in AGENT_LB_HOST accepted');
+      assert.ok(isLocalHostHeader('custom2.example.com:8443'), 'custom2 in AGENT_LB_HOST accepted');
+      assert.ok(!isLocalHostHeader('unauthorized.example.com'), 'unauthorized host rejected');
+    } finally {
+      delete process.env.AGENT_LB_HOST;
+    }
   });
 });
 

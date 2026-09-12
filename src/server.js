@@ -375,6 +375,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           const currentOrigin = `${reqProto}://${reqHost}`;
           content = content.replace(/http:\/\/localhost:3456/g, currentOrigin);
           content = content.replace(/https:\/\/codexlb\.gotova\.pl/g, currentOrigin);
+          content = content.replace(/https:\/\/teamclaude\.gotova\.pl/g, currentOrigin);
         }
 
         res.writeHead(200, {
@@ -1621,8 +1622,14 @@ export function isLocalHostHeader(host, bindHost = null, allowedHosts = []) {
   if (LOCAL_HOSTNAMES.has(name)) return true;
   if (name.endsWith('.ts.net')) return true;
   if (isTailnetAddr(name)) return true;
-  const envHost = process.env.CLAUDE_LB_HOST || process.env.TEAMCLAUDE_HOST;
-  if (envHost && (name === hostnameOf(envHost) || name.endsWith('.' + hostnameOf(envHost)))) return true;
+  const rawEnvHosts = [
+    process.env.AGENT_LB_HOST,
+    process.env.CLAUDE_LB_HOST,
+    process.env.TEAMCLAUDE_HOST,
+    'agentlb.gotova.pl',
+    'teamclaude.gotova.pl',
+  ].filter(Boolean).flatMap(h => typeof h === 'string' ? h.split(',').map(s => s.trim()) : []);
+  if (rawEnvHosts.some(h => name === hostnameOf(h) || name.endsWith('.' + hostnameOf(h)))) return true;
   if (Array.isArray(allowedHosts) && allowedHosts.some(h => name === hostnameOf(h) || name.endsWith('.' + hostnameOf(h)))) return true;
   const bound = typeof bindHost === 'string' ? hostnameOf(bindHost) : null;
   return bound != null && !WILDCARD_BINDS.has(bound) && bound === name;
