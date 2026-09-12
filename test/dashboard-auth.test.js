@@ -103,8 +103,8 @@ describe('Dashboard Authentication and Layout', () => {
     assert.ok(html.includes('function doStartOAuth'), 'script defines doStartOAuth');
     assert.ok(html.includes('function doCompleteOAuth'), 'script defines doCompleteOAuth');
     assert.ok(html.includes('function updateAddAccountProviderUI'), 'script defines updateAddAccountProviderUI');
-    assert.ok(html.includes('id="btnShowAddClaude"'), 'contains section btnShowAddClaude');
-    assert.ok(html.includes('id="btnShowAddCodex"'), 'contains section btnShowAddCodex');
+    assert.ok(!html.includes('id="btnShowAddClaude"'), 'no duplicate section btnShowAddClaude');
+    assert.ok(!html.includes('id="btnShowAddCodex"'), 'no duplicate section btnShowAddCodex');
     assert.ok(html.includes('id="btnAddClaudeCol"'), 'contains column btnAddClaudeCol');
     assert.ok(html.includes('id="btnAddCodexCol"'), 'contains column btnAddCodexCol');
     assert.ok(html.includes('function openAddAccountModal'), 'script defines openAddAccountModal');

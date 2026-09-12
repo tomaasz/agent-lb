@@ -564,11 +564,7 @@ const PAGE = `<!doctype html>
     <!-- ACCOUNTS SECTION -->
     <div class="sec-head">
       <h2>Konta Claude & Codex</h2>
-      <div class="row" style="gap:8px; align-items:center;">
-        <span style="font-size:11px; color:var(--dim);">💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet</span>
-        <button class="btn btn-sm" id="btnShowAddClaude" title="Dodaj konto Claude (Anthropic)">🟣 + Dodaj konto Claude</button>
-        <button class="btn btn-sm btn-accent" id="btnShowAddCodex" title="Dodaj konto OpenAI Codex">🟢 + Dodaj konto Codex</button>
-      </div>
+      <span style="font-size:11px; color:var(--dim);">💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet</span>
     </div>
     <div id="accounts" style="display:none"></div>
     <div class="accounts-grid" id="accountsGrid">
@@ -579,7 +575,7 @@ const PAGE = `<!doctype html>
             <span class="col-title claude">🟣 Claude (Anthropic)</span>
             <span class="col-hint" id="countClaude">0 kont</span>
           </div>
-          <button class="btn btn-sm" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11.5px;" title="Dodaj konto Claude (Anthropic)">➕ Dodaj Claude</button>
+          <button class="btn btn-sm btn-accent" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11.5px;" title="Dodaj konto Claude (Anthropic)">➕ Dodaj konto</button>
         </div>
         <div class="account-list" id="listClaude" data-provider="anthropic"></div>
       </div>
@@ -591,7 +587,7 @@ const PAGE = `<!doctype html>
             <span class="col-title codex">🟢 OpenAI Codex</span>
             <span class="col-hint" id="countCodex">0 kont</span>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11.5px;" title="Dodaj konto OpenAI Codex">➕ Dodaj Codex</button>
+          <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11.5px;" title="Dodaj konto OpenAI Codex">➕ Dodaj konto</button>
         </div>
         <div class="account-list" id="listCodex" data-provider="codex"></div>
       </div>
