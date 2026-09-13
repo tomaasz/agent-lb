@@ -12,6 +12,7 @@
 [CmdletBinding()]
 param(
 	[switch]$Test,
+	[switch]$Uninstall,
 	[string]$Url = '',
 	[string]$Key = ''
 )
@@ -34,6 +35,7 @@ if ($PSScriptRoot) {
 	}
 	if ($nodeCmd -and (Test-Path $jsScript)) {
 		$nodeArgs = @($jsScript, "--url", $Url)
+		if ($Uninstall) { $nodeArgs += '--uninstall' }
 		if ($Key) { $nodeArgs += @("--key", $Key) }
 		if ($Test) { $nodeArgs += "--test" }
 		& node $nodeArgs
@@ -43,6 +45,36 @@ if ($PSScriptRoot) {
 
 function Say($msg) { Write-Host $msg }
 
+function Backup-ConfigFile([string]$Path) {
+	if (-not (Test-Path $Path)) { return }
+	$backup = "$Path.bak-$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
+	try { Copy-Item -LiteralPath $Path -Destination $backup -ErrorAction Stop }
+	catch { Say "[Uwaga] Nie udało się utworzyć kopii ${Path}: $($_.Exception.Message)" }
+}
+
+if ($Uninstall) {
+	$homeDir = if ($HOME) { $HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } else { '.' }
+	foreach ($p in @(
+		(Join-Path $homeDir '.config\claude-lb.env'),
+		(Join-Path $homeDir '.config\teamclaude.env')
+	)) { try { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue } catch { Say "[Uwaga] Nie udało się usunąć $p" } }
+	$settingsPath = Join-Path $homeDir '.claude\settings.json'
+	if (Test-Path $settingsPath) {
+		try {
+			$data = Get-Content -Raw -Path $settingsPath | ConvertFrom-Json -AsHashtable
+			if ($data.env -is [hashtable]) { $data.env.Remove('ANTHROPIC_BASE_URL'); $data.env.Remove('ANTHROPIC_API_KEY') }
+			Backup-ConfigFile $settingsPath
+			$data | ConvertTo-Json -Depth 20 | Set-Content -Path $settingsPath -Encoding utf8
+		} catch { Say "[Uwaga] Nie udało się zaktualizować $settingsPath" }
+	}
+	try {
+		[Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $null, 'User')
+		[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $null, 'User')
+	} catch { Say '[Uwaga] Nie udało się usunąć zmiennych środowiskowych Windows.' }
+	Say 'Usunięto ustawienia Claude-LB. Plik .credentials.json pozostawiono bez zmian.'
+	exit 0
+}
+
 # ---------------------------------------------------------------- klucz API
 if (-not $Key) {
 	if ($env:CLAUDE_LB_API_KEY) { $Key = $env:CLAUDE_LB_API_KEY }
@@ -50,10 +82,11 @@ if (-not $Key) {
 	elseif ($env:ANTHROPIC_API_KEY) { $Key = $env:ANTHROPIC_API_KEY }
 }
 if (-not $Key) {
-	$secure = Read-Host -Prompt "Klucz API z Claude-LB / TeamClaude ($Url), wklej i Enter" -AsSecureString
+	$secure = Read-Host -Prompt "Klucz API z Agent LB ($Url), wklej i Enter" -AsSecureString
 	$Key = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
 		[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
 }
+if ($Key) { $Key = $Key.Trim() }
 if (-not $Key) { throw 'Nie podano klucza.' }
 
 # ------------------------------------------------------- sprawdzenie klucza
@@ -90,8 +123,10 @@ $homeDir = if ($HOME) { $HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } e
 $credsPath = Join-Path $homeDir ".claude\.credentials.json"
 if (Test-Path $credsPath) {
 	$bak = "$credsPath.bak-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
-	Move-Item -Path $credsPath -Destination $bak -Force
-	Say "[OK] Wykryto starą sesję logowania OAuth. Zrobiono kopię ($([System.IO.Path]::GetFileName($bak))) i wyczyszczono sesję (brak błędu 'Auth conflict')."
+	try {
+		Copy-Item -Path $credsPath -Destination $bak -Force -ErrorAction Stop
+		Say "[OK] Wykryto sesję logowania OAuth. Zrobiono kopię zapasową ($([System.IO.Path]::GetFileName($bak)))."
+	} catch { Say '[Uwaga] Nie udało się utworzyć kopii .credentials.json; plik pozostawiono bez zmian.' }
 }
 
 # -------------------------------------------------- ~/.claude/settings.json
@@ -107,6 +142,7 @@ if (Test-Path $claudeSettingsPath) {
 if (-not $claudeSettings.ContainsKey("env")) { $claudeSettings["env"] = @{} }
 $claudeSettings["env"]["ANTHROPIC_BASE_URL"] = $Url
 $claudeSettings["env"]["ANTHROPIC_API_KEY"]  = $Key
+$null = Backup-ConfigFile $claudeSettingsPath
 $claudeSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $claudeSettingsPath -Encoding utf8
 Say "[OK] Zaktualizowano $claudeSettingsPath (CLI Claude Code)."
 
@@ -120,10 +156,12 @@ if (Test-Path $vsCodeDir) {
 		if (Test-Path $vsCodeSettingsPath) {
 			$vsSettings = Get-Content -Raw -Path $vsCodeSettingsPath | ConvertFrom-Json -AsHashtable
 		}
+		$vsSettings["claudeCode.disableLoginPrompt"] = $true
 		$vsSettings["claudeCode.environmentVariables"] = @(
 			@{ name = "ANTHROPIC_BASE_URL"; value = $Url },
 			@{ name = "ANTHROPIC_API_KEY";  value = $Key }
 		)
+		$null = Backup-ConfigFile $vsCodeSettingsPath
 		$vsSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $vsCodeSettingsPath -Encoding utf8
 		Say "[OK] Zaktualizowano ustawienia oficjalnego rozszerzenia Claude Code w VS Code ($vsCodeSettingsPath)."
 	} catch {
@@ -131,13 +169,46 @@ if (Test-Path $vsCodeDir) {
 	}
 }
 
+# -------------------------------------------------- ~/.codex/config.toml (Codex CLI)
+$codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $homeDir '.codex' }
+if (-not (Test-Path $codexHome)) { New-Item -ItemType Directory -Path $codexHome -Force | Out-Null }
+$codexToml = Join-Path $codexHome 'config.toml'
+$existingToml = if (Test-Path $codexToml) { Get-Content -Raw -Path $codexToml } else { '' }
+if ($existingToml -notmatch 'model_providers\.codex-lb') {
+	$tomlAppend = @"
+
+# >>> codexlb >>> (zarzadzane przez setup.ps1)
+[model_providers.codex-lb]
+name = "openai"
+base_url = "$Url/backend-api/codex"
+wire_api = "responses"
+supports_websockets = true
+requires_openai_auth = true
+env_key = "CODEX_LB_API_KEY"
+
+[profiles.codexlb]
+model = "gpt-5.6-sol"
+model_provider = "codex-lb"
+model_reasoning_effort = "xhigh"
+# <<< codexlb <<<
+"@
+	Add-Content -Path $codexToml -Value $tomlAppend -Encoding utf8
+	Say "[OK] Zaktualizowano $codexToml (profil codexlb dla Codex CLI)."
+}
+
 # --------------------------------------------------- zmienne środowiskowe
 Say "Ustawiam zmienne środowiskowe użytkownika Windows..."
 [Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $Url, 'User')
 [Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $Key, 'User')
+[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $Key, 'User')
+[Environment]::SetEnvironmentVariable('CODEX_BASE_URL', "$Url/backend-api/codex", 'User')
+[Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', "$Url/v1", 'User')
 $env:ANTHROPIC_BASE_URL = $Url
 $env:ANTHROPIC_API_KEY  = $Key
-Say "[OK] Zapisano zmienne ANTHROPIC_BASE_URL i ANTHROPIC_API_KEY w profilu użytkownika."
+$env:CODEX_LB_API_KEY   = $Key
+$env:CODEX_BASE_URL     = "$Url/backend-api/codex"
+$env:OPENAI_BASE_URL    = "$Url/v1"
+Say "[OK] Zapisano zmienne ANTHROPIC_* oraz CODEX_* w profilu użytkownika."
 
 # ------------------------------------------------------------------- test
 if ($Test) {

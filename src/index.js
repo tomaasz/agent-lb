@@ -1358,7 +1358,9 @@ async function accountsCommand() {
     const p = profiles[i];
 
     if (a.type === 'apikey') {
-      console.log(`  [${i + 1}] ${a.name} (apikey)  ${a.apiKey?.slice(0, 15)}...`);
+      // The status command is often captured in terminal logs and shared in
+      // support bundles.  Even a prefix is unnecessary credential material.
+      console.log(`  [${i + 1}] ${a.name} (apikey)  key configured`);
       continue;
     }
 

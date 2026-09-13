@@ -143,6 +143,22 @@ export function safeKeyEqual(a, b) {
   return timingSafeEqual(ba, bb);
 }
 
+// Credentials and session material must never be returned by status output or
+// written to request logs.  The status endpoint is also available to a client
+// key (not only the administrator key), so exposing a raw client key there
+// would turn any delegated key into a fleet-wide credential dump.
+const SENSITIVE_HEADER_NAMES = new Set([
+  'authorization', 'proxy-authorization', 'x-api-key', 'cookie',
+  'set-cookie', 'www-authenticate',
+]);
+
+export function maskSecret(value) {
+  if (value == null || value === '') return '';
+  const text = String(value);
+  if (text.length <= 8) return '***';
+  return `${text.slice(0, 4)}...${text.slice(-4)}`;
+}
+
 // True if a socket's remote address is loopback — the proxy-key gate exempts
 // localhost on both the HTTP and CONNECT paths.
 export function isLoopbackAddr(addr) {
@@ -525,7 +541,11 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         const extra = hooks.getStatusExtra?.() || {};
         const clientKeys = (config.proxy?.clientKeys || []).map(k => ({
           name: k.name,
-          key: k.key,
+          // Never include the credential itself in a status snapshot.  The
+          // administrator-only key-management endpoint returns the same
+          // masked representation and is the sole place where a newly minted
+          // key is returned once, at creation time.
+          key: maskSecret(k.key),
           created: k.created || null,
         }));
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1989,6 +2009,10 @@ export function relayHttpForward(req, res) {
     const lk = key.toLowerCase();
     // Drop hop-by-hop + proxy-control headers; `host` is reset from the target.
     if (lk.startsWith(':') || HOP_BY_HOP_HEADERS.has(lk) || lk === 'proxy-connection') continue;
+    // The proxy key authenticates this hop and must never be forwarded to an
+    // arbitrary absolute-form target.  A caller's Authorization header is
+    // target-facing and is intentionally preserved; x-api-key is ours.
+    if (lk === 'x-api-key') continue;
     headers[key] = value;
   }
 
@@ -2000,6 +2024,11 @@ export function relayHttpForward(req, res) {
     }
     res.writeHead(upstreamRes.statusCode, responseHeaders);
     upstreamRes.pipe(res);
+    // A transparent HTTP relay has no retry layer.  If the upstream socket
+    // dies after headers, close the client side so callers can reconnect
+    // instead of waiting forever on a half-open response.
+    upstreamRes.on('aborted', () => res.destroy());
+    upstreamRes.on('error', () => res.destroy());
   });
   upstreamReq.on('error', (err) => {
     if (err.code === FORBIDDEN_FORWARD) { refuse(err.message); return; }
@@ -3039,11 +3068,17 @@ function openRequestLog(logDir, _reqId, { level = DEFAULT_LOG_LEVEL, maxBodyByte
   };
 }
 
-function formatHeaders(headers) {
+export function formatHeaders(headers) {
   if (headers.entries) {
-    return [...headers.entries()].map(([k, v]) => `  ${k}: ${v}`).join('\n');
+    return [...headers.entries()].map(([k, v]) => {
+      const name = String(k).toLowerCase();
+      return `  ${k}: ${SENSITIVE_HEADER_NAMES.has(name) ? '[redacted]' : v}`;
+    }).join('\n');
   }
-  return Object.entries(headers).map(([k, v]) => `  ${k}: ${v}`).join('\n');
+  return Object.entries(headers).map(([k, v]) => {
+    const name = String(k).toLowerCase();
+    return `  ${k}: ${SENSITIVE_HEADER_NAMES.has(name) ? '[redacted]' : v}`;
+  }).join('\n');
 }
 
 // Failures that say nothing about the ACCOUNT, only about the socket. Retrying
@@ -3396,10 +3431,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     const l = getLog();
     if (!l || reqLogged) return;
     reqLogged = true;
-    const safeHeaders = { ...headers };
-    if (safeHeaders['x-api-key']) safeHeaders['x-api-key'] = safeHeaders['x-api-key'].slice(0, 15) + '...';
-    if (safeHeaders['authorization']) safeHeaders['authorization'] = safeHeaders['authorization'].slice(0, 20) + '...';
-    l.write(`=== REQUEST (account: ${account.name}, retry: ${retryCount}) ===\n${method} ${upstreamUrl}\n${formatHeaders(safeHeaders)}`);
+    l.write(`=== REQUEST (account: ${account.name}, retry: ${retryCount}) ===\n${method} ${upstreamUrl}\n${formatHeaders(headers)}`);
     // The body that went upstream, not the one the client sent: they differ
     // exactly when the proxy rewrote it (tool-pair sanitising, account_uuid,
     // modelMap, cache_control strip), which is the first thing to check when
@@ -3990,7 +4022,9 @@ export async function streamResponse(webStream, res, accountIndex, accountManage
 
       // Parse SSE events for usage tracking
       sseBuffer += text;
-      const events = sseBuffer.split('\n\n');
+      // SSE permits LF or CRLF line endings.  Splitting only on LF silently
+      // loses usage events from an upstream that emits the RFC's CRLF form.
+      const events = sseBuffer.split(/\r?\n\r?\n/);
       sseBuffer = events.pop(); // keep incomplete event
 
       for (const event of events) {
@@ -4054,12 +4088,12 @@ export async function streamResponse(webStream, res, accountIndex, accountManage
 // message's final figures for a single `recordTokenUsage` once the stream is
 // over. One record per message is what makes double counting unrepresentable
 // rather than merely avoided.
-function parseSSEUsage(event, accountIndex, accountManager, onUsage = null, merged = null) {
-  const dataLine = event.split('\n').find(l => l.startsWith('data: '));
+export function parseSSEUsage(event, accountIndex, accountManager, onUsage = null, merged = null) {
+  const dataLine = event.split(/\r?\n/).find(l => /^data:\s?/.test(l));
   if (!dataLine) return;
 
   try {
-    const data = JSON.parse(dataLine.slice(6));
+    const data = JSON.parse(dataLine.replace(/^data:\s?/, ''));
     if (data.type === 'message_start' && data.message?.usage) {
       accountManager.updateUsage(accountIndex, data.message.usage.input_tokens, 0);
       onUsage?.(data.message.usage.input_tokens || 0, 0);

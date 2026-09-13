@@ -12,6 +12,7 @@
 [CmdletBinding()]
 param(
 	[switch]$Test,
+	[switch]$Uninstall,
 	[string]$Url = '',
 	[string]$Key = ''
 )
@@ -34,6 +35,7 @@ if ($PSScriptRoot) {
 	}
 	if ($nodeCmd -and (Test-Path $jsScript)) {
 		$nodeArgs = @($jsScript, "--url", $Url)
+		if ($Uninstall) { $nodeArgs += '--uninstall' }
 		if ($Key) { $nodeArgs += @("--key", $Key) }
 		if ($Test) { $nodeArgs += "--test" }
 		& node $nodeArgs
@@ -42,6 +44,50 @@ if ($PSScriptRoot) {
 }
 
 function Say($msg) { Write-Host $msg }
+
+function Backup-ConfigFile([string]$Path) {
+	if (-not (Test-Path $Path)) { return }
+	$backup = "$Path.bak-$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
+	try { Copy-Item -LiteralPath $Path -Destination $backup -ErrorAction Stop }
+	catch { Say "[Uwaga] Nie udało się utworzyć kopii ${Path}: $($_.Exception.Message)" }
+}
+
+if ($Uninstall) {
+	$homeDir = if ($HOME) { $HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } else { '.' }
+	foreach ($p in @(
+		(Join-Path $homeDir '.config\claude-lb.env'),
+		(Join-Path $homeDir '.config\teamclaude.env')
+	)) { try { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue } catch { Say "[Uwaga] Nie udało się usunąć $p" } }
+	$settingsPath = Join-Path $homeDir '.claude\settings.json'
+	if (Test-Path $settingsPath) {
+		try {
+			$data = Get-Content -Raw -Path $settingsPath | ConvertFrom-Json -AsHashtable
+			if ($data.env -is [hashtable]) { $data.env.Remove('ANTHROPIC_BASE_URL'); $data.env.Remove('ANTHROPIC_API_KEY') }
+			Backup-ConfigFile $settingsPath
+			$data | ConvertTo-Json -Depth 20 | Set-Content -Path $settingsPath -Encoding utf8
+		} catch { Say "[Uwaga] Nie udało się zaktualizować $settingsPath" }
+	}
+	$vsAppData = if ($env:APPDATA) { $env:APPDATA } else { Join-Path $homeDir 'AppData\Roaming' }
+	$vsPath = Join-Path $vsAppData 'Code\User\settings.json'
+	if (Test-Path $vsPath) {
+		try {
+			$vs = Get-Content -Raw -Path $vsPath | ConvertFrom-Json -AsHashtable
+			$vs.Remove('claudeCode.environmentVariables')
+			$vs.Remove('claudeCode.disableLoginPrompt')
+			Backup-ConfigFile $vsPath
+			$vs | ConvertTo-Json -Depth 20 | Set-Content -Path $vsPath -Encoding utf8
+		} catch { Say "[Uwaga] Nie udało się zaktualizować $vsPath" }
+	}
+	try {
+		[Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $null, 'User')
+		[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $null, 'User')
+		[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $null, 'User')
+		[Environment]::SetEnvironmentVariable('CODEX_BASE_URL', $null, 'User')
+		[Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', $null, 'User')
+	} catch { Say '[Uwaga] Nie udało się usunąć zmiennych środowiskowych Windows.' }
+	Say 'Usunięto ustawienia Claude-LB. Plik .credentials.json pozostawiono bez zmian.'
+	exit 0
+}
 
 # ---------------------------------------------------------------- klucz API
 if (-not $Key) {
@@ -91,8 +137,10 @@ $homeDir = if ($HOME) { $HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } e
 $credsPath = Join-Path $homeDir ".claude\.credentials.json"
 if (Test-Path $credsPath) {
 	$bak = "$credsPath.bak-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
-	Move-Item -Path $credsPath -Destination $bak -Force
-	Say "[OK] Wykryto starą sesję logowania OAuth. Zrobiono kopię ($([System.IO.Path]::GetFileName($bak))) i wyczyszczono sesję (brak błędu 'Auth conflict')."
+	try {
+		Copy-Item -Path $credsPath -Destination $bak -Force -ErrorAction Stop
+		Say "[OK] Wykryto sesję logowania OAuth. Zrobiono kopię zapasową ($([System.IO.Path]::GetFileName($bak)))."
+	} catch { Say '[Uwaga] Nie udało się utworzyć kopii .credentials.json; plik pozostawiono bez zmian.' }
 }
 
 # -------------------------------------------------- ~/.claude/settings.json
@@ -108,6 +156,7 @@ if (Test-Path $claudeSettingsPath) {
 if (-not $claudeSettings.ContainsKey("env")) { $claudeSettings["env"] = @{} }
 $claudeSettings["env"]["ANTHROPIC_BASE_URL"] = $Url
 $claudeSettings["env"]["ANTHROPIC_API_KEY"]  = $Key
+$null = Backup-ConfigFile $claudeSettingsPath
 $claudeSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $claudeSettingsPath -Encoding utf8
 Say "[OK] Zaktualizowano $claudeSettingsPath (CLI Claude Code)."
 
@@ -121,10 +170,12 @@ if (Test-Path $vsCodeDir) {
 		if (Test-Path $vsCodeSettingsPath) {
 			$vsSettings = Get-Content -Raw -Path $vsCodeSettingsPath | ConvertFrom-Json -AsHashtable
 		}
+		$vsSettings["claudeCode.disableLoginPrompt"] = $true
 		$vsSettings["claudeCode.environmentVariables"] = @(
 			@{ name = "ANTHROPIC_BASE_URL"; value = $Url },
 			@{ name = "ANTHROPIC_API_KEY";  value = $Key }
 		)
+		$null = Backup-ConfigFile $vsCodeSettingsPath
 		$vsSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $vsCodeSettingsPath -Encoding utf8
 		Say "[OK] Zaktualizowano ustawienia oficjalnego rozszerzenia Claude Code w VS Code ($vsCodeSettingsPath)."
 	} catch {

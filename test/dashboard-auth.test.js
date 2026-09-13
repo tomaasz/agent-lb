@@ -123,7 +123,10 @@ describe('Dashboard Authentication and Layout', () => {
         { name: 'konto-a', type: 'apikey', apiKey: 'sk-ant-test-a', priority: 0 },
         { name: 'konto-b', type: 'apikey', apiKey: 'sk-ant-test-b', priority: 1 },
       ],
-      proxy: { apiKey: 'admin-secret' }
+      proxy: {
+        apiKey: 'admin-secret',
+        clientKeys: [{ name: 'worker', key: 'worker-secret-1234', created: '2026-01-01T00:00:00.000Z' }],
+      }
     };
     await fs.writeFile(tmpCfg, JSON.stringify(initialConfig, null, 2));
     process.env.AGENT_LB_CONFIG = tmpCfg;
@@ -132,7 +135,8 @@ describe('Dashboard Authentication and Layout', () => {
       accounts: [
         { name: 'konto-a', priority: 0 },
         { name: 'konto-b', priority: 1 },
-      ]
+      ],
+      getStatus() { return { accounts: [], sessions: {} }; },
     };
 
     const server = createProxyServer(dummyAccountManager, initialConfig);
@@ -161,6 +165,15 @@ describe('Dashboard Authentication and Layout', () => {
       const disk = JSON.parse(await fs.readFile(tmpCfg, 'utf8'));
       assert.equal(disk.accounts.find(a => a.name === 'konto-b').priority, 0);
       assert.equal(disk.accounts.find(a => a.name === 'konto-a').priority, 1);
+
+      const statusRes = await fetch(`http://127.0.0.1:${port}/teamclaude/status`, {
+        headers: { 'x-api-key': 'admin-secret' },
+      });
+      assert.equal(statusRes.status, 200);
+      const statusText = await statusRes.text();
+      assert.ok(!statusText.includes('admin-secret'), 'status must not expose the admin credential');
+      assert.ok(!statusText.includes('worker-secret-1234'), 'status must not expose raw client credentials');
+      assert.ok(statusText.includes('work...1234'), 'status may expose only a masked client key');
     } finally {
       delete process.env.AGENT_LB_CONFIG;
       await new Promise(res => server.close(res));
@@ -168,6 +181,3 @@ describe('Dashboard Authentication and Layout', () => {
     }
   });
 });
-
-
-

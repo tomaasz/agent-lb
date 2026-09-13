@@ -12,6 +12,10 @@
 
 set -euo pipefail
 
+if [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/version 2>/dev/null; then
+	printf '%s\n' "OSTRZEŻENIE: wykryto WSL — setup.sh zapisuje profil Linuksa WSL. W PowerShell uruchom setup.ps1 bez potoku do bash."
+fi
+
 if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
 	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 	if command -v node >/dev/null 2>&1; then
@@ -29,16 +33,18 @@ ENV_FILE="${CLAUDE_LB_ENV_FILE:-${TEAMCLAUDE_ENV_FILE:-$HOME/.config/claude-lb.e
 BIN_DIR="${HOME}/bin"
 RUN_TEST=0
 SETUP_CODEX=0
+UNINSTALL=0
 KEY="${CLAUDE_LB_API_KEY:-${TEAMCLAUDE_API_KEY:-${ANTHROPIC_API_KEY:-}}}"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--test) RUN_TEST=1 ;;
 		--codex) SETUP_CODEX=1 ;;
+		--uninstall) UNINSTALL=1 ;;
 		--url) URL="${2%/}"; shift ;;
 		--key) KEY="$2"; shift ;;
 		-h|--help)
-			echo "Użycie: ./setup.sh [--url URL] [--key KEY] [--codex] [--test]"
+			echo "Użycie: ./setup.sh [--url URL] [--key KEY] [--codex] [--test] [--uninstall]"
 			exit 0
 			;;
 		*) echo "Nieznany argument: $1" >&2; exit 2 ;;
@@ -48,6 +54,73 @@ done
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'BLAD: %s\n' "$*" >&2; exit 1; }
+backup_existing() {
+	local file="$1"
+	[ -f "$file" ] || return 0
+	local backup="${file}.bak-$(date +%s)"
+	if ! cp -p "$file" "$backup" 2>/dev/null || ! chmod 600 "$backup" 2>/dev/null; then
+		say "Ostrzeżenie: nie udało się utworzyć kopii $file; pozostawiam oryginał i kontynuuję."
+	fi
+}
+
+if [ "$UNINSTALL" -eq 1 ]; then
+	for f in "$HOME/.config/claude-lb.env" "$HOME/.config/teamclaude.env"; do
+		rm -f "$f" 2>/dev/null || say "Ostrzeżenie: nie udało się usunąć $f"
+	done
+	for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+		[ -f "$rc" ] || continue
+		tmp="${rc}.tmp.$$"
+		if sed -E '/# (claude-lb|teamclaude)/d' "$rc" > "$tmp" && mv "$tmp" "$rc"; then :; else
+			rm -f "$tmp"; say "Ostrzeżenie: nie udało się zaktualizować $rc"
+		fi
+	done
+	if command -v python3 >/dev/null 2>&1 && [ -f "$HOME/.claude/settings.json" ]; then
+		SETUP_HOME="$HOME" python3 - <<'PY'
+import json, os
+p = os.path.join(os.environ['SETUP_HOME'], '.claude', 'settings.json')
+try:
+    with open(p, encoding='utf-8') as f: data = json.load(f)
+except Exception:
+    data = None
+if isinstance(data, dict):
+    env = data.get('env')
+    if isinstance(env, dict):
+        env.pop('ANTHROPIC_BASE_URL', None)
+        env.pop('ANTHROPIC_API_KEY', None)
+        if not env: data.pop('env', None)
+    with open(p, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+        f.write('\n')
+PY
+	fi
+	if [ -f "$HOME/.codex/config.toml" ]; then
+		backup_existing "$HOME/.codex/config.toml"
+		awk '
+			/# >>> codexlb >>>/ { skip=1; next }
+			/# <<< codexlb <<</ { skip=0; next }
+			!skip { print }
+		' "$HOME/.codex/config.toml" > "$HOME/.codex/config.toml.tmp.$$" \
+			&& mv "$HOME/.codex/config.toml.tmp.$$" "$HOME/.codex/config.toml" \
+			|| rm -f "$HOME/.codex/config.toml.tmp.$$"
+	fi
+	if command -v python3 >/dev/null 2>&1 && [ -f "$HOME/.codex/config.json" ]; then
+		backup_existing "$HOME/.codex/config.json"
+		SETUP_CODEX_CONF="$HOME/.codex/config.json" python3 - <<'PY'
+import json, os
+p = os.environ['SETUP_CODEX_CONF']
+try:
+    with open(p, encoding='utf-8') as f: data = json.load(f)
+except Exception:
+    data = None
+if isinstance(data, dict):
+    data.pop('base_url', None)
+    with open(p, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2); f.write('\n')
+PY
+	fi
+	say "Usunięto ustawienia Claude-LB. Plik .credentials.json pozostawiono bez zmian."
+	exit 0
+fi
 
 command -v curl >/dev/null || die "brak curl"
 
@@ -87,24 +160,34 @@ esac
 CREDS="$HOME/.claude/.credentials.json"
 if [ -f "$CREDS" ]; then
 	BAK="$CREDS.bak-$(date +%s)"
-	mv "$CREDS" "$BAK"
-	say "Zabezpieczono starą sesję OAuth (.credentials.json -> $(basename "$BAK")), by uniknąć 'Auth conflict'."
+	if cp -f "$CREDS" "$BAK"; then
+		say "Wykryto sesję OAuth — utworzono kopię zapasową (.credentials.json -> $(basename "$BAK"))."
+	else
+		say "Ostrzeżenie: nie udało się utworzyć kopii .credentials.json; kontynuuję bez jej usuwania."
+	fi
 fi
 
 # Zapis konfiguracji środowiskowej
 mkdir -p "$(dirname "$ENV_FILE")" "$BIN_DIR"
 umask 077
-cat > "$ENV_FILE" <<-EOF
-# Agent LB environment configuration
-export ANTHROPIC_BASE_URL="$URL"
-export ANTHROPIC_API_KEY="$KEY"
-export CODEX_BASE_URL="$URL/backend-api/codex"
-export OPENAI_BASE_URL="$URL/v1"
-export CODEX_LB_API_KEY="$KEY"
-EOF
+backup_existing "$ENV_FILE"
+shell_quote() {
+	local value="$1"
+	value="${value//\'/\'\\\'\'}"
+	printf "'%s'" "$value"
+}
+{
+	printf '%s\n' '# Agent LB environment configuration'
+	printf 'export ANTHROPIC_BASE_URL=%s\n' "$(shell_quote "$URL")"
+	printf 'export ANTHROPIC_API_KEY=%s\n' "$(shell_quote "$KEY")"
+	printf 'export CODEX_BASE_URL=%s\n' "$(shell_quote "$URL/backend-api/codex")"
+	printf 'export OPENAI_BASE_URL=%s\n' "$(shell_quote "$URL/v1")"
+	printf 'export CODEX_LB_API_KEY=%s\n' "$(shell_quote "$KEY")"
+} > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 say "Zapisano $ENV_FILE."
 if [ "$ENV_FILE" != "$HOME/.config/teamclaude.env" ]; then
+	backup_existing "$HOME/.config/teamclaude.env"
 	cp -f "$ENV_FILE" "$HOME/.config/teamclaude.env" 2>/dev/null || true
 fi
 
@@ -113,26 +196,31 @@ CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 mkdir -p "$HOME/.claude"
 if [ ! -f "$CLAUDE_SETTINGS" ]; then
 	echo '{"env":{}}' > "$CLAUDE_SETTINGS"
+else
+	backup_existing "$CLAUDE_SETTINGS"
 fi
 # Dopisanie zmiennych jeśli python jest dostępny
 if command -v python3 >/dev/null 2>&1; then
-	python3 -c "
-import json
-p = '$CLAUDE_SETTINGS'
+	SETUP_URL="$URL" SETUP_KEY="$KEY" SETUP_SETTINGS="$CLAUDE_SETTINGS" python3 - <<'PY' 2>/dev/null && say "Zaktualizowano $CLAUDE_SETTINGS."
+import json, os
+p = os.environ['SETUP_SETTINGS']
 try:
-    with open(p, 'r') as f: data = json.load(f)
+    with open(p, encoding='utf-8') as f: data = json.load(f)
 except Exception: data = {}
 data.setdefault('env', {})
-data['env']['ANTHROPIC_BASE_URL'] = '$URL'
-data['env']['ANTHROPIC_API_KEY'] = '$KEY'
-with open(p, 'w') as f: json.dump(data, f, indent=2)
-" 2>/dev/null && say "Zaktualizowano $CLAUDE_SETTINGS."
+data['env']['ANTHROPIC_BASE_URL'] = os.environ['SETUP_URL']
+data['env']['ANTHROPIC_API_KEY'] = os.environ['SETUP_KEY']
+with open(p, 'w', encoding='utf-8') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+PY
 fi
 
 # Konfiguracja ~/.codex (OpenAI Codex CLI: config.toml oraz config.json)
 mkdir -p "$HOME/.codex"
 CODEX_TOML="$HOME/.codex/config.toml"
 if [ ! -f "$CODEX_TOML" ] || ! grep -qF "model_providers.codex-lb" "$CODEX_TOML" 2>/dev/null; then
+	backup_existing "$CODEX_TOML"
 	cat >> "$CODEX_TOML" <<-EOF
 
 # >>> codexlb >>> (zarzadzane przez setup.sh)
@@ -155,15 +243,18 @@ fi
 
 CODEX_CONF="$HOME/.codex/config.json"
 if command -v python3 >/dev/null 2>&1; then
-	python3 -c "
-import json
-p = '$CODEX_CONF'
+	backup_existing "$CODEX_CONF"
+	SETUP_URL="$URL" SETUP_CODEX_CONF="$CODEX_CONF" python3 - <<'PY' 2>/dev/null && say "Zaktualizowano $CODEX_CONF."
+import json, os
+p = os.environ['SETUP_CODEX_CONF']
 try:
-    with open(p, 'r') as f: data = json.load(f)
+    with open(p, encoding='utf-8') as f: data = json.load(f)
 except Exception: data = {}
-data['base_url'] = '$URL/backend-api/codex'
-with open(p, 'w') as f: json.dump(data, f, indent=2)
-" 2>/dev/null && say "Zaktualizowano $CODEX_CONF."
+data['base_url'] = os.environ['SETUP_URL'] + '/backend-api/codex'
+with open(p, 'w', encoding='utf-8') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+PY
 fi
 
 # Integracja z powłoką

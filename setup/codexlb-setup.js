@@ -118,9 +118,7 @@ function getStoredApiKey(envFile) {
 }
 
 function maskKey(key) {
-  if (!key) return '(brak)';
-  if (key.length <= 8) return '****';
-  return key.slice(0, 7) + '...' + key.slice(-4);
+  return key ? '(configured)' : '(brak)';
 }
 
 function promptHidden(query) {

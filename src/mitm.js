@@ -352,6 +352,11 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
           return;
         }
         established = true;
+        // The timeout protects a CONNECT that never finishes dialing.  Once
+        // the tunnel is live, an idle WebSocket or keep-alive connection may
+        // legitimately sit quiet for minutes; leaving the dial timer armed
+        // would cut those sessions every 30 seconds.
+        up.setTimeout(0);
         reply200Raw(clientSocket);
         if (head && head.length) up.write(head);
         up.pipe(clientSocket); clientSocket.pipe(up);
