@@ -10,7 +10,11 @@
   "verification": {
     "commands": [
       {
-        "argv": ["node", "--test", "--test-timeout=120000"],
+        "argv": [
+          "node",
+          "--test",
+          "--test-timeout=120000"
+        ],
         "cwd": ".",
         "timeoutSeconds": 120
       }
@@ -42,8 +46,13 @@
   },
   "reviewPolicy": {
     "LOW": [],
-    "MEDIUM": ["codex"],
-    "HIGH": ["codex", "agy"]
+    "MEDIUM": [
+      "codex"
+    ],
+    "HIGH": [
+      "codex",
+      "agy"
+    ]
   },
   "antigravity": {
     "triageEffort": "low",
@@ -52,5 +61,7 @@
     "sandbox": true,
     "fullAuto": false,
     "printTimeout": "60m"
-  }
+  },
+  "allowUnreviewedLowRisk": true,
+  "singleProvider": true
 }

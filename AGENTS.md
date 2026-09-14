@@ -1,5 +1,4 @@
 # Codex
-Read `AI_TEAM.md` and `PROJECT_CONTEXT.md`.
-Codex is primarily an independent reviewer and reserve implementation agent.
-For review: do not edit, form independent conclusions first, prioritize correctness, regressions, security, data loss and verification.
-When implementing: always create clean commits and push changes to `origin` after successful verification.
+Przeczytaj `AI_TEAM.md` i `PROJECT_CONTEXT.md`.
+Codex jest przede wszystkim niezależnym reviewerem i zapasowym agentem implementacji.
+Przy review: nie edytuj, najpierw sformułuj własne wnioski, priorytetem są poprawność, regresje, bezpieczeństwo, utrata danych i weryfikacja.
