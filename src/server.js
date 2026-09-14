@@ -1477,7 +1477,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           res.writeHead(503, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             ok: false,
-            error: accountManager.exhaustedMessage(model, 0, provider) || `Brak dostępnych aktywnych kont dla dostawcy ${provider}. Wszystkie konta wyczerpały limity lub są w trybie cooldown.`
+            error: exhaustedMessage(accountManager, model, 0, provider) || `Brak dostępnych aktywnych kont dla dostawcy ${provider}. Wszystkie konta wyczerpały limity lub są w trybie cooldown.`
           }));
           return;
         }
