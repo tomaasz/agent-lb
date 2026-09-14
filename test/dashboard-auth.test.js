@@ -190,8 +190,6 @@ describe('Dashboard Authentication and Layout', () => {
       });
       assert.equal(wrongKeysRes.status, 401);
 
-      // Non-admin client key on admin endpoint must be forbidden (403)
-      const nonAdminKeysRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/keys`, {
       // Client key on /api/keys succeeds under unified authentication
       const clientKeysRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/keys`, {
         headers: {
@@ -199,13 +197,11 @@ describe('Dashboard Authentication and Layout', () => {
           'x-api-key': 'worker-secret-1234'
         },
       });
-      assert.equal(nonAdminKeysRes.status, 403);
       assert.equal(clientKeysRes.status, 200);
       const clientKeysData = await clientKeysRes.json();
       assert.equal(clientKeysData.ok, true);
       assert.equal(clientKeysData.primaryKey, 'admin-secret');
 
-      // Authenticated admin on /api/keys must receive full key and rawKey for copying/setup
       // Authenticated admin on /api/keys must receive full key, rawKey, and primaryKey
       const adminKeysRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/keys`, {
         headers: { 'x-api-key': 'admin-secret' },
@@ -220,7 +216,6 @@ describe('Dashboard Authentication and Layout', () => {
       assert.equal(adminKeysData.keys[0].rawKey, 'worker-secret-1234');
       assert.equal(adminKeysData.keys[0].maskedKey, 'work...1234');
 
-      // /api/auth/verify: Admin key succeeds
       // /api/auth/verify: Admin key succeeds as primary admin
       const authAdminRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/auth/verify`, {
         headers: { 'x-api-key': 'admin-secret' }
@@ -231,7 +226,6 @@ describe('Dashboard Authentication and Layout', () => {
       assert.equal(authAdminData.role, 'admin');
       assert.equal(authAdminData.isPrimary, true);
 
-      // /api/auth/verify: Client key returns 403 with specific guidance
       // /api/auth/verify: Client key also succeeds under unified authentication
       const authClientRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/auth/verify`, {
         headers: {
@@ -239,14 +233,11 @@ describe('Dashboard Authentication and Layout', () => {
           'x-api-key': 'worker-secret-1234'
         }
       });
-      assert.equal(authClientRes.status, 403);
       assert.equal(authClientRes.status, 200);
       const authClientData = await authClientRes.json();
-      assert.equal(authClientData.isClientKey, true);
       assert.equal(authClientData.ok, true);
       assert.equal(authClientData.role, 'admin');
       assert.equal(authClientData.clientName, 'worker');
-      assert.ok(authClientData.error.includes('worker'));
 
       // /api/auth/verify: Invalid key returns 401
       const authInvalidRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/auth/verify`, {

@@ -572,13 +572,11 @@ const PAGE = `<!doctype html>
         </svg>
       </div>
       <h1>Panel Zarządzania</h1>
-      <p>Wprowadź hasło lub klucz administracyjny (<code>proxy.apiKey</code>), aby uzyskać dostęp.</p>
       <p>Wprowadź hasło, klucz administracyjny lub dowolny klucz stacji roboczej, aby uzyskać dostęp.</p>
     </div>
     <div id="keyboxErr" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(239,68,68,0.12);border:1px solid var(--bad);color:var(--bad);font-size:13px;text-align:left"></div>
     <div id="keyboxInfo" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(63,185,80,0.12);border:1px solid var(--ok);color:var(--ok);font-size:13px;text-align:left"></div>
     <div class="login-field">
-      <label for="key">Hasło / Klucz administracyjny</label>
       <label for="key">Klucz dostępu (administracyjny lub stacji roboczej)</label>
       <input id="key" type="password" placeholder="tc-..." autocomplete="current-password">
     </div>
@@ -2728,12 +2726,9 @@ ${SHARED_HELPERS}
     var totalCount = list.length + (primaryAdminKey ? 1 : 0);
     var countEl = document.getElementById('countClientKeys');
     if (countEl) {
-      countEl.textContent = list.length + (list.length === 1 ? ' klucz' : ' kluczy');
       countEl.textContent = totalCount + (totalCount === 1 ? ' klucz' : ' kluczy');
     }
 
-    if (!list.length) {
-      var empty = el('div', '', 'Brak zdefiniowanych kluczy klientów. Kliknij „➕ Nowy klucz” powyżej.');
     // Pinned primary admin key card at top
     if (primaryAdminKey) {
       var pCard = el('div', 'client-key-card primary-key-card');
@@ -2990,12 +2985,6 @@ ${SHARED_HELPERS}
         fetch('/teamclaude/api/keys', { headers: apiHeaders })
           .then(function (kr) { return kr.ok ? kr.json() : null; })
           .then(function (kd) {
-            if (kd && Array.isArray(kd.keys)) {
-              kd.keys.forEach(function (k) {
-                var r = (k.rawKey && !k.rawKey.includes('...')) ? k.rawKey : ((k.key && !k.key.includes('...')) ? k.key : '');
-                if (r) cachedClientKeys[k.name] = r;
-              });
-              renderClientKeys(kd.keys, s.clients);
             if (kd) {
               if (kd.primaryKey && !kd.primaryKey.includes('...')) {
                 primaryAdminKey = kd.primaryKey;

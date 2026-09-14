@@ -711,27 +711,14 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           res.end(JSON.stringify({ ok: true, authenticated: true, passwordRequired: false, role: 'admin' }));
           return;
         }
-        const isValid = clientKey && safeKeyEqual(clientKey, config.proxy.apiKey);
-        if (isValid) {
         const isMaster = clientKey && safeKeyEqual(clientKey, config.proxy.apiKey);
         const clientAuth = clientKey ? resolveClientAuth(config.proxy, clientKey) : null;
         if (isMaster || clientAuth?.ok) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, authenticated: true, passwordRequired: true, role: 'admin' }));
-          return;
-        }
-        const clientAuth = clientKey ? resolveClientAuth(config.proxy, clientKey) : null;
-        if (clientAuth?.client) {
-          res.writeHead(403, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
-            ok: false,
-            authenticated: false,
             ok: true,
             authenticated: true,
             passwordRequired: true,
-            isClientKey: true,
-            clientName: clientAuth.client,
-            error: `Podany klucz należy do klienta „${clientAuth.client}” (stacji roboczej). Do logowania w panelu wymagany jest klucz administracyjny (proxy.apiKey). Użyj tego klucza w konfiguracji CLI.`
             role: 'admin',
             isPrimary: Boolean(isMaster),
             clientName: clientAuth?.client || (isMaster ? 'admin' : null)
@@ -739,7 +726,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
         res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, authenticated: false, passwordRequired: true, error: 'Wymagana autoryzacja administratora' }));
         res.end(JSON.stringify({ ok: false, authenticated: false, passwordRequired: true, error: 'Wymagana autoryzacja (podaj klucz administracyjny lub klucz stacji roboczej)' }));
         return;
       }
@@ -752,23 +738,11 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         } catch {}
         const candidate = (body.key || body.password || clientKey || '').trim();
         const hasAdminKey = Boolean(config.proxy?.apiKey);
-        if (!hasAdminKey || (candidate && safeKeyEqual(candidate, config.proxy.apiKey))) {
         const isMaster = candidate && hasAdminKey && safeKeyEqual(candidate, config.proxy.apiKey);
         const clientAuth = candidate ? resolveClientAuth(config.proxy, candidate) : null;
         if (!hasAdminKey || isMaster || clientAuth?.ok) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, authenticated: true, role: 'admin' }));
-          return;
-        }
-        const clientAuth = candidate ? resolveClientAuth(config.proxy, candidate) : null;
-        if (clientAuth?.client) {
-          res.writeHead(403, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
-            ok: false,
-            authenticated: false,
-            isClientKey: true,
-            clientName: clientAuth.client,
-            error: `Podany klucz należy do klienta „${clientAuth.client}” (stacji roboczej). Do logowania w panelu wymagany jest klucz administracyjny (proxy.apiKey). Użyj tego klucza w konfiguracji CLI.`
             ok: true,
             authenticated: true,
             role: 'admin',
@@ -795,13 +769,11 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
         const clientAuth = clientKey ? resolveClientAuth(config.proxy, clientKey) : null;
         const isAdmin = config.proxy?.apiKey
-          ? (safeKeyEqual(clientKey, config.proxy.apiKey) || isTrustedOrigin)
           ? (safeKeyEqual(clientKey, config.proxy.apiKey) || Boolean(clientAuth?.ok) || isTrustedOrigin)
           : isTrustedOrigin;
 
         if (!isAdmin) {
           res.writeHead(403, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'admin authorization required: x-api-key must match proxy.apiKey' }));
           res.end(JSON.stringify({ ok: false, error: 'admin authorization required: x-api-key must match proxy.apiKey or a valid clientKey' }));
           return;
         }
@@ -825,7 +797,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         });
         const primaryRaw = config.proxy?.apiKey || '';
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, keys, clientKeys: keys }));
         res.end(JSON.stringify({
           ok: true,
           primaryKey: primaryRaw,
