@@ -573,11 +573,13 @@ const PAGE = `<!doctype html>
       </div>
       <h1>Panel Zarządzania</h1>
       <p>Wprowadź hasło lub klucz administracyjny (<code>proxy.apiKey</code>), aby uzyskać dostęp.</p>
+      <p>Wprowadź hasło, klucz administracyjny lub dowolny klucz stacji roboczej, aby uzyskać dostęp.</p>
     </div>
     <div id="keyboxErr" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(239,68,68,0.12);border:1px solid var(--bad);color:var(--bad);font-size:13px;text-align:left"></div>
     <div id="keyboxInfo" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(63,185,80,0.12);border:1px solid var(--ok);color:var(--ok);font-size:13px;text-align:left"></div>
     <div class="login-field">
       <label for="key">Hasło / Klucz administracyjny</label>
+      <label for="key">Klucz dostępu (administracyjny lub stacji roboczej)</label>
       <input id="key" type="password" placeholder="tc-..." autocomplete="current-password">
     </div>
     <button id="go">Zaloguj się</button>
@@ -1828,6 +1830,7 @@ ${SHARED_HELPERS}
 
   var revealedKeys = Object.create(null);
   var cachedClientKeys = Object.create(null);
+  var primaryAdminKey = '';
   var pendingOAuthState = null;
 
   function apiCall(url, method, body) {
@@ -2641,6 +2644,9 @@ ${SHARED_HELPERS}
     var hostUrl = window.location.origin;
     var list = keys || (lastStatus && lastStatus.clientKeys) || [];
     var key = currentQuickKey;
+    if ((!key || key.includes('...')) && primaryAdminKey && !primaryAdminKey.includes('...')) {
+      key = primaryAdminKey;
+    }
     if ((!key || key.includes('...')) && list.length) {
       var first = list[0];
       key = (first.rawKey && !first.rawKey.includes('...')) ? first.rawKey : ((first.key && !first.key.includes('...')) ? first.key : (cachedClientKeys[first.name] || first.rawKey || first.key || ''));
@@ -2719,13 +2725,80 @@ ${SHARED_HELPERS}
     if (!container) return;
     container.textContent = '';
 
+    var totalCount = list.length + (primaryAdminKey ? 1 : 0);
     var countEl = document.getElementById('countClientKeys');
     if (countEl) {
       countEl.textContent = list.length + (list.length === 1 ? ' klucz' : ' kluczy');
+      countEl.textContent = totalCount + (totalCount === 1 ? ' klucz' : ' kluczy');
     }
 
     if (!list.length) {
       var empty = el('div', '', 'Brak zdefiniowanych kluczy klientów. Kliknij „➕ Nowy klucz” powyżej.');
+    // Pinned primary admin key card at top
+    if (primaryAdminKey) {
+      var pCard = el('div', 'client-key-card primary-key-card');
+      pCard.style.cssText = 'border-left: 3px solid #3b82f6; background: rgba(59, 130, 246, 0.04);';
+      var isPRevealed = !!revealedKeys['__primary__'];
+
+      var pTopRow = el('div', 'client-key-top');
+      var pNameWrap = el('div', 'row');
+      pNameWrap.style.gap = '6px';
+      var pIcon = el('span', '', '👑');
+      pIcon.style.fontSize = '13px';
+      pNameWrap.appendChild(pIcon);
+      var pName = el('span', 'name', 'Główny klucz administratora (proxy.apiKey)');
+      pName.style.fontWeight = '600';
+      pNameWrap.appendChild(pName);
+      var pBadge = el('span', 'badge', 'Admin & CLI');
+      pBadge.style.cssText = 'font-size:10px; padding:1px 6px; background:rgba(59, 130, 246, 0.15); color:#60a5fa; border-radius:4px; border:1px solid rgba(59, 130, 246, 0.3);';
+      pNameWrap.appendChild(pBadge);
+      pTopRow.appendChild(pNameWrap);
+
+      var pActs = el('div', 'card-actions');
+      var btnPSetup = el('button', 'btn btn-xs btn-accent', '🚀 Podłącz');
+      btnPSetup.title = 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tego klucza';
+      btnPSetup.addEventListener('click', function () {
+        currentQuickKey = primaryAdminKey;
+        updateQuickCmd();
+        showKeyModal('Główny klucz (proxy.apiKey)', primaryAdminKey);
+      });
+      pActs.appendChild(btnPSetup);
+      pTopRow.appendChild(pActs);
+      pCard.appendChild(pTopRow);
+
+      var pBottomRow = el('div', 'client-key-bottom');
+      var pKeyWrap = el('div', 'row');
+      pKeyWrap.style.gap = '5px';
+      var pMasked = isPRevealed ? primaryAdminKey : (primaryAdminKey.length > 8 ? primaryAdminKey.slice(0, 5) + '••••••••' + primaryAdminKey.slice(-4) : '••••••••');
+      var pKeySpan = el('span', 'mono', pMasked);
+      pKeySpan.style.fontSize = '11px';
+      pKeyWrap.appendChild(pKeySpan);
+
+      if (primaryAdminKey && primaryAdminKey !== pMasked) {
+        var btnPToggle = el('button', 'btn btn-xs', isPRevealed ? 'Ukryj' : 'Pokaż');
+        btnPToggle.addEventListener('click', function () {
+          revealedKeys['__primary__'] = !revealedKeys['__primary__'];
+          renderClientKeys(keys, clients);
+        });
+        pKeyWrap.appendChild(btnPToggle);
+      }
+
+      var btnPCopy = el('button', 'btn btn-xs', '📋 Kopiuj');
+      btnPCopy.addEventListener('click', function () {
+        copyToClipboard(primaryAdminKey, 'Główny klucz administratora');
+      });
+      pKeyWrap.appendChild(btnPCopy);
+      pBottomRow.appendChild(pKeyWrap);
+
+      var pDesc = el('span', 'client-key-stats', 'Logowanie do panelu + pełny dostęp CLI');
+      pBottomRow.appendChild(pDesc);
+      pCard.appendChild(pBottomRow);
+
+      container.appendChild(pCard);
+    }
+
+    if (!list.length && !primaryAdminKey) {
+      var empty = el('div', '', 'Brak zdefiniowanych kluczy. Kliknij „➕ Nowy klucz” powyżej.');
       empty.style.cssText = 'padding:14px; text-align:center; color:var(--dim); font-size:12px; border:1px dashed var(--line); border-radius:6px;';
       container.appendChild(empty);
       return;
@@ -2749,6 +2822,9 @@ ${SHARED_HELPERS}
       nameWrap.appendChild(keyIcon);
       var nameEl = el('span', 'name', k.name);
       nameWrap.appendChild(nameEl);
+      var cBadge = el('span', 'badge', 'Panel & CLI');
+      cBadge.style.cssText = 'font-size:10px; padding:1px 5px; background:rgba(16, 185, 129, 0.12); color:#34d399; border-radius:4px; border:1px solid rgba(16, 185, 129, 0.25);';
+      nameWrap.appendChild(cBadge);
       topRow.appendChild(nameWrap);
 
       var acts = el('div', 'card-actions');
@@ -2920,6 +2996,17 @@ ${SHARED_HELPERS}
                 if (r) cachedClientKeys[k.name] = r;
               });
               renderClientKeys(kd.keys, s.clients);
+            if (kd) {
+              if (kd.primaryKey && !kd.primaryKey.includes('...')) {
+                primaryAdminKey = kd.primaryKey;
+              }
+              if (Array.isArray(kd.keys)) {
+                kd.keys.forEach(function (k) {
+                  var r = (k.rawKey && !k.rawKey.includes('...')) ? k.rawKey : ((k.key && !k.key.includes('...')) ? k.key : '');
+                  if (r) cachedClientKeys[k.name] = r;
+                });
+                renderClientKeys(kd.keys, s.clients);
+              }
             }
           })
           .catch(function () { /* best effort */ });
