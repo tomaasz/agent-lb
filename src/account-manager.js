@@ -1655,7 +1655,6 @@ export class AccountManager {
     if (account.circuitBreakerUntil && Date.now() < account.circuitBreakerUntil) return 'circuit-breaker';
 
     // Check rate limit expiry
-    if (account.status === 'throttled' && account.rateLimitedUntil) {
     if ((account.status === 'throttled' || account.lastError?.reason === 'rate-limit') && account.rateLimitedUntil) {
       if (Date.now() < account.rateLimitedUntil) return 'throttled';
       account.status = 'active';
@@ -3551,7 +3550,6 @@ export class AccountManager {
    */
   clearRateLimited(accountIndex) {
     const account = this.accounts[accountIndex];
-    if (!account || account.status !== 'throttled') return;
     if (!account) return;
     if (account.lastError?.reason === 'rate-limit') account.lastError = null;
     if (account.status !== 'throttled' && !account.rateLimitedUntil) return;

@@ -131,7 +131,6 @@ export const UNAVAILABLE_TEXT = {
   capped: 'account usage cap reached (maxUsage)',
   'advisor-capped': "advisor model's usage cap reached (maxUsage)",
   entitlement: 'upstream refused this account for the organization (cooldown)',
-  'identity-verification': 'upstream requires identity verification (cooldown)',
   'identity-verification': 'upstream requires identity verification (action needed in browser)',
   route: 'no route allows this account',
   'advisor-quota': "advisor model's weekly bucket spent",

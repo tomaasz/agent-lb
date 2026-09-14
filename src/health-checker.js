@@ -249,7 +249,6 @@ export class FleetHealthChecker {
 
           if (res.status === 429) {
             errorReason = 'rate-limit';
-            errorMsg = `Limit zapytań (429 Rate Limit) w Anthropic dla konta "${account.name}".`;
             const generalRejected = rateLimitHeaders['anthropic-ratelimit-unified-5h-status'] === 'rejected'
               || rateLimitHeaders['anthropic-ratelimit-unified-7d-status'] === 'rejected';
 

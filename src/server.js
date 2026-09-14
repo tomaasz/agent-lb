@@ -629,7 +629,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         res.writeHead(200, { 'Content-Type': 'application/json' });
         // Counters only: how full the upstream admission gate is (see
         // upstream-fetch.js), never which origins or requests.
-        res.end(JSON.stringify({ ...extra, ...status, clientKeys, draining: drainState.isDraining, activeRequests: drainState.activeRequests, upstreamPool: upstreamPoolStatus() }, null, 2));
         res.end(JSON.stringify({ ...extra, ...status, clientKeys, draining: drainState.isDraining, activeRequests: drainState.activeRequests, upstreamPool: upstreamPoolStatus(), autoHealthCheck: healthChecker.getStatus() }, null, 2));
         return;
       }
@@ -1617,11 +1616,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
                 if (upstreamRes.status === 429) {
                   errorReason = 'rate-limit';
-                  const resetTimeStr = account?.quota?.unified5hReset
-                    ? new Date(account.quota.unified5hReset).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                    : null;
-                  const resetInfo = resetTimeStr ? ` (reset ok. ${resetTimeStr})` : '';
-                  errorMsg = `Limit zapytań (429 Rate Limit) osiągnięty w Anthropic dla konta "${account.name}" (${model})${resetInfo}.`;
                   const generalRejected = rateLimitHeaders['anthropic-ratelimit-unified-5h-status'] === 'rejected'
                     || rateLimitHeaders['anthropic-ratelimit-unified-7d-status'] === 'rejected';
 
@@ -1838,7 +1832,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
                 if (upstreamRes.status === 429) {
                   errorReason = 'rate-limit';
-                  errorMsg = `Limit zapytań (429 Rate Limit) osiągnięty w ChatGPT/Codex dla konta "${account.name}". Wykorzystano limit tygodniowy lub sesyjny konta.`;
                   const retryAfterHeader = upstreamRes.headers.get('retry-after');
                   let retryAfter = parseInt(retryAfterHeader, 10);
                   if (Number.isNaN(retryAfter) || retryAfter <= 0) retryAfter = 60;

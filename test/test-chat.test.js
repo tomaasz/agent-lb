@@ -235,7 +235,6 @@ describe('Test Chat & Playground Support', () => {
 
       // Prober should NOT clear identity verification while lastError is identity-verification
       am.clearIdentityVerification?.(0);
-      // Wait, prober line 158 checks !account.lastError || account.lastError.reason !== 'identity-verification'
       assert.equal(am.unavailableReason(acc), 'identity-verification');
     } finally {
       server.close();
