@@ -629,6 +629,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         res.writeHead(200, { 'Content-Type': 'application/json' });
         // Counters only: how full the upstream admission gate is (see
         // upstream-fetch.js), never which origins or requests.
+        res.end(JSON.stringify({ ...extra, ...status, clientKeys, draining: drainState.isDraining, activeRequests: drainState.activeRequests, upstreamPool: upstreamPoolStatus() }, null, 2));
         res.end(JSON.stringify({ ...extra, ...status, clientKeys, draining: drainState.isDraining, activeRequests: drainState.activeRequests, upstreamPool: upstreamPoolStatus(), autoHealthCheck: healthChecker.getStatus() }, null, 2));
         return;
       }
@@ -1571,6 +1572,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   ? data.content.map(c => c.text || '').join('')
                   : (data.text || JSON.stringify(data));
                 usage = data.usage || null;
+                accountManager.clearRateLimited(account.index);
                 accountManager.recordAccountSuccess(account);
                 account.lastTest = { ok: true, durationMs, model: responseModel, timestamp: Date.now() };
                 if (usage && auth.client) {
@@ -1603,6 +1605,16 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                 } catch {
                   errorMsg = await upstreamRes.text().catch(() => errorMsg);
                 }
+
+                const rateLimitHeaders = {};
+                for (const [key, value] of upstreamRes.headers.entries()) {
+                  const k = key.toLowerCase();
+                  if (k.startsWith('anthropic-ratelimit-') || k === 'retry-after') {
+                    rateLimitHeaders[k] = value;
+                  }
+                }
+                accountManager.updateQuota(account.index, rateLimitHeaders);
+
                 if (upstreamRes.status === 429) {
                   errorReason = 'rate-limit';
                   const resetTimeStr = account?.quota?.unified5hReset
@@ -1610,6 +1622,41 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                     : null;
                   const resetInfo = resetTimeStr ? ` (reset ok. ${resetTimeStr})` : '';
                   errorMsg = `Limit zapytań (429 Rate Limit) osiągnięty w Anthropic dla konta "${account.name}" (${model})${resetInfo}.`;
+                  const generalRejected = rateLimitHeaders['anthropic-ratelimit-unified-5h-status'] === 'rejected'
+                    || rateLimitHeaders['anthropic-ratelimit-unified-7d-status'] === 'rejected';
+
+                  let hold = 60;
+                  const retryAfterHeader = upstreamRes.headers.get('retry-after');
+                  const parsedRetryAfter = parseInt(retryAfterHeader, 10);
+
+                  if (generalRejected) {
+                    const resetTime = account?.quota?.unified5hReset || account?.quota?.unified7dReset;
+                    if (resetTime && resetTime > Date.now()) {
+                      hold = Math.ceil((resetTime - Date.now()) / 1000);
+                    } else {
+                      hold = 3600;
+                    }
+                    hold = Math.min(Math.max(hold, 60), 86400);
+                    accountManager.markRateLimited(account.index, hold);
+                    const resetTimeStr = resetTime ? new Date(resetTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+                    errorMsg = `Limit zapytań (Quota 100% / rejected) osiągnięty w Anthropic dla konta "${account.name}" (${model}). Reset ok. ${resetTimeStr || 'nieznany'}.`;
+                  } else {
+                    if (!Number.isNaN(parsedRetryAfter) && parsedRetryAfter > 0) {
+                      hold = parsedRetryAfter;
+                    } else {
+                      hold = 60;
+                    }
+                    hold = Math.min(Math.max(hold, 1), 300);
+                    accountManager.markRateLimited(account.index, hold);
+                    errorMsg = `Limit zapytań (429 Rate Limit / cooldown ${hold}s) w Anthropic dla konta "${account.name}" (${model}).`;
+                  }
+
+                  account.lastError = {
+                    reason: 'rate-limit',
+                    status: 429,
+                    error: errorMsg,
+                    timestamp: Date.now()
+                  };
                 } else if (upstreamRes.status === 400 && /identity\s*verification/i.test(errorMsg)) {
                   errorReason = 'identity-verification';
                   accountManager.markIdentityVerificationRequired(account.index);
@@ -1746,6 +1793,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   }
                   usage = data.usage || null;
                 }
+                accountManager.clearRateLimited(account.index);
                 accountManager.recordAccountSuccess(account);
                 account.lastTest = { ok: true, durationMs, model: responseModel, timestamp: Date.now() };
                 if (usage && auth.client) {
@@ -1778,9 +1826,31 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                 } catch {
                   errorMsg = await upstreamRes.text().catch(() => errorMsg);
                 }
+
+                const codexRateLimitHeaders = {};
+                for (const [key, value] of upstreamRes.headers.entries()) {
+                  const k = key.toLowerCase();
+                  if (k.startsWith('x-codex-') || k === 'retry-after') {
+                    codexRateLimitHeaders[k] = value;
+                  }
+                }
+                accountManager.updateQuota(account.index, codexRateLimitHeaders);
+
                 if (upstreamRes.status === 429) {
                   errorReason = 'rate-limit';
                   errorMsg = `Limit zapytań (429 Rate Limit) osiągnięty w ChatGPT/Codex dla konta "${account.name}". Wykorzystano limit tygodniowy lub sesyjny konta.`;
+                  const retryAfterHeader = upstreamRes.headers.get('retry-after');
+                  let retryAfter = parseInt(retryAfterHeader, 10);
+                  if (Number.isNaN(retryAfter) || retryAfter <= 0) retryAfter = 60;
+                  retryAfter = Math.min(Math.max(retryAfter, 1), 300);
+                  accountManager.markRateLimited(account.index, retryAfter);
+                  errorMsg = `Limit zapytań (429 Rate Limit / cooldown ${retryAfter}s) w ChatGPT/Codex dla konta "${account.name}".`;
+                  account.lastError = {
+                    reason: 'rate-limit',
+                    status: 429,
+                    error: errorMsg,
+                    timestamp: Date.now()
+                  };
                 } else if (upstreamRes.status === 401 || upstreamRes.status === 403) {
                   errorReason = 'auth';
                   account.lastError = {

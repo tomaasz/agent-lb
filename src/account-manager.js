@@ -1650,15 +1650,21 @@ export class AccountManager {
 
     if (this._identityVerificationRequired(account) || account.lastError?.reason === 'identity-verification') return 'identity-verification';
 
+    if (account.status === 'auth' || account.lastError?.reason === 'auth') return 'auth';
+
     if (account.circuitBreakerUntil && Date.now() < account.circuitBreakerUntil) return 'circuit-breaker';
 
     // Check rate limit expiry
     if (account.status === 'throttled' && account.rateLimitedUntil) {
+    if ((account.status === 'throttled' || account.lastError?.reason === 'rate-limit') && account.rateLimitedUntil) {
       if (Date.now() < account.rateLimitedUntil) return 'throttled';
       account.status = 'active';
       account.rateLimitedUntil = null;
       account.throttledAt = null;
+      if (account.lastError?.reason === 'rate-limit') account.lastError = null;
       console.log(`[TeamClaude] Account "${account.name}" rate limit expired, marking active`);
+    } else if (account.status === 'throttled') {
+      return 'throttled';
     }
 
     if (account.status === 'exhausted') return 'exhausted';
@@ -1764,6 +1770,8 @@ export class AccountManager {
     account.entitlementDeniedUntil = null;
     account.identityVerificationUntil = null;
     account.lastSuccess = Date.now();
+    account.rateLimitedUntil = null;
+    account.throttledAt = null;
     if (account.status === 'error' || account.status === 'throttled') account.status = 'active';
   }
 
@@ -3544,6 +3552,9 @@ export class AccountManager {
   clearRateLimited(accountIndex) {
     const account = this.accounts[accountIndex];
     if (!account || account.status !== 'throttled') return;
+    if (!account) return;
+    if (account.lastError?.reason === 'rate-limit') account.lastError = null;
+    if (account.status !== 'throttled' && !account.rateLimitedUntil) return;
     account.status = 'active';
     account.rateLimitedUntil = null;
     account.throttledAt = null;

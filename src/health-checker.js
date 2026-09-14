@@ -215,6 +215,7 @@ export class FleetHealthChecker {
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
           tokensUsed = (data.usage?.input_tokens || 1) + (data.usage?.output_tokens || 1);
+          this.am.clearRateLimited(account.index);
           this.am.recordAccountSuccess(account);
           account.lastTest = {
             ok: true,
@@ -235,9 +236,55 @@ export class FleetHealthChecker {
             errorMsg = await res.text().catch(() => errorMsg);
           }
 
+          const rateLimitHeaders = {};
+          if (res.headers?.entries) {
+            for (const [key, value] of res.headers.entries()) {
+              const k = key.toLowerCase();
+              if (k.startsWith('anthropic-ratelimit-') || k === 'retry-after') {
+                rateLimitHeaders[k] = value;
+              }
+            }
+          }
+          this.am.updateQuota(account.index, rateLimitHeaders);
+
           if (res.status === 429) {
             errorReason = 'rate-limit';
             errorMsg = `Limit zapytań (429 Rate Limit) w Anthropic dla konta "${account.name}".`;
+            const generalRejected = rateLimitHeaders['anthropic-ratelimit-unified-5h-status'] === 'rejected'
+              || rateLimitHeaders['anthropic-ratelimit-unified-7d-status'] === 'rejected';
+
+            let hold = 60;
+            const retryAfterHeader = res.headers?.get ? res.headers.get('retry-after') : null;
+            const parsedRetryAfter = parseInt(retryAfterHeader, 10);
+
+            if (generalRejected) {
+              const resetTime = account?.quota?.unified5hReset || account?.quota?.unified7dReset;
+              if (resetTime && resetTime > Date.now()) {
+                hold = Math.ceil((resetTime - Date.now()) / 1000);
+              } else {
+                hold = 3600;
+              }
+              hold = Math.min(Math.max(hold, 60), 86400);
+              this.am.markRateLimited(account.index, hold);
+              const resetTimeStr = resetTime ? new Date(resetTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+              errorMsg = `Limit zapytań (Quota 100% / rejected) osiągnięty w Anthropic dla konta "${account.name}". Reset ok. ${resetTimeStr || 'nieznany'}.`;
+            } else {
+              if (!Number.isNaN(parsedRetryAfter) && parsedRetryAfter > 0) {
+                hold = parsedRetryAfter;
+              } else {
+                hold = 60;
+              }
+              hold = Math.min(Math.max(hold, 1), 300);
+              this.am.markRateLimited(account.index, hold);
+              errorMsg = `Limit zapytań (429 Rate Limit / cooldown ${hold}s) w Anthropic dla konta "${account.name}".`;
+            }
+
+            account.lastError = {
+              reason: 'rate-limit',
+              status: 429,
+              error: errorMsg,
+              timestamp: Date.now()
+            };
           } else if (res.status === 400 && /identity\s*verification/i.test(errorMsg)) {
             errorReason = 'identity-verification';
             this.am.markIdentityVerificationRequired(account.index);
@@ -303,6 +350,7 @@ export class FleetHealthChecker {
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
           tokensUsed = (data.usage?.prompt_tokens || 1) + (data.usage?.completion_tokens || 1);
+          this.am.clearRateLimited(account.index);
           this.am.recordAccountSuccess(account);
           account.lastTest = {
             ok: true,
@@ -323,8 +371,31 @@ export class FleetHealthChecker {
             errorMsg = await res.text().catch(() => errorMsg);
           }
 
+          const codexRateLimitHeaders = {};
+          if (res.headers?.entries) {
+            for (const [key, value] of res.headers.entries()) {
+              const k = key.toLowerCase();
+              if (k.startsWith('x-codex-') || k === 'retry-after') {
+                codexRateLimitHeaders[k] = value;
+              }
+            }
+          }
+          this.am.updateQuota(account.index, codexRateLimitHeaders);
+
           if (res.status === 429) {
             errorReason = 'rate-limit';
+            const retryAfterHeader = res.headers?.get ? res.headers.get('retry-after') : null;
+            let retryAfter = parseInt(retryAfterHeader, 10);
+            if (Number.isNaN(retryAfter) || retryAfter <= 0) retryAfter = 60;
+            retryAfter = Math.min(Math.max(retryAfter, 1), 300);
+            this.am.markRateLimited(account.index, retryAfter);
+            errorMsg = `Limit zapytań (429 Rate Limit / cooldown ${retryAfter}s) w ChatGPT/Codex dla konta "${account.name}".`;
+            account.lastError = {
+              reason: 'rate-limit',
+              status: 429,
+              error: errorMsg,
+              timestamp: Date.now()
+            };
           } else if (res.status === 401 || res.status === 403) {
             errorReason = 'auth';
             account.lastError = {
@@ -471,3 +542,4 @@ export class FleetHealthChecker {
     };
   }
 }
+

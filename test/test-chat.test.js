@@ -242,5 +242,91 @@ describe('Test Chat & Playground Support', () => {
       mockUpstream.close();
     }
   });
+
+  it('marks account throttled and records lastError when upstream returns 429 Rate Limit', async () => {
+    let return429 = true;
+    const mockUpstream = http.createServer((req, res) => {
+      if (return429) {
+        res.writeHead(429, {
+          'Content-Type': 'application/json',
+          'retry-after': '45',
+          'anthropic-ratelimit-unified-5h-utilization': '0.15',
+          'anthropic-ratelimit-unified-5h-status': 'allowed'
+        });
+        res.end(JSON.stringify({
+          type: 'error',
+          error: { type: 'rate_limit_error', message: 'Rate limit exceeded' }
+        }));
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          model: 'claude-sonnet-5',
+          content: [{ type: 'text', text: 'OK' }]
+        }));
+      }
+    });
+    await new Promise(resolve => mockUpstream.listen(0, '127.0.0.1', resolve));
+    const upstreamUrl = `http://127.0.0.1:${mockUpstream.address().port}`;
+
+    const accounts = [
+      { name: 'nathan-petit', provider: 'anthropic', type: 'oauth', accessToken: 'token-np', upstream: upstreamUrl }
+    ];
+    const am = new AccountManager(accounts, 0.98);
+    const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {}, null, null, null);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const proxyPort = server.address().port;
+
+    try {
+      // 1. Send test chat that returns 429
+      const res = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: { 'x-api-key': 'tc-test-admin', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'anthropic',
+          account: 'nathan-petit',
+          model: 'claude-sonnet-5',
+          message: 'ping'
+        })
+      });
+
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.equal(json.status, 429);
+      assert.match(json.error, /429 Rate Limit/);
+
+      const acc = am.accounts[0];
+      assert.equal(acc.status, 'throttled');
+      assert.equal(acc.lastError?.reason, 'rate-limit');
+      assert.equal(acc.lastError?.status, 429);
+      assert.equal(acc.lastTest?.ok, false);
+      assert.equal(acc.lastTest?.reason, 'rate-limit');
+      assert.ok(acc.rateLimitedUntil > Date.now(), 'rateLimitedUntil should be in the future');
+      assert.equal(am.unavailableReason(acc), 'throttled', 'unavailableReason returns throttled');
+
+      // 2. Recovery on subsequent successful request
+      return429 = false;
+      const res2 = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: { 'x-api-key': 'tc-test-admin', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'anthropic',
+          account: 'nathan-petit',
+          model: 'claude-sonnet-5',
+          message: 'ping'
+        })
+      });
+
+      const json2 = await res2.json();
+      assert.equal(json2.ok, true);
+      assert.equal(acc.status, 'active');
+      assert.equal(acc.lastError, null);
+      assert.equal(acc.lastTest?.ok, true);
+      assert.equal(acc.rateLimitedUntil, null);
+      assert.equal(am.unavailableReason(acc), null, 'unavailableReason is null once recovered');
+    } finally {
+      server.close();
+      mockUpstream.close();
+    }
+  });
 });
 

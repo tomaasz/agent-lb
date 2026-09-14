@@ -121,8 +121,11 @@ function usageDimensionTitle(name) {
 export const UNAVAILABLE_TEXT = {
   disabled: 'disabled by operator',
   throttled: 'upstream 429 hold',
+  'rate-limit': 'upstream 429 rate limit hold',
   exhausted: 'marked exhausted',
   error: 'account error (see logs)',
+  auth: 'upstream authentication error (401/403)',
+  server_error: 'upstream server error (5xx)',
   'upstream-rejected': 'upstream reports quota rejected',
   quota: 'local switch threshold reached',
   capped: 'account usage cap reached (maxUsage)',
