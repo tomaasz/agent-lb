@@ -1555,10 +1555,18 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
               } catch {
                 errorMsg = await upstreamRes.text().catch(() => errorMsg);
               }
-              if (upstreamRes.status === 400 && /identity\s*verification/i.test(errorMsg)) {
+              if (upstreamRes.status === 429) {
+                const resetTimeStr = account?.quota?.unified5hReset
+                  ? new Date(account.quota.unified5hReset).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : null;
+                const resetInfo = resetTimeStr ? ` (reset ok. ${resetTimeStr})` : '';
+                errorMsg = `Limit zapytań (429 Rate Limit) osiągnięty w Anthropic dla modelu ${model}${resetInfo}. Model Claude Haiku 4.5 ma osobny wolny limit i działa poprawnie — wybierz go z listy modeli.`;
+              } else if (upstreamRes.status === 400 && /identity\s*verification/i.test(errorMsg)) {
                 accountManager.markIdentityVerificationRequired(account.index);
+                errorMsg = `Wymagana weryfikacja tożsamości (400 Identity Verification) na koncie "${account.name}". Zaloguj się na claude.ai i potwierdź numer telefonu/SMS.`;
               } else if (upstreamRes.status === 403) {
                 accountManager.markEntitlementDenied(account.index);
+                errorMsg = `Odmowa dostępu OAuth (403 Organization Block). Anthropic zablokował użycie tokenów OAuth dla organizacji konta "${account.name}".`;
               } else if (upstreamRes.status >= 500) {
                 accountManager.recordAccountFailure(account);
               }
@@ -1636,7 +1644,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                       if (deltaText) replyText += deltaText;
                       if (item.usage) usage = item.usage;
                       if (item.model) responseModel = item.model;
-                    } catch {}
+                    } catch { /* skip non-JSON stream lines */ }
                   }
                 }
                 if (!replyText.trim()) replyText = '(Odpowiedź strumieniowa zakończona pomyślnie)';
@@ -1683,7 +1691,11 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
               } catch {
                 errorMsg = await upstreamRes.text().catch(() => errorMsg);
               }
-              if (upstreamRes.status >= 500) accountManager.recordAccountFailure(account);
+              if (upstreamRes.status === 429) {
+                errorMsg = `Limit zapytań (429 Rate Limit) osiągnięty w ChatGPT/Codex dla konta "${account.name}". Wykorzystano limit tygodniowy lub sesyjny konta.`;
+              } else if (upstreamRes.status >= 500) {
+                accountManager.recordAccountFailure(account);
+              }
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({
                 ok: false,

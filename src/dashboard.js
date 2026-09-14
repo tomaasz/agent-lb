@@ -3652,8 +3652,8 @@ ${SHARED_HELPERS}
 
   // --- Test Chat (Playground) ---
   var CLAUDE_MODELS = [
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Aktywny / Szybki)' },
     { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (Domyślny Claude Code)' },
-    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Dostępny / szybki)' },
     { id: 'claude-opus-5', name: 'Claude Opus 5' },
     { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
     { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
