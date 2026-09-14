@@ -767,11 +767,12 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         const clientsStats = clientUsage?.export() || hooks.getStatusExtra?.()?.clients || {};
         const keys = (config.proxy?.clientKeys || []).map(k => {
           const raw = k.key || '';
-          const masked = raw.length > 8 ? `${raw.slice(0, 5)}...${raw.slice(-4)}` : (raw ? '***' : '');
+          const masked = maskSecret(raw);
           const stat = clientsStats[k.name] || { requests: 0, connections: 0, inputTokens: 0, outputTokens: 0, lastUsed: null };
           return {
             name: k.name,
-            key: masked,
+            key: raw,
+            rawKey: raw,
             maskedKey: masked,
             created: k.created || null,
             stats: stat,

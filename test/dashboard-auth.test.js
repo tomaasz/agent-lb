@@ -174,6 +174,43 @@ describe('Dashboard Authentication and Layout', () => {
       assert.ok(!statusText.includes('admin-secret'), 'status must not expose the admin credential');
       assert.ok(!statusText.includes('worker-secret-1234'), 'status must not expose raw client credentials');
       assert.ok(statusText.includes('work...1234'), 'status may expose only a masked client key');
+
+      // Unauthenticated external request on /api/keys must be rejected
+      const unauthKeysRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/keys`, {
+        headers: { 'x-forwarded-for': '203.0.113.195' }
+      });
+      assert.equal(unauthKeysRes.status, 401);
+
+      // Invalid key on /api/keys must be rejected (401)
+      const wrongKeysRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/keys`, {
+        headers: {
+          'x-forwarded-for': '203.0.113.195',
+          'x-api-key': 'wrong-secret'
+        },
+      });
+      assert.equal(wrongKeysRes.status, 401);
+
+      // Non-admin client key on admin endpoint must be forbidden (403)
+      const nonAdminKeysRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/keys`, {
+        headers: {
+          'x-forwarded-for': '203.0.113.195',
+          'x-api-key': 'worker-secret-1234'
+        },
+      });
+      assert.equal(nonAdminKeysRes.status, 403);
+
+      // Authenticated admin on /api/keys must receive full key and rawKey for copying/setup
+      const adminKeysRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/keys`, {
+        headers: { 'x-api-key': 'admin-secret' },
+      });
+      assert.equal(adminKeysRes.status, 200);
+      const adminKeysData = await adminKeysRes.json();
+      assert.equal(adminKeysData.ok, true);
+      assert.equal(adminKeysData.keys.length, 1);
+      assert.equal(adminKeysData.keys[0].name, 'worker');
+      assert.equal(adminKeysData.keys[0].key, 'worker-secret-1234');
+      assert.equal(adminKeysData.keys[0].rawKey, 'worker-secret-1234');
+      assert.equal(adminKeysData.keys[0].maskedKey, 'work...1234');
     } finally {
       delete process.env.AGENT_LB_CONFIG;
       await new Promise(res => server.close(res));

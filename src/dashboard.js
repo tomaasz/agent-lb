@@ -1827,6 +1827,7 @@ ${SHARED_HELPERS}
   }
 
   var revealedKeys = Object.create(null);
+  var cachedClientKeys = Object.create(null);
   var pendingOAuthState = null;
 
   function apiCall(url, method, body) {
@@ -2522,30 +2523,34 @@ ${SHARED_HELPERS}
   }
 
   function showKeyModal(name, key) {
+    var realKey = (key && !key.includes('...')) ? key : (cachedClientKeys[name] || key || '');
+    if (realKey && !realKey.includes('...')) {
+      cachedClientKeys[name] = realKey;
+    }
     document.getElementById('createdClientName').textContent = name;
-    document.getElementById('createdClientKey').textContent = key;
+    document.getElementById('createdClientKey').textContent = realKey;
     var hostUrl = window.location.origin;
 
-    var cmdBash = 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + key;
-    var cmdCodexBash = 'curl -fsSL ' + hostUrl + '/codexlb-setup.sh | bash -s -- --key ' + key;
-    var cmdPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"';
-    var cmdCodexPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/codexlb-setup.ps1))) -Key "' + key + '"';
-    var cmdNode = 'curl -fsSL ' + hostUrl + '/setup.js | node - --key ' + key;
-    var cmdGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/setup.sh --key ' + key;
+    var cmdBash = 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + realKey;
+    var cmdCodexBash = 'curl -fsSL ' + hostUrl + '/codexlb-setup.sh | bash -s -- --key ' + realKey;
+    var cmdPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + realKey + '"';
+    var cmdCodexPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/codexlb-setup.ps1))) -Key "' + realKey + '"';
+    var cmdNode = 'curl -fsSL ' + hostUrl + '/setup.js | node - --key ' + realKey;
+    var cmdGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/setup.sh --key ' + realKey;
     var manualText = [
       '# Claude Code CLI (OAuth / subscription — zalecane):',
       'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
       'unset ANTHROPIC_API_KEY  # zachowaj sesje OAuth Claude Code',
-      'export ANTHROPIC_CUSTOM_HEADERS="x-api-key: ' + key + '"',
+      'export ANTHROPIC_CUSTOM_HEADERS="x-api-key: ' + realKey + '"',
       '',
       '# Claude Code CLI (tryb API key — gdy nie korzystasz z logowania Claude.ai):',
       'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
-      'export ANTHROPIC_API_KEY="' + key + '"',
+      'export ANTHROPIC_API_KEY="' + realKey + '"',
       'unset ANTHROPIC_CUSTOM_HEADERS',
       '',
       '# OpenAI Codex CLI:',
       'export CODEX_BASE_URL="' + hostUrl + '/backend-api/codex"',
-      'export CODEX_LB_API_KEY="' + key + '"',
+      'export CODEX_LB_API_KEY="' + realKey + '"',
       'export OPENAI_BASE_URL="' + hostUrl + '/v1"'
     ].join('\\n');
 
@@ -2592,6 +2597,7 @@ ${SHARED_HELPERS}
         if (!res) return;
         if (res.ok) {
           note('ok', 'Utworzono klucz klienta dla "' + res.name + '"');
+          if (res.key) cachedClientKeys[res.name] = res.key;
           closeModal('modalAddClientKey');
           document.getElementById('inClientName').value = '';
           document.getElementById('inClientCustomKey').value = '';
@@ -2616,6 +2622,7 @@ ${SHARED_HELPERS}
         if (!res) return;
         if (res.ok) {
           note('ok', 'Unieważniono klucz klienta "' + name + '"');
+          delete cachedClientKeys[name];
           poll();
         } else {
           note('error', 'Błąd unieważniania klucza: ' + (res.error || 'nieznany błąd'));
@@ -2634,8 +2641,18 @@ ${SHARED_HELPERS}
     var hostUrl = window.location.origin;
     var list = keys || (lastStatus && lastStatus.clientKeys) || [];
     var key = currentQuickKey;
-    if (!key && list.length) {
-      key = list[0].rawKey || list[0].key || '';
+    if ((!key || key.includes('...')) && list.length) {
+      var first = list[0];
+      key = (first.rawKey && !first.rawKey.includes('...')) ? first.rawKey : ((first.key && !first.key.includes('...')) ? first.key : (cachedClientKeys[first.name] || first.rawKey || first.key || ''));
+    }
+    if ((!key || key.includes('...')) && list.length) {
+      for (var i = 0; i < list.length; i++) {
+        var cand = cachedClientKeys[list[i].name];
+        if (cand && !cand.includes('...')) {
+          key = cand;
+          break;
+        }
+      }
     }
     if (!key) key = '<KLUCZ_KLIENTA>';
 
@@ -2690,11 +2707,17 @@ ${SHARED_HELPERS}
   }
 
   function renderClientKeys(keys, clients) {
+    var list = keys || [];
+    list.forEach(function (k) {
+      var unmasked = (k.rawKey && !k.rawKey.includes('...')) ? k.rawKey : ((k.key && !k.key.includes('...')) ? k.key : '');
+      if (unmasked) {
+        cachedClientKeys[k.name] = unmasked;
+      }
+    });
     updateQuickCmd(keys);
     var container = document.getElementById('clientKeysTable');
     if (!container) return;
     container.textContent = '';
-    var list = keys || [];
 
     var countEl = document.getElementById('countClientKeys');
     if (countEl) {
@@ -2710,7 +2733,10 @@ ${SHARED_HELPERS}
 
     list.forEach(function (k) {
       var card = el('div', 'client-key-card');
-      var raw = k.rawKey || k.key || '';
+      var raw = (k.rawKey && !k.rawKey.includes('...')) ? k.rawKey : ((k.key && !k.key.includes('...')) ? k.key : (cachedClientKeys[k.name] || k.rawKey || k.key || ''));
+      if (raw && !raw.includes('...')) {
+        cachedClientKeys[k.name] = raw;
+      }
       var isRevealed = !!revealedKeys[k.name];
 
       // Top row: Name on left, Action buttons on right
@@ -2889,6 +2915,10 @@ ${SHARED_HELPERS}
           .then(function (kr) { return kr.ok ? kr.json() : null; })
           .then(function (kd) {
             if (kd && Array.isArray(kd.keys)) {
+              kd.keys.forEach(function (k) {
+                var r = (k.rawKey && !k.rawKey.includes('...')) ? k.rawKey : ((k.key && !k.key.includes('...')) ? k.key : '');
+                if (r) cachedClientKeys[k.name] = r;
+              });
               renderClientKeys(kd.keys, s.clients);
             }
           })
