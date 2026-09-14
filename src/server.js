@@ -746,9 +746,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      const reqPath = (req.url || '').split('?')[0];
-      const normApiPath = reqPath.replace(/^\/(?:agent-lb|teamclaude|claude-lb)/, '');
-
       // Auth verification & session endpoints for dashboard
       if (req.method === 'GET' && (normApiPath === '/api/auth/verify' || normApiPath === '/api/auth/session')) {
         const hasAdminKey = Boolean(config.proxy?.apiKey);
@@ -835,7 +832,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         const keys = (config.proxy?.clientKeys || []).map(k => {
           const raw = k.key || '';
           const masked = maskSecret(raw);
-          const stat = clientsStats[k.name] || { requests: 0, connections: 0, inputTokens: 0, outputTokens: 0, lastUsed: null };
           const stat = clientsStats[k.name] || { requests: 0, connections: 0, inputTokens: 0, outputTokens: 0, dailyTokens: 0, monthlyTokens: 0, lastUsed: null };
           return {
             name: k.name,
@@ -1943,7 +1939,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
   // Opt-in egress pin: null unless config.egress.pin is set, and then shared by
   // the base listener and the MITM one so both honour the same hold.
   const egress = createEgressGuard(config, console.error);
-  const forward = createProxyRequestListener({ accountManager, upstream, logDir, hooks, sx, holdMs, config, egress, clientUsage, dimensionUsage, fairShare, toolDedupe });
   const forward = createProxyRequestListener({ accountManager, upstream, logDir, hooks, sx, holdMs, config, egress, clientUsage, dimensionUsage, fairShare, toolDedupe, drainState });
   const server = http.createServer(requestHandler);
 
@@ -2297,7 +2292,6 @@ export function createProxyRequestListener({
   accountManager, upstream, logDir = null, hooks = {}, sx = null, holdMs = 0,
   config = {}, forcedPin = null, egress = null, clientUsage = null,
   forcedClient = null, dimensionUsage = null, fairShare: injectedFairShare = null,
-  toolDedupe: injectedToolDedupe = null,
   toolDedupe: injectedToolDedupe = null, drainState = null,
 }) {
   const fairShare = injectedFairShare || new FairShareController({
@@ -3695,7 +3689,6 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
   // needs ChatGPT-Account-Id to scope the token to one account.
   applyAuthHeaders(headers, account);
 
-  const upstreamUrl = `${upstreamFor(account, upstream)}${req.url}`;
   const requestProvider = ctx.provider || DEFAULT_PROVIDER;
   const servingProvider = providerOf(account);
   const isCrossProvider = servingProvider !== requestProvider;
@@ -4144,8 +4137,6 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       return;
     }
 
-    const contentType = upstreamRes.headers.get('content-type') || '';
-    const isStreaming = contentType.includes('text/event-stream');
     if (isCrossProvider && requestProvider === 'anthropic' && servingProvider === 'codex') {
       if (isStreaming) {
         const l = getLog();
