@@ -1462,20 +1462,48 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         const message = typeof body?.message === 'string' && body.message.trim() ? body.message.trim() : 'Test połączenia z Agent-LB. Odpowiedz krótko w jednym zdaniu kim jesteś.';
         const targetAccount = typeof body?.account === 'string' && body.account.trim() ? body.account.trim() : null;
 
-        // Find or select account
-        let account = null;
+        // Build list of candidate accounts to try
+        let candidates = [];
         if (targetAccount) {
-          account = accountManager.accounts.find(a => a.name === targetAccount);
-          if (!account) {
+          const acc = accountManager.accounts.find(a => a.name === targetAccount);
+          if (!acc) {
             res.writeHead(404, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: false, error: `Konto "${targetAccount}" nie zostało znalezione.` }));
             return;
           }
+          candidates = [acc];
         } else {
-          account = accountManager.getActiveAccount(null, model, null, null, provider);
+          // Auto mode: find all non-disabled accounts matching provider
+          const matching = accountManager.accounts.filter(a => !a.disabled && providerOf(a) === provider);
+          // Sort:
+          // 1. Healthy first (unavailableReason === null)
+          // 2. Lower priority number first (0 before 1)
+          // 3. Lower utilization first
+          candidates = [...matching].sort((a, b) => {
+            const unavailA = accountManager.unavailableReason(a, model) === null ? 0 : 1;
+            const unavailB = accountManager.unavailableReason(b, model) === null ? 0 : 1;
+            if (unavailA !== unavailB) return unavailA - unavailB;
+            const prioA = a.priority || 0;
+            const prioB = b.priority || 0;
+            if (prioA !== prioB) return prioA - prioB;
+            const utilA = Math.max(a.quota?.unified5hUtilization || 0, a.quota?.unified7dUtilization || 0);
+            const utilB = Math.max(b.quota?.unified5hUtilization || 0, b.quota?.unified7dUtilization || 0);
+            return utilA - utilB;
+          });
+
+          // Cross-provider fallback if no matching accounts
+          if (candidates.length === 0 && accountManager.crossProviderFallback) {
+            const fallbackMatching = accountManager.accounts.filter(a => !a.disabled && providerOf(a) !== provider);
+            candidates = [...fallbackMatching].sort((a, b) => {
+              const unavailA = accountManager.unavailableReason(a, model) === null ? 0 : 1;
+              const unavailB = accountManager.unavailableReason(b, model) === null ? 0 : 1;
+              if (unavailA !== unavailB) return unavailA - unavailB;
+              return (a.priority || 0) - (b.priority || 0);
+            });
+          }
         }
 
-        if (!account) {
+        if (candidates.length === 0) {
           res.writeHead(503, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             ok: false,
@@ -1484,248 +1512,289 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
 
-        const servingProvider = providerOf(account);
-        const isFallback = servingProvider !== provider;
-        const startTime = Date.now();
+        let lastError = null;
+        let lastStatus = 500;
+        const triedAccounts = [];
 
-        await accountManager.ensureTokenFresh(account.index);
+        for (const account of candidates) {
+          triedAccounts.push(account.name);
+          const servingProvider = providerOf(account);
+          const isFallback = servingProvider !== provider;
+          const startTime = Date.now();
 
-        try {
-          let upstreamRes;
-          let replyText = '';
-          let usage = null;
-          let responseModel = model;
+          await accountManager.ensureTokenFresh(account.index);
 
-          if (servingProvider === 'anthropic') {
-            const upstreamUrl = `${upstreamFor(account, upstream)}/v1/messages`;
-            const payload = {
-              model,
-              max_tokens: 512,
-              messages: [{ role: 'user', content: message }]
-            };
-            const reqHeaders = {
-              'content-type': 'application/json',
-              'anthropic-version': '2023-06-01',
-              'anthropic-beta': 'oauth-2025-04-20',
-              'user-agent': 'claude-code/0.2.29',
-              'accept': 'application/json'
-            };
-            applyAuthHeaders(reqHeaders, account);
+          try {
+            let upstreamRes;
+            let replyText = '';
+            let usage = null;
+            let responseModel = model;
 
-            upstreamRes = await fetch(upstreamUrl, {
-              method: 'POST',
-              headers: reqHeaders,
-              body: JSON.stringify(payload)
-            });
-
-            const durationMs = Date.now() - startTime;
-            if (upstreamRes.ok) {
-              const data = await upstreamRes.json();
-              responseModel = data.model || model;
-              replyText = Array.isArray(data.content)
-                ? data.content.map(c => c.text || '').join('')
-                : (data.text || JSON.stringify(data));
-              usage = data.usage || null;
-              accountManager.recordAccountSuccess(account);
-              if (usage && auth.client) {
-                clientUsage?.record(auth.client, {
-                  requests: 1,
-                  inputTokens: usage.input_tokens || 0,
-                  outputTokens: usage.output_tokens || 0
-                });
-              }
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({
-                ok: true,
-                provider,
-                servingProvider,
-                isFallback,
-                account: account.name,
-                model: responseModel,
-                reply: replyText,
-                usage,
-                durationMs
-              }));
-              return;
-            } else {
-              let errorMsg = `HTTP ${upstreamRes.status}`;
-              try {
-                const errData = await upstreamRes.json();
-                errorMsg = errData.error?.message || errData.message || JSON.stringify(errData);
-              } catch {
-                errorMsg = await upstreamRes.text().catch(() => errorMsg);
-              }
-              if (upstreamRes.status === 429) {
-                const resetTimeStr = account?.quota?.unified5hReset
-                  ? new Date(account.quota.unified5hReset).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                  : null;
-                const resetInfo = resetTimeStr ? ` (reset ok. ${resetTimeStr})` : '';
-                errorMsg = `Limit zapytań (429 Rate Limit) osiągnięty w Anthropic dla modelu ${model}${resetInfo}. Model Claude Haiku 4.5 ma osobny wolny limit i działa poprawnie — wybierz go z listy modeli.`;
-              } else if (upstreamRes.status === 400 && /identity\s*verification/i.test(errorMsg)) {
-                accountManager.markIdentityVerificationRequired(account.index);
-                errorMsg = `Wymagana weryfikacja tożsamości (400 Identity Verification) na koncie "${account.name}". Zaloguj się na claude.ai i potwierdź numer telefonu/SMS.`;
-              } else if (upstreamRes.status === 403) {
-                accountManager.markEntitlementDenied(account.index);
-                errorMsg = `Odmowa dostępu OAuth (403 Organization Block). Anthropic zablokował użycie tokenów OAuth dla organizacji konta "${account.name}".`;
-              } else if (upstreamRes.status >= 500) {
-                accountManager.recordAccountFailure(account);
-              }
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({
-                ok: false,
-                status: upstreamRes.status,
-                provider,
-                servingProvider,
-                isFallback,
-                account: account.name,
+            if (servingProvider === 'anthropic') {
+              const upstreamUrl = `${upstreamFor(account, upstream)}/v1/messages`;
+              const payload = {
                 model,
-                error: errorMsg,
-                durationMs
-              }));
-              return;
-            }
-          } else {
-            // Codex / OpenAI
-            const isOauth = account.type === 'oauth';
-            const upstreamUrl = isOauth
-              ? `${upstreamFor(account)}/backend-api/codex/responses`
-              : `${upstreamFor(account)}/v1/chat/completions`;
+                max_tokens: 512,
+                messages: [{ role: 'user', content: message }]
+              };
+              const reqHeaders = {
+                'content-type': 'application/json',
+                'anthropic-version': '2023-06-01',
+                'anthropic-beta': 'oauth-2025-04-20',
+                'user-agent': 'claude-code/0.2.29',
+                'accept': 'application/json'
+              };
+              applyAuthHeaders(reqHeaders, account);
 
-            const reqHeaders = {
-              'content-type': 'application/json',
-              'accept': 'application/json'
-            };
-            applyAuthHeaders(reqHeaders, account);
+              upstreamRes = await fetch(upstreamUrl, {
+                method: 'POST',
+                headers: reqHeaders,
+                body: JSON.stringify(payload)
+              });
 
-            const payload = isOauth
-              ? {
-                  model,
-                  store: false,
-                  stream: true,
-                  input: [{ role: 'user', content: [{ type: 'input_text', text: message }] }]
-                }
-              : {
-                  model,
-                  messages: [{ role: 'user', content: message }]
-                };
-
-            upstreamRes = await fetch(upstreamUrl, {
-              method: 'POST',
-              headers: reqHeaders,
-              body: JSON.stringify(payload)
-            });
-
-            const durationMs = Date.now() - startTime;
-            if (upstreamRes.ok) {
-              const cType = upstreamRes.headers.get('content-type') || '';
-              if (cType.includes('text/event-stream') && upstreamRes.body) {
-                const reader = upstreamRes.body.getReader();
-                const decoder = new TextDecoder('utf-8');
-                let streamBuf = '';
-                while (true) {
-                  const { done, value } = await reader.read();
-                  if (done) break;
-                  streamBuf += decoder.decode(value, { stream: true });
-                  const lines = streamBuf.split('\n');
-                  streamBuf = lines.pop() || '';
-                  for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed.startsWith('data:')) continue;
-                    const dataStr = trimmed.slice(5).trim();
-                    if (dataStr === '[DONE]') continue;
-                    try {
-                      const item = JSON.parse(dataStr);
-                      const deltaText = item.delta?.text
-                        || item.choices?.[0]?.delta?.content
-                        || item.output?.[0]?.content?.[0]?.text
-                        || (item.type === 'response.text.delta' && item.delta)
-                        || (item.type === 'response.output_item.added' && item.item?.content?.[0]?.text)
-                        || '';
-                      if (deltaText) replyText += deltaText;
-                      if (item.usage) usage = item.usage;
-                      if (item.model) responseModel = item.model;
-                    } catch { /* skip non-JSON stream lines */ }
-                  }
-                }
-                if (!replyText.trim()) replyText = '(Odpowiedź strumieniowa zakończona pomyślnie)';
-              } else {
+              const durationMs = Date.now() - startTime;
+              if (upstreamRes.ok) {
                 const data = await upstreamRes.json();
                 responseModel = data.model || model;
-                if (isOauth) {
-                  replyText = data.output?.[0]?.content?.[0]?.text
-                    || data.message?.content?.parts?.[0]
-                    || (typeof data.response === 'string' ? data.response : '')
-                    || (data.choices?.[0]?.message?.content)
-                    || JSON.stringify(data);
-                } else {
-                  replyText = data.choices?.[0]?.message?.content || '';
-                }
+                replyText = Array.isArray(data.content)
+                  ? data.content.map(c => c.text || '').join('')
+                  : (data.text || JSON.stringify(data));
                 usage = data.usage || null;
+                accountManager.recordAccountSuccess(account);
+                if (usage && auth.client) {
+                  clientUsage?.record(auth.client, {
+                    requests: 1,
+                    inputTokens: usage.input_tokens || 0,
+                    outputTokens: usage.output_tokens || 0
+                  });
+                }
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                  ok: true,
+                  provider,
+                  servingProvider,
+                  isFallback,
+                  account: account.name,
+                  model: responseModel,
+                  reply: replyText,
+                  usage,
+                  durationMs,
+                  triedAccounts: triedAccounts.length > 1 ? triedAccounts : undefined
+                }));
+                return;
+              } else {
+                let errorMsg = `HTTP ${upstreamRes.status}`;
+                try {
+                  const errData = await upstreamRes.json();
+                  errorMsg = errData.error?.message || errData.message || JSON.stringify(errData);
+                } catch {
+                  errorMsg = await upstreamRes.text().catch(() => errorMsg);
+                }
+                if (upstreamRes.status === 429) {
+                  const resetTimeStr = account?.quota?.unified5hReset
+                    ? new Date(account.quota.unified5hReset).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    : null;
+                  const resetInfo = resetTimeStr ? ` (reset ok. ${resetTimeStr})` : '';
+                  errorMsg = `Limit zapytań (429 Rate Limit) osiągnięty w Anthropic dla konta "${account.name}" (${model})${resetInfo}.`;
+                } else if (upstreamRes.status === 400 && /identity\s*verification/i.test(errorMsg)) {
+                  accountManager.markIdentityVerificationRequired(account.index);
+                  errorMsg = `Wymagana weryfikacja tożsamości (400 Identity Verification) na koncie "${account.name}". Zaloguj się na claude.ai i potwierdź numer telefonu/SMS.`;
+                } else if (upstreamRes.status === 403) {
+                  accountManager.markEntitlementDenied(account.index);
+                  errorMsg = `Odmowa dostępu OAuth (403 Organization Block). Anthropic zablokował użycie tokenów OAuth dla organizacji konta "${account.name}".`;
+                } else if (upstreamRes.status >= 500) {
+                  accountManager.recordAccountFailure(account);
+                }
+                lastError = errorMsg;
+                lastStatus = upstreamRes.status;
+
+                if (targetAccount) {
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify({
+                    ok: false,
+                    status: upstreamRes.status,
+                    provider,
+                    servingProvider,
+                    isFallback,
+                    account: account.name,
+                    model,
+                    error: errorMsg,
+                    durationMs
+                  }));
+                  return;
+                }
+                console.warn(`[TeamClaude] Test chat failed on "${account.name}" (${upstreamRes.status}): ${errorMsg}. Sprawdzanie kolejnego konta...`);
+                continue;
               }
-              accountManager.recordAccountSuccess(account);
-              if (usage && auth.client) {
-                clientUsage?.record(auth.client, {
-                  requests: 1,
-                  inputTokens: usage.prompt_tokens || usage.input_tokens || 0,
-                  outputTokens: usage.completion_tokens || usage.output_tokens || 0
-                });
-              }
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({
-                ok: true,
-                provider,
-                servingProvider,
-                isFallback,
-                account: account.name,
-                model: responseModel,
-                reply: replyText,
-                usage,
-                durationMs
-              }));
-              return;
             } else {
-              let errorMsg = `HTTP ${upstreamRes.status}`;
-              try {
-                const errData = await upstreamRes.json();
-                errorMsg = errData.error?.message || errData.detail || errData.message || JSON.stringify(errData);
-              } catch {
-                errorMsg = await upstreamRes.text().catch(() => errorMsg);
+              // Codex / OpenAI
+              const isOauth = account.type === 'oauth';
+              const upstreamUrl = isOauth
+                ? `${upstreamFor(account)}/backend-api/codex/responses`
+                : `${upstreamFor(account)}/v1/chat/completions`;
+
+              const reqHeaders = {
+                'content-type': 'application/json',
+                'accept': 'application/json'
+              };
+              applyAuthHeaders(reqHeaders, account);
+
+              const payload = isOauth
+                ? {
+                    model,
+                    store: false,
+                    stream: true,
+                    input: [{ role: 'user', content: [{ type: 'input_text', text: message }] }]
+                  }
+                : {
+                    model,
+                    messages: [{ role: 'user', content: message }]
+                  };
+
+              upstreamRes = await fetch(upstreamUrl, {
+                method: 'POST',
+                headers: reqHeaders,
+                body: JSON.stringify(payload)
+              });
+
+              const durationMs = Date.now() - startTime;
+              if (upstreamRes.ok) {
+                const cType = upstreamRes.headers.get('content-type') || '';
+                if (cType.includes('text/event-stream') && upstreamRes.body) {
+                  const reader = upstreamRes.body.getReader();
+                  const decoder = new TextDecoder('utf-8');
+                  let streamBuf = '';
+                  while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    streamBuf += decoder.decode(value, { stream: true });
+                    const lines = streamBuf.split('\n');
+                    streamBuf = lines.pop() || '';
+                    for (const line of lines) {
+                      const trimmed = line.trim();
+                      if (!trimmed.startsWith('data:')) continue;
+                      const dataStr = trimmed.slice(5).trim();
+                      if (dataStr === '[DONE]') continue;
+                      try {
+                        const item = JSON.parse(dataStr);
+                        const deltaText = item.delta?.text
+                          || item.choices?.[0]?.delta?.content
+                          || item.output?.[0]?.content?.[0]?.text
+                          || (item.type === 'response.text.delta' && item.delta)
+                          || (item.type === 'response.output_item.added' && item.item?.content?.[0]?.text)
+                          || '';
+                        if (deltaText) replyText += deltaText;
+                        if (item.usage) usage = item.usage;
+                        if (item.model) responseModel = item.model;
+                      } catch { /* skip non-JSON stream lines */ }
+                    }
+                  }
+                  if (!replyText.trim()) replyText = '(Odpowiedź strumieniowa zakończona pomyślnie)';
+                } else {
+                  const data = await upstreamRes.json();
+                  responseModel = data.model || model;
+                  if (isOauth) {
+                    replyText = data.output?.[0]?.content?.[0]?.text
+                      || data.message?.content?.parts?.[0]
+                      || (typeof data.response === 'string' ? data.response : '')
+                      || (data.choices?.[0]?.message?.content)
+                      || JSON.stringify(data);
+                  } else {
+                    replyText = data.choices?.[0]?.message?.content || '';
+                  }
+                  usage = data.usage || null;
+                }
+                accountManager.recordAccountSuccess(account);
+                if (usage && auth.client) {
+                  clientUsage?.record(auth.client, {
+                    requests: 1,
+                    inputTokens: usage.prompt_tokens || usage.input_tokens || 0,
+                    outputTokens: usage.completion_tokens || usage.output_tokens || 0
+                  });
+                }
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                  ok: true,
+                  provider,
+                  servingProvider,
+                  isFallback,
+                  account: account.name,
+                  model: responseModel,
+                  reply: replyText,
+                  usage,
+                  durationMs,
+                  triedAccounts: triedAccounts.length > 1 ? triedAccounts : undefined
+                }));
+                return;
+              } else {
+                let errorMsg = `HTTP ${upstreamRes.status}`;
+                try {
+                  const errData = await upstreamRes.json();
+                  errorMsg = errData.error?.message || errData.detail || errData.message || JSON.stringify(errData);
+                } catch {
+                  errorMsg = await upstreamRes.text().catch(() => errorMsg);
+                }
+                if (upstreamRes.status === 429) {
+                  errorMsg = `Limit zapytań (429 Rate Limit) osiągnięty w ChatGPT/Codex dla konta "${account.name}". Wykorzystano limit tygodniowy lub sesyjny konta.`;
+                } else if (upstreamRes.status >= 500) {
+                  accountManager.recordAccountFailure(account);
+                }
+                lastError = errorMsg;
+                lastStatus = upstreamRes.status;
+
+                if (targetAccount) {
+                  res.writeHead(200, { 'Content-Type': 'application/json' });
+                  res.end(JSON.stringify({
+                    ok: false,
+                    status: upstreamRes.status,
+                    provider,
+                    servingProvider,
+                    isFallback,
+                    account: account.name,
+                    model,
+                    error: errorMsg,
+                    durationMs
+                  }));
+                  return;
+                }
+                console.warn(`[TeamClaude] Test chat failed on "${account.name}" (${upstreamRes.status}): ${errorMsg}. Sprawdzanie kolejnego konta...`);
+                continue;
               }
-              if (upstreamRes.status === 429) {
-                errorMsg = `Limit zapytań (429 Rate Limit) osiągnięty w ChatGPT/Codex dla konta "${account.name}". Wykorzystano limit tygodniowy lub sesyjny konta.`;
-              } else if (upstreamRes.status >= 500) {
-                accountManager.recordAccountFailure(account);
-              }
+            }
+          } catch (netErr) {
+            accountManager.recordAccountFailure(account);
+            lastError = `Błąd sieci podczas łączenia z kontem "${account.name}": ${netErr.message}`;
+            lastStatus = 502;
+            if (targetAccount) {
+              const durationMs = Date.now() - startTime;
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({
                 ok: false,
-                status: upstreamRes.status,
+                status: 502,
                 provider,
                 servingProvider,
-                isFallback,
                 account: account.name,
                 model,
-                error: errorMsg,
+                error: lastError,
                 durationMs
               }));
               return;
             }
+            console.warn(`[TeamClaude] Test chat network error on "${account.name}": ${netErr.message}. Sprawdzanie kolejnego konta...`);
+            continue;
           }
-        } catch (netErr) {
-          accountManager.recordAccountFailure(account);
-          const durationMs = Date.now() - startTime;
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            ok: false,
-            provider,
-            servingProvider,
-            account: account.name,
-            model,
-            error: `Błąd połączenia z upstreamem: ${netErr.message}`,
-            durationMs
-          }));
-          return;
         }
+
+        // All candidates failed in Auto mode
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: false,
+          status: lastStatus,
+          provider,
+          error: `Wszystkie wypróbowane konta (${triedAccounts.join(', ')}) zgłosiły błąd. Ostatni błąd: ${lastError}`,
+          triedAccounts
+        }));
+        return;
       }
 
       // Accounts: Export (GET /api/accounts/export & GET /accounts/export)

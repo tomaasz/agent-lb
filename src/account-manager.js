@@ -62,8 +62,8 @@ const FORCED_REFRESH_FLOOR_MS = 10_000;
 // retry. Keep the account out of automatic rotation long enough for other
 // members to serve, then re-admit it so an administrator's policy change is
 // discovered without a restart.
-const ENTITLEMENT_DENIAL_COOLDOWN_SECONDS = 5 * 60;
-const IDENTITY_VERIFICATION_COOLDOWN_SECONDS = 5 * 60;
+const ENTITLEMENT_DENIAL_COOLDOWN_SECONDS = 30 * 60;
+const IDENTITY_VERIFICATION_COOLDOWN_SECONDS = 30 * 60;
 
 // Codex model-scoped weekly buckets are keyed by slugs taken from response
 // header NAMES, so the table needs a ceiling an upstream cannot talk past.

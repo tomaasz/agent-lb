@@ -404,6 +404,13 @@ const PAGE = `<!doctype html>
   .badge.throttled { color: var(--warn); border-color: rgba(210,153,34,0.35); background: rgba(210,153,34,0.08); }
   .badge.error, .badge.exhausted, .badge.bad { color: var(--bad); border-color: rgba(248,81,73,0.35); background: rgba(248,81,73,0.08); }
   .badge.current { color: var(--accent); border-color: rgba(88,166,255,0.4); background: rgba(88,166,255,0.1); font-weight: 600; }
+  .badge-healthy { color: #3fb950; border-color: rgba(63,185,80,0.4); background: rgba(63,185,80,0.12); font-weight: 600; }
+  .card-healthy { border-color: rgba(63,185,80,0.25) !important; }
+  .card-unhealthy { border-color: rgba(248,81,73,0.45) !important; background: rgba(248,81,73,0.03) !important; }
+  .card-quota-exhausted { border-color: rgba(210,153,34,0.4) !important; background: rgba(210,153,34,0.03) !important; }
+  .account-disabled { opacity: 0.6; filter: grayscale(0.5); }
+  .btn-success { background: rgba(63,185,80,0.2) !important; color: #3fb950 !important; border-color: rgba(63,185,80,0.5) !important; }
+  .btn-error { background: rgba(248,81,73,0.2) !important; color: #f85149 !important; border-color: rgba(248,81,73,0.5) !important; }
   .badge-plan { color: #d2a8ff; border-color: rgba(210,168,255,0.25); background: rgba(210,168,255,0.06); }
   .badge-codex { color: #56d364; border-color: rgba(86,211,100,0.25); background: rgba(86,211,100,0.06); }
   .badge-anthropic { color: #d2a8ff; border-color: rgba(210,168,255,0.25); background: rgba(210,168,255,0.06); }
@@ -1437,27 +1444,69 @@ ${SHARED_HELPERS}
 
     if (a.routingPolicy === 'burn-first') titleGroup.appendChild(el('span', 'badge badge-burn', '🔥 Burn'));
     if (a.name === current) titleGroup.appendChild(el('span', 'badge current', 'current'));
-    if (a.disabled) titleGroup.appendChild(el('span', 'badge bad', 'disabled'));
-    else if (a.status && a.status !== 'active' && a.status !== 'ready') {
-      titleGroup.appendChild(el('span', 'badge ' + a.status, a.status));
-    }
+    if (a.disabled) {
+      titleGroup.appendChild(el('span', 'badge bad', '⚪ Wyłączone'));
+      card.classList.add('account-disabled');
+    } else if (a.unavailable) {
+      var badgeText = '⚠️ ' + (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable);
+      var badgeClass = 'throttled';
+      var cardClass = 'card-quota-exhausted';
 
-    if (a.unavailable) {
-      var unavailText = a.unavailable === 'switch_threshold' ? 'Próg switcha' : (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable);
-      var unavailBadge = el('span', 'badge ' + (a.unavailable === 'error' || a.status === 'error' ? 'error' : 'throttled'), '⚠️ ' + unavailText);
-      var isCritical = a.unavailable === 'error' || a.status === 'error' || a.unavailable === 'identity-verification';
-      var unavailText = a.unavailable === 'circuit-breaker' ? 'Circuit Breaker (60s)' : (a.unavailable === 'switch_threshold' ? 'Próg switcha' : (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable));
-      var isCritical = a.unavailable === 'error' || a.status === 'error' || a.unavailable === 'identity-verification' || a.unavailable === 'circuit-breaker';
-      var unavailBadge = el('span', 'badge ' + (isCritical ? 'error' : 'throttled'), '⚠️ ' + unavailText);
-      unavailBadge.title = 'Blokada konta: ' + (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable);
-      unavailBadge.title = 'Blokada konta: ' + unavailText;
+      if (a.unavailable === 'identity-verification') {
+        badgeText = '🔴 Wymagana weryfikacja SMS';
+        badgeClass = 'error';
+        cardClass = 'card-unhealthy';
+      } else if (a.unavailable === 'entitlement') {
+        badgeText = '🔴 Blokada organizacji (OAuth 403)';
+        badgeClass = 'error';
+        cardClass = 'card-unhealthy';
+      } else if (a.unavailable === 'circuit-breaker') {
+        badgeText = '🔴 Circuit Breaker (60s)';
+        badgeClass = 'error';
+        cardClass = 'card-unhealthy';
+      } else if (a.unavailable === 'error' || a.status === 'error') {
+        badgeText = '🔴 Błąd konta';
+        badgeClass = 'error';
+        cardClass = 'card-unhealthy';
+      } else if (a.unavailable === 'quota' || a.unavailable === 'upstream-rejected') {
+        badgeText = '🟡 Quota 100% (Wyczerpany)';
+        badgeClass = 'throttled';
+        cardClass = 'card-quota-exhausted';
+      } else if (a.unavailable === 'throttled') {
+        badgeText = '🟡 Rate Limit (Hold)';
+        badgeClass = 'throttled';
+        cardClass = 'card-quota-exhausted';
+      } else if (a.unavailable === 'capped') {
+        badgeText = '🟡 Przekroczono limit użycia';
+        badgeClass = 'throttled';
+        cardClass = 'card-quota-exhausted';
+      }
+
+      var unavailBadge = el('span', 'badge ' + badgeClass, badgeText);
+      unavailBadge.title = 'Status dostępności: ' + (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable);
       titleGroup.appendChild(unavailBadge);
+      card.classList.add(cardClass);
+    } else {
+      // Fully healthy and operational account
+      var healthyBadge = el('span', 'badge badge-healthy', '🟢 SPRAWNE');
+      healthyBadge.title = 'Konto w pełni sprawne i gotowe do obsługi zapytań';
+      titleGroup.appendChild(healthyBadge);
+      card.classList.add('card-healthy');
     }
 
     head.appendChild(titleGroup);
 
     // Action buttons group (right aligned in header)
     var acts = el('div', 'card-actions');
+
+    // Quick Test ping button
+    var btnQuickTest = el('button', 'btn btn-xs btn-outline', '⚡ Test');
+    btnQuickTest.title = 'Przetestuj to konto natychmiast zapytaniem próbnym';
+    btnQuickTest.addEventListener('click', function (e) {
+      e.stopPropagation();
+      runQuickAccountTest(a.name, prov, btnQuickTest);
+    });
+    acts.appendChild(btnQuickTest);
 
     if (a.name !== current && !a.disabled) {
       var btnSwitch = el('button', 'btn btn-xs btn-accent', '⚡ Aktywuj');
@@ -2173,6 +2222,55 @@ ${SHARED_HELPERS}
       })
       .finally(function () {
         if (btn) btn.disabled = false;
+      });
+  }
+
+  function runQuickAccountTest(name, provider, btn) {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳ ...';
+    }
+    var model = provider === 'codex' ? 'gpt-5.6-sol' : 'claude-sonnet-5';
+    note('ok', 'Wysyłanie zapytania testowego do konta "' + name + '"...');
+    apiCall('/api/test/chat', 'POST', {
+      provider: provider,
+      account: name,
+      model: model,
+      message: 'Ping test konta. Odpowiedz jednym słowem "OK".'
+    })
+      .then(function (res) {
+        if (!res) return;
+        if (res.ok) {
+          if (btn) {
+            btn.textContent = '🟢 OK (' + (res.durationMs || 0) + 'ms)';
+            btn.className = 'btn btn-xs btn-success';
+          }
+          note('ok', 'Konto "' + name + '" działa poprawnie! Czas odpowiedzi: ' + (res.durationMs || 0) + 'ms. Model: ' + (res.model || model));
+          poll();
+        } else {
+          if (btn) {
+            btn.textContent = '🔴 Błąd';
+            btn.className = 'btn btn-xs btn-error';
+          }
+          note('error', 'Konto "' + name + '" zwróciło błąd: ' + (res.error || 'nieznany błąd'));
+          poll();
+        }
+      })
+      .catch(function (e) {
+        if (btn) {
+          btn.textContent = '🔴 Błąd';
+          btn.className = 'btn btn-xs btn-error';
+        }
+        note('error', 'Błąd sieci podczas testowania konta: ' + e.message);
+      })
+      .finally(function () {
+        setTimeout(function () {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '⚡ Test';
+            btn.className = 'btn btn-xs btn-outline';
+          }
+        }, 6000);
       });
   }
 
@@ -3691,7 +3789,34 @@ ${SHARED_HELPERS}
       if (aProv === prov) {
         var opt = document.createElement('option');
         opt.value = a.name;
-        opt.textContent = a.name + (a.status !== 'active' ? ' (' + a.status + ')' : '');
+        var icon = '🟢';
+        var note = '';
+        if (a.disabled) {
+          icon = '⚪';
+          note = ' [wyłączone]';
+        } else if (a.unavailable === 'identity-verification') {
+          icon = '🔴';
+          note = ' [Weryfikacja SMS]';
+        } else if (a.unavailable === 'entitlement') {
+          icon = '🔴';
+          note = ' [Blokada 403]';
+        } else if (a.unavailable === 'circuit-breaker') {
+          icon = '🔴';
+          note = ' [Circuit Breaker]';
+        } else if (a.unavailable === 'error' || a.status === 'error') {
+          icon = '🔴';
+          note = ' [Błąd]';
+        } else if (a.unavailable === 'quota' || a.unavailable === 'upstream-rejected') {
+          icon = '🟡';
+          note = ' [Quota 100%]';
+        } else if (a.unavailable === 'throttled') {
+          icon = '🟡';
+          note = ' [Rate Limit]';
+        } else if (a.unavailable) {
+          icon = '🟡';
+          note = ' [' + a.unavailable + ']';
+        }
+        opt.textContent = icon + ' ' + a.name + note;
         selAccount.appendChild(opt);
       }
     });

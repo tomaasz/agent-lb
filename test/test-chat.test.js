@@ -126,5 +126,67 @@ describe('Test Chat & Playground Support', () => {
       mockUpstream.close();
     }
   });
+
+  it('automatically falls over to healthy account when first candidate fails', async () => {
+    // Upstream mock server
+    const mockUpstream = http.createServer((req, res) => {
+      const authHeader = req.headers.authorization || '';
+      if (authHeader.includes('token-failing')) {
+        // Failing account returns 403 Org Block
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'OAuth authentication is currently not allowed for this organization' } }));
+        return;
+      }
+      if (authHeader.includes('token-healthy')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          model: 'claude-sonnet-5',
+          content: [{ type: 'text', text: 'Success from healthy account!' }]
+        }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await new Promise(resolve => mockUpstream.listen(0, '127.0.0.1', resolve));
+    const upstreamUrl = `http://127.0.0.1:${mockUpstream.address().port}`;
+
+    const accounts = [
+      { name: 'acc-broken', provider: 'anthropic', type: 'oauth', accessToken: 'token-failing', priority: 0, upstream: upstreamUrl },
+      { name: 'acc-healthy', provider: 'anthropic', type: 'oauth', accessToken: 'token-healthy', priority: 1, upstream: upstreamUrl }
+    ];
+
+    const am = new AccountManager(accounts, 0.98);
+    const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {}, null, null, null);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const proxyPort = server.address().port;
+
+    try {
+      // Send test chat without specifying account (Auto mode)
+      const res = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': 'tc-test-admin',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          provider: 'anthropic',
+          model: 'claude-sonnet-5',
+          message: 'Hello Auto'
+        })
+      });
+
+      assert.equal(res.status, 200);
+      const json = await res.json();
+      assert.equal(json.ok, true, 'Auto mode succeeded despite first account 403');
+      assert.equal(json.account, 'acc-healthy', 'Failed over to healthy account');
+      assert.match(json.reply, /Success from healthy account!/);
+      assert.ok(json.triedAccounts?.includes('acc-broken'), 'Recorded acc-broken as tried');
+    } finally {
+      server.close();
+      mockUpstream.close();
+    }
+  });
 });
 
