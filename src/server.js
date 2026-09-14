@@ -1581,6 +1581,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
               ? {
                   model,
                   store: false,
+                  stream: true,
                   input: [{ role: 'user', content: [{ type: 'input_text', text: message }] }]
                 }
               : {
@@ -1596,18 +1597,51 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
             const durationMs = Date.now() - startTime;
             if (upstreamRes.ok) {
-              const data = await upstreamRes.json();
-              responseModel = data.model || model;
-              if (isOauth) {
-                replyText = data.output?.[0]?.content?.[0]?.text
-                  || data.message?.content?.parts?.[0]
-                  || (typeof data.response === 'string' ? data.response : '')
-                  || (data.choices?.[0]?.message?.content)
-                  || JSON.stringify(data);
+              const cType = upstreamRes.headers.get('content-type') || '';
+              if (cType.includes('text/event-stream') && upstreamRes.body) {
+                const reader = upstreamRes.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let streamBuf = '';
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  streamBuf += decoder.decode(value, { stream: true });
+                  const lines = streamBuf.split('\n');
+                  streamBuf = lines.pop() || '';
+                  for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed.startsWith('data:')) continue;
+                    const dataStr = trimmed.slice(5).trim();
+                    if (dataStr === '[DONE]') continue;
+                    try {
+                      const item = JSON.parse(dataStr);
+                      const deltaText = item.delta?.text
+                        || item.choices?.[0]?.delta?.content
+                        || item.output?.[0]?.content?.[0]?.text
+                        || (item.type === 'response.text.delta' && item.delta)
+                        || (item.type === 'response.output_item.added' && item.item?.content?.[0]?.text)
+                        || '';
+                      if (deltaText) replyText += deltaText;
+                      if (item.usage) usage = item.usage;
+                      if (item.model) responseModel = item.model;
+                    } catch {}
+                  }
+                }
+                if (!replyText.trim()) replyText = '(Odpowiedź strumieniowa zakończona pomyślnie)';
               } else {
-                replyText = data.choices?.[0]?.message?.content || '';
+                const data = await upstreamRes.json();
+                responseModel = data.model || model;
+                if (isOauth) {
+                  replyText = data.output?.[0]?.content?.[0]?.text
+                    || data.message?.content?.parts?.[0]
+                    || (typeof data.response === 'string' ? data.response : '')
+                    || (data.choices?.[0]?.message?.content)
+                    || JSON.stringify(data);
+                } else {
+                  replyText = data.choices?.[0]?.message?.content || '';
+                }
+                usage = data.usage || null;
               }
-              usage = data.usage || null;
               accountManager.recordAccountSuccess(account);
               if (usage && auth.client) {
                 clientUsage?.record(auth.client, {
