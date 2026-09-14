@@ -63,6 +63,7 @@ const FORCED_REFRESH_FLOOR_MS = 10_000;
 // members to serve, then re-admit it so an administrator's policy change is
 // discovered without a restart.
 const ENTITLEMENT_DENIAL_COOLDOWN_SECONDS = 5 * 60;
+const IDENTITY_VERIFICATION_COOLDOWN_SECONDS = 5 * 60;
 
 // Codex model-scoped weekly buckets are keyed by slugs taken from response
 // header NAMES, so the table needs a ceiling an upstream cannot talk past.
@@ -230,6 +231,11 @@ function makeAccount(acct, index) {
     // valid. This cross-request cooldown is intentionally ephemeral: unlike
     // quota, it is a live routing observation and is re-learned after restart.
     entitlementDeniedUntil: null,
+    // Anthropic can temporarily require an interactive identity check for a
+    // particular subscription account. Keep it out of rotation briefly so a
+    // second account can serve the request, while periodic re-admission detects
+    // when the operator has completed verification.
+    identityVerificationUntil: null,
     // Storm control (see admit/release): in-flight upstream requests and the
     // time this account last became the current one (starts a ramp window).
     inFlight: 0,
@@ -643,6 +649,35 @@ export class AccountManager {
    * in storm-control admission. */
   isEntitlementDenied(index, now = Date.now()) {
     return this._entitlementDenied(this.accounts[index], now);
+  }
+
+  markIdentityVerificationRequired(index, seconds = IDENTITY_VERIFICATION_COOLDOWN_SECONDS) {
+    const account = this.accounts[index];
+    if (!account) return null;
+    const duration = Number(seconds);
+    if (!Number.isFinite(duration) || duration <= 0) return null;
+    const until = Date.now() + duration * 1000;
+    account.identityVerificationUntil = Math.max(account.identityVerificationUntil || 0, until);
+    return account.identityVerificationUntil;
+  }
+
+  _identityVerificationRequired(account, now = Date.now()) {
+    if (!account?.identityVerificationUntil) return false;
+    if (now < account.identityVerificationUntil) return true;
+    account.identityVerificationUntil = null;
+    console.log(`[TeamClaude] Account "${account.name}" identity-verification cooldown expired, marking available`);
+    return false;
+  }
+
+  isIdentityVerificationRequired(index, now = Date.now()) {
+    return this._identityVerificationRequired(this.accounts[index], now);
+  }
+
+  clearIdentityVerification(index) {
+    const account = this.accounts[index];
+    if (!account || !account.identityVerificationUntil) return;
+    account.identityVerificationUntil = null;
+    console.log(`[TeamClaude] Account "${account.name}" identity-verification cooldown cleared — back in rotation`);
   }
 
   /**
@@ -1380,6 +1415,9 @@ export class AccountManager {
     // A live entitlement cooldown is evidence, not a stale quota estimate. Do
     // not let the all-unavailable probe path defeat it immediately.
     if (this._entitlementDenied(account)) return false;
+    // Same for an interactive identity-verification gate: probing during the
+    // cooldown would resend the request to the blocked account immediately.
+    if (this._identityVerificationRequired(account)) return false;
     // A 429 hold is respected verbatim at first, but a hold is a snapshot: the
     // 429 that armed it may itself have been transient (e.g. the retry burst
     // after a network flap), and while it lasts NOTHING revalidates it — so a
@@ -1569,7 +1607,8 @@ export class AccountManager {
    * seeing `unifiedStatus: allowed` next to a refusing account had no way to know
    * the refusal was the proxy's own doing (issue #166).
    *
-   * Returns one of: 'disabled', 'throttled', 'error', 'exhausted',
+   * Returns one of: 'disabled', 'capped', 'entitlement',
+   * 'identity-verification', 'throttled', 'error', 'exhausted',
    * 'upstream-rejected', 'quota', 'route', 'advisor-quota', 'advisor-route'.
    */
   unavailableReason(account, model = null, advisorModel = null) {
@@ -1593,6 +1632,8 @@ export class AccountManager {
     // unavailableLine drop the row — so the one state added to make a refusal
     // explainable was the only one that printed no explanation (#258).
     if (this._entitlementDenied(account)) return 'entitlement';
+
+    if (this._identityVerificationRequired(account)) return 'identity-verification';
 
     // Check rate limit expiry
     if (account.status === 'throttled' && account.rateLimitedUntil) {
@@ -3799,6 +3840,9 @@ export class AccountManager {
           : null,
         entitlementDeniedUntil: a.entitlementDeniedUntil && a.entitlementDeniedUntil > Date.now()
           ? new Date(a.entitlementDeniedUntil).toISOString()
+          : null,
+        identityVerificationUntil: a.identityVerificationUntil && a.identityVerificationUntil > Date.now()
+          ? new Date(a.identityVerificationUntil).toISOString()
           : null,
       })),
     };

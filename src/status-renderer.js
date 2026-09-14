@@ -128,6 +128,7 @@ export const UNAVAILABLE_TEXT = {
   capped: 'account usage cap reached (maxUsage)',
   'advisor-capped': "advisor model's usage cap reached (maxUsage)",
   entitlement: 'upstream refused this account for the organization (cooldown)',
+  'identity-verification': 'upstream requires identity verification (cooldown)',
   route: 'no route allows this account',
   'advisor-quota': "advisor model's weekly bucket spent",
   'advisor-route': 'no route allows the advisor model',
@@ -391,6 +392,11 @@ function formatAccountStatus(account, now, paint) {
   const entitlementAt = parseTs(account.entitlementDeniedUntil);
   if (entitlementAt && entitlementAt > now) {
     parts.push(paint.yellow(`entitlement cooldown ${formatDuration(entitlementAt - now)}`));
+  }
+
+  const identityAt = parseTs(account.identityVerificationUntil);
+  if (identityAt && identityAt > now) {
+    parts.push(paint.yellow(`identity-verification cooldown ${formatDuration(identityAt - now)}`));
   }
 
   return parts.join(' / ');

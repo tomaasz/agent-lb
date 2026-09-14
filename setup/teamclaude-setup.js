@@ -34,7 +34,9 @@ const isWsl = process.platform === 'linux' && (
 
 // Domyślne wartości
 let targetUrl = process.env.CLAUDE_LB_URL || process.env.TEAMCLAUDE_URL || 'http://localhost:3456';
-let apiKey = process.env.CLAUDE_LB_API_KEY || process.env.TEAMCLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY || '';
+let apiKey = process.env.CLAUDE_LB_API_KEY || process.env.TEAMCLAUDE_API_KEY
+  || process.env.CODEX_LB_API_KEY || keyFromCustomHeaders(process.env.ANTHROPIC_CUSTOM_HEADERS)
+  || process.env.ANTHROPIC_API_KEY || '';
 let runTest = false;
 let skipVscode = false;
 let skipEnv = false;
@@ -218,7 +220,13 @@ function stripJsonComments(str) {
 function backupPath(filePath) {
   if (!fs.existsSync(filePath)) return null;
   const backup = `${filePath}.bak-${Date.now()}`;
-  try { fs.copyFileSync(filePath, backup, fs.constants.COPYFILE_EXCL); return backup; } catch (err) {
+  try {
+    fs.copyFileSync(filePath, backup, fs.constants.COPYFILE_EXCL);
+    // The source may predate this installer and be world-readable.  Backups
+    // contain the API key after the write, so never inherit that loose mode.
+    fs.chmodSync(backup, 0o600);
+    return backup;
+  } catch (err) {
     console.warn(`[Ostrzeżenie] Nie udało się utworzyć kopii ${filePath}: ${err.message}`);
     return null;
   }
@@ -242,6 +250,18 @@ function shQuote(value) {
   return single + String(value).replaceAll(single, single + double + single + double + single) + single;
 }
 
+function proxyCustomHeaders(key) {
+  return `x-api-key: ${key}`;
+}
+
+function keyFromCustomHeaders(value) {
+  for (const line of String(value || '').split(/\r?\n/)) {
+    const match = /^x-api-key\s*:\s*(.+?)\s*$/i.exec(line);
+    if (match) return match[1];
+  }
+  return '';
+}
+
 function removeMarkedSource(rcPath) {
   if (!fs.existsSync(rcPath)) return;
   const text = fs.readFileSync(rcPath, 'utf8');
@@ -257,6 +277,7 @@ function uninstallClientSettings() {
     if (settings.env && typeof settings.env === 'object') {
       delete settings.env.ANTHROPIC_BASE_URL;
       delete settings.env.ANTHROPIC_API_KEY;
+      delete settings.env.ANTHROPIC_CUSTOM_HEADERS;
       if (Object.keys(settings.env).length === 0) delete settings.env;
     }
     writeJsonSafe(claudePath, settings);
@@ -278,7 +299,7 @@ function uninstallClientSettings() {
   for (const rc of ['.bashrc', '.zshrc', '.profile']) removeMarkedSource(path.join(home, rc));
   if (isWin) {
     try {
-      execFileSync('powershell.exe', ['-NoProfile', '-Command', "'ANTHROPIC_BASE_URL','ANTHROPIC_API_KEY' | ForEach-Object { [Environment]::SetEnvironmentVariable($_, $null, 'User') }"]);
+      execFileSync('powershell.exe', ['-NoProfile', '-Command', "'ANTHROPIC_BASE_URL','ANTHROPIC_API_KEY','ANTHROPIC_CUSTOM_HEADERS' | ForEach-Object { [Environment]::SetEnvironmentVariable($_, $null, 'User') }"]);
     } catch (err) { console.warn(`[Ostrzeżenie] Nie udało się usunąć zmiennych Windows: ${err.message}`); }
   }
   console.log('Usunięto ustawienia Claude-LB. Plik .credentials.json pozostawiono bez zmian.');
@@ -293,6 +314,18 @@ function safeReadJson(filePath) {
     console.warn(`[Ostrzeżenie] Nie można sparsować ${filePath}: ${err.message}. Zostanie utworzona kopia zapasowa.`);
     return null;
   }
+}
+
+// ANTHROPIC_API_KEY switches Claude Code to API-key authentication and takes
+// precedence over the OAuth session in .credentials.json.  That also changes
+// which model catalogue and compaction/auth flow Claude Code uses.  Keep the
+// subscription session active when it is present. Pass the LB credential as a
+// custom x-api-key header so the remote proxy can authenticate the client
+// without making Claude Code treat it as an Anthropic API key.
+function hasOAuthSession(credentialsPath) {
+  const data = safeReadJson(credentialsPath);
+  const oauth = data?.claudeAiOauth || data?.oauth || data;
+  return Boolean(oauth && typeof oauth.accessToken === 'string' && oauth.accessToken.length > 0);
 }
 
 async function main() {
@@ -312,8 +345,9 @@ async function main() {
     // Sprawdź czy nie ma zapisanego w ~/.claude/settings.json
     const claudeSettingsPath = path.join(os.homedir(), '.claude', 'settings.json');
     const existingClaudeSettings = safeReadJson(claudeSettingsPath);
-    if (existingClaudeSettings?.env?.ANTHROPIC_API_KEY) {
-      const savedKey = existingClaudeSettings.env.ANTHROPIC_API_KEY;
+    const savedKey = existingClaudeSettings?.env?.ANTHROPIC_API_KEY
+      || keyFromCustomHeaders(existingClaudeSettings?.env?.ANTHROPIC_CUSTOM_HEADERS);
+    if (savedKey) {
       console.log(`Wykryto wcześniej zapisany klucz w ${claudeSettingsPath}.`);
       apiKey = savedKey;
     }
@@ -325,7 +359,8 @@ async function main() {
       const p = path.join(os.homedir(), '.config', envName);
       if (fs.existsSync(p)) {
         try {
-          const match = fs.readFileSync(p, 'utf-8').match(/export ANTHROPIC_API_KEY=["']?([^"'\r\n]+)/);
+          const content = fs.readFileSync(p, 'utf-8');
+          const match = content.match(/export (?:CODEX_LB_API_KEY|ANTHROPIC_API_KEY)=["']?([^"'\r\n]+)/);
           if (match && match[1]) {
             console.log(`Wykryto wcześniej zapisany klucz w ${p}.`);
             apiKey = match[1];
@@ -345,6 +380,10 @@ async function main() {
     console.error('BŁĄD: Nie podano klucza API.');
     process.exit(1);
   }
+  if (/[\r\n]/.test(apiKey)) {
+    console.error('BŁĄD: Klucz API nie może zawierać znaku nowej linii.');
+    process.exit(1);
+  }
 
   // 2. Weryfikacja połączenia na żywo
   process.stdout.write(`Sprawdzam połączenie i poprawność klucza na ${targetUrl}... `);
@@ -359,6 +398,7 @@ async function main() {
 
   // 3. Zabezpieczenie sesji OAuth
   const credsPath = path.join(os.homedir(), '.claude', '.credentials.json');
+  const oauthSession = hasOAuthSession(credsPath);
   if (fs.existsSync(credsPath)) {
     try {
       const credsContent = fs.readFileSync(credsPath, 'utf-8');
@@ -371,6 +411,9 @@ async function main() {
       // Ignoruj jeśli nie udało się skopiować
     }
   }
+  if (oauthSession) {
+    console.log('[OK] Zachowuję tryb OAuth Claude Code; klucz proxy przekazuję przez ANTHROPIC_CUSTOM_HEADERS.');
+  }
 
   // 4. Konfiguracja ~/.claude/settings.json (CLI Claude Code)
   const claudeDir = path.join(os.homedir(), '.claude');
@@ -382,7 +425,13 @@ async function main() {
     let claudeSettings = safeReadJson(claudeSettingsPath) || {};
     claudeSettings.env = claudeSettings.env || {};
     claudeSettings.env.ANTHROPIC_BASE_URL = targetUrl;
-    claudeSettings.env.ANTHROPIC_API_KEY = apiKey;
+    if (oauthSession) {
+      delete claudeSettings.env.ANTHROPIC_API_KEY;
+      claudeSettings.env.ANTHROPIC_CUSTOM_HEADERS = proxyCustomHeaders(apiKey);
+    } else {
+      claudeSettings.env.ANTHROPIC_API_KEY = apiKey;
+      delete claudeSettings.env.ANTHROPIC_CUSTOM_HEADERS;
+    }
     writeJsonSafe(claudeSettingsPath, claudeSettings, 0o600);
     console.log(`[OK] Zaktualizowano ${claudeSettingsPath} (CLI Claude Code).`);
   } catch (err) {
@@ -406,10 +455,10 @@ async function main() {
       try {
         let vsSettings = safeReadJson(vscodeSettingsFile) || {};
         vsSettings['claudeCode.disableLoginPrompt'] = true;
-        vsSettings['claudeCode.environmentVariables'] = [
-          { name: 'ANTHROPIC_BASE_URL', value: targetUrl },
-          { name: 'ANTHROPIC_API_KEY', value: apiKey },
-        ];
+        const claudeEnvironmentVariables = [{ name: 'ANTHROPIC_BASE_URL', value: targetUrl }];
+        if (oauthSession) claudeEnvironmentVariables.push({ name: 'ANTHROPIC_CUSTOM_HEADERS', value: proxyCustomHeaders(apiKey) });
+        else claudeEnvironmentVariables.push({ name: 'ANTHROPIC_API_KEY', value: apiKey });
+        vsSettings['claudeCode.environmentVariables'] = claudeEnvironmentVariables;
 
         writeJsonSafe(vscodeSettingsFile, vsSettings, 0o600);
         console.log(`[OK] Skonfigurowano oficjalne rozszerzenie Claude Code w VS Code (${vscodeSettingsFile}).`);
@@ -443,7 +492,10 @@ async function main() {
     if (isWin) {
       try {
         const psQuote = (value) => String(value).replaceAll("'", "''");
-        let winCmd = `[Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', '${psQuote(targetUrl)}', 'User'); [Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', '${psQuote(apiKey)}', 'User')`;
+        let winCmd = `[Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', '${psQuote(targetUrl)}', 'User'); `
+          + (oauthSession
+            ? `[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $null, 'User'); [Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', '${psQuote(proxyCustomHeaders(apiKey))}', 'User')`
+            : `[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', '${psQuote(apiKey)}', 'User'); [Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $null, 'User')`);
         if (setupCodex || fs.existsSync(codexDir)) {
           winCmd += `; [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', '${targetUrl}/backend-api/codex', 'User'); [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', '${targetUrl}/v1', 'User')`;
         }
@@ -459,7 +511,15 @@ async function main() {
       const legacyEnvFile = path.join(configDir, 'teamclaude.env');
       try {
         if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
-        let envContent = `# Claude-LB / TeamClaude environment configuration\nexport ANTHROPIC_BASE_URL=${shQuote(targetUrl)}\nexport ANTHROPIC_API_KEY=${shQuote(apiKey)}\n`;
+        let envContent = `# Claude-LB / TeamClaude environment configuration\nexport ANTHROPIC_BASE_URL=${shQuote(targetUrl)}\n`;
+        if (oauthSession) {
+          envContent += 'unset ANTHROPIC_API_KEY  # preserve Claude Code OAuth session\n';
+          envContent += `export ANTHROPIC_CUSTOM_HEADERS=${shQuote(proxyCustomHeaders(apiKey))}\n`;
+        } else {
+          envContent += `export ANTHROPIC_API_KEY=${shQuote(apiKey)}\n`;
+          envContent += 'unset ANTHROPIC_CUSTOM_HEADERS\n';
+        }
+        envContent += `export CODEX_LB_API_KEY=${shQuote(apiKey)}\n`;
         if (setupCodex || fs.existsSync(codexDir)) {
           envContent += `export CODEX_BASE_URL=${shQuote(`${targetUrl}/backend-api/codex`)}\nexport OPENAI_BASE_URL=${shQuote(`${targetUrl}/v1`)}\n`;
         }
@@ -491,12 +551,16 @@ async function main() {
   if (runTest) {
     console.log('\nUruchamiam testowe sprawdzenie claude --version...');
     try {
+      const testEnv = { ...process.env, ANTHROPIC_BASE_URL: targetUrl };
+      if (oauthSession) {
+        delete testEnv.ANTHROPIC_API_KEY;
+        testEnv.ANTHROPIC_CUSTOM_HEADERS = proxyCustomHeaders(apiKey);
+      } else {
+        testEnv.ANTHROPIC_API_KEY = apiKey;
+        delete testEnv.ANTHROPIC_CUSTOM_HEADERS;
+      }
       const output = execSync('claude --version', {
-        env: {
-          ...process.env,
-          ANTHROPIC_BASE_URL: targetUrl,
-          ANTHROPIC_API_KEY: apiKey,
-        },
+        env: testEnv,
         encoding: 'utf-8',
         timeout: 15000,
       });

@@ -62,14 +62,26 @@ if ($Uninstall) {
 	if (Test-Path $settingsPath) {
 		try {
 			$data = Get-Content -Raw -Path $settingsPath | ConvertFrom-Json -AsHashtable
-			if ($data.env -is [hashtable]) { $data.env.Remove('ANTHROPIC_BASE_URL'); $data.env.Remove('ANTHROPIC_API_KEY') }
+			if ($data.env -is [hashtable]) { $data.env.Remove('ANTHROPIC_BASE_URL'); $data.env.Remove('ANTHROPIC_API_KEY'); $data.env.Remove('ANTHROPIC_CUSTOM_HEADERS') }
 			Backup-ConfigFile $settingsPath
 			$data | ConvertTo-Json -Depth 20 | Set-Content -Path $settingsPath -Encoding utf8
 		} catch { Say "[Uwaga] Nie udało się zaktualizować $settingsPath" }
 	}
+	$vsAppData = if ($env:APPDATA) { $env:APPDATA } else { Join-Path $homeDir 'AppData\Roaming' }
+	$vsPath = Join-Path $vsAppData 'Code\User\settings.json'
+	if (Test-Path $vsPath) {
+		try {
+			$vs = Get-Content -Raw -Path $vsPath | ConvertFrom-Json -AsHashtable
+			$vs.Remove('claudeCode.environmentVariables')
+			$vs.Remove('claudeCode.disableLoginPrompt')
+			Backup-ConfigFile $vsPath
+			$vs | ConvertTo-Json -Depth 20 | Set-Content -Path $vsPath -Encoding utf8
+		} catch { Say "[Uwaga] Nie udało się zaktualizować $vsPath" }
+	}
 	try {
 		[Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $null, 'User')
 		[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $null, 'User')
+		[Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $null, 'User')
 	} catch { Say '[Uwaga] Nie udało się usunąć zmiennych środowiskowych Windows.' }
 	Say 'Usunięto ustawienia Claude-LB. Plik .credentials.json pozostawiono bez zmian.'
 	exit 0
@@ -77,9 +89,15 @@ if ($Uninstall) {
 
 # ---------------------------------------------------------------- klucz API
 if (-not $Key) {
-	if ($env:CLAUDE_LB_API_KEY) { $Key = $env:CLAUDE_LB_API_KEY }
-	elseif ($env:TEAMCLAUDE_API_KEY) { $Key = $env:TEAMCLAUDE_API_KEY }
-	elseif ($env:ANTHROPIC_API_KEY) { $Key = $env:ANTHROPIC_API_KEY }
+	if (-not $Key -and $env:CLAUDE_LB_API_KEY) { $Key = $env:CLAUDE_LB_API_KEY }
+	if (-not $Key -and $env:TEAMCLAUDE_API_KEY) { $Key = $env:TEAMCLAUDE_API_KEY }
+	if (-not $Key -and $env:CODEX_LB_API_KEY) { $Key = $env:CODEX_LB_API_KEY }
+	if (-not $Key -and $env:ANTHROPIC_CUSTOM_HEADERS) {
+		foreach ($line in ($env:ANTHROPIC_CUSTOM_HEADERS -split "`r?`n")) {
+			if ($line -match '^\s*x-api-key\s*:\s*(.+?)\s*$') { $Key = $Matches[1]; break }
+		}
+	}
+	if (-not $Key -and $env:ANTHROPIC_API_KEY) { $Key = $env:ANTHROPIC_API_KEY }
 }
 if (-not $Key) {
 	$secure = Read-Host -Prompt "Klucz API z Agent LB ($Url), wklej i Enter" -AsSecureString
@@ -88,6 +106,7 @@ if (-not $Key) {
 }
 if ($Key) { $Key = $Key.Trim() }
 if (-not $Key) { throw 'Nie podano klucza.' }
+if ($Key -match '[\r\n]') { throw 'Klucz API nie może zawierać znaku nowej linii.' }
 
 # ------------------------------------------------------- sprawdzenie klucza
 Say "Sprawdzam połączenie i klucz na $Url ..."
@@ -121,13 +140,20 @@ try {
 # -------------------------------------------------- zabezpieczenie OAuth
 $homeDir = if ($HOME) { $HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } else { '.' }
 $credsPath = Join-Path $homeDir ".claude\.credentials.json"
+$oauthSession = $false
 if (Test-Path $credsPath) {
+	try {
+		$cred = Get-Content -Raw -Path $credsPath | ConvertFrom-Json
+		$oauth = if ($cred.claudeAiOauth) { $cred.claudeAiOauth } elseif ($cred.oauth) { $cred.oauth } else { $cred }
+		$oauthSession = [bool]($oauth.accessToken -is [string] -and $oauth.accessToken.Length -gt 0)
+	} catch { $oauthSession = $false }
 	$bak = "$credsPath.bak-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
 	try {
 		Copy-Item -Path $credsPath -Destination $bak -Force -ErrorAction Stop
 		Say "[OK] Wykryto sesję logowania OAuth. Zrobiono kopię zapasową ($([System.IO.Path]::GetFileName($bak)))."
 	} catch { Say '[Uwaga] Nie udało się utworzyć kopii .credentials.json; plik pozostawiono bez zmian.' }
 }
+if ($oauthSession) { Say '[OK] Zachowuję tryb OAuth Claude Code; klucz proxy przekazuję przez ANTHROPIC_CUSTOM_HEADERS.' }
 
 # -------------------------------------------------- ~/.claude/settings.json
 $claudeDir = Join-Path $homeDir ".claude"
@@ -141,7 +167,13 @@ if (Test-Path $claudeSettingsPath) {
 }
 if (-not $claudeSettings.ContainsKey("env")) { $claudeSettings["env"] = @{} }
 $claudeSettings["env"]["ANTHROPIC_BASE_URL"] = $Url
-$claudeSettings["env"]["ANTHROPIC_API_KEY"]  = $Key
+if ($oauthSession) {
+	$claudeSettings["env"].Remove('ANTHROPIC_API_KEY')
+	$claudeSettings["env"]["ANTHROPIC_CUSTOM_HEADERS"] = "x-api-key: $Key"
+} else {
+	$claudeSettings["env"]["ANTHROPIC_API_KEY"] = $Key
+	$claudeSettings["env"].Remove('ANTHROPIC_CUSTOM_HEADERS')
+}
 $null = Backup-ConfigFile $claudeSettingsPath
 $claudeSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $claudeSettingsPath -Encoding utf8
 Say "[OK] Zaktualizowano $claudeSettingsPath (CLI Claude Code)."
@@ -157,10 +189,10 @@ if (Test-Path $vsCodeDir) {
 			$vsSettings = Get-Content -Raw -Path $vsCodeSettingsPath | ConvertFrom-Json -AsHashtable
 		}
 		$vsSettings["claudeCode.disableLoginPrompt"] = $true
-		$vsSettings["claudeCode.environmentVariables"] = @(
-			@{ name = "ANTHROPIC_BASE_URL"; value = $Url },
-			@{ name = "ANTHROPIC_API_KEY";  value = $Key }
-		)
+		$claudeEnvironmentVariables = @(@{ name = "ANTHROPIC_BASE_URL"; value = $Url })
+		if ($oauthSession) { $claudeEnvironmentVariables += @{ name = "ANTHROPIC_CUSTOM_HEADERS"; value = "x-api-key: $Key" } }
+		else { $claudeEnvironmentVariables += @{ name = "ANTHROPIC_API_KEY"; value = $Key } }
+		$vsSettings["claudeCode.environmentVariables"] = $claudeEnvironmentVariables
 		$null = Backup-ConfigFile $vsCodeSettingsPath
 		$vsSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $vsCodeSettingsPath -Encoding utf8
 		Say "[OK] Zaktualizowano ustawienia oficjalnego rozszerzenia Claude Code w VS Code ($vsCodeSettingsPath)."
@@ -199,12 +231,24 @@ model_reasoning_effort = "xhigh"
 # --------------------------------------------------- zmienne środowiskowe
 Say "Ustawiam zmienne środowiskowe użytkownika Windows..."
 [Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $Url, 'User')
-[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $Key, 'User')
+if ($oauthSession) {
+	[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $null, 'User')
+	[Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', "x-api-key: $Key", 'User')
+} else {
+	[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $Key, 'User')
+	[Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $null, 'User')
+}
 [Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $Key, 'User')
 [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', "$Url/backend-api/codex", 'User')
 [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', "$Url/v1", 'User')
 $env:ANTHROPIC_BASE_URL = $Url
-$env:ANTHROPIC_API_KEY  = $Key
+if ($oauthSession) {
+	Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
+	$env:ANTHROPIC_CUSTOM_HEADERS = "x-api-key: $Key"
+} else {
+	$env:ANTHROPIC_API_KEY = $Key
+	Remove-Item Env:ANTHROPIC_CUSTOM_HEADERS -ErrorAction SilentlyContinue
+}
 $env:CODEX_LB_API_KEY   = $Key
 $env:CODEX_BASE_URL     = "$Url/backend-api/codex"
 $env:OPENAI_BASE_URL    = "$Url/v1"

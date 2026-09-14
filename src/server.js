@@ -87,6 +87,20 @@ const RATE_LIMIT_ABSORB_MAX_SECONDS =
 const OAUTH_ENTITLEMENT_ERROR_CODE = 'oauth_not_allowed_for_organization';
 const ERROR_BODY_INSPECTION_LIMIT = 64 * 1024;
 
+// Anthropic can refuse a subscription account with a 400 when the account's
+// identity verification is pending. This is account-scoped, unlike a malformed
+// prompt, so it is safe for the balancer to try another OAuth account.
+export function isOAuthIdentityVerificationRequired(body) {
+  const text = Buffer.from(body || '').toString('utf8');
+  try {
+    const parsed = JSON.parse(text);
+    const message = parsed?.error?.message || parsed?.message || '';
+    return /identity verification\s+is\s+required\s+to\s+continue/i.test(String(message));
+  } catch {
+    return /identity verification\s+is\s+required\s+to\s+continue/i.test(text);
+  }
+}
+
 /** Classify only the structured organization-policy denial observed upstream.
  * Message text and generic permission errors are deliberately not enough. */
 export function isOAuthEntitlementDenied(body) {
@@ -102,6 +116,14 @@ export function isOAuthEntitlementDenied(body) {
 // Bound the diagnostic read so a hostile chunked 403 cannot make the proxy buffer
 // an arbitrary response merely to decide whether it should quarantine an account.
 async function readErrorBody(body, limit = ERROR_BODY_INSPECTION_LIMIT) {
+  return readBodyBuffer(body, limit);
+}
+
+// Read a web stream into a Buffer. `limit` is used only for bounded inspection;
+// the normal response path passes Infinity so an already-admitted response is
+// relayed completely. The caller owns the stream and can choose whether to
+// cancel it after this helper returns null.
+async function readBodyBuffer(body, limit = Infinity) {
   if (!body) return Buffer.alloc(0);
   const reader = body.getReader();
   const chunks = [];
@@ -2893,10 +2915,11 @@ export function resolveLogMaxBodyBytes(config) {
 
 // Cap on a buffered request body. The forward path buffers the whole body so
 // it can be resent on another account after a 429; without a cap, one client
-// holds as much of the proxy's memory as it cares to send. 64 MiB sits
-// comfortably above the largest legitimate request — a 1M-token context is a
-// few MiB of text, and the API bounds inline images and PDFs well below this —
-// so nothing real is refused. `proxy.maxBodyBytes` overrides it; 0 opts out.
+// holds as much of the proxy's memory as it cares to send. This is a transport
+// safety bound, not a model context or `max_tokens` setting: the body is
+// forwarded unchanged (apart from the documented per-account rewrites), and a
+// normal 400k/1M-token text context is well below it. Multimodal requests can
+// opt into a larger byte cap with `proxy.maxBodyBytes`; 0 opts out explicitly.
 export const DEFAULT_MAX_BODY_BYTES = 64 * 1024 * 1024;
 
 export function resolveMaxBodyBytes(config) {
@@ -3280,6 +3303,38 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // would turn a recoverable exhaustion into a hard error, and silently skip
     // the holdSeconds wait an unattended run depends on.
     const rejected = ctx.credentialRejected;
+    // Read the manager's cross-request cooldown state, not just the names this
+    // request happened to encounter. An account may already have been excluded
+    // by an earlier request, and a mixed Claude/Codex fleet contains accounts
+    // that are deliberately outside this request's provider partition.
+    const requestProvider = ctx.provider || DEFAULT_PROVIDER;
+    const relevantAccounts = ctx.pinnedIndex != null
+      ? [accountManager.accounts[ctx.pinnedIndex]].filter(a => a && !a.disabled)
+      : accountManager.accounts.filter(a =>
+        !a.disabled
+        && (!isSubscriptionAccount(a) || providerOf(a) === requestProvider)
+        && (!ctx.model || accountManager._routeAllows(a, ctx.model)));
+    const identityAccounts = relevantAccounts.filter(a =>
+      accountManager.unavailableReason(a, ctx.model, ctx.advisorModel) === 'identity-verification');
+    const allIdentityRequired = relevantAccounts.length > 0
+      && identityAccounts.length === relevantAccounts.length;
+    if (allIdentityRequired) {
+      const identityNames = identityAccounts.map(a => a.name);
+      const names = identityNames.map(n => `"${n}"`).join(', ');
+      ctx.status = 502;
+      ctx.account = `(${identityNames.join(', ')} require identity verification)`;
+      if (!res.headersSent) {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          type: 'error',
+          error: {
+            type: 'proxy_error',
+            message: `Anthropic requires identity verification for every eligible account: ${names}. Complete verification for one of these accounts, then retry.`,
+          },
+        }));
+      }
+      return;
+    }
     const allRefused = rejected?.size > 0 && (ctx.pinnedIndex != null
       ? rejected.has(accountManager.accounts[ctx.pinnedIndex]?.name)
       : rejected.size === accountManager.accounts.length);
@@ -3455,7 +3510,9 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // observed an entitlement denial. Re-check after admission, when the queued
     // request is about to send, so the cooldown also drains that preselected
     // backlog. Explicit caller pins still target exactly the requested account.
-    if (ctx.pinnedIndex == null && retryCount < maxRetries && accountManager.isEntitlementDenied(account.index)) {
+    if (ctx.pinnedIndex == null && retryCount < maxRetries
+        && (accountManager.isEntitlementDenied(account.index)
+          || accountManager.isIdentityVerificationRequired(account.index))) {
       accountManager.release(account.index, { successful: false });
       ctx.tried.add(account.index);
       return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
@@ -3490,6 +3547,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // this is what lets a revalidation probe (a throttled account selected by
     // _selectProbe) clear its own hold and return the fleet to service.
     if (upstreamRes.status !== 429) accountManager.clearRateLimited(account.index);
+    if (upstreamRes.status < 400) accountManager.clearIdentityVerification(account.index);
 
     // Two kinds of 429 are handled differently below: a quota rejection rotates
     // to another account; a transient rate-limit throttle pauses + retries the
@@ -3723,6 +3781,32 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       }
     }
 
+    // A pending Anthropic identity check is reported as a 400, although the
+    // prompt is valid. Claude Code's automatic compaction surfaces that 400 as
+    // "Prompt is too long" and cannot recover, even when another configured
+    // account is healthy. Inspect the small non-streaming error response before
+    // committing headers; if it names the identity-verification gate, cool down
+    // this OAuth account and retry the same body on the next eligible one.
+    // Other 400s remain byte-for-byte passthrough and are never rotated.
+    let bufferedResponseBody = null;
+    if (upstreamRes.status === 400 && account.type === 'oauth' && upstreamRes.body) {
+      const contentType = upstreamRes.headers.get('content-type') || '';
+      if (!contentType.includes('text/event-stream')) {
+        bufferedResponseBody = await readBodyBuffer(upstreamRes.body);
+        if (isOAuthIdentityVerificationRequired(bufferedResponseBody)) {
+          const deniedUntil = accountManager.markIdentityVerificationRequired(account.index);
+          (ctx.identityVerificationRequired ??= new Set()).add(account.name);
+          ctx.tried.add(account.index);
+          const cooldown = deniedUntil
+            ? ` until ${new Date(deniedUntil).toISOString()}`
+            : '';
+          console.error(`[TeamClaude] 400 on "${account.name}"; Anthropic requires identity verification — excluding account${cooldown} and retrying`);
+          if (clientGone(res)) { ctx.abandoned = true; return; }
+          return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+        }
+      }
+    }
+
     // A 403 ("Request not allowed") is upstream refusing THIS account outright —
     // not a stale token a refresh could fix, and not anything the client sent.
     // The client never sees the credential we inject, so it cannot act on the
@@ -3818,7 +3902,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       }
       l?.end();
     } else {
-      const buf = Buffer.from(await upstreamRes.arrayBuffer());
+      const buf = bufferedResponseBody ?? Buffer.from(await upstreamRes.arrayBuffer());
       extractUsageFromBody(buf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
       const l = getLog();
       if (l) { l.body('RESPONSE BODY', buf, contentType); l.end(); }
@@ -4201,7 +4285,7 @@ export function rewriteModel(body, modelMap) {
 function computeRetryAfter(accounts) {
   let soonest = Infinity;
   for (const acct of accounts) {
-    const resets = [acct.rateLimitedUntil, acct.entitlementDeniedUntil, acct.quota.resetsAt]
+    const resets = [acct.rateLimitedUntil, acct.entitlementDeniedUntil, acct.identityVerificationUntil, acct.quota.resetsAt]
       .filter(Boolean);
     for (const reset of resets) {
       const ms = new Date(reset).getTime() - Date.now();

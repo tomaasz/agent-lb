@@ -34,7 +34,7 @@ BIN_DIR="${HOME}/bin"
 RUN_TEST=0
 SETUP_CODEX=0
 UNINSTALL=0
-KEY="${CLAUDE_LB_API_KEY:-${TEAMCLAUDE_API_KEY:-${ANTHROPIC_API_KEY:-}}}"
+KEY="${CLAUDE_LB_API_KEY:-${TEAMCLAUDE_API_KEY:-${CODEX_LB_API_KEY:-${ANTHROPIC_API_KEY:-}}}}"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -58,7 +58,7 @@ backup_existing() {
 	local file="$1"
 	[ -f "$file" ] || return 0
 	local backup="${file}.bak-$(date +%s)"
-	if ! cp -p "$file" "$backup" 2>/dev/null; then
+	if ! cp -p "$file" "$backup" 2>/dev/null || ! chmod 600 "$backup" 2>/dev/null; then
 		say "Ostrzeżenie: nie udało się utworzyć kopii $file; pozostawiam oryginał i kontynuuję."
 	fi
 }
@@ -87,6 +87,7 @@ if isinstance(data, dict):
     if isinstance(env, dict):
         env.pop('ANTHROPIC_BASE_URL', None)
         env.pop('ANTHROPIC_API_KEY', None)
+        env.pop('ANTHROPIC_CUSTOM_HEADERS', None)
         if not env: data.pop('env', None)
     with open(p, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
@@ -99,12 +100,15 @@ fi
 
 command -v curl >/dev/null || die "brak curl"
 
+if [ -z "$KEY" ] && [ -n "${ANTHROPIC_CUSTOM_HEADERS:-}" ]; then
+	KEY="$(printf '%s\n' "$ANTHROPIC_CUSTOM_HEADERS" | sed -n 's/^[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy][[:space:]]*:[[:space:]]*//p' | head -1)"
+fi
 if [ -z "$KEY" ] && [ -r "$ENV_FILE" ]; then
-	KEY="$(sed -n 's/^export ANTHROPIC_API_KEY=//p' "$ENV_FILE" | tr -d '"'\''' | head -1)"
+	KEY="$(sed -n -e 's/^export CODEX_LB_API_KEY=//p' -e 's/^export ANTHROPIC_API_KEY=//p' "$ENV_FILE" | tr -d '"'\''' | head -1)"
 	[ -n "$KEY" ] && say "Używam klucza zapisanego w $ENV_FILE."
 fi
 if [ -z "$KEY" ] && [ -r "$HOME/.config/teamclaude.env" ]; then
-	KEY="$(sed -n 's/^export ANTHROPIC_API_KEY=//p' "$HOME/.config/teamclaude.env" | tr -d '"'\''' | head -1)"
+	KEY="$(sed -n -e 's/^export CODEX_LB_API_KEY=//p' -e 's/^export ANTHROPIC_API_KEY=//p' "$HOME/.config/teamclaude.env" | tr -d '"'\''' | head -1)"
 	[ -n "$KEY" ] && say "Używam klucza zapisanego w ~/.config/teamclaude.env."
 fi
 if [ -z "$KEY" ]; then
@@ -133,6 +137,20 @@ esac
 
 # Zabezpieczenie przed Auth conflict
 CREDS="$HOME/.claude/.credentials.json"
+OAUTH_SESSION=0
+if [ -f "$CREDS" ]; then
+	if command -v python3 >/dev/null 2>&1; then
+		SETUP_CREDS="$CREDS" python3 - <<'PY' >/dev/null 2>&1 && OAUTH_SESSION=1 || true
+import json, os
+with open(os.environ['SETUP_CREDS'], encoding='utf-8') as f:
+    data = json.load(f)
+oauth = data.get('claudeAiOauth') or data.get('oauth') or data
+raise SystemExit(0 if isinstance(oauth, dict) and isinstance(oauth.get('accessToken'), str) and oauth['accessToken'] else 1)
+PY
+	elif grep -qE '\"accessToken\"[[:space:]]*:' "$CREDS" 2>/dev/null; then
+		OAUTH_SESSION=1
+	fi
+fi
 if [ -f "$CREDS" ]; then
 	BAK="$CREDS.bak-$(date +%s)"
 	if cp -f "$CREDS" "$BAK"; then
@@ -140,6 +158,9 @@ if [ -f "$CREDS" ]; then
 	else
 		say "Ostrzeżenie: nie udało się utworzyć kopii .credentials.json; kontynuuję bez jej usuwania."
 	fi
+fi
+if [ "$OAUTH_SESSION" -eq 1 ]; then
+	say "Zachowuję tryb OAuth Claude Code; klucz proxy przekazuję przez ANTHROPIC_CUSTOM_HEADERS."
 fi
 
 # Zapis konfiguracji środowiskowej
@@ -154,7 +175,13 @@ shell_quote() {
 {
 	printf '%s\n' '# Agent LB environment configuration'
 	printf 'export ANTHROPIC_BASE_URL=%s\n' "$(shell_quote "$URL")"
-	printf 'export ANTHROPIC_API_KEY=%s\n' "$(shell_quote "$KEY")"
+	if [ "$OAUTH_SESSION" -eq 1 ]; then
+		printf '%s\n' 'unset ANTHROPIC_API_KEY  # preserve Claude Code OAuth session'
+		printf 'export ANTHROPIC_CUSTOM_HEADERS=%s\n' "$(shell_quote "x-api-key: $KEY")"
+	else
+		printf 'export ANTHROPIC_API_KEY=%s\n' "$(shell_quote "$KEY")"
+		printf '%s\n' 'unset ANTHROPIC_CUSTOM_HEADERS'
+	fi
 	printf 'export CODEX_BASE_URL=%s\n' "$(shell_quote "$URL/backend-api/codex")"
 	printf 'export OPENAI_BASE_URL=%s\n' "$(shell_quote "$URL/v1")"
 	printf 'export CODEX_LB_API_KEY=%s\n' "$(shell_quote "$KEY")"
@@ -176,7 +203,7 @@ else
 fi
 # Dopisanie zmiennych jeśli python jest dostępny
 if command -v python3 >/dev/null 2>&1; then
-	SETUP_URL="$URL" SETUP_KEY="$KEY" SETUP_SETTINGS="$CLAUDE_SETTINGS" python3 - <<'PY' 2>/dev/null && say "Zaktualizowano $CLAUDE_SETTINGS."
+	SETUP_URL="$URL" SETUP_KEY="$KEY" SETUP_OAUTH="$OAUTH_SESSION" SETUP_SETTINGS="$CLAUDE_SETTINGS" python3 - <<'PY' 2>/dev/null && say "Zaktualizowano $CLAUDE_SETTINGS."
 import json, os
 p = os.environ['SETUP_SETTINGS']
 try:
@@ -184,7 +211,12 @@ try:
 except Exception: data = {}
 data.setdefault('env', {})
 data['env']['ANTHROPIC_BASE_URL'] = os.environ['SETUP_URL']
-data['env']['ANTHROPIC_API_KEY'] = os.environ['SETUP_KEY']
+if os.environ.get('SETUP_OAUTH') == '1':
+    data['env'].pop('ANTHROPIC_API_KEY', None)
+    data['env']['ANTHROPIC_CUSTOM_HEADERS'] = 'x-api-key: ' + os.environ['SETUP_KEY']
+else:
+    data['env']['ANTHROPIC_API_KEY'] = os.environ['SETUP_KEY']
+    data['env'].pop('ANTHROPIC_CUSTOM_HEADERS', None)
 with open(p, 'w', encoding='utf-8') as f:
     json.dump(data, f, indent=2)
     f.write('\n')
@@ -195,6 +227,7 @@ fi
 mkdir -p "$HOME/.codex"
 CODEX_TOML="$HOME/.codex/config.toml"
 if [ ! -f "$CODEX_TOML" ] || ! grep -qF "model_providers.codex-lb" "$CODEX_TOML" 2>/dev/null; then
+	backup_existing "$CODEX_TOML"
 	cat >> "$CODEX_TOML" <<-EOF
 
 # >>> codexlb >>> (zarzadzane przez setup.sh)
@@ -246,7 +279,11 @@ done
 
 if [ "$RUN_TEST" -eq 1 ] && command -v claude >/dev/null 2>&1; then
 	say "Test claude --version:"
-	ANTHROPIC_BASE_URL="$URL" ANTHROPIC_API_KEY="$KEY" claude --version || true
+	if [ "$OAUTH_SESSION" -eq 1 ]; then
+		env -u ANTHROPIC_API_KEY ANTHROPIC_BASE_URL="$URL" ANTHROPIC_CUSTOM_HEADERS="x-api-key: $KEY" claude --version || true
+	else
+		env -u ANTHROPIC_CUSTOM_HEADERS ANTHROPIC_BASE_URL="$URL" ANTHROPIC_API_KEY="$KEY" claude --version || true
+	fi
 fi
 
 say "Gotowe!"

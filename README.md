@@ -170,7 +170,15 @@ irm http://your-server:3456/codexlb-setup.ps1 | iex
 2. Backs up existing configs (`.bak`) and prevents OAuth *"Auth conflict"* errors.
 3. Automatically configures `~/.claude/settings.json` (for Claude Code) or `~/.codex/config.toml` and `~/.codex/codexlb.config.toml` (for Codex CLI 0.14+).
 4. Sets up official **VS Code extensions** (Claude Code & OpenAI Codex).
-5. Persists environment variables (`ANTHROPIC_BASE_URL`, `ANTHROPIC_API_KEY`, `CODEX_LB_API_KEY`, `CODEX_BASE_URL`) in shell configs or Windows Registry.
+5. Persists the proxy URL and client credentials in shell configs or Windows Registry. When `~/.claude/.credentials.json` contains a Claude OAuth session, the installer keeps Claude Code in subscription mode by removing `ANTHROPIC_API_KEY` and setting `ANTHROPIC_CUSTOM_HEADERS=x-api-key: <proxy-key>`. This authenticates the client to the LB without replacing its Claude login; the LB consumes that header and injects the selected upstream account credential.
+
+The proxy does not set a Claude token or context-window value. It forwards `max_tokens`, messages, cache controls, and compaction requests unchanged. `proxy.maxBodyBytes` is only a memory-safety cap on the serialized HTTP body (64 MiB by default, `0` for an explicit unlimited setting); it is not a token limit. Increase it for unusually large multimodal payloads, for example:
+
+```json
+{
+  "proxy": { "maxBodyBytes": 268435456 }
+}
+```
 
 ---
 
