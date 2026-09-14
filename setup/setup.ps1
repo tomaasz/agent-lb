@@ -52,6 +52,22 @@ function Backup-ConfigFile([string]$Path) {
 	catch { Say "[Uwaga] Nie udało się utworzyć kopii ${Path}: $($_.Exception.Message)" }
 }
 
+function Set-CustomHeader([string]$existing, [string]$name, [string]$value) {
+	$lines = @()
+	if ($existing) {
+		$lines = @($existing -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" -and -not $_.ToLower().StartsWith("$($name.ToLower()):") })
+	}
+	$lines += "$name`: $value"
+	return ($lines -join "`n")
+}
+
+function Remove-CustomHeader([string]$existing, [string]$name) {
+	if (-not $existing) { return $null }
+	$lines = @($existing -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" -and -not $_.ToLower().StartsWith("$($name.ToLower()):") })
+	if ($lines.Count -gt 0) { return ($lines -join "`n") }
+	return $null
+}
+
 if ($Uninstall) {
 	$homeDir = if ($HOME) { $HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } else { '.' }
 	foreach ($p in @(
@@ -63,6 +79,14 @@ if ($Uninstall) {
 		try {
 			$data = Get-Content -Raw -Path $settingsPath | ConvertFrom-Json -AsHashtable
 			if ($data.env -is [hashtable]) { $data.env.Remove('ANTHROPIC_BASE_URL'); $data.env.Remove('ANTHROPIC_API_KEY'); $data.env.Remove('ANTHROPIC_CUSTOM_HEADERS') }
+			if ($data.env -is [hashtable]) {
+				$data.env.Remove('ANTHROPIC_BASE_URL')
+				$data.env.Remove('ANTHROPIC_API_KEY')
+				$existingHdr = if ($data.env.ContainsKey('ANTHROPIC_CUSTOM_HEADERS')) { $data.env['ANTHROPIC_CUSTOM_HEADERS'] } else { "" }
+				$rem = Remove-CustomHeader $existingHdr 'x-api-key'
+				if ($rem) { $data.env['ANTHROPIC_CUSTOM_HEADERS'] = $rem }
+				else { $data.env.Remove('ANTHROPIC_CUSTOM_HEADERS') }
+			}
 			Backup-ConfigFile $settingsPath
 			$data | ConvertTo-Json -Depth 20 | Set-Content -Path $settingsPath -Encoding utf8
 		} catch { Say "[Uwaga] Nie udało się zaktualizować $settingsPath" }
@@ -73,6 +97,15 @@ if ($Uninstall) {
 		try {
 			$vs = Get-Content -Raw -Path $vsPath | ConvertFrom-Json -AsHashtable
 			$vs.Remove('claudeCode.environmentVariables')
+			if ($vs.ContainsKey('claudeCode.environmentVariables')) {
+				$envVars = @($vs['claudeCode.environmentVariables']) | Where-Object { $_.name -ne 'ANTHROPIC_BASE_URL' -and $_.name -ne 'ANTHROPIC_API_KEY' }
+				$existingHdr = ($vs['claudeCode.environmentVariables'] | Where-Object { $_.name -eq 'ANTHROPIC_CUSTOM_HEADERS' }).value
+				$rem = Remove-CustomHeader $existingHdr 'x-api-key'
+				$envVars = @($envVars | Where-Object { $_.name -ne 'ANTHROPIC_CUSTOM_HEADERS' })
+				if ($rem) { $envVars += @{ name = 'ANTHROPIC_CUSTOM_HEADERS'; value = $rem } }
+				if ($envVars.Count -gt 0) { $vs['claudeCode.environmentVariables'] = $envVars }
+				else { $vs.Remove('claudeCode.environmentVariables') }
+			}
 			$vs.Remove('claudeCode.disableLoginPrompt')
 			Backup-ConfigFile $vsPath
 			$vs | ConvertTo-Json -Depth 20 | Set-Content -Path $vsPath -Encoding utf8
@@ -82,6 +115,9 @@ if ($Uninstall) {
 		[Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $null, 'User')
 		[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $null, 'User')
 		[Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $null, 'User')
+		$currentWinHdr = [Environment]::GetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', 'User')
+		$remWin = Remove-CustomHeader $currentWinHdr 'x-api-key'
+		[Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $remWin, 'User')
 		[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $null, 'User')
 		[Environment]::SetEnvironmentVariable('CODEX_BASE_URL', $null, 'User')
 		[Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', $null, 'User')
@@ -178,9 +214,16 @@ $claudeSettings["env"]["ANTHROPIC_BASE_URL"] = $Url
 if ($oauthSession) {
 	$claudeSettings["env"].Remove('ANTHROPIC_API_KEY')
 	$claudeSettings["env"]["ANTHROPIC_CUSTOM_HEADERS"] = "x-api-key: $Key"
+	$existingHdr = if ($claudeSettings["env"].ContainsKey('ANTHROPIC_CUSTOM_HEADERS')) { $claudeSettings["env"]['ANTHROPIC_CUSTOM_HEADERS'] } else { "" }
+	$claudeSettings["env"]['ANTHROPIC_CUSTOM_HEADERS'] = Set-CustomHeader $existingHdr 'x-api-key' $Key
 } else {
 	$claudeSettings["env"]["ANTHROPIC_API_KEY"] = $Key
 	$claudeSettings["env"].Remove('ANTHROPIC_CUSTOM_HEADERS')
+	$claudeSettings["env"]['ANTHROPIC_API_KEY'] = $Key
+	$existingHdr = if ($claudeSettings["env"].ContainsKey('ANTHROPIC_CUSTOM_HEADERS')) { $claudeSettings["env"]['ANTHROPIC_CUSTOM_HEADERS'] } else { "" }
+	$rem = Remove-CustomHeader $existingHdr 'x-api-key'
+	if ($rem) { $claudeSettings["env"]['ANTHROPIC_CUSTOM_HEADERS'] = $rem }
+	else { $claudeSettings["env"].Remove('ANTHROPIC_CUSTOM_HEADERS') }
 }
 $null = Backup-ConfigFile $claudeSettingsPath
 $claudeSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $claudeSettingsPath -Encoding utf8
@@ -200,6 +243,24 @@ if (Test-Path $vsCodeDir) {
 		$claudeEnvironmentVariables = @(@{ name = "ANTHROPIC_BASE_URL"; value = $Url })
 		if ($oauthSession) { $claudeEnvironmentVariables += @{ name = "ANTHROPIC_CUSTOM_HEADERS"; value = "x-api-key: $Key" } }
 		else { $claudeEnvironmentVariables += @{ name = "ANTHROPIC_API_KEY"; value = $Key } }
+		$claudeEnvironmentVariables = if ($vsSettings.ContainsKey("claudeCode.environmentVariables")) {
+			@($vsSettings["claudeCode.environmentVariables"]) | Where-Object { $_.name -ne "ANTHROPIC_BASE_URL" }
+		} else { @() }
+		$claudeEnvironmentVariables += @{ name = "ANTHROPIC_BASE_URL"; value = $Url }
+		if ($oauthSession) {
+			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_API_KEY" })
+			$existingHdr = ($claudeEnvironmentVariables | Where-Object { $_.name -eq "ANTHROPIC_CUSTOM_HEADERS" }).value
+			$updatedHdr = Set-CustomHeader $existingHdr "x-api-key" $Key
+			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_CUSTOM_HEADERS" })
+			$claudeEnvironmentVariables += @{ name = "ANTHROPIC_CUSTOM_HEADERS"; value = $updatedHdr }
+		} else {
+			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_API_KEY" })
+			$claudeEnvironmentVariables += @{ name = "ANTHROPIC_API_KEY"; value = $Key }
+			$existingHdr = ($claudeEnvironmentVariables | Where-Object { $_.name -eq "ANTHROPIC_CUSTOM_HEADERS" }).value
+			$rem = Remove-CustomHeader $existingHdr "x-api-key"
+			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_CUSTOM_HEADERS" })
+			if ($rem) { $claudeEnvironmentVariables += @{ name = "ANTHROPIC_CUSTOM_HEADERS"; value = $rem } }
+		}
 		$vsSettings["claudeCode.environmentVariables"] = $claudeEnvironmentVariables
 		$null = Backup-ConfigFile $vsCodeSettingsPath
 		$vsSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $vsCodeSettingsPath -Encoding utf8
@@ -242,9 +303,15 @@ Say "Ustawiam zmienne środowiskowe użytkownika Windows..."
 if ($oauthSession) {
 	[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $null, 'User')
 	[Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', "x-api-key: $Key", 'User')
+	$currentWinHdr = [Environment]::GetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', 'User')
+	$newWinHdr = Set-CustomHeader $currentWinHdr "x-api-key" $Key
+	[Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $newWinHdr, 'User')
 } else {
 	[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $Key, 'User')
 	[Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $null, 'User')
+	$currentWinHdr = [Environment]::GetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', 'User')
+	$remWin = Remove-CustomHeader $currentWinHdr "x-api-key"
+	[Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $remWin, 'User')
 }
 [Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $Key, 'User')
 [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', "$Url/backend-api/codex", 'User')
@@ -253,9 +320,13 @@ $env:ANTHROPIC_BASE_URL = $Url
 if ($oauthSession) {
 	Remove-Item Env:ANTHROPIC_API_KEY -ErrorAction SilentlyContinue
 	$env:ANTHROPIC_CUSTOM_HEADERS = "x-api-key: $Key"
+	$env:ANTHROPIC_CUSTOM_HEADERS = Set-CustomHeader $env:ANTHROPIC_CUSTOM_HEADERS "x-api-key" $Key
 } else {
 	$env:ANTHROPIC_API_KEY = $Key
 	Remove-Item Env:ANTHROPIC_CUSTOM_HEADERS -ErrorAction SilentlyContinue
+	$remProcessHdr = Remove-CustomHeader $env:ANTHROPIC_CUSTOM_HEADERS "x-api-key"
+	if ($remProcessHdr) { $env:ANTHROPIC_CUSTOM_HEADERS = $remProcessHdr }
+	else { Remove-Item Env:ANTHROPIC_CUSTOM_HEADERS -ErrorAction SilentlyContinue }
 }
 $env:CODEX_LB_API_KEY   = $Key
 $env:CODEX_BASE_URL     = "$Url/backend-api/codex"

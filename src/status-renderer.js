@@ -129,6 +129,7 @@ export const UNAVAILABLE_TEXT = {
   'advisor-capped': "advisor model's usage cap reached (maxUsage)",
   entitlement: 'upstream refused this account for the organization (cooldown)',
   'identity-verification': 'upstream requires identity verification (cooldown)',
+  'identity-verification': 'upstream requires identity verification (action needed in browser)',
   route: 'no route allows this account',
   'advisor-quota': "advisor model's weekly bucket spent",
   'advisor-route': 'no route allows the advisor model',
@@ -370,33 +371,42 @@ function formatAdaptive(a, paint) {
   return a.competing ? line : `${paint.dim('(not competing)')} ${line}`;
 }
 
-function formatAccountStatus(account, now, paint) {
+export function formatAccountStatus(account, now, paint) {
   const parts = [];
   if (account.disabled) parts.push(paint.gray('disabled'));
 
+  const throttleAt = parseTs(account.rateLimitedUntil);
+  const throttleActive = throttleAt && throttleAt > now;
+
+  const entitlementAt = parseTs(account.entitlementDeniedUntil);
+  const entitlementActive = entitlementAt && entitlementAt > now;
+
+  const identityAt = parseTs(account.identityVerificationUntil);
+  const identityActive = identityAt && identityAt > now;
+
   const status = safeLine(account.status || 'unknown', 32) || 'unknown';
-  const colored = status === 'active'
-    ? paint.green(status)
-    : status === 'throttled'
-      ? paint.yellow(status)
-      : status === 'error' || status === 'exhausted'
-        ? paint.red(status)
-        : status;
+  let colored;
+  if (status === 'error' || status === 'exhausted' || identityActive) {
+    colored = paint.red(status);
+  } else if (status === 'throttled' || entitlementActive || throttleActive) {
+    colored = paint.yellow(status);
+  } else if (status === 'active') {
+    colored = paint.green(status);
+  } else {
+    colored = status;
+  }
   parts.push(colored);
 
-  const throttleAt = parseTs(account.rateLimitedUntil);
-  if (throttleAt && throttleAt > now) {
+  if (throttleActive) {
     parts.push(`throttle ${formatDuration(throttleAt - now)}`);
   }
 
-  const entitlementAt = parseTs(account.entitlementDeniedUntil);
-  if (entitlementAt && entitlementAt > now) {
+  if (entitlementActive) {
     parts.push(paint.yellow(`entitlement cooldown ${formatDuration(entitlementAt - now)}`));
   }
 
-  const identityAt = parseTs(account.identityVerificationUntil);
-  if (identityAt && identityAt > now) {
-    parts.push(paint.yellow(`identity-verification cooldown ${formatDuration(identityAt - now)}`));
+  if (identityActive) {
+    parts.push(paint.red(`identity-verification cooldown ${formatDuration(identityAt - now)}`));
   }
 
   return parts.join(' / ');

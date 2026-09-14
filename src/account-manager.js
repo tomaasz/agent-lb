@@ -1710,6 +1710,8 @@ export class AccountManager {
     if (!this._isAvailable(account)) {
       if (account.disabled) return { eligible: false, reason: 'disabled' };
       if (account.status === 'error') return { eligible: false, reason: 'in an error state and needs a re-login' };
+      if (this._identityVerificationRequired(account)) return { eligible: false, reason: 'requires identity verification' };
+      if (this._entitlementDenied(account)) return { eligible: false, reason: 'in OAuth entitlement cooldown' };
       if (account.status === 'exhausted') return { eligible: false, reason: 'out of quota' };
       if (account.status === 'throttled') return { eligible: false, reason: 'rate-limited' };
       return { eligible: false, reason: 'at or above the switch threshold' };

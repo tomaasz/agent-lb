@@ -3190,22 +3190,40 @@ export function isTransientUpstreamError(err, { otherHostAvailable = false } = {
  * Counts only the accounts that were candidates, names the model when the
  * request carried one, and says plainly that the wait is until a window resets.
  */
-export function exhaustedMessage(accountManager, model, retryAfter) {
-  const accounts = accountManager.accounts || [];
-  if (accounts.length === 0) {
+export function exhaustedMessage(accountManager, model, retryAfter, provider = null) {
+  const allAccounts = accountManager.accounts || [];
+  if (allAccounts.length === 0) {
     return 'No accounts configured in Claude-LB. Please add an account via the Web Dashboard or CLI.';
   }
+  const accounts = provider
+    ? allAccounts.filter(a => providerOf(a) === provider)
+    : allAccounts;
+
+  if (accounts.length === 0) {
+    return `No ${provider} accounts configured in Claude-LB. Please add a ${provider} account via the Web Dashboard or CLI.`;
+  }
+
   const eligible = accounts.filter(a => !a.disabled);
   const disabled = accounts.length - eligible.length;
-
   const scope = model ? ` for ${model}` : '';
-  const pool = eligible.length === 1 ? '1 account' : `${eligible.length} accounts`;
+
+  if (eligible.length === 0) {
+    const plural = disabled === 1 ? 'account is' : 'accounts are';
+    return `No account can serve this request${scope}: all ${disabled} ${plural} disabled.`;
+  }
+
+  const identityCount = eligible.filter(a => accountManager._identityVerificationRequired?.(a)).length;
+  const pool = eligible.length === 1 ? '1 account is' : `all ${eligible.length} accounts are`;
+  const quotaWord = eligible.length === 1 ? 'at its quota or rate limit' : 'at their quota or rate limit';
   const aside = disabled ? ` (${disabled} more disabled)` : '';
+  const idNote = identityCount > 0
+    ? ` (${identityCount} require${identityCount === 1 ? 's' : ''} identity verification in browser)`
+    : '';
   const when = retryAfter > 0
     ? ` Quota resets in ${retryAfter}s.`
     : ' Retry shortly.';
 
-  return `No account can serve this request${scope}: all ${pool}${aside} are at their quota or rate limit.${when}`;
+  return `No account can serve this request${scope}: ${pool}${aside} ${quotaWord}${idNote}.${when}`;
 }
 
 export async function forwardRequest(req, res, body, accountManager, upstream, retryCount, hooks, reqId, ctx, logDir, sx, useSx) {
@@ -3379,7 +3397,8 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     ctx.status = 429;
     ctx.account = '(none available)';
     const status = accountManager.getStatus();
-    const retryAfter = computeRetryAfter(status.accounts);
+    const providerAccounts = status.accounts.filter(a => (a.provider || DEFAULT_PROVIDER) === requestProvider);
+    const retryAfter = computeRetryAfter(providerAccounts.length > 0 ? providerAccounts : status.accounts);
 
     // Long-hold mode: hold the HTTP connection and poll until an account
     // recovers or the budget (holdSeconds) runs out. Claude Code waits for
@@ -3414,6 +3433,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       error: {
         type: 'rate_limit_error',
         message: exhaustedMessage(accountManager, ctx.model, retryAfter),
+        message: exhaustedMessage(accountManager, ctx.model, retryAfter, requestProvider),
       },
     }));
     return;

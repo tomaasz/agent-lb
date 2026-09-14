@@ -5,11 +5,14 @@ import { modelFamily, weeklyBucketForModel } from '../src/model.js';
 import {
   createProxyServer,
   DEFAULT_MAX_BODY_BYTES,
+  exhaustedMessage,
   isOAuthIdentityVerificationRequired,
   resolveMaxBodyBytes,
   rewriteRequestBody,
 } from '../src/server.js';
 import { AccountManager } from '../src/account-manager.js';
+import { Prober } from '../src/prober.js';
+import { formatAccountStatus, UNAVAILABLE_TEXT } from '../src/status-renderer.js';
 
 test('Claude 5 family ids route to their dedicated quota semantics', () => {
   assert.equal(modelFamily('claude-opus-5'), 'opus');
@@ -293,4 +296,111 @@ test('successful response clears identityVerification cooldown', async () => {
       new Promise(resolve => upstreamServer.close(resolve)),
     ]);
   }
+});
+
+test('exhaustedMessage formats clear errors for disabled, partitioned and identity-blocked fleets', () => {
+  // 1. Empty fleet
+  const emptyAm = new AccountManager([]);
+  assert.match(exhaustedMessage(emptyAm, null, 0), /No accounts configured in Claude-LB/);
+
+  // 2. All disabled accounts
+  const disabled1 = new AccountManager([{ name: 'a', disabled: true }]);
+  assert.equal(exhaustedMessage(disabled1, null, 0), 'No account can serve this request: all 1 account is disabled.');
+
+  const disabled2 = new AccountManager([{ name: 'a', disabled: true }, { name: 'b', disabled: true }]);
+  assert.equal(exhaustedMessage(disabled2, 'claude-sonnet-5', 0), 'No account can serve this request for claude-sonnet-5: all 2 accounts are disabled.');
+
+  // 3. Single eligible vs multiple eligible account grammar
+  const singleAm = new AccountManager([{ name: 'a' }]);
+  assert.equal(exhaustedMessage(singleAm, null, 30), 'No account can serve this request: 1 account is at its quota or rate limit. Quota resets in 30s.');
+
+  const singlePlusDisabled = new AccountManager([{ name: 'a' }, { name: 'b', disabled: true }]);
+  assert.equal(exhaustedMessage(singlePlusDisabled, null, 30), 'No account can serve this request: 1 account is (1 more disabled) at its quota or rate limit. Quota resets in 30s.');
+
+  const multiAm = new AccountManager([{ name: 'a' }, { name: 'b' }]);
+  assert.equal(exhaustedMessage(multiAm, null, 30), 'No account can serve this request: all 2 accounts are at their quota or rate limit. Quota resets in 30s.');
+
+  // 4. Provider partitioning
+  const mixedAm = new AccountManager([
+    { name: 'claude-1', provider: 'anthropic' },
+    { name: 'codex-1', provider: 'codex' },
+  ]);
+  assert.equal(exhaustedMessage(mixedAm, null, 30, 'anthropic'), 'No account can serve this request: 1 account is at its quota or rate limit. Quota resets in 30s.');
+  assert.equal(exhaustedMessage(mixedAm, null, 30, 'codex'), 'No account can serve this request: 1 account is at its quota or rate limit. Quota resets in 30s.');
+
+  const onlyClaude = new AccountManager([{ name: 'claude-1', provider: 'anthropic' }]);
+  assert.equal(exhaustedMessage(onlyClaude, null, 30, 'codex'), 'No codex accounts configured in Claude-LB. Please add a codex account via the Web Dashboard or CLI.');
+
+  // 5. Identity verification note
+  const idAm = new AccountManager([
+    { name: 'claude-1', provider: 'anthropic' },
+    { name: 'claude-2', provider: 'anthropic' },
+  ]);
+  idAm.markIdentityVerificationRequired(0, 300);
+  assert.equal(
+    exhaustedMessage(idAm, null, 45, 'anthropic'),
+    'No account can serve this request: all 2 accounts are at their quota or rate limit (1 requires identity verification in browser). Quota resets in 45s.',
+  );
+});
+
+test('eligibility reports identity verification and entitlement cooldown reasons', () => {
+  const am = new AccountManager([
+    { name: 'verify-me', type: 'oauth', accessToken: 'tok-1' },
+    { name: 'entitled', type: 'oauth', accessToken: 'tok-2' },
+  ]);
+  am.markIdentityVerificationRequired(0, 300);
+  am.markEntitlementDenied(1, 300);
+
+  assert.deepEqual(am.eligibility(0), { eligible: false, reason: 'requires identity verification' });
+  assert.deepEqual(am.eligibility(1), { eligible: false, reason: 'in OAuth entitlement cooldown' });
+});
+
+test('prober clears identity verification cooldown upon successful probe', async () => {
+  const am = new AccountManager([{ name: 'acct-1', type: 'oauth', accessToken: 'tok-1' }]);
+  am.markIdentityVerificationRequired(0, 300);
+  assert.equal(am.unavailableReason(am.accounts[0]), 'identity-verification');
+
+  const prober = new Prober(am, {
+    probeFn: async () => ({ five_hour: { utilization: 0.1 } }),
+  });
+  await prober.probeAccount(am.accounts[0]);
+
+  assert.equal(am.accounts[0].identityVerificationUntil, null);
+  assert.equal(am.unavailableReason(am.accounts[0]), null);
+});
+
+test('formatAccountStatus and UNAVAILABLE_TEXT clearly distinguish identity verification from active status', () => {
+  assert.equal(UNAVAILABLE_TEXT['identity-verification'], 'upstream requires identity verification (action needed in browser)');
+
+  const paint = {
+    green: s => `[green]${s}[/green]`,
+    yellow: s => `[yellow]${s}[/yellow]`,
+    red: s => `[red]${s}[/red]`,
+    gray: s => `[gray]${s}[/gray]`,
+    bold: s => `[bold]${s}[/bold]`,
+    dim: s => `[dim]${s}[/dim]`,
+  };
+
+  const activeAcct = { name: 'a1', status: 'active' };
+  assert.match(formatAccountStatus(activeAcct, Date.now(), paint), /\[green\]active\[\/green\]/);
+
+  const idAcct = {
+    name: 'a2',
+    status: 'active',
+    identityVerificationUntil: new Date(Date.now() + 60_000).toISOString(),
+  };
+  const idFormatted = formatAccountStatus(idAcct, Date.now(), paint);
+  assert.doesNotMatch(idFormatted, /\[green\]/);
+  assert.match(idFormatted, /\[red\]active\[\/red\]/);
+  assert.match(idFormatted, /\[red\]identity-verification cooldown/);
+
+  const entAcct = {
+    name: 'a3',
+    status: 'active',
+    entitlementDeniedUntil: new Date(Date.now() + 60_000).toISOString(),
+  };
+  const entFormatted = formatAccountStatus(entAcct, Date.now(), paint);
+  assert.doesNotMatch(entFormatted, /\[green\]/);
+  assert.match(entFormatted, /\[yellow\]active\[\/yellow\]/);
+  assert.match(entFormatted, /\[yellow\]entitlement cooldown/);
 });

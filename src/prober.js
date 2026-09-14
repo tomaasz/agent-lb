@@ -155,6 +155,7 @@ export class Prober {
         const profile = await this._withTimeout(this.profileFn(account.credential));
         this.am.applyProfileData(account.index, profile);
       }
+      this.am.clearIdentityVerification?.(account.index);
       const finishedAt = Date.now();
       this._recordAccount(account, {
         status: 'ok',

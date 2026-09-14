@@ -88,6 +88,14 @@ if isinstance(data, dict):
         env.pop('ANTHROPIC_BASE_URL', None)
         env.pop('ANTHROPIC_API_KEY', None)
         env.pop('ANTHROPIC_CUSTOM_HEADERS', None)
+        existing = env.get('ANTHROPIC_CUSTOM_HEADERS')
+        if existing:
+            lines = [l.strip() for l in existing.splitlines() if l.strip()]
+            lines = [l for l in lines if not l.lower().startswith('x-api-key:')]
+            if lines:
+                env['ANTHROPIC_CUSTOM_HEADERS'] = '\n'.join(lines)
+            else:
+                env.pop('ANTHROPIC_CUSTOM_HEADERS', None)
         if not env: data.pop('env', None)
     with open(p, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
@@ -178,9 +186,27 @@ shell_quote() {
 	if [ "$OAUTH_SESSION" -eq 1 ]; then
 		printf '%s\n' 'unset ANTHROPIC_API_KEY  # preserve Claude Code OAuth session'
 		printf 'export ANTHROPIC_CUSTOM_HEADERS=%s\n' "$(shell_quote "x-api-key: $KEY")"
+		EXISTING_HDRS=""
+		if [ -n "${ANTHROPIC_CUSTOM_HEADERS:-}" ]; then
+			EXISTING_HDRS="$(printf '%s\n' "$ANTHROPIC_CUSTOM_HEADERS" | grep -iv '^x-api-key:' || true)"
+		fi
+		if [ -n "$EXISTING_HDRS" ]; then
+			printf 'export ANTHROPIC_CUSTOM_HEADERS=%s\n' "$(shell_quote "$(printf '%s\nx-api-key: %s' "$EXISTING_HDRS" "$KEY")")"
+		else
+			printf 'export ANTHROPIC_CUSTOM_HEADERS=%s\n' "$(shell_quote "x-api-key: $KEY")"
+		fi
 	else
 		printf 'export ANTHROPIC_API_KEY=%s\n' "$(shell_quote "$KEY")"
 		printf '%s\n' 'unset ANTHROPIC_CUSTOM_HEADERS'
+		EXISTING_HDRS=""
+		if [ -n "${ANTHROPIC_CUSTOM_HEADERS:-}" ]; then
+			EXISTING_HDRS="$(printf '%s\n' "$ANTHROPIC_CUSTOM_HEADERS" | grep -iv '^x-api-key:' || true)"
+		fi
+		if [ -n "$EXISTING_HDRS" ]; then
+			printf 'export ANTHROPIC_CUSTOM_HEADERS=%s\n' "$(shell_quote "$EXISTING_HDRS")"
+		else
+			printf '%s\n' 'unset ANTHROPIC_CUSTOM_HEADERS'
+		fi
 	fi
 	printf 'export CODEX_BASE_URL=%s\n' "$(shell_quote "$URL/backend-api/codex")"
 	printf 'export OPENAI_BASE_URL=%s\n' "$(shell_quote "$URL/v1")"
@@ -211,12 +237,33 @@ try:
 except Exception: data = {}
 data.setdefault('env', {})
 data['env']['ANTHROPIC_BASE_URL'] = os.environ['SETUP_URL']
+
+def set_custom_header(existing, name, value):
+    lines = [l.strip() for l in (existing or '').splitlines() if l.strip()]
+    prefix = name.lower() + ':'
+    lines = [l for l in lines if not l.lower().startswith(prefix)]
+    lines.append(f"{name}: {value}")
+    return '\n'.join(lines)
+
+def remove_custom_header(existing, name):
+    lines = [l.strip() for l in (existing or '').splitlines() if l.strip()]
+    prefix = name.lower() + ':'
+    lines = [l for l in lines if not l.lower().startswith(prefix)]
+    return '\n'.join(lines) if lines else None
+
 if os.environ.get('SETUP_OAUTH') == '1':
     data['env'].pop('ANTHROPIC_API_KEY', None)
     data['env']['ANTHROPIC_CUSTOM_HEADERS'] = 'x-api-key: ' + os.environ['SETUP_KEY']
+    data['env']['ANTHROPIC_CUSTOM_HEADERS'] = set_custom_header(data['env'].get('ANTHROPIC_CUSTOM_HEADERS'), 'x-api-key', os.environ['SETUP_KEY'])
 else:
     data['env']['ANTHROPIC_API_KEY'] = os.environ['SETUP_KEY']
     data['env'].pop('ANTHROPIC_CUSTOM_HEADERS', None)
+    rem = remove_custom_header(data['env'].get('ANTHROPIC_CUSTOM_HEADERS'), 'x-api-key')
+    if rem:
+        data['env']['ANTHROPIC_CUSTOM_HEADERS'] = rem
+    else:
+        data['env'].pop('ANTHROPIC_CUSTOM_HEADERS', None)
+
 with open(p, 'w', encoding='utf-8') as f:
     json.dump(data, f, indent=2)
     f.write('\n')

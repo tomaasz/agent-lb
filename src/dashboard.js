@@ -286,6 +286,15 @@ export function problems(status) {
   // shared bucket is spent — both expire on their own, like `quota` and
   // `throttled`, and none of them wants a person.
   var ATTENTION = { error: 'needs a re-login', disabled: 'is disabled' };
+  // Only the states that do not clear themselves or require human attention.
+  // `entitlement` is a short cooldown and `upstream-rejected` indicates a spent
+  // shared bucket — both expire on their own. `identity-verification` requires
+  // human action in the browser, and `error` needs re-login.
+  var ATTENTION = {
+    error: 'needs a re-login',
+    disabled: 'is disabled',
+    'identity-verification': 'requires identity verification in browser',
+  };
   (s.accounts || []).forEach(function (a) {
     var why = ATTENTION[a.unavailable];
     if (why) out.push({
@@ -1319,6 +1328,8 @@ ${SHARED_HELPERS}
     if (a.unavailable) {
       var unavailText = a.unavailable === 'switch_threshold' ? 'Próg switcha' : (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable);
       var unavailBadge = el('span', 'badge ' + (a.unavailable === 'error' || a.status === 'error' ? 'error' : 'throttled'), '⚠️ ' + unavailText);
+      var isCritical = a.unavailable === 'error' || a.status === 'error' || a.unavailable === 'identity-verification';
+      var unavailBadge = el('span', 'badge ' + (isCritical ? 'error' : 'throttled'), '⚠️ ' + unavailText);
       unavailBadge.title = 'Blokada konta: ' + (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable);
       titleGroup.appendChild(unavailBadge);
     }
@@ -1464,6 +1475,14 @@ ${SHARED_HELPERS}
       if (tokenParts.length) {
         meta.appendChild(el('span', 'card-meta-item', '🔑 ' + tokenParts.join(' · ')));
       }
+    }
+
+    if (a.identityVerificationUntil && parseTs(a.identityVerificationUntil) > Date.now()) {
+      var idSec = (parseTs(a.identityVerificationUntil) - Date.now()) / 1000;
+      meta.appendChild(el('span', 'card-meta-item bad', '⚠️ Weryfikacja: cooldown ' + fmtIn(idSec)));
+    } else if (a.entitlementDeniedUntil && parseTs(a.entitlementDeniedUntil) > Date.now()) {
+      var entSec = (parseTs(a.entitlementDeniedUntil) - Date.now()) / 1000;
+      meta.appendChild(el('span', 'card-meta-item warn', '⏳ Entitlement: ' + fmtIn(entSec)));
     }
 
     if (a.sessions) {
@@ -2513,7 +2532,22 @@ ${SHARED_HELPERS}
     var cmdCodexPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/codexlb-setup.ps1))) -Key "' + key + '"';
     var cmdNode = 'curl -fsSL ' + hostUrl + '/setup.js | node - --key ' + key;
     var cmdGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/setup.sh --key ' + key;
-    var manualText = '# Claude Code CLI:\\nexport ANTHROPIC_BASE_URL="' + hostUrl + '"\\nexport ANTHROPIC_API_KEY="' + key + '"\\n\\n# OpenAI Codex CLI:\\nexport CODEX_BASE_URL="' + hostUrl + '/backend-api/codex"\\nexport CODEX_LB_API_KEY="' + key + '"\\nexport OPENAI_BASE_URL="' + hostUrl + '/v1"';
+    var manualText = [
+      '# Claude Code CLI (OAuth / subscription — zalecane):',
+      'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
+      'unset ANTHROPIC_API_KEY  # zachowaj sesje OAuth Claude Code',
+      'export ANTHROPIC_CUSTOM_HEADERS="x-api-key: ' + key + '"',
+      '',
+      '# Claude Code CLI (tryb API key — gdy nie korzystasz z logowania Claude.ai):',
+      'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
+      'export ANTHROPIC_API_KEY="' + key + '"',
+      'unset ANTHROPIC_CUSTOM_HEADERS',
+      '',
+      '# OpenAI Codex CLI:',
+      'export CODEX_BASE_URL="' + hostUrl + '/backend-api/codex"',
+      'export CODEX_LB_API_KEY="' + key + '"',
+      'export OPENAI_BASE_URL="' + hostUrl + '/v1"'
+    ].join('\\n');
 
     document.getElementById('cmdSetupBash').textContent = cmdBash;
     document.getElementById('cmdSetupCodexBash').textContent = cmdCodexBash;
@@ -3115,7 +3149,18 @@ ${SHARED_HELPERS}
     btnCopyShellEnv.addEventListener('click', function () {
       var k = document.getElementById('createdClientKey').textContent;
       var hostUrl = window.location.origin;
-      copyToClipboard('export ANTHROPIC_BASE_URL="' + hostUrl + '"\\nexport ANTHROPIC_API_KEY="' + k + '"', 'Shell env');
+      var shellText = [
+        '# Claude Code CLI (OAuth / subscription):',
+        'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
+        'unset ANTHROPIC_API_KEY',
+        'export ANTHROPIC_CUSTOM_HEADERS="x-api-key: ' + k + '"',
+        '',
+        '# OpenAI Codex CLI:',
+        'export CODEX_BASE_URL="' + hostUrl + '/backend-api/codex"',
+        'export CODEX_LB_API_KEY="' + k + '"',
+        'export OPENAI_BASE_URL="' + hostUrl + '/v1"'
+      ].join('\\n');
+      copyToClipboard(shellText, 'Shell env');
     });
   }
 
@@ -3126,7 +3171,7 @@ ${SHARED_HELPERS}
       var hostUrl = window.location.origin;
       var snippet = JSON.stringify([
         { name: 'ANTHROPIC_BASE_URL', value: hostUrl },
-        { name: 'ANTHROPIC_API_KEY', value: k }
+        { name: 'ANTHROPIC_CUSTOM_HEADERS', value: 'x-api-key: ' + k }
       ], null, 2);
       copyToClipboard(snippet, 'VS Code JSON');
     });

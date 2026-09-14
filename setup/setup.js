@@ -250,8 +250,23 @@ function shQuote(value) {
   return single + String(value).replaceAll(single, single + double + single + double + single) + single;
 }
 
-function proxyCustomHeaders(key) {
-  return `x-api-key: ${key}`;
+function setCustomHeader(existing, name, value) {
+  const target = `${name.toLowerCase()}:`;
+  const lines = String(existing || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const kept = lines.filter(l => !l.toLowerCase().startsWith(target));
+  kept.push(`${name}: ${value}`);
+  return kept.join('\n');
+}
+
+function removeCustomHeader(existing, name) {
+  const target = `${name.toLowerCase()}:`;
+  const lines = String(existing || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const kept = lines.filter(l => !l.toLowerCase().startsWith(target));
+  return kept.length > 0 ? kept.join('\n') : undefined;
+}
+
+function proxyCustomHeaders(key, existing) {
+  return setCustomHeader(existing, 'x-api-key', key);
 }
 
 function keyFromCustomHeaders(value) {
@@ -277,7 +292,9 @@ function uninstallClientSettings() {
     if (settings.env && typeof settings.env === 'object') {
       delete settings.env.ANTHROPIC_BASE_URL;
       delete settings.env.ANTHROPIC_API_KEY;
-      delete settings.env.ANTHROPIC_CUSTOM_HEADERS;
+      const rem = removeCustomHeader(settings.env.ANTHROPIC_CUSTOM_HEADERS, 'x-api-key');
+      if (rem) settings.env.ANTHROPIC_CUSTOM_HEADERS = rem;
+      else delete settings.env.ANTHROPIC_CUSTOM_HEADERS;
       if (Object.keys(settings.env).length === 0) delete settings.env;
     }
     writeJsonSafe(claudePath, settings);
@@ -289,7 +306,17 @@ function uninstallClientSettings() {
   const vscodePath = path.join(vscodeDir, 'settings.json');
   const vs = safeReadJson(vscodePath);
   if (vs) {
-    delete vs['claudeCode.environmentVariables'];
+    if (Array.isArray(vs['claudeCode.environmentVariables'])) {
+      let envVars = vs['claudeCode.environmentVariables'].filter(e => e.name !== 'ANTHROPIC_BASE_URL' && e.name !== 'ANTHROPIC_API_KEY');
+      const customHdr = envVars.find(e => e.name === 'ANTHROPIC_CUSTOM_HEADERS')?.value;
+      const rem = removeCustomHeader(customHdr, 'x-api-key');
+      envVars = envVars.filter(e => e.name !== 'ANTHROPIC_CUSTOM_HEADERS');
+      if (rem) envVars.push({ name: 'ANTHROPIC_CUSTOM_HEADERS', value: rem });
+      if (envVars.length > 0) vs['claudeCode.environmentVariables'] = envVars;
+      else delete vs['claudeCode.environmentVariables'];
+    } else {
+      delete vs['claudeCode.environmentVariables'];
+    }
     delete vs['claudeCode.disableLoginPrompt'];
     writeJsonSafe(vscodePath, vs);
   }
@@ -433,10 +460,12 @@ async function main() {
     claudeSettings.env.ANTHROPIC_BASE_URL = targetUrl;
     if (oauthSession) {
       delete claudeSettings.env.ANTHROPIC_API_KEY;
-      claudeSettings.env.ANTHROPIC_CUSTOM_HEADERS = proxyCustomHeaders(apiKey);
+      claudeSettings.env.ANTHROPIC_CUSTOM_HEADERS = proxyCustomHeaders(apiKey, claudeSettings.env.ANTHROPIC_CUSTOM_HEADERS);
     } else {
       claudeSettings.env.ANTHROPIC_API_KEY = apiKey;
-      delete claudeSettings.env.ANTHROPIC_CUSTOM_HEADERS;
+      const rem = removeCustomHeader(claudeSettings.env.ANTHROPIC_CUSTOM_HEADERS, 'x-api-key');
+      if (rem) claudeSettings.env.ANTHROPIC_CUSTOM_HEADERS = rem;
+      else delete claudeSettings.env.ANTHROPIC_CUSTOM_HEADERS;
     }
     writeJsonSafe(claudeSettingsPath, claudeSettings, 0o600);
     console.log(`[OK] Zaktualizowano ${claudeSettingsPath} (CLI Claude Code).`);
@@ -461,10 +490,26 @@ async function main() {
       try {
         let vsSettings = safeReadJson(vscodeSettingsFile) || {};
         vsSettings['claudeCode.disableLoginPrompt'] = true;
-        const claudeEnvironmentVariables = [{ name: 'ANTHROPIC_BASE_URL', value: targetUrl }];
-        if (oauthSession) claudeEnvironmentVariables.push({ name: 'ANTHROPIC_CUSTOM_HEADERS', value: proxyCustomHeaders(apiKey) });
-        else claudeEnvironmentVariables.push({ name: 'ANTHROPIC_API_KEY', value: apiKey });
-        vsSettings['claudeCode.environmentVariables'] = claudeEnvironmentVariables;
+        let envVars = Array.isArray(vsSettings['claudeCode.environmentVariables'])
+          ? [...vsSettings['claudeCode.environmentVariables']]
+          : [];
+        envVars = envVars.filter(e => e.name !== 'ANTHROPIC_BASE_URL');
+        envVars.push({ name: 'ANTHROPIC_BASE_URL', value: targetUrl });
+        if (oauthSession) {
+          envVars = envVars.filter(e => e.name !== 'ANTHROPIC_API_KEY');
+          const existingHdr = envVars.find(e => e.name === 'ANTHROPIC_CUSTOM_HEADERS')?.value;
+          const updatedHdr = proxyCustomHeaders(apiKey, existingHdr);
+          envVars = envVars.filter(e => e.name !== 'ANTHROPIC_CUSTOM_HEADERS');
+          envVars.push({ name: 'ANTHROPIC_CUSTOM_HEADERS', value: updatedHdr });
+        } else {
+          envVars = envVars.filter(e => e.name !== 'ANTHROPIC_API_KEY');
+          envVars.push({ name: 'ANTHROPIC_API_KEY', value: apiKey });
+          const existingHdr = envVars.find(e => e.name === 'ANTHROPIC_CUSTOM_HEADERS')?.value;
+          const rem = removeCustomHeader(existingHdr, 'x-api-key');
+          envVars = envVars.filter(e => e.name !== 'ANTHROPIC_CUSTOM_HEADERS');
+          if (rem) envVars.push({ name: 'ANTHROPIC_CUSTOM_HEADERS', value: rem });
+        }
+        vsSettings['claudeCode.environmentVariables'] = envVars;
 
         writeJsonSafe(vscodeSettingsFile, vsSettings, 0o600);
         console.log(`[OK] Skonfigurowano oficjalne rozszerzenie Claude Code w VS Code (${vscodeSettingsFile}).`);
@@ -500,8 +545,16 @@ async function main() {
         const psQuote = (value) => String(value).replaceAll("'", "''");
         let winCmd = `[Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', '${psQuote(targetUrl)}', 'User'); `
           + (oauthSession
-            ? `[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $null, 'User'); [Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', '${psQuote(proxyCustomHeaders(apiKey))}', 'User')`
-            : `[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', '${psQuote(apiKey)}', 'User'); [Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $null, 'User')`);
+            ? `[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', $null, 'User'); `
+              + `$currentHdr = [Environment]::GetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', 'User'); `
+              + `$hdrLines = @(); if ($currentHdr) { $hdrLines = $currentHdr -split '\\r?\\n' | Where-Object { $_ -and -not $_.ToLower().StartsWith('x-api-key:') } }; `
+              + `$hdrLines += 'x-api-key: ${psQuote(apiKey)}'; `
+              + `[Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', ($hdrLines -join [char]10), 'User')`
+            : `[Environment]::SetEnvironmentVariable('ANTHROPIC_API_KEY', '${psQuote(apiKey)}', 'User'); `
+              + `$currentHdr = [Environment]::GetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', 'User'); `
+              + `if ($currentHdr) { $hdrLines = $currentHdr -split '\\r?\\n' | Where-Object { $_ -and -not $_.ToLower().StartsWith('x-api-key:') }; `
+              + `if ($hdrLines.Count -gt 0) { [Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', ($hdrLines -join [char]10), 'User') } `
+              + `else { [Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $null, 'User') } }`);
         if (setupCodex || fs.existsSync(codexDir)) {
           winCmd += `; [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', '${targetUrl}/backend-api/codex', 'User'); [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', '${targetUrl}/v1', 'User')`;
         }
@@ -520,10 +573,13 @@ async function main() {
         let envContent = `# Claude-LB / TeamClaude environment configuration\nexport ANTHROPIC_BASE_URL=${shQuote(targetUrl)}\n`;
         if (oauthSession) {
           envContent += 'unset ANTHROPIC_API_KEY  # preserve Claude Code OAuth session\n';
-          envContent += `export ANTHROPIC_CUSTOM_HEADERS=${shQuote(proxyCustomHeaders(apiKey))}\n`;
+          const customHeaders = proxyCustomHeaders(apiKey, process.env.ANTHROPIC_CUSTOM_HEADERS);
+          envContent += `export ANTHROPIC_CUSTOM_HEADERS=${shQuote(customHeaders)}\n`;
         } else {
           envContent += `export ANTHROPIC_API_KEY=${shQuote(apiKey)}\n`;
-          envContent += 'unset ANTHROPIC_CUSTOM_HEADERS\n';
+          const rem = removeCustomHeader(process.env.ANTHROPIC_CUSTOM_HEADERS, 'x-api-key');
+          if (rem) envContent += `export ANTHROPIC_CUSTOM_HEADERS=${shQuote(rem)}\n`;
+          else envContent += 'unset ANTHROPIC_CUSTOM_HEADERS\n';
         }
         envContent += `export CODEX_LB_API_KEY=${shQuote(apiKey)}\n`;
         if (setupCodex || fs.existsSync(codexDir)) {
@@ -560,10 +616,12 @@ async function main() {
       const testEnv = { ...process.env, ANTHROPIC_BASE_URL: targetUrl };
       if (oauthSession) {
         delete testEnv.ANTHROPIC_API_KEY;
-        testEnv.ANTHROPIC_CUSTOM_HEADERS = proxyCustomHeaders(apiKey);
+        testEnv.ANTHROPIC_CUSTOM_HEADERS = proxyCustomHeaders(apiKey, testEnv.ANTHROPIC_CUSTOM_HEADERS);
       } else {
         testEnv.ANTHROPIC_API_KEY = apiKey;
-        delete testEnv.ANTHROPIC_CUSTOM_HEADERS;
+        const rem = removeCustomHeader(testEnv.ANTHROPIC_CUSTOM_HEADERS, 'x-api-key');
+        if (rem) testEnv.ANTHROPIC_CUSTOM_HEADERS = rem;
+        else delete testEnv.ANTHROPIC_CUSTOM_HEADERS;
       }
       const output = execSync('claude --version', {
         env: testEnv,
