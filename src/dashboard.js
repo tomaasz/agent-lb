@@ -2306,7 +2306,7 @@ ${SHARED_HELPERS}
       btn.disabled = true;
       btn.textContent = '⏳ ...';
     }
-    var model = provider === 'codex' ? 'gpt-5.6-sol' : 'claude-sonnet-5';
+    var model = provider === 'codex' ? 'gpt-5.6-sol' : 'claude-haiku-4-5-20251001';
     note('ok', 'Wysyłanie zapytania testowego do konta "' + name + '"...');
     apiCall('/api/test/chat', 'POST', {
       provider: provider,
@@ -3870,11 +3870,11 @@ ${SHARED_HELPERS}
 
   // --- Test Chat (Playground) ---
   var CLAUDE_MODELS = [
-    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Aktywny / Szybki)' },
+    { id: 'claude-opus-5', name: 'Claude Opus 5 (Flagowy / Główny)' },
     { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (Domyślny Claude Code)' },
-    { id: 'claude-opus-5', name: 'Claude Opus 5' },
-    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Szybki / Lekki ping)' },
     { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
+    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
   ];
 
   var CODEX_MODELS = [
