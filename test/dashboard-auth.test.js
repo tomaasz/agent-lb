@@ -211,6 +211,37 @@ describe('Dashboard Authentication and Layout', () => {
       assert.equal(adminKeysData.keys[0].key, 'worker-secret-1234');
       assert.equal(adminKeysData.keys[0].rawKey, 'worker-secret-1234');
       assert.equal(adminKeysData.keys[0].maskedKey, 'work...1234');
+
+      // /api/auth/verify: Admin key succeeds
+      const authAdminRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/auth/verify`, {
+        headers: { 'x-api-key': 'admin-secret' }
+      });
+      assert.equal(authAdminRes.status, 200);
+      const authAdminData = await authAdminRes.json();
+      assert.equal(authAdminData.ok, true);
+      assert.equal(authAdminData.role, 'admin');
+
+      // /api/auth/verify: Client key returns 403 with specific guidance
+      const authClientRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/auth/verify`, {
+        headers: {
+          'x-forwarded-for': '203.0.113.195',
+          'x-api-key': 'worker-secret-1234'
+        }
+      });
+      assert.equal(authClientRes.status, 403);
+      const authClientData = await authClientRes.json();
+      assert.equal(authClientData.isClientKey, true);
+      assert.equal(authClientData.clientName, 'worker');
+      assert.ok(authClientData.error.includes('worker'));
+
+      // /api/auth/verify: Invalid key returns 401
+      const authInvalidRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/auth/verify`, {
+        headers: {
+          'x-forwarded-for': '203.0.113.195',
+          'x-api-key': 'totally-wrong'
+        }
+      });
+      assert.equal(authInvalidRes.status, 401);
     } finally {
       delete process.env.AGENT_LB_CONFIG;
       await new Promise(res => server.close(res));

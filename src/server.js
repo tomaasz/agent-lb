@@ -717,6 +717,19 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           res.end(JSON.stringify({ ok: true, authenticated: true, passwordRequired: true, role: 'admin' }));
           return;
         }
+        const clientAuth = clientKey ? resolveClientAuth(config.proxy, clientKey) : null;
+        if (clientAuth?.client) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            ok: false,
+            authenticated: false,
+            passwordRequired: true,
+            isClientKey: true,
+            clientName: clientAuth.client,
+            error: `Podany klucz należy do klienta „${clientAuth.client}” (stacji roboczej). Do logowania w panelu wymagany jest klucz administracyjny (proxy.apiKey). Użyj tego klucza w konfiguracji CLI.`
+          }));
+          return;
+        }
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, authenticated: false, passwordRequired: true, error: 'Wymagana autoryzacja administratora' }));
         return;
@@ -733,6 +746,18 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         if (!hasAdminKey || (candidate && safeKeyEqual(candidate, config.proxy.apiKey))) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, authenticated: true, role: 'admin' }));
+          return;
+        }
+        const clientAuth = candidate ? resolveClientAuth(config.proxy, candidate) : null;
+        if (clientAuth?.client) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            ok: false,
+            authenticated: false,
+            isClientKey: true,
+            clientName: clientAuth.client,
+            error: `Podany klucz należy do klienta „${clientAuth.client}” (stacji roboczej). Do logowania w panelu wymagany jest klucz administracyjny (proxy.apiKey). Użyj tego klucza w konfiguracji CLI.`
+          }));
           return;
         }
         res.writeHead(401, { 'Content-Type': 'application/json' });

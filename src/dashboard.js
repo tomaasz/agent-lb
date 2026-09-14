@@ -2965,7 +2965,11 @@ ${SHARED_HELPERS}
           start();
         } else {
           localStorage.removeItem(KEY);
-          showKeybox('Sesja wygasła lub klucz API jest nieprawidłowy.');
+          return res.json().then(function (errData) {
+            showKeybox(errData && errData.error ? errData.error : 'Sesja wygasła lub klucz API jest nieprawidłowy.');
+          }).catch(function () {
+            showKeybox('Sesja wygasła lub klucz API jest nieprawidłowy.');
+          });
         }
       })
       .catch(function () {
@@ -2997,7 +3001,11 @@ ${SHARED_HELPERS}
           document.getElementById('app').style.display = '';
           start();
         } else {
-          showKeybox('Nieprawidłowe hasło lub klucz administracyjny.');
+          return res.json().then(function (errData) {
+            showKeybox(errData && errData.error ? errData.error : 'Nieprawidłowe hasło lub klucz administracyjny.');
+          }).catch(function () {
+            showKeybox('Nieprawidłowe hasło lub klucz administracyjny.');
+          });
         }
       })
       .catch(function (e) {
