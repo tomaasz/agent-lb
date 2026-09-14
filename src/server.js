@@ -1580,6 +1580,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             const payload = isOauth
               ? {
                   model,
+                  store: false,
                   input: [{ role: 'user', content: [{ type: 'input_text', text: message }] }]
                 }
               : {
