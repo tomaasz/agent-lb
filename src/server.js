@@ -1442,6 +1442,233 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
+      // Test Chat Endpoint (POST /api/test/chat & POST /api/chat/test)
+      if (req.method === 'POST' && (normApiPath === '/api/test/chat' || normApiPath === '/api/chat/test')) {
+        let body;
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch (err) {
+          const tooLarge = err.message === 'body too large';
+          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          return;
+        }
+
+        const provider = (body?.provider || 'anthropic').toLowerCase();
+        const model = typeof body?.model === 'string' && body.model.trim() ? body.model.trim() : (provider === 'codex' ? 'gpt-5.6-sol' : 'claude-sonnet-5');
+        const message = typeof body?.message === 'string' && body.message.trim() ? body.message.trim() : 'Test połączenia z Agent-LB. Odpowiedz krótko w jednym zdaniu kim jesteś.';
+        const targetAccount = typeof body?.account === 'string' && body.account.trim() ? body.account.trim() : null;
+
+        // Find or select account
+        let account = null;
+        if (targetAccount) {
+          account = accountManager.accounts.find(a => a.name === targetAccount);
+          if (!account) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: `Konto "${targetAccount}" nie zostało znalezione.` }));
+            return;
+          }
+        } else {
+          account = accountManager.getActiveAccount(null, model, null, null, provider);
+        }
+
+        if (!account) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            ok: false,
+            error: accountManager.exhaustedMessage(model, 0, provider) || `Brak dostępnych aktywnych kont dla dostawcy ${provider}. Wszystkie konta wyczerpały limity lub są w trybie cooldown.`
+          }));
+          return;
+        }
+
+        const servingProvider = providerOf(account);
+        const isFallback = servingProvider !== provider;
+        const startTime = Date.now();
+
+        try {
+          let upstreamRes;
+          let replyText = '';
+          let usage = null;
+          let responseModel = model;
+
+          if (servingProvider === 'anthropic') {
+            const upstreamUrl = `${upstreamFor(account, upstream)}/v1/messages`;
+            const payload = {
+              model,
+              max_tokens: 512,
+              messages: [{ role: 'user', content: message }]
+            };
+            const reqHeaders = {
+              'content-type': 'application/json',
+              'anthropic-version': '2023-06-01',
+              'accept': 'application/json'
+            };
+            applyAuthHeaders(reqHeaders, account);
+
+            upstreamRes = await fetch(upstreamUrl, {
+              method: 'POST',
+              headers: reqHeaders,
+              body: JSON.stringify(payload)
+            });
+
+            const durationMs = Date.now() - startTime;
+            if (upstreamRes.ok) {
+              const data = await upstreamRes.json();
+              responseModel = data.model || model;
+              replyText = Array.isArray(data.content)
+                ? data.content.map(c => c.text || '').join('')
+                : (data.text || JSON.stringify(data));
+              usage = data.usage || null;
+              accountManager.recordAccountSuccess(account);
+              if (usage && auth.client) {
+                clientUsage?.record(auth.client, {
+                  requests: 1,
+                  inputTokens: usage.input_tokens || 0,
+                  outputTokens: usage.output_tokens || 0
+                });
+              }
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({
+                ok: true,
+                provider,
+                servingProvider,
+                isFallback,
+                account: account.name,
+                model: responseModel,
+                reply: replyText,
+                usage,
+                durationMs
+              }));
+              return;
+            } else {
+              let errorMsg = `HTTP ${upstreamRes.status}`;
+              try {
+                const errData = await upstreamRes.json();
+                errorMsg = errData.error?.message || errData.message || JSON.stringify(errData);
+              } catch {
+                errorMsg = await upstreamRes.text().catch(() => errorMsg);
+              }
+              if (upstreamRes.status >= 500) accountManager.recordAccountFailure(account);
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({
+                ok: false,
+                status: upstreamRes.status,
+                provider,
+                servingProvider,
+                isFallback,
+                account: account.name,
+                model,
+                error: errorMsg,
+                durationMs
+              }));
+              return;
+            }
+          } else {
+            // Codex / OpenAI
+            const isOauth = account.type === 'oauth';
+            const upstreamUrl = isOauth
+              ? `${upstreamFor(account)}/backend-api/codex/responses`
+              : `${upstreamFor(account)}/v1/chat/completions`;
+
+            const reqHeaders = {
+              'content-type': 'application/json',
+              'accept': 'application/json'
+            };
+            applyAuthHeaders(reqHeaders, account);
+
+            const payload = isOauth
+              ? {
+                  model,
+                  input: [{ role: 'user', content: [{ type: 'input_text', text: message }] }]
+                }
+              : {
+                  model,
+                  messages: [{ role: 'user', content: message }]
+                };
+
+            upstreamRes = await fetch(upstreamUrl, {
+              method: 'POST',
+              headers: reqHeaders,
+              body: JSON.stringify(payload)
+            });
+
+            const durationMs = Date.now() - startTime;
+            if (upstreamRes.ok) {
+              const data = await upstreamRes.json();
+              responseModel = data.model || model;
+              if (isOauth) {
+                replyText = data.output?.[0]?.content?.[0]?.text
+                  || data.message?.content?.parts?.[0]
+                  || (typeof data.response === 'string' ? data.response : '')
+                  || (data.choices?.[0]?.message?.content)
+                  || JSON.stringify(data);
+              } else {
+                replyText = data.choices?.[0]?.message?.content || '';
+              }
+              usage = data.usage || null;
+              accountManager.recordAccountSuccess(account);
+              if (usage && auth.client) {
+                clientUsage?.record(auth.client, {
+                  requests: 1,
+                  inputTokens: usage.prompt_tokens || usage.input_tokens || 0,
+                  outputTokens: usage.completion_tokens || usage.output_tokens || 0
+                });
+              }
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({
+                ok: true,
+                provider,
+                servingProvider,
+                isFallback,
+                account: account.name,
+                model: responseModel,
+                reply: replyText,
+                usage,
+                durationMs
+              }));
+              return;
+            } else {
+              let errorMsg = `HTTP ${upstreamRes.status}`;
+              try {
+                const errData = await upstreamRes.json();
+                errorMsg = errData.error?.message || errData.detail || errData.message || JSON.stringify(errData);
+              } catch {
+                errorMsg = await upstreamRes.text().catch(() => errorMsg);
+              }
+              if (upstreamRes.status >= 500) accountManager.recordAccountFailure(account);
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({
+                ok: false,
+                status: upstreamRes.status,
+                provider,
+                servingProvider,
+                isFallback,
+                account: account.name,
+                model,
+                error: errorMsg,
+                durationMs
+              }));
+              return;
+            }
+          }
+        } catch (netErr) {
+          accountManager.recordAccountFailure(account);
+          const durationMs = Date.now() - startTime;
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            ok: false,
+            provider,
+            servingProvider,
+            account: account.name,
+            model,
+            error: `Błąd połączenia z upstreamem: ${netErr.message}`,
+            durationMs
+          }));
+          return;
+        }
+      }
+
       // Accounts: Export (GET /api/accounts/export & GET /accounts/export)
       if (req.method === 'GET' && (normApiPath === '/api/accounts/export' || normApiPath === '/accounts/export')) {
         const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);

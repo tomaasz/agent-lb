@@ -593,6 +593,7 @@ const PAGE = `<!doctype html>
       </div>
 
       <div class="header-actions">
+        <button class="btn btn-sm btn-accent" id="btnOpenTestChat" title="Otwórz interaktywny czat testowy dla Claude i Codex">💬 Test Chat</button>
         <button class="btn btn-sm" id="btnProbeQuota" title="Odpytaj o aktualne zużycie limitów i salda kont">⚡ Odśwież salda</button>
         <button class="btn btn-sm" id="btnReloadFleet" title="Przeładuj flotę kont z dysku">🔄 Przeładuj flotę</button>
         <button class="btn btn-sm btn-bad" id="btnLogout" title="Wyloguj z panelu">🚪 Wyloguj</button>
@@ -730,6 +731,73 @@ const PAGE = `<!doctype html>
       </div>
     </div>
     <footer id="foot"></footer>
+  </div>
+
+  <!-- MODAL: TEST CHAT -->
+  <div id="modalTestChat" class="modal-backdrop" style="display:none;">
+    <div class="modal-box" style="max-width:700px; width:95%; display:flex; flex-direction:column; max-height:92vh;">
+      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--line);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-weight:700; font-size:16px;">💬 Test Chat — Claude & Codex Playground</span>
+          <span class="badge" style="background:rgba(88,166,255,0.15); color:var(--accent); font-size:10.5px;">Live Upstream Test</span>
+        </div>
+        <button class="btn btn-sm" id="btnCloseTestChat">✕ Zamknij</button>
+      </div>
+
+      <!-- Controls row -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px; margin-bottom:10px; background:rgba(13,17,23,0.6); padding:10px 12px; border:1px solid var(--line); border-radius:6px;">
+        <div>
+          <label for="selTestProvider" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;">Dostawca (Provider):</label>
+          <select id="selTestProvider" class="btn btn-sm" style="width:100%; text-align:left; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:4px 8px;">
+            <option value="anthropic">🟣 Claude (Anthropic)</option>
+            <option value="codex">🟢 Codex (ChatGPT / OpenAI)</option>
+          </select>
+        </div>
+        <div>
+          <label for="selTestModel" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;">Model:</label>
+          <select id="selTestModel" class="btn btn-sm" style="width:100%; text-align:left; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:4px 8px;">
+            <!-- populated dynamically according to provider -->
+          </select>
+        </div>
+        <div>
+          <label for="selTestAccount" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;">Konto (Routing):</label>
+          <select id="selTestAccount" class="btn btn-sm" style="width:100%; text-align:left; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:4px 8px;">
+            <option value="">⚡ Auto (Agent-LB Policy)</option>
+            <!-- populated with account list -->
+          </select>
+        </div>
+      </div>
+
+      <!-- Quick prompts pills -->
+      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:10px;">
+        <span style="font-size:11px; color:var(--dim);">Szybkie testy:</span>
+        <button type="button" class="btn btn-xs quick-prompt-btn" data-prompt="Cześć! Przedstaw się w jednym zdaniu i potwierdź, że połączenie działa." style="border-radius:12px; font-size:10.5px; padding:2px 8px; background:rgba(88,166,255,0.1); border-color:rgba(88,166,255,0.3); color:#79c0ff;">👋 Przedstaw się</button>
+        <button type="button" class="btn btn-xs quick-prompt-btn" data-prompt="Odpowiedz jednym słowem: PONG" style="border-radius:12px; font-size:10.5px; padding:2px 8px; background:rgba(88,166,255,0.1); border-color:rgba(88,166,255,0.3); color:#79c0ff;">⚡ Ping</button>
+        <button type="button" class="btn btn-xs quick-prompt-btn" data-prompt="Oblicz 256 * 64 i podaj sam wynik liczbowy." style="border-radius:12px; font-size:10.5px; padding:2px 8px; background:rgba(88,166,255,0.1); border-color:rgba(88,166,255,0.3); color:#79c0ff;">🧮 256 * 64</button>
+        <button type="button" class="btn btn-xs quick-prompt-btn" data-prompt="Napisz zwięzłe dwuwersowe haiku o load balancerze Claude." style="border-radius:12px; font-size:10.5px; padding:2px 8px; background:rgba(88,166,255,0.1); border-color:rgba(88,166,255,0.3); color:#79c0ff;">📝 Haiku</button>
+      </div>
+
+      <!-- Chat History Box -->
+      <div id="testChatHistory" style="flex:1; min-height:240px; max-height:380px; overflow-y:auto; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:12px; margin-bottom:12px; display:flex; flex-direction:column; gap:12px;">
+        <div id="testChatPlaceholder" style="margin:auto; text-align:center; color:var(--dim); font-size:12px;">
+          <div style="font-size:26px; margin-bottom:6px;">💬</div>
+          Wybierz dostawcę i model, a następnie wpisz wiadomość lub kliknij szybki test.<br>
+          Żądanie zostanie wysłane przez silnik Agent-LB bezpośrednio do wybranego upstreamu.
+        </div>
+      </div>
+
+      <!-- Chat Input and Actions -->
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <textarea id="testChatMessage" rows="2" placeholder="Wpisz treść wiadomości testowej (Enter wysyła, Shift+Enter nowa linia)..." style="width:100%; box-sizing:border-box; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-family:inherit; font-size:12.5px; resize:vertical;"></textarea>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <button class="btn btn-sm" id="btnTestChatClear" type="button" style="font-size:11px; padding:4px 10px;">🗑️ Wyczyść historię</button>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <span id="testChatStatus" style="font-size:11.5px; color:var(--dim);"></span>
+            <button class="btn btn-sm btn-accent" id="btnTestChatSend" type="button" style="font-weight:600; padding:5px 16px;">Wyślij zapytanie 🚀</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- MODAL: ADD ACCOUNT -->
@@ -3559,10 +3627,12 @@ ${SHARED_HELPERS}
       closeModal('modalAddClientKey');
       closeModal('modalKeyCreated');
       closeModal('modalRelogin');
+      closeModal('modalTestChat');
     }
   });
 
   ['modalAddAccount', 'modalAddClientKey', 'modalKeyCreated', 'modalRelogin'].forEach(function (id) {
+  ['modalAddAccount', 'modalAddClientKey', 'modalKeyCreated', 'modalRelogin', 'modalTestChat'].forEach(function (id) {
     var m = document.getElementById(id);
     if (m) {
       m.addEventListener('click', function (e) {
@@ -3580,6 +3650,262 @@ ${SHARED_HELPERS}
   if (chkFb) chkFb.addEventListener('change', updateFleetRouting);
   var btnDrain = document.getElementById('btnDrainToggle');
   if (btnDrain) btnDrain.addEventListener('click', toggleDrain);
+
+  // --- Test Chat (Playground) ---
+  var CLAUDE_MODELS = [
+    { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (Domyślny Claude Code)' },
+    { id: 'claude-opus-5', name: 'Claude Opus 5' },
+    { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet' },
+    { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet v2' },
+    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
+  ];
+
+  var CODEX_MODELS = [
+    { id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol (Domyślny ChatGPT Codex)' },
+    { id: 'gpt-5.6', name: 'GPT 5.6' },
+    { id: 'o3-mini', name: 'o3-mini' },
+    { id: 'o1', name: 'o1' },
+    { id: 'gpt-4o', name: 'GPT-4o' },
+  ];
+
+  function updateTestModelsAndAccounts() {
+    var provEl = document.getElementById('selTestProvider');
+    var selModel = document.getElementById('selTestModel');
+    var selAccount = document.getElementById('selTestAccount');
+    if (!provEl || !selModel || !selAccount) return;
+
+    var prov = provEl.value;
+    selModel.innerHTML = '';
+    selAccount.innerHTML = '<option value="">⚡ Auto (Agent-LB Policy)</option>';
+
+    var models = prov === 'codex' ? CODEX_MODELS : CLAUDE_MODELS;
+    models.forEach(function (m) {
+      var opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.name;
+      selModel.appendChild(opt);
+    });
+
+    var accounts = (lastStatus && lastStatus.accounts) || [];
+    accounts.forEach(function (a) {
+      var aProv = a.provider || 'anthropic';
+      if (aProv === prov) {
+        var opt = document.createElement('option');
+        opt.value = a.name;
+        opt.textContent = a.name + (a.status !== 'active' ? ' (' + a.status + ')' : '');
+        selAccount.appendChild(opt);
+      }
+    });
+  }
+
+  function addTestChatBubble(role, text, meta) {
+    var history = document.getElementById('testChatHistory');
+    var placeholder = document.getElementById('testChatPlaceholder');
+    if (placeholder) placeholder.style.display = 'none';
+
+    var wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.flexDirection = 'column';
+    wrap.style.maxWidth = '85%';
+    wrap.style.gap = '4px';
+
+    if (role === 'user') {
+      wrap.style.alignSelf = 'flex-end';
+      wrap.style.alignItems = 'flex-end';
+    } else {
+      wrap.style.alignSelf = 'flex-start';
+      wrap.style.alignItems = 'flex-start';
+    }
+
+    var bubble = document.createElement('div');
+    bubble.style.padding = '8px 12px';
+    bubble.style.borderRadius = '8px';
+    bubble.style.fontSize = '12.5px';
+    bubble.style.lineHeight = '1.45';
+    bubble.style.wordBreak = 'break-word';
+    bubble.style.whiteSpace = 'pre-wrap';
+
+    if (role === 'user') {
+      bubble.style.background = 'rgba(88, 166, 255, 0.2)';
+      bubble.style.border = '1px solid rgba(88, 166, 255, 0.4)';
+      bubble.style.color = '#f0f6fc';
+    } else if (meta && meta.error) {
+      bubble.style.background = 'rgba(248, 81, 73, 0.15)';
+      bubble.style.border = '1px solid rgba(248, 81, 73, 0.35)';
+      bubble.style.color = '#f85149';
+    } else {
+      bubble.style.background = 'rgba(22, 27, 34, 0.9)';
+      bubble.style.border = '1px solid var(--line)';
+      bubble.style.color = 'var(--text)';
+    }
+
+    bubble.textContent = text;
+    wrap.appendChild(bubble);
+
+    if (meta) {
+      var metaRow = document.createElement('div');
+      metaRow.style.display = 'flex';
+      metaRow.style.flexWrap = 'wrap';
+      metaRow.style.gap = '6px';
+      metaRow.style.fontSize = '10px';
+      metaRow.style.color = 'var(--dim)';
+      metaRow.style.marginTop = '2px';
+
+      if (meta.account) {
+        var accBadge = document.createElement('span');
+        accBadge.className = 'badge';
+        accBadge.style.fontSize = '10px';
+        accBadge.textContent = (meta.isFallback ? '🔄 Fallback: ' : '👤 Konto: ') + meta.account;
+        metaRow.appendChild(accBadge);
+      }
+      if (meta.model) {
+        var modBadge = document.createElement('span');
+        modBadge.className = 'badge';
+        modBadge.style.fontSize = '10px';
+        modBadge.textContent = '🤖 ' + meta.model;
+        metaRow.appendChild(modBadge);
+      }
+      if (meta.durationMs != null) {
+        var timeBadge = document.createElement('span');
+        timeBadge.className = 'badge';
+        timeBadge.style.fontSize = '10px';
+        timeBadge.textContent = '⏱️ ' + meta.durationMs + ' ms';
+        metaRow.appendChild(timeBadge);
+      }
+      if (meta.usage) {
+        var inTok = meta.usage.input_tokens || meta.usage.prompt_tokens || 0;
+        var outTok = meta.usage.output_tokens || meta.usage.completion_tokens || 0;
+        var tokBadge = document.createElement('span');
+        tokBadge.className = 'badge';
+        tokBadge.style.fontSize = '10px';
+        tokBadge.textContent = '⚡ In: ' + inTok + ' | Out: ' + outTok;
+        metaRow.appendChild(tokBadge);
+      }
+      wrap.appendChild(metaRow);
+    }
+
+    history.appendChild(wrap);
+    history.scrollTop = history.scrollHeight;
+  }
+
+  function sendTestChatMessage() {
+    var ta = document.getElementById('testChatMessage');
+    var msg = (ta.value || '').trim();
+    if (!msg) return;
+
+    var prov = document.getElementById('selTestProvider').value;
+    var model = document.getElementById('selTestModel').value;
+    var account = document.getElementById('selTestAccount').value;
+    var btnSend = document.getElementById('btnTestChatSend');
+    var statusEl = document.getElementById('testChatStatus');
+
+    addTestChatBubble('user', msg);
+    ta.value = '';
+    ta.disabled = true;
+    btnSend.disabled = true;
+    statusEl.textContent = '⏳ Łączenie z upstreamem (' + (prov === 'codex' ? 'Codex' : 'Claude') + ')...';
+
+    apiCall('/api/test/chat', 'POST', {
+      provider: prov,
+      model: model,
+      message: msg,
+      account: account || undefined,
+    }).then(function (res) {
+      ta.disabled = false;
+      btnSend.disabled = false;
+      statusEl.textContent = '';
+      ta.focus();
+
+      if (!res) {
+        addTestChatBubble('assistant', 'Brak odpowiedzi z serwera lub błąd autoryzacji.', { error: true });
+        return;
+      }
+
+      if (res.ok) {
+        addTestChatBubble('assistant', res.reply || '(Pusta odpowiedź)', {
+          account: res.account,
+          model: res.model,
+          isFallback: res.isFallback,
+          durationMs: res.durationMs,
+          usage: res.usage,
+        });
+      } else {
+        var errText = res.error || ('Błąd HTTP ' + (res.status || '500'));
+        addTestChatBubble('assistant', '⚠️ Błąd upstreamu: ' + errText, {
+          error: true,
+          account: res.account,
+          model: res.model,
+          durationMs: res.durationMs,
+        });
+      }
+    }).catch(function (err) {
+      ta.disabled = false;
+      btnSend.disabled = false;
+      statusEl.textContent = '';
+      ta.focus();
+      addTestChatBubble('assistant', 'Błąd sieciowy klienta: ' + err.message, { error: true });
+    });
+  }
+
+  var btnOpenTestChat = document.getElementById('btnOpenTestChat');
+  if (btnOpenTestChat) {
+    btnOpenTestChat.addEventListener('click', function () {
+      updateTestModelsAndAccounts();
+      openModal('modalTestChat');
+      var ta = document.getElementById('testChatMessage');
+      if (ta) ta.focus();
+    });
+  }
+
+  var btnCloseTestChat = document.getElementById('btnCloseTestChat');
+  if (btnCloseTestChat) {
+    btnCloseTestChat.addEventListener('click', function () {
+      closeModal('modalTestChat');
+    });
+  }
+
+  var selTestProv = document.getElementById('selTestProvider');
+  if (selTestProv) {
+    selTestProv.addEventListener('change', updateTestModelsAndAccounts);
+  }
+
+  var btnTestSend = document.getElementById('btnTestChatSend');
+  if (btnTestSend) {
+    btnTestSend.addEventListener('click', sendTestChatMessage);
+  }
+
+  var testChatTa = document.getElementById('testChatMessage');
+  if (testChatTa) {
+    testChatTa.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendTestChatMessage();
+      }
+    });
+  }
+
+  var btnTestClear = document.getElementById('btnTestChatClear');
+  if (btnTestClear) {
+    btnTestClear.addEventListener('click', function () {
+      var history = document.getElementById('testChatHistory');
+      if (history) {
+        history.innerHTML = '<div id="testChatPlaceholder" style="margin:auto; text-align:center; color:var(--dim); font-size:12px;"><div style="font-size:26px; margin-bottom:6px;">💬</div>Wybierz dostawcę i model, a następnie wpisz wiadomość lub kliknij szybki test.<br>Żądanie zostanie wysłane przez silnik Agent-LB bezpośrednio do wybranego upstreamu.</div>';
+      }
+      var statusEl = document.getElementById('testChatStatus');
+      if (statusEl) statusEl.textContent = '';
+    });
+  }
+
+  document.querySelectorAll('.quick-prompt-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var prompt = this.getAttribute('data-prompt');
+      var ta = document.getElementById('testChatMessage');
+      if (ta && prompt) {
+        ta.value = prompt;
+        ta.focus();
+      }
+    });
+  });
 
   checkAuthAndStart();
 })();
