@@ -618,7 +618,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         res.writeHead(200, { 'Content-Type': 'application/json' });
         // Counters only: how full the upstream admission gate is (see
         // upstream-fetch.js), never which origins or requests.
-        res.end(JSON.stringify({ ...extra, ...status, clientKeys, upstreamPool: upstreamPoolStatus() }, null, 2));
         res.end(JSON.stringify({ ...extra, ...status, clientKeys, draining: drainState.isDraining, activeRequests: drainState.activeRequests, upstreamPool: upstreamPoolStatus() }, null, 2));
         return;
       }
