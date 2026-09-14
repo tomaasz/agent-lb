@@ -109,6 +109,12 @@ export function createDefaultConfig() {
     distributeSessions: 'adaptive',
     expiryRouting: { enabled: true, tolerance: 1.5, preempt: true },
     crossProviderFallback: false,
+    autoHealthCheck: {
+      enabled: true,
+      intervalSeconds: 900,
+      trafficGracePeriodSeconds: 900,
+      errorBackoffSeconds: 3600,
+    },
     sessionTitles: { enabled: false, width: 18 },
     eventLogging: 'hide',
     blockedModels: [],
@@ -129,6 +135,14 @@ export async function loadConfig() {
     if (config.distributeSessions == null) config.distributeSessions = 'adaptive';
     if (config.expiryRouting == null) config.expiryRouting = { enabled: true, tolerance: 1.5, preempt: true };
     if (config.crossProviderFallback == null) config.crossProviderFallback = false;
+    if (config.autoHealthCheck == null) {
+      config.autoHealthCheck = {
+        enabled: true,
+        intervalSeconds: 900,
+        trafficGracePeriodSeconds: 900,
+        errorBackoffSeconds: 3600,
+      };
+    }
     // Everything downstream pairs config entries to running accounts by entry id,
     // so a config written before the field existed — or edited by hand — is given
     // ids here, before anything can read one. The next save persists them.

@@ -639,6 +639,13 @@ const PAGE = `<!doctype html>
             <span>🔄 Cross-Provider Fallback</span>
           </label>
         </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; font-size:11.5px; color:var(--text); margin:0;" title="Inteligentne okresowe sprawdzanie dostępności (0 tokenów dla aktywnych, 1 token dla bezczynnych)">
+            <input type="checkbox" id="chkAutoHealthCheck" style="margin:0; cursor:pointer;">
+            <span>🩺 Auto-Health</span>
+          </label>
+          <span id="autoHealthBadge" class="badge" style="font-size:10px; padding:1px 6px; display:none;"></span>
+        </div>
       </div>
       <div style="display:flex; align-items:center; gap:8px;">
         <span id="drainStatusBadge" class="badge error" style="display:none; font-size:11px;"></span>
@@ -2041,6 +2048,26 @@ ${SHARED_HELPERS}
     if (chkFb && document.activeElement !== chkFb) {
       chkFb.checked = !!s.crossProviderFallback;
     }
+    var chkHealth = document.getElementById('chkAutoHealthCheck');
+    var badgeHealth = document.getElementById('autoHealthBadge');
+    var ah = s.autoHealthCheck;
+    if (chkHealth && document.activeElement !== chkHealth) {
+      chkHealth.checked = !ah || ah.enabled !== false;
+    }
+    if (badgeHealth && ah) {
+      if (ah.enabled) {
+        badgeHealth.style.display = '';
+        badgeHealth.className = 'badge ok';
+        var nextMin = ah.nextRunAt ? Math.max(0, Math.round((ah.nextRunAt - Date.now()) / 60000)) : null;
+        badgeHealth.textContent = 'Aktywny' + (nextMin != null ? ' (~' + nextMin + 'm)' : '');
+        badgeHealth.title = 'Sprawdzanie co ' + (ah.intervalSeconds || 900) + 's (0 tokenów dla aktywnych, 1 token dla bezczynnych)';
+      } else {
+        badgeHealth.style.display = '';
+        badgeHealth.className = 'badge dim';
+        badgeHealth.textContent = 'Wyłączony';
+        badgeHealth.title = 'Automatyczna diagnostyka w tle jest wyłączona';
+      }
+    }
 
     var btnDrain = document.getElementById('btnDrainToggle');
     var badgeDrain = document.getElementById('drainStatusBadge');
@@ -2378,50 +2405,19 @@ ${SHARED_HELPERS}
   function doTestFleet(btn) {
     if (btn) {
       btn.disabled = true;
-      btn.textContent = '⏳ Testowanie...';
+      btn.textContent = '⏳ Diagnozowanie...';
     }
-    note('ok', 'Rozpoczęto diagnostykę i testowanie floty kont...');
-    apiCall('/teamclaude/api/status')
-      .then(function (st) {
-        var accounts = (st && st.accounts) ? st.accounts : [];
-        if (!accounts.length) {
-          note('warn', 'Brak zarejestrowanych kont do przetestowania.');
-          if (btn) { btn.disabled = false; btn.textContent = '🩺 Testuj flotę'; }
-          return;
-        }
-        var completed = 0;
-        var total = accounts.length;
-        var okCount = 0;
-        var errCount = 0;
-
-        var promises = accounts.map(function (a) {
-          var prov = (a.provider || 'anthropic').toLowerCase();
-          var model = prov === 'codex' ? 'gpt-5.6-sol' : 'claude-sonnet-5';
-          return apiCall('/api/test/chat', 'POST', {
-            provider: prov,
-            account: a.name,
-            model: model,
-            message: 'Ping test floty. Odpowiedz jednym słowem "OK".'
-          }).then(function (res) {
-            completed++;
-            if (res && res.ok) okCount++;
-            else errCount++;
-            if (btn) btn.textContent = '⏳ ' + completed + '/' + total + ' (' + okCount + ' ok)';
-            return res;
-          }).catch(function () {
-            completed++;
-            errCount++;
-            if (btn) btn.textContent = '⏳ ' + completed + '/' + total + ' (' + okCount + ' ok)';
-          });
-        });
-
-        return Promise.all(promises).then(function () {
-          note(errCount > 0 ? 'warn' : 'ok', 'Zakończono test floty: ' + okCount + ' sprawnych, ' + errCount + ' z błędami (na ' + total + ' kont).');
-          poll();
-        });
+    note('ok', 'Rozpoczęto inteligentną diagnostykę floty (0 tokenów dla aktywnych)...');
+    apiCall('/teamclaude/api/health-check/run', 'POST', { force: false })
+      .then(function (res) {
+        if (!res) return;
+        var sum = res.summary || {};
+        var msg = 'Zakończono diagnostykę: ' + (sum.ok || 0) + ' sprawnych, ' + (sum.errors || 0) + ' z błędami, ' + (sum.skipped || 0) + ' pominiętych (0 tokenów), zużyto łącznie ' + (sum.tokensUsed || 0) + ' tokenów.';
+        note(sum.errors > 0 ? 'warn' : 'ok', msg);
+        poll();
       })
       .catch(function (e) {
-        note('error', 'Błąd podczas testowania floty: ' + e.message);
+        note('error', 'Błąd podczas diagnostyki floty: ' + e.message);
       })
       .finally(function () {
         if (btn) {
@@ -3840,6 +3836,19 @@ ${SHARED_HELPERS}
   if (chkExp) chkExp.addEventListener('change', updateFleetRouting);
   var chkFb = document.getElementById('chkCrossProviderFallback');
   if (chkFb) chkFb.addEventListener('change', updateFleetRouting);
+  var chkHealth = document.getElementById('chkAutoHealthCheck');
+  if (chkHealth) {
+    chkHealth.addEventListener('change', function () {
+      apiCall('/teamclaude/api/health-check/config', 'POST', { enabled: chkHealth.checked })
+        .then(function () {
+          note('ok', 'Zaktualizowano tryb auto-diagnostyki');
+          poll();
+        })
+        .catch(function (e) {
+          note('error', 'Błąd konfiguracji auto-diagnostyki: ' + e.message);
+        });
+    });
+  }
   var btnDrain = document.getElementById('btnDrainToggle');
   if (btnDrain) btnDrain.addEventListener('click', toggleDrain);
 

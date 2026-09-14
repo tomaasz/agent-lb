@@ -41,6 +41,7 @@ import { FairShareController } from './fair-share.js';
 import { ToolCallDedupeCache } from './tool-call-dedupe.js';
 import { sameIdentity, findUpsertTarget } from './identity.js';
 import { mintAccountId } from './account-id.js';
+import { FleetHealthChecker } from './health-checker.js';
 
 const pendingOAuthStates = new Map();
 function cleanExpiredOAuthStates() {
@@ -337,6 +338,16 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
     drainStartedAt: null,
     activeRequests: 0,
   };
+  const healthChecker = new FleetHealthChecker(accountManager, {
+    enabled: config.autoHealthCheck?.enabled ?? true,
+    intervalMs: (config.autoHealthCheck?.intervalSeconds ?? 900) * 1000,
+    trafficGracePeriodMs: (config.autoHealthCheck?.trafficGracePeriodSeconds ?? 900) * 1000,
+    errorBackoffMs: (config.autoHealthCheck?.errorBackoffSeconds ?? 3600) * 1000,
+    configuredUpstream: upstream,
+  });
+  if (config.autoHealthCheck?.enabled !== false) {
+    healthChecker.start();
+  }
 
   // The log directory is made up front and synchronously, so a path that
   // cannot be a directory (a file sitting there, no permission) is reported
@@ -618,7 +629,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         res.writeHead(200, { 'Content-Type': 'application/json' });
         // Counters only: how full the upstream admission gate is (see
         // upstream-fetch.js), never which origins or requests.
-        res.end(JSON.stringify({ ...extra, ...status, clientKeys, draining: drainState.isDraining, activeRequests: drainState.activeRequests, upstreamPool: upstreamPoolStatus() }, null, 2));
+        res.end(JSON.stringify({ ...extra, ...status, clientKeys, draining: drainState.isDraining, activeRequests: drainState.activeRequests, upstreamPool: upstreamPoolStatus(), autoHealthCheck: healthChecker.getStatus() }, null, 2));
         return;
       }
 
@@ -1853,6 +1864,56 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
+      // Health-Check: Status (GET /api/health-check/status)
+      if (req.method === 'GET' && (normApiPath === '/api/health-check/status' || normApiPath === '/health-check/status')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, healthCheck: healthChecker.getStatus() }));
+        return;
+      }
+
+      // Health-Check: Run cycle (POST /api/health-check/run)
+      if (req.method === 'POST' && (normApiPath === '/api/health-check/run' || normApiPath === '/health-check/run')) {
+        let bodyObj = {};
+        try {
+          const raw = await readControlBody(req);
+          if (raw) bodyObj = JSON.parse(raw);
+        } catch {}
+        const summary = await healthChecker.runCheckCycle({ force: !!bodyObj.force });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, summary }));
+        return;
+      }
+
+      // Health-Check: Configure (POST /api/health-check/config)
+      if (req.method === 'POST' && (normApiPath === '/api/health-check/config' || normApiPath === '/health-check/config')) {
+        let bodyObj = {};
+        try {
+          const raw = await readControlBody(req);
+          if (raw) bodyObj = JSON.parse(raw);
+        } catch {}
+        const enabled = bodyObj.enabled != null ? !!bodyObj.enabled : healthChecker.enabled;
+        const intervalMs = bodyObj.intervalSeconds != null ? Number(bodyObj.intervalSeconds) * 1000 : healthChecker.intervalMs;
+        const trafficGracePeriodMs = bodyObj.trafficGracePeriodSeconds != null ? Number(bodyObj.trafficGracePeriodSeconds) * 1000 : healthChecker.trafficGracePeriodMs;
+        const errorBackoffMs = bodyObj.errorBackoffSeconds != null ? Number(bodyObj.errorBackoffSeconds) * 1000 : healthChecker.errorBackoffMs;
+
+        healthChecker.reschedule({ enabled, intervalMs, trafficGracePeriodMs, errorBackoffMs });
+
+        config.autoHealthCheck = {
+          enabled: healthChecker.enabled,
+          intervalSeconds: Math.round(healthChecker.intervalMs / 1000),
+          trafficGracePeriodSeconds: Math.round(healthChecker.trafficGracePeriodMs / 1000),
+          errorBackoffSeconds: Math.round(healthChecker.errorBackoffMs / 1000),
+        };
+
+        atomicConfigUpdate(cfg => {
+          cfg.autoHealthCheck = { ...config.autoHealthCheck };
+        }).catch(() => {});
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, healthCheck: healthChecker.getStatus() }));
+        return;
+      }
+
       // Accounts: Export (GET /api/accounts/export & GET /accounts/export)
       if (req.method === 'GET' && (normApiPath === '/api/accounts/export' || normApiPath === '/accounts/export')) {
         const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -2351,6 +2412,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
   const egress = createEgressGuard(config, console.error);
   const forward = createProxyRequestListener({ accountManager, upstream, logDir, hooks, sx, holdMs, config, egress, clientUsage, dimensionUsage, fairShare, toolDedupe, drainState });
   const server = http.createServer(requestHandler);
+  server.healthChecker = healthChecker;
+  server.on('close', () => {
+    healthChecker.stop();
+  });
 
   // What bounds a directory of one-shot dumps is deleting the expired ones, not
   // rotating a growing file. Swept once at startup, because a backlog is usually

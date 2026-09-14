@@ -252,6 +252,9 @@ function makeAccount(acct, index) {
     // The refresh token upstream last rejected as invalid, if it is still the
     // one we hold — see the dead-token guard in ensureTokenFresh.
     _deadRefreshToken: null,
+    lastSuccess: acct.lastSuccess || null,
+    lastError: acct.lastError || null,
+    lastTest: acct.lastTest || null,
   };
 }
 
@@ -1760,6 +1763,7 @@ export class AccountManager {
     account.lastError = null;
     account.entitlementDeniedUntil = null;
     account.identityVerificationUntil = null;
+    account.lastSuccess = Date.now();
     if (account.status === 'error' || account.status === 'throttled') account.status = 'active';
   }
 

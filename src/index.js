@@ -693,6 +693,7 @@ async function serverCommand() {
     try { tui?.stop(); } catch { /* terminal already restored */ }
     stopTitle();
     if (!tui) console.log('\n[TeamClaude] Shutting down...');
+    server.healthChecker?.stop();
     prober?.stop();
     warmer?.stop();
     eventLoopMonitor.stop();
