@@ -26,6 +26,17 @@ describe('Dashboard Authentication and Layout', () => {
     assert.ok(html.includes('Konta Claude & Codex'), 'accounts header mentions both Claude and Codex');
   });
 
+  it('embedded dashboard script has valid syntax and compiles cleanly', () => {
+    const html = renderDashboardHtml();
+    const scriptStart = html.indexOf('<script>') + 8;
+    const scriptEnd = html.indexOf('</script>');
+    assert.ok(scriptStart > 8 && scriptEnd > scriptStart, 'found <script> block');
+    const script = html.slice(scriptStart, scriptEnd);
+    assert.doesNotThrow(() => {
+      new vm.Script(script);
+    }, 'embedded dashboard script must compile without syntax errors');
+  });
+
   it('computes valid Content-Security-Policy with sha256 hash', () => {
     const csp = dashboardCsp();
     assert.ok(csp.startsWith("default-src 'none'"), 'starts with default-src none');

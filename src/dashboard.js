@@ -3631,7 +3631,6 @@ ${SHARED_HELPERS}
     }
   });
 
-  ['modalAddAccount', 'modalAddClientKey', 'modalKeyCreated', 'modalRelogin'].forEach(function (id) {
   ['modalAddAccount', 'modalAddClientKey', 'modalKeyCreated', 'modalRelogin', 'modalTestChat'].forEach(function (id) {
     var m = document.getElementById(id);
     if (m) {
