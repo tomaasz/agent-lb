@@ -1488,6 +1488,8 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         const isFallback = servingProvider !== provider;
         const startTime = Date.now();
 
+        await accountManager.ensureTokenFresh(account.index);
+
         try {
           let upstreamRes;
           let replyText = '';
@@ -1504,6 +1506,8 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             const reqHeaders = {
               'content-type': 'application/json',
               'anthropic-version': '2023-06-01',
+              'anthropic-beta': 'oauth-2025-04-20',
+              'user-agent': 'claude-code/0.2.29',
               'accept': 'application/json'
             };
             applyAuthHeaders(reqHeaders, account);
@@ -1551,7 +1555,13 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
               } catch {
                 errorMsg = await upstreamRes.text().catch(() => errorMsg);
               }
-              if (upstreamRes.status >= 500) accountManager.recordAccountFailure(account);
+              if (upstreamRes.status === 400 && /identity\s*verification/i.test(errorMsg)) {
+                accountManager.markIdentityVerificationRequired(account.index);
+              } else if (upstreamRes.status === 403) {
+                accountManager.markEntitlementDenied(account.index);
+              } else if (upstreamRes.status >= 500) {
+                accountManager.recordAccountFailure(account);
+              }
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({
                 ok: false,

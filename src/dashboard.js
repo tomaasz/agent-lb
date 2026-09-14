@@ -3653,10 +3653,10 @@ ${SHARED_HELPERS}
   // --- Test Chat (Playground) ---
   var CLAUDE_MODELS = [
     { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (Domyślny Claude Code)' },
+    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Dostępny / szybki)' },
     { id: 'claude-opus-5', name: 'Claude Opus 5' },
-    { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet' },
-    { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet v2' },
-    { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
+    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+    { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
   ];
 
   var CODEX_MODELS = [
