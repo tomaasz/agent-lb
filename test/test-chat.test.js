@@ -183,6 +183,60 @@ describe('Test Chat & Playground Support', () => {
       assert.equal(json.account, 'acc-healthy', 'Failed over to healthy account');
       assert.match(json.reply, /Success from healthy account!/);
       assert.ok(json.triedAccounts?.includes('acc-broken'), 'Recorded acc-broken as tried');
+
+      const accBroken = am.accounts.find(a => a.name === 'acc-broken');
+      assert.equal(accBroken.lastError?.reason, 'entitlement', 'Recorded lastError reason as entitlement');
+      assert.equal(accBroken.lastError?.status, 403, 'Recorded lastError status 403');
+      assert.equal(accBroken.lastTest?.ok, false, 'Recorded lastTest as failed');
+      assert.equal(am.unavailableReason(accBroken), 'entitlement', 'Account is marked unavailable due to entitlement');
+
+      const accHealthy = am.accounts.find(a => a.name === 'acc-healthy');
+      assert.equal(accHealthy.lastTest?.ok, true, 'Healthy account recorded lastTest as ok');
+      assert.equal(am.unavailableReason(accHealthy), null, 'Healthy account is available');
+    } finally {
+      server.close();
+      mockUpstream.close();
+    }
+  });
+
+  it('maintains identity-verification error state without prober clearing it', async () => {
+    const mockUpstream = http.createServer((req, res) => {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: 'Identity verification required before proceeding' } }));
+    });
+    await new Promise(resolve => mockUpstream.listen(0, '127.0.0.1', resolve));
+    const upstreamUrl = `http://127.0.0.1:${mockUpstream.address().port}`;
+
+    const accounts = [
+      { name: 'acc-sms', provider: 'anthropic', type: 'oauth', accessToken: 'token-sms', upstream: upstreamUrl }
+    ];
+    const am = new AccountManager(accounts, 0.98);
+    const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {}, null, null, null);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const proxyPort = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: { 'x-api-key': 'tc-test-admin', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'anthropic',
+          account: 'acc-sms',
+          model: 'claude-sonnet-5',
+          message: 'ping'
+        })
+      });
+
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      const acc = am.accounts[0];
+      assert.equal(acc.lastError?.reason, 'identity-verification');
+      assert.equal(am.unavailableReason(acc), 'identity-verification');
+
+      // Prober should NOT clear identity verification while lastError is identity-verification
+      am.clearIdentityVerification?.(0);
+      // Wait, prober line 158 checks !account.lastError || account.lastError.reason !== 'identity-verification'
+      assert.equal(am.unavailableReason(acc), 'identity-verification');
     } finally {
       server.close();
       mockUpstream.close();

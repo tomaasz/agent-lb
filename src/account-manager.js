@@ -1426,10 +1426,10 @@ export class AccountManager {
     if (account.status === 'error' || account.status === 'exhausted') return false;
     // A live entitlement cooldown is evidence, not a stale quota estimate. Do
     // not let the all-unavailable probe path defeat it immediately.
-    if (this._entitlementDenied(account)) return false;
+    if (this._entitlementDenied(account) || account.lastError?.reason === 'entitlement') return false;
     // Same for an interactive identity-verification gate: probing during the
     // cooldown would resend the request to the blocked account immediately.
-    if (this._identityVerificationRequired(account)) return false;
+    if (this._identityVerificationRequired(account) || account.lastError?.reason === 'identity-verification') return false;
     // A 429 hold is respected verbatim at first, but a hold is a snapshot: the
     // 429 that armed it may itself have been transient (e.g. the retry burst
     // after a network flap), and while it lasts NOTHING revalidates it — so a
@@ -1643,9 +1643,9 @@ export class AccountManager {
     // read as available against that contract and, being falsy, made
     // unavailableLine drop the row — so the one state added to make a refusal
     // explainable was the only one that printed no explanation (#258).
-    if (this._entitlementDenied(account)) return 'entitlement';
+    if (this._entitlementDenied(account) || account.lastError?.reason === 'entitlement') return 'entitlement';
 
-    if (this._identityVerificationRequired(account)) return 'identity-verification';
+    if (this._identityVerificationRequired(account) || account.lastError?.reason === 'identity-verification') return 'identity-verification';
 
     if (account.circuitBreakerUntil && Date.now() < account.circuitBreakerUntil) return 'circuit-breaker';
 
@@ -1724,8 +1724,8 @@ export class AccountManager {
     if (!this._isAvailable(account)) {
       if (account.disabled) return { eligible: false, reason: 'disabled' };
       if (account.status === 'error') return { eligible: false, reason: 'in an error state and needs a re-login' };
-      if (this._identityVerificationRequired(account)) return { eligible: false, reason: 'requires identity verification' };
-      if (this._entitlementDenied(account)) return { eligible: false, reason: 'in OAuth entitlement cooldown' };
+      if (this._identityVerificationRequired(account) || account.lastError?.reason === 'identity-verification') return { eligible: false, reason: 'requires identity verification' };
+      if (this._entitlementDenied(account) || account.lastError?.reason === 'entitlement') return { eligible: false, reason: 'in OAuth entitlement cooldown' };
       if (account.circuitBreakerUntil && Date.now() < account.circuitBreakerUntil) {
         const sec = Math.ceil((account.circuitBreakerUntil - Date.now()) / 1000);
         return { eligible: false, reason: `in circuit-breaker cooldown (${sec}s left)` };
@@ -1757,6 +1757,10 @@ export class AccountManager {
     if (!account) return;
     account.consecutiveErrors = 0;
     account.circuitBreakerUntil = null;
+    account.lastError = null;
+    account.entitlementDeniedUntil = null;
+    account.identityVerificationUntil = null;
+    if (account.status === 'error' || account.status === 'throttled') account.status = 'active';
   }
 
   /** Session-distribution toggle (issue #109), applied live on config reload.
@@ -3768,7 +3772,7 @@ export class AccountManager {
         burnRate: this.burnRateLearner.export(a.index),
         concCap: this.concurrencyLearner.export(a.index),
       };
-      return { accountUuid: a.accountUuid, orgUuid: a.orgUuid, orgName: a.orgName, name: a.name, profile, quota, adaptive };
+      return { accountUuid: a.accountUuid, orgUuid: a.orgUuid, orgName: a.orgName, name: a.name, profile, quota, adaptive, lastError: a.lastError || null };
     });
   }
 
@@ -3781,7 +3785,9 @@ export class AccountManager {
     if (!Array.isArray(saved)) return;
     for (const account of this.accounts) {
       const match = saved.find(s => sameIdentity(s, account));
-      if (!match || !match.quota) continue;
+      if (!match) continue;
+      if (match.lastError) account.lastError = match.lastError;
+      if (!match.quota) continue;
       for (const f of PERSISTED_QUOTA_FIELDS) {
         if (match.quota[f] != null) account.quota[f] = match.quota[f];
       }
@@ -3855,6 +3861,8 @@ export class AccountManager {
         // Distinguishes a local threshold decision from an upstream rejection —
         // without it the two are indistinguishable in status output (#166).
         unavailable: this.unavailableReason(a),
+        lastError: a.lastError || null,
+        lastTest: a.lastTest || null,
         sessions: sessions.perAccount[a.index] || 0,
         // Shared-weekly pressure (model-agnostic), so the ordering the router
         // works from can be read off the payload. Computed whether or not the

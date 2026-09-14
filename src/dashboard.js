@@ -600,6 +600,7 @@ const PAGE = `<!doctype html>
       </div>
 
       <div class="header-actions">
+        <button class="btn btn-sm btn-outline" id="btnTestFleet" title="Wyślij szybkie zapytanie testowe do wszystkich kont i zweryfikuj ich stan">🩺 Testuj flotę</button>
         <button class="btn btn-sm btn-accent" id="btnOpenTestChat" title="Otwórz interaktywny czat testowy dla Claude i Codex">💬 Test Chat</button>
         <button class="btn btn-sm" id="btnProbeQuota" title="Odpytaj o aktualne zużycie limitów i salda kont">⚡ Odśwież salda</button>
         <button class="btn btn-sm" id="btnReloadFleet" title="Przeładuj flotę kont z dysku">🔄 Przeładuj flotę</button>
@@ -1447,43 +1448,44 @@ ${SHARED_HELPERS}
     if (a.disabled) {
       titleGroup.appendChild(el('span', 'badge bad', '⚪ Wyłączone'));
       card.classList.add('account-disabled');
-    } else if (a.unavailable) {
-      var badgeText = '⚠️ ' + (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable);
+    } else if (a.unavailable || (a.lastError && a.lastError.reason)) {
+      var unavailKey = a.unavailable || a.lastError.reason;
+      var badgeText = '⚠️ ' + (UNAVAILABLE_TEXT[unavailKey] || unavailKey);
       var badgeClass = 'throttled';
       var cardClass = 'card-quota-exhausted';
 
-      if (a.unavailable === 'identity-verification') {
+      if (unavailKey === 'identity-verification') {
         badgeText = '🔴 Wymagana weryfikacja SMS';
         badgeClass = 'error';
         cardClass = 'card-unhealthy';
-      } else if (a.unavailable === 'entitlement') {
+      } else if (unavailKey === 'entitlement') {
         badgeText = '🔴 Blokada organizacji (OAuth 403)';
         badgeClass = 'error';
         cardClass = 'card-unhealthy';
-      } else if (a.unavailable === 'circuit-breaker') {
+      } else if (unavailKey === 'circuit-breaker') {
         badgeText = '🔴 Circuit Breaker (60s)';
         badgeClass = 'error';
         cardClass = 'card-unhealthy';
-      } else if (a.unavailable === 'error' || a.status === 'error') {
+      } else if (unavailKey === 'error' || a.status === 'error') {
         badgeText = '🔴 Błąd konta';
         badgeClass = 'error';
         cardClass = 'card-unhealthy';
-      } else if (a.unavailable === 'quota' || a.unavailable === 'upstream-rejected') {
+      } else if (unavailKey === 'quota' || unavailKey === 'upstream-rejected') {
         badgeText = '🟡 Quota 100% (Wyczerpany)';
         badgeClass = 'throttled';
         cardClass = 'card-quota-exhausted';
-      } else if (a.unavailable === 'throttled') {
+      } else if (unavailKey === 'throttled') {
         badgeText = '🟡 Rate Limit (Hold)';
         badgeClass = 'throttled';
         cardClass = 'card-quota-exhausted';
-      } else if (a.unavailable === 'capped') {
+      } else if (unavailKey === 'capped') {
         badgeText = '🟡 Przekroczono limit użycia';
         badgeClass = 'throttled';
         cardClass = 'card-quota-exhausted';
       }
 
       var unavailBadge = el('span', 'badge ' + badgeClass, badgeText);
-      unavailBadge.title = 'Status dostępności: ' + (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable);
+      unavailBadge.title = 'Status dostępności: ' + (UNAVAILABLE_TEXT[unavailKey] || unavailKey);
       titleGroup.appendChild(unavailBadge);
       card.classList.add(cardClass);
     } else {
@@ -1501,7 +1503,21 @@ ${SHARED_HELPERS}
 
     // Quick Test ping button
     var btnQuickTest = el('button', 'btn btn-xs btn-outline', '⚡ Test');
-    btnQuickTest.title = 'Przetestuj to konto natychmiast zapytaniem próbnym';
+    if (a.lastTest) {
+      if (a.lastTest.ok) {
+        btnQuickTest.textContent = '🟢 ' + (a.lastTest.durationMs ? a.lastTest.durationMs + 'ms' : 'OK');
+        btnQuickTest.title = 'Ostatni test: SUKCES (' + (a.lastTest.durationMs || 0) + 'ms). Kliknij, aby powtórzyć.';
+        btnQuickTest.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+        btnQuickTest.style.color = '#22c55e';
+      } else {
+        btnQuickTest.textContent = '🔴 Błąd';
+        btnQuickTest.title = 'Ostatni test: BŁĄD (' + (a.lastTest.status || a.lastTest.error || '') + '). Kliknij, aby ponowić.';
+        btnQuickTest.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+        btnQuickTest.style.color = '#ef4444';
+      }
+    } else {
+      btnQuickTest.title = 'Przetestuj to konto natychmiast zapytaniem próbnym';
+    }
     btnQuickTest.addEventListener('click', function (e) {
       e.stopPropagation();
       runQuickAccountTest(a.name, prov, btnQuickTest);
@@ -1584,6 +1600,23 @@ ${SHARED_HELPERS}
       qBody.appendChild(spendQuotaRow('Saldo', ratio, Math.round(ratio * 100) + '% · wydano ' + usedStr + ' / ' + limitStr + ' (wolne: ' + remStr + ')'));
     }
     card.appendChild(qBody);
+
+    if (a.lastError && a.lastError.error) {
+      var errDiv = el('div', 'card-error-banner');
+      errDiv.style.margin = '4px 10px 8px 10px';
+      errDiv.style.padding = '6px 8px';
+      errDiv.style.borderRadius = '4px';
+      errDiv.style.backgroundColor = 'rgba(239, 68, 68, 0.12)';
+      errDiv.style.border = '1px solid rgba(239, 68, 68, 0.35)';
+      errDiv.style.color = '#ef4444';
+      errDiv.style.fontSize = '11px';
+      errDiv.style.lineHeight = '1.35';
+      errDiv.style.wordBreak = 'break-word';
+
+      var errIcon = a.lastError.reason === 'identity-verification' ? '📱 ' : '⚠️ ';
+      errDiv.textContent = errIcon + a.lastError.error;
+      card.appendChild(errDiv);
+    }
 
     // Footer meta
     var meta = el('div', 'card-meta');
@@ -2339,6 +2372,62 @@ ${SHARED_HELPERS}
       })
       .catch(function (e) {
         note('error', 'Błąd eksportu: ' + e.message);
+      });
+  }
+
+  function doTestFleet(btn) {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⏳ Testowanie...';
+    }
+    note('ok', 'Rozpoczęto diagnostykę i testowanie floty kont...');
+    apiCall('/teamclaude/api/status')
+      .then(function (st) {
+        var accounts = (st && st.accounts) ? st.accounts : [];
+        if (!accounts.length) {
+          note('warn', 'Brak zarejestrowanych kont do przetestowania.');
+          if (btn) { btn.disabled = false; btn.textContent = '🩺 Testuj flotę'; }
+          return;
+        }
+        var completed = 0;
+        var total = accounts.length;
+        var okCount = 0;
+        var errCount = 0;
+
+        var promises = accounts.map(function (a) {
+          var prov = (a.provider || 'anthropic').toLowerCase();
+          var model = prov === 'codex' ? 'gpt-5.6-sol' : 'claude-sonnet-5';
+          return apiCall('/api/test/chat', 'POST', {
+            provider: prov,
+            account: a.name,
+            model: model,
+            message: 'Ping test floty. Odpowiedz jednym słowem "OK".'
+          }).then(function (res) {
+            completed++;
+            if (res && res.ok) okCount++;
+            else errCount++;
+            if (btn) btn.textContent = '⏳ ' + completed + '/' + total + ' (' + okCount + ' ok)';
+            return res;
+          }).catch(function () {
+            completed++;
+            errCount++;
+            if (btn) btn.textContent = '⏳ ' + completed + '/' + total + ' (' + okCount + ' ok)';
+          });
+        });
+
+        return Promise.all(promises).then(function () {
+          note(errCount > 0 ? 'warn' : 'ok', 'Zakończono test floty: ' + okCount + ' sprawnych, ' + errCount + ' z błędami (na ' + total + ' kont).');
+          poll();
+        });
+      })
+      .catch(function (e) {
+        note('error', 'Błąd podczas testowania floty: ' + e.message);
+      })
+      .finally(function () {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🩺 Testuj flotę';
+        }
       });
   }
 
@@ -3476,6 +3565,12 @@ ${SHARED_HELPERS}
       if (lastStatus) render(lastStatus);
     });
   });
+
+  // Header button: Test fleet
+  var btnTestFleet = document.getElementById('btnTestFleet');
+  if (btnTestFleet) {
+    btnTestFleet.addEventListener('click', function () { doTestFleet(this); });
+  }
 
   // Header button: Reload fleet
   var btnReloadFleet = document.getElementById('btnReloadFleet');

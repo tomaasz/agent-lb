@@ -1561,6 +1561,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   : (data.text || JSON.stringify(data));
                 usage = data.usage || null;
                 accountManager.recordAccountSuccess(account);
+                account.lastTest = { ok: true, durationMs, model: responseModel, timestamp: Date.now() };
                 if (usage && auth.client) {
                   clientUsage?.record(auth.client, {
                     requests: 1,
@@ -1584,6 +1585,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                 return;
               } else {
                 let errorMsg = `HTTP ${upstreamRes.status}`;
+                let errorReason = 'http_' + upstreamRes.status;
                 try {
                   const errData = await upstreamRes.json();
                   errorMsg = errData.error?.message || errData.message || JSON.stringify(errData);
@@ -1591,20 +1593,49 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   errorMsg = await upstreamRes.text().catch(() => errorMsg);
                 }
                 if (upstreamRes.status === 429) {
+                  errorReason = 'rate-limit';
                   const resetTimeStr = account?.quota?.unified5hReset
                     ? new Date(account.quota.unified5hReset).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                     : null;
                   const resetInfo = resetTimeStr ? ` (reset ok. ${resetTimeStr})` : '';
                   errorMsg = `Limit zapytań (429 Rate Limit) osiągnięty w Anthropic dla konta "${account.name}" (${model})${resetInfo}.`;
                 } else if (upstreamRes.status === 400 && /identity\s*verification/i.test(errorMsg)) {
+                  errorReason = 'identity-verification';
                   accountManager.markIdentityVerificationRequired(account.index);
                   errorMsg = `Wymagana weryfikacja tożsamości (400 Identity Verification) na koncie "${account.name}". Zaloguj się na claude.ai i potwierdź numer telefonu/SMS.`;
+                  account.lastError = {
+                    reason: 'identity-verification',
+                    status: 400,
+                    error: errorMsg,
+                    timestamp: Date.now()
+                  };
                 } else if (upstreamRes.status === 403) {
+                  errorReason = 'entitlement';
                   accountManager.markEntitlementDenied(account.index);
                   errorMsg = `Odmowa dostępu OAuth (403 Organization Block). Anthropic zablokował użycie tokenów OAuth dla organizacji konta "${account.name}".`;
+                  account.lastError = {
+                    reason: 'entitlement',
+                    status: 403,
+                    error: errorMsg,
+                    timestamp: Date.now()
+                  };
                 } else if (upstreamRes.status >= 500) {
+                  errorReason = 'server_error';
                   accountManager.recordAccountFailure(account);
+                  account.lastError = {
+                    reason: 'server_error',
+                    status: upstreamRes.status,
+                    error: `Błąd serwera upstream (${upstreamRes.status}): ${errorMsg}`,
+                    timestamp: Date.now()
+                  };
                 }
+                account.lastTest = {
+                  ok: false,
+                  status: upstreamRes.status,
+                  reason: errorReason,
+                  error: errorMsg,
+                  timestamp: Date.now()
+                };
                 lastError = errorMsg;
                 lastStatus = upstreamRes.status;
 
@@ -1705,6 +1736,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   usage = data.usage || null;
                 }
                 accountManager.recordAccountSuccess(account);
+                account.lastTest = { ok: true, durationMs, model: responseModel, timestamp: Date.now() };
                 if (usage && auth.client) {
                   clientUsage?.record(auth.client, {
                     requests: 1,
@@ -1728,6 +1760,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                 return;
               } else {
                 let errorMsg = `HTTP ${upstreamRes.status}`;
+                let errorReason = 'http_' + upstreamRes.status;
                 try {
                   const errData = await upstreamRes.json();
                   errorMsg = errData.error?.message || errData.detail || errData.message || JSON.stringify(errData);
@@ -1735,10 +1768,33 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   errorMsg = await upstreamRes.text().catch(() => errorMsg);
                 }
                 if (upstreamRes.status === 429) {
+                  errorReason = 'rate-limit';
                   errorMsg = `Limit zapytań (429 Rate Limit) osiągnięty w ChatGPT/Codex dla konta "${account.name}". Wykorzystano limit tygodniowy lub sesyjny konta.`;
+                } else if (upstreamRes.status === 401 || upstreamRes.status === 403) {
+                  errorReason = 'auth';
+                  account.lastError = {
+                    reason: 'auth',
+                    status: upstreamRes.status,
+                    error: `Błąd autoryzacji (${upstreamRes.status}): ${errorMsg}`,
+                    timestamp: Date.now()
+                  };
                 } else if (upstreamRes.status >= 500) {
+                  errorReason = 'server_error';
                   accountManager.recordAccountFailure(account);
+                  account.lastError = {
+                    reason: 'server_error',
+                    status: upstreamRes.status,
+                    error: `Błąd serwera upstream Codex (${upstreamRes.status}): ${errorMsg}`,
+                    timestamp: Date.now()
+                  };
                 }
+                account.lastTest = {
+                  ok: false,
+                  status: upstreamRes.status,
+                  reason: errorReason,
+                  error: errorMsg,
+                  timestamp: Date.now()
+                };
                 lastError = errorMsg;
                 lastStatus = upstreamRes.status;
 
@@ -4140,9 +4196,9 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // this is what lets a revalidation probe (a throttled account selected by
     // _selectProbe) clear its own hold and return the fleet to service.
     if (upstreamRes.status !== 429) accountManager.clearRateLimited(account.index);
-    if (upstreamRes.status < 400) accountManager.clearIdentityVerification(account.index);
     if (upstreamRes.status < 400) {
       accountManager.clearIdentityVerification(account.index);
+      accountManager.recordAccountSuccess(account);
       account.consecutiveErrors = 0;
       account.circuitBreakerUntil = 0;
     }
@@ -4400,6 +4456,12 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         bufferedResponseBody = await readBodyBuffer(upstreamRes.body);
         if (isOAuthIdentityVerificationRequired(bufferedResponseBody)) {
           const deniedUntil = accountManager.markIdentityVerificationRequired(account.index);
+          account.lastError = {
+            reason: 'identity-verification',
+            status: 400,
+            error: 'Wymagana weryfikacja tożsamości (400 Identity Verification). Zaloguj się na claude.ai i potwierdź numer telefonu/SMS.',
+            timestamp: Date.now()
+          };
           (ctx.identityVerificationRequired ??= new Set()).add(account.name);
           ctx.tried.add(account.index);
           const cooldown = deniedUntil
@@ -4427,6 +4489,21 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       const deniedUntil = entitlementDenied
         ? accountManager.markEntitlementDenied(account.index)
         : null;
+      if (entitlementDenied) {
+        account.lastError = {
+          reason: 'entitlement',
+          status: 403,
+          error: 'Odmowa dostępu OAuth (403 Organization Block). Anthropic zablokował użycie tokenów OAuth dla organizacji konta.',
+          timestamp: Date.now()
+        };
+      } else {
+        account.lastError = {
+          reason: 'forbidden',
+          status: 403,
+          error: 'Upstream odmówił dostępu (HTTP 403 Forbidden).',
+          timestamp: Date.now()
+        };
+      }
       // A set, not a name: the no-account branch needs to tell "every account was
       // refused" (fail fast, nothing to wait for) from "this one was, others are
       // just out of quota" (still worth holding for a reset).
