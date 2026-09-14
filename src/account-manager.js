@@ -273,6 +273,9 @@ function sampleModelFor(route) {
 
 export class AccountManager {
   constructor(accounts, switchThreshold = 0.98, { refreshFn = refreshAccessToken, codexRefreshFn = refreshCodexToken, throttleProbeFloorMs, familyStaleMs, statusStaleMs, forcedRefreshFloorMs = FORCED_REFRESH_FLOOR_MS, routes, ramp, distributeSessions = false, adaptive, sessionTracker, expiryRouting } = {}) {
+  constructor(accounts, switchThreshold = 0.98, { refreshFn = refreshAccessToken, codexRefreshFn = refreshCodexToken, throttleProbeFloorMs, familyStaleMs, statusStaleMs, forcedRefreshFloorMs = FORCED_REFRESH_FLOOR_MS, routes, ramp, distributeSessions = false, adaptive, sessionTracker, expiryRouting, crossProviderFallback = false } = {}) {
+    // Cross-provider fallback when all accounts of a primary provider are exhausted
+    this.crossProviderFallback = !!crossProviderFallback;
     // How long a just-minted token is trusted against a forced refresh.
     this._forcedRefreshFloorMs = forcedRefreshFloorMs;
     // Injectable for tests (mirrors Prober's probeFn); defaults to the real
@@ -720,6 +723,16 @@ export class AccountManager {
     this._selectionDecision = decision;
     try {
       account = this._pickActiveAccount(this._excludeOtherProviders(exclude, provider), model, advisorModel, sessionId);
+      if (!account && this.crossProviderFallback && !decision?.isFallbackAttempt) {
+        const altProvider = provider === 'anthropic' ? 'codex' : 'anthropic';
+        const altExclude = this._excludeOtherProviders(exclude, altProvider);
+        account = this._pickActiveAccount(altExclude, null, null, sessionId);
+        if (account && decision) {
+          decision.crossProviderFallback = true;
+          decision.originalProvider = provider;
+          decision.fallbackProvider = altProvider;
+        }
+      }
     } finally {
       this._selectingProvider = null;
       this._selectionDecision = null;
@@ -1635,6 +1648,8 @@ export class AccountManager {
 
     if (this._identityVerificationRequired(account)) return 'identity-verification';
 
+    if (account.circuitBreakerUntil && Date.now() < account.circuitBreakerUntil) return 'circuit-breaker';
+
     // Check rate limit expiry
     if (account.status === 'throttled' && account.rateLimitedUntil) {
       if (Date.now() < account.rateLimitedUntil) return 'throttled';
@@ -1712,6 +1727,10 @@ export class AccountManager {
       if (account.status === 'error') return { eligible: false, reason: 'in an error state and needs a re-login' };
       if (this._identityVerificationRequired(account)) return { eligible: false, reason: 'requires identity verification' };
       if (this._entitlementDenied(account)) return { eligible: false, reason: 'in OAuth entitlement cooldown' };
+      if (account.circuitBreakerUntil && Date.now() < account.circuitBreakerUntil) {
+        const sec = Math.ceil((account.circuitBreakerUntil - Date.now()) / 1000);
+        return { eligible: false, reason: `in circuit-breaker cooldown (${sec}s left)` };
+      }
       if (account.status === 'exhausted') return { eligible: false, reason: 'out of quota' };
       if (account.status === 'throttled') return { eligible: false, reason: 'rate-limited' };
       return { eligible: false, reason: 'at or above the switch threshold' };
@@ -1723,6 +1742,22 @@ export class AccountManager {
       return { eligible: false, reason: `outranked by higher-priority account "${preemptor.name}"` };
     }
     return { eligible: true };
+  }
+
+  /** Record upstream failure on an account; trip circuit breaker after 3 consecutive errors. */
+  recordAccountFailure(account, cooldownMs = 60000) {
+    if (!account) return;
+    account.consecutiveErrors = (account.consecutiveErrors || 0) + 1;
+    if (account.consecutiveErrors >= 3) {
+      account.circuitBreakerUntil = Date.now() + cooldownMs;
+    }
+  }
+
+  /** Reset consecutive error counter and circuit breaker cooldown upon a successful request. */
+  recordAccountSuccess(account) {
+    if (!account) return;
+    account.consecutiveErrors = 0;
+    account.circuitBreakerUntil = null;
   }
 
   /** Session-distribution toggle (issue #109), applied live on config reload.
@@ -1958,6 +1993,11 @@ export class AccountManager {
     for (const { sessionId, bucket, idx } of this.sessionTracker.livePins()) {
       this._firstSightOn(this.sessionTracker.refsFor(sessionId, bucket, true), this.accounts[idx]);
     }
+  }
+
+  /** Enable or disable automatic cross-provider fallback when all accounts of a provider are exhausted. */
+  setCrossProviderFallback(enabled) {
+    this.crossProviderFallback = !!enabled;
   }
 
   /**
@@ -3785,6 +3825,7 @@ export class AccountManager {
       // The knob as the server resolved it, defaults and clamps applied, so an
       // operator reading status sees the configuration the router is using.
       expiryRouting: { ...this.expiryRouting },
+      crossProviderFallback: !!this.crossProviderFallback,
       routes: this.getRoutes(),
       sessions: { ...sessions, distribute: this.distributeSessions, mode: this.distributionMode, draining: this.drainingCount() },
       // Empty outside adaptive mode, so the renderer needs no mode check of its
@@ -3845,6 +3886,9 @@ export class AccountManager {
           : null,
         identityVerificationUntil: a.identityVerificationUntil && a.identityVerificationUntil > Date.now()
           ? new Date(a.identityVerificationUntil).toISOString()
+          : null,
+        circuitBreakerUntil: a.circuitBreakerUntil && a.circuitBreakerUntil > Date.now()
+          ? new Date(a.circuitBreakerUntil).toISOString()
           : null,
       })),
     };

@@ -271,6 +271,7 @@ async function serverCommand() {
     process.exit(1);
   }
   const accountManager = new AccountManager(accounts, threshold, { routes: config.routes, ramp: config.stormRamp, distributeSessions: config.distributeSessions, expiryRouting: config.expiryRouting, adaptive });
+  const accountManager = new AccountManager(accounts, threshold, { routes: config.routes, ramp: config.stormRamp, distributeSessions: config.distributeSessions, expiryRouting: config.expiryRouting, crossProviderFallback: config.crossProviderFallback, adaptive });
   // Names the activity log's session column from Claude Code's own on-disk
   // session titles. Built whether or not the TUI runs, so a reload has one
   // object to reconfigure.
@@ -390,6 +391,7 @@ async function serverCommand() {
     // Not coerced to a boolean: 'adaptive' is a third mode, and !! would flatten
     // it to plain even distribution on every config reload.
     config.distributeSessions = diskConfig.distributeSessions ?? false;
+    config.distributeSessions = diskConfig.distributeSessions ?? 'adaptive';
     accountManager.setDistributeSessions(config.distributeSessions);
     // Pick up a switchThreshold change the same way (teamclaude threshold, the
     // TUI settings screen, or a hand edit). thresholdFor() reads it off the
@@ -401,7 +403,10 @@ async function serverCommand() {
     }
     // Pick up expiry-routing edits the same way, so the knob hot-applies.
     config.expiryRouting = diskConfig.expiryRouting;
+    config.expiryRouting = diskConfig.expiryRouting ?? { enabled: true, tolerance: 1.5, preempt: true };
     accountManager.setExpiryRouting(config.expiryRouting);
+    config.crossProviderFallback = diskConfig.crossProviderFallback ?? false;
+    accountManager.setCrossProviderFallback(config.crossProviderFallback);
     config.sessionTitles = diskConfig.sessionTitles;
     sessionTitles.configure(config.sessionTitles);
     // Apply an sx.org key/mode change made on disk (e.g. via POST /teamclaude/reload).
@@ -463,6 +468,8 @@ async function serverCommand() {
         if (config.eventLogging != null) diskConfig.eventLogging = config.eventLogging;
         if (config.blockedModels != null) diskConfig.blockedModels = config.blockedModels;
         if (config.sessionTitles != null) diskConfig.sessionTitles = config.sessionTitles;
+        if (config.distributeSessions != null) diskConfig.distributeSessions = config.distributeSessions;
+        if (config.expiryRouting != null) diskConfig.expiryRouting = config.expiryRouting;
         // Persist the route table (edited from the TUI routes screen).
         if (config.routes != null) diskConfig.routes = config.routes;
       }),

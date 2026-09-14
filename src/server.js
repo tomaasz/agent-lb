@@ -30,6 +30,13 @@ import {
 import {
   buildCodexAuthUrl, exchangeCodexCode, importCodexCredentials,
 } from './codex-auth.js';
+import { Readable } from 'node:stream';
+import {
+  translateAnthropicToOpenAI,
+  translateOpenAIToAnthropicResponse,
+  createOpenAIToAnthropicTransformStream,
+  resolveTargetModel,
+} from './provider-translator.js';
 import { FairShareController } from './fair-share.js';
 import { ToolCallDedupeCache } from './tool-call-dedupe.js';
 import { sameIdentity, findUpsertTarget } from './identity.js';
@@ -325,6 +332,11 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
     congestionThreshold: config.congestionThreshold || 0.75,
   });
   const toolDedupe = new ToolCallDedupeCache();
+  const drainState = {
+    isDraining: false,
+    drainStartedAt: null,
+    activeRequests: 0,
+  };
 
   // The log directory is made up front and synchronously, so a path that
   // cannot be a directory (a file sitting there, no permission) is reported
@@ -352,6 +364,8 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // without protecting anything.
       const rawPath = (req.url || '').split('?')[0];
       const normPath = rawPath.replace(/\/+$/, '') || '/';
+      const reqPath = rawPath;
+      const normApiPath = reqPath.replace(/^\/(?:agent-lb|teamclaude|claude-lb)/, '');
       const isDashboardPath = normPath === '/' || normPath === '/dashboard' || normPath === '/agent-lb/dashboard' || normPath === '/teamclaude/dashboard' || normPath === '/claude-lb/dashboard' || normPath === '/agent-lb' || normPath === '/teamclaude' || normPath === '/claude-lb';
 
       if ((req.method === 'GET' || req.method === 'HEAD') && isDashboardPath) {
@@ -456,6 +470,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
       req.clientKey = clientKey;
       req.tcClient = auth.ok ? auth.client : null;
+      req.tcClientEntry = auth.entry || null;
 
       // Check allowedProviders for the client key
       const reqProvider = providerForPath(req.url);
@@ -467,6 +482,24 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             error: {
               type: 'permission_error',
               message: `API key "${auth.client}" is not authorized for provider "${reqProvider}"`,
+            },
+          }));
+          return;
+        }
+      }
+
+      // Check client key quotas (expiry, daily token limit, monthly limit)
+      if (clientUsage && auth.ok && auth.client && auth.entry) {
+        const quotaCheck = clientUsage.checkQuota(auth.client, auth.entry);
+        if (!quotaCheck.allowed) {
+          const headers = { 'Content-Type': 'application/json' };
+          if (quotaCheck.retryAfter) headers['Retry-After'] = String(quotaCheck.retryAfter);
+          res.writeHead(quotaCheck.status || 429, headers);
+          res.end(JSON.stringify({
+            type: 'error',
+            error: {
+              type: quotaCheck.status === 403 ? 'permission_error' : 'rate_limit_error',
+              message: quotaCheck.error,
             },
           }));
           return;
@@ -557,6 +590,18 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
+      // Ready endpoint (liveness & drain readiness probe)
+      if (req.method === 'GET' && (normApiPath === '/ready' || normApiPath === '/api/ready' || req.url === '/ready' || req.url === '/teamclaude/ready')) {
+        if (drainState.isDraining) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, ready: false, draining: true, activeRequests: drainState.activeRequests }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, ready: true, draining: false, activeRequests: drainState.activeRequests }));
+        return;
+      }
+
       // Status endpoint
       if (req.method === 'GET' && (req.url === '/agent-lb/status' || req.url === '/teamclaude/status' || req.url === '/claude-lb/status' || req.url === '/status' || req.url === '/api/status')) {
         const status = accountManager.getStatus({ sessionDetail: config.proxy?.sessionDetail === true });
@@ -574,6 +619,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         // Counters only: how full the upstream admission gate is (see
         // upstream-fetch.js), never which origins or requests.
         res.end(JSON.stringify({ ...extra, ...status, clientKeys, upstreamPool: upstreamPoolStatus() }, null, 2));
+        res.end(JSON.stringify({ ...extra, ...status, clientKeys, draining: drainState.isDraining, activeRequests: drainState.activeRequests, upstreamPool: upstreamPoolStatus() }, null, 2));
         return;
       }
 
@@ -760,6 +806,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         normApiPath.startsWith('/accounts') ||
         normApiPath.startsWith('/client-keys') ||
         normApiPath.startsWith('/oauth');
+        normApiPath.startsWith('/oauth') ||
+        normApiPath.startsWith('/routing') ||
+        normApiPath.startsWith('/drain') ||
+        normApiPath.startsWith('/ready');
 
       if (isControlEndpoint) {
         if (!clientKey && config.proxy?.apiKey && !isTrustedOrigin) {
@@ -786,12 +836,19 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           const raw = k.key || '';
           const masked = maskSecret(raw);
           const stat = clientsStats[k.name] || { requests: 0, connections: 0, inputTokens: 0, outputTokens: 0, lastUsed: null };
+          const stat = clientsStats[k.name] || { requests: 0, connections: 0, inputTokens: 0, outputTokens: 0, dailyTokens: 0, monthlyTokens: 0, lastUsed: null };
           return {
             name: k.name,
             key: raw,
             rawKey: raw,
             maskedKey: masked,
             created: k.created || null,
+            maxDailyTokens: k.maxDailyTokens != null ? Number(k.maxDailyTokens) : null,
+            maxMonthlyTokens: k.maxMonthlyTokens != null ? Number(k.maxMonthlyTokens) : null,
+            expiresAt: k.expiresAt || null,
+            allowedModels: Array.isArray(k.allowedModels) ? k.allowedModels : null,
+            dailyTokens: stat.dailyTokens || 0,
+            monthlyTokens: stat.monthlyTokens || 0,
             stats: stat,
           };
         });
@@ -831,24 +888,53 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         const key = customKey || ('tc-' + randomBytes(24).toString('base64url'));
         const nowIso = new Date().toISOString();
 
+        const maxDailyTokens = body?.maxDailyTokens != null && !Number.isNaN(Number(body.maxDailyTokens)) && Number(body.maxDailyTokens) > 0
+          ? Number(body.maxDailyTokens) : null;
+        const maxMonthlyTokens = body?.maxMonthlyTokens != null && !Number.isNaN(Number(body.maxMonthlyTokens)) && Number(body.maxMonthlyTokens) > 0
+          ? Number(body.maxMonthlyTokens) : null;
+        const expiresAt = typeof body?.expiresAt === 'string' && body.expiresAt.trim() ? body.expiresAt.trim() : null;
+        const allowedModels = Array.isArray(body?.allowedModels) ? body.allowedModels.filter(Boolean) : null;
+
         await atomicConfigUpdate(disk => {
           if (!disk.proxy) disk.proxy = {};
           if (!Array.isArray(disk.proxy.clientKeys)) disk.proxy.clientKeys = [];
           const idx = disk.proxy.clientKeys.findIndex(k => k.name === name);
+          const entry = {
+            name,
+            key,
+            created: disk.proxy.clientKeys[idx]?.created || nowIso,
+            ...(maxDailyTokens ? { maxDailyTokens } : {}),
+            ...(maxMonthlyTokens ? { maxMonthlyTokens } : {}),
+            ...(expiresAt ? { expiresAt } : {}),
+            ...(allowedModels && allowedModels.length ? { allowedModels } : {}),
+          };
           if (idx >= 0) {
             disk.proxy.clientKeys[idx].key = key;
+            disk.proxy.clientKeys[idx] = entry;
           } else {
             disk.proxy.clientKeys.push({ name, key, created: nowIso });
+            disk.proxy.clientKeys.push(entry);
           }
         });
 
         if (!config.proxy) config.proxy = {};
         if (!Array.isArray(config.proxy.clientKeys)) config.proxy.clientKeys = [];
         const memIdx = config.proxy.clientKeys.findIndex(k => k.name === name);
+        const memEntry = {
+          name,
+          key,
+          created: config.proxy.clientKeys[memIdx]?.created || nowIso,
+          ...(maxDailyTokens ? { maxDailyTokens } : {}),
+          ...(maxMonthlyTokens ? { maxMonthlyTokens } : {}),
+          ...(expiresAt ? { expiresAt } : {}),
+          ...(allowedModels && allowedModels.length ? { allowedModels } : {}),
+        };
         if (memIdx >= 0) {
           config.proxy.clientKeys[memIdx].key = key;
+          config.proxy.clientKeys[memIdx] = memEntry;
         } else {
           config.proxy.clientKeys.push({ name, key, created: nowIso });
+          config.proxy.clientKeys.push(memEntry);
         }
 
         if (hooks.reload) await hooks.reload();
@@ -1275,6 +1361,89 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         console.log(`[TeamClaude] Account "${mgr.name}" routing policy set to "${policy}" (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, account: mgr.name, routingPolicy: policy }));
+        return;
+      }
+
+      // Fleet Policy: Routing & Sessions Configuration (GET & POST /api/routing)
+      if (req.method === 'GET' && (normApiPath === '/api/routing' || normApiPath === '/routing')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          distributeSessions: accountManager.distributionMode,
+          distributeSessionsEnabled: accountManager.distributeSessions,
+          expiryRouting: accountManager.expiryRouting,
+          crossProviderFallback: accountManager.crossProviderFallback,
+        }));
+        return;
+      }
+
+      if (req.method === 'POST' && (normApiPath === '/api/routing' || normApiPath === '/routing')) {
+        let body;
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch (err) {
+          const tooLarge = err.message === 'body too large';
+          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          return;
+        }
+
+        if (body?.distributeSessions !== undefined) {
+          accountManager.setDistributeSessions(body.distributeSessions);
+          config.distributeSessions = body.distributeSessions;
+        }
+        if (body?.expiryRouting !== undefined) {
+          accountManager.setExpiryRouting(body.expiryRouting);
+          config.expiryRouting = body.expiryRouting;
+        }
+        if (body?.crossProviderFallback !== undefined) {
+          accountManager.setCrossProviderFallback(body.crossProviderFallback);
+          config.crossProviderFallback = !!body.crossProviderFallback;
+        }
+
+        await atomicConfigUpdate(disk => {
+          if (body?.distributeSessions !== undefined) disk.distributeSessions = body.distributeSessions;
+          if (body?.expiryRouting !== undefined) disk.expiryRouting = body.expiryRouting;
+          if (body?.crossProviderFallback !== undefined) disk.crossProviderFallback = body.crossProviderFallback;
+        });
+
+        console.log(`[Agent-LB] Fleet routing policy updated: distributeSessions=${accountManager.distributionMode}, expiryRouting=${accountManager.expiryRouting?.enabled}, fallback=${accountManager.crossProviderFallback}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          distributeSessions: accountManager.distributionMode,
+          distributeSessionsEnabled: accountManager.distributeSessions,
+          expiryRouting: accountManager.expiryRouting,
+          crossProviderFallback: accountManager.crossProviderFallback,
+        }));
+        return;
+      }
+
+      // Drain control endpoints (POST /api/drain, POST /api/drain/cancel, GET /api/drain/status)
+      if (req.method === 'POST' && (normApiPath === '/api/drain' || normApiPath === '/drain')) {
+        drainState.isDraining = true;
+        drainState.drainStartedAt = Date.now();
+        accountManager.setDistributeSessions(false, { drain: true });
+        console.log(`[Agent-LB] Drain initiated (web control). Active requests: ${drainState.activeRequests}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, draining: true, activeRequests: drainState.activeRequests, startedAt: drainState.drainStartedAt }));
+        return;
+      }
+
+      if (req.method === 'POST' && (normApiPath === '/api/drain/cancel' || normApiPath === '/drain/cancel')) {
+        drainState.isDraining = false;
+        drainState.drainStartedAt = null;
+        accountManager.setDistributeSessions(config.distributeSessions || 'adaptive', { drain: false });
+        console.log(`[Agent-LB] Drain cancelled (web control). Active requests: ${drainState.activeRequests}`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, draining: false, activeRequests: drainState.activeRequests }));
+        return;
+      }
+
+      if (req.method === 'GET' && (normApiPath === '/api/drain/status' || normApiPath === '/drain/status')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, draining: drainState.isDraining, activeRequests: drainState.activeRequests, startedAt: drainState.drainStartedAt }));
         return;
       }
 
@@ -1775,6 +1944,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
   // the base listener and the MITM one so both honour the same hold.
   const egress = createEgressGuard(config, console.error);
   const forward = createProxyRequestListener({ accountManager, upstream, logDir, hooks, sx, holdMs, config, egress, clientUsage, dimensionUsage, fairShare, toolDedupe });
+  const forward = createProxyRequestListener({ accountManager, upstream, logDir, hooks, sx, holdMs, config, egress, clientUsage, dimensionUsage, fairShare, toolDedupe, drainState });
   const server = http.createServer(requestHandler);
 
   // What bounds a directory of one-shot dumps is deleting the expired ones, not
@@ -2128,12 +2298,14 @@ export function createProxyRequestListener({
   config = {}, forcedPin = null, egress = null, clientUsage = null,
   forcedClient = null, dimensionUsage = null, fairShare: injectedFairShare = null,
   toolDedupe: injectedToolDedupe = null,
+  toolDedupe: injectedToolDedupe = null, drainState = null,
 }) {
   const fairShare = injectedFairShare || new FairShareController({
     poolCapacity: config?.poolCapacity || 32,
     congestionThreshold: config?.congestionThreshold || 0.75,
   });
   const toolDedupe = injectedToolDedupe || new ToolCallDedupeCache();
+  const drainTracker = drainState || { activeRequests: 0, isDraining: false };
   let counter = 0;
   return async (req, res) => {
     // The activity entry this request opened, while it is still open. Every
@@ -2402,8 +2574,22 @@ export function createProxyRequestListener({
         if (dedupeResult.hasDuplicate) {
           console.warn(`[TeamClaude] [ToolDedupe] Warning: detected replayed side-effect tool calls in session "${sessionId}": ${dedupeResult.duplicates.map(d => d.name).join(', ')}`);
         }
+        const clientEntry = req.tcClientEntry || null;
+        if (parsedBody.model && clientEntry?.allowedModels && clientUsage && client) {
+          const modelCheck = clientUsage.checkQuota(client, clientEntry, parsedBody.model);
+          if (!modelCheck.allowed) {
+            fairShare.release(keyId);
+            res.writeHead(modelCheck.status || 403, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              type: 'error',
+              error: { type: 'permission_error', message: modelCheck.error },
+            }));
+            return;
+          }
+        }
       }
 
+      drainTracker.activeRequests++;
       try {
         await forwardRequest(req, res, body, accountManager, upstream, 0, hooks, reqId, ctx, logDir, sx);
       } catch (err) {
@@ -2418,6 +2604,7 @@ export function createProxyRequestListener({
           res.end(JSON.stringify({ type: 'error', error: { type: 'proxy_error', message: 'Internal proxy error' } }));
         }
       } finally {
+        drainTracker.activeRequests = Math.max(0, drainTracker.activeRequests - 1);
         fairShare.release(keyId);
         if (parsedBody && ctx.status >= 200 && ctx.status < 300) {
           const messages = Array.isArray(parsedBody.messages) ? parsedBody.messages : [];
@@ -3509,11 +3696,25 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
   applyAuthHeaders(headers, account);
 
   const upstreamUrl = `${upstreamFor(account, upstream)}${req.url}`;
+  const requestProvider = ctx.provider || DEFAULT_PROVIDER;
+  const servingProvider = providerOf(account);
+  const isCrossProvider = servingProvider !== requestProvider;
+
+  let upstreamUrl = `${upstreamFor(account, upstream)}${req.url}`;
   const method = req.method;
 
   // Every rewrite below runs inside rewriteRequestBody (exported for tests);
   // Content-Length is refreshed below because the body can shrink.
   let sendBody = rewriteRequestBody(body, account, req.url, req.headers['content-type']);
+
+  if (isCrossProvider) {
+    if (requestProvider === 'anthropic' && servingProvider === 'codex') {
+      upstreamUrl = `${upstreamFor(account, upstream)}/v1/chat/completions`;
+      sendBody = translateAnthropicToOpenAI(sendBody, resolveTargetModel(ctx.model, 'codex'));
+      headers['content-type'] = 'application/json';
+    }
+  }
+
   // If the body changed length (sanitize, model rewrite, or field strip), update
   // Content-Length so the upstream doesn't receive a mismatched framing and
   // truncate or stall.
@@ -3593,6 +3794,18 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // _selectProbe) clear its own hold and return the fleet to service.
     if (upstreamRes.status !== 429) accountManager.clearRateLimited(account.index);
     if (upstreamRes.status < 400) accountManager.clearIdentityVerification(account.index);
+    if (upstreamRes.status < 400) {
+      accountManager.clearIdentityVerification(account.index);
+      account.consecutiveErrors = 0;
+      account.circuitBreakerUntil = 0;
+    }
+    if (upstreamRes.status >= 500) {
+      account.consecutiveErrors = (account.consecutiveErrors || 0) + 1;
+      if (account.consecutiveErrors >= 3) {
+        account.circuitBreakerUntil = Date.now() + 60000;
+        console.warn(`[Agent-LB] Circuit breaker tripped on account "${account.name}" (${account.consecutiveErrors} consecutive 5xx) — isolated for 60s`);
+      }
+    }
 
     // Two kinds of 429 are handled differently below: a quota rejection rotates
     // to another account; a transient rate-limit throttle pauses + retries the
@@ -3908,6 +4121,13 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       responseHeaders[key] = value;
     }
 
+    const contentType = upstreamRes.headers.get('content-type') || '';
+    const isStreaming = contentType.includes('text/event-stream');
+
+    if (isCrossProvider && requestProvider === 'anthropic' && servingProvider === 'codex') {
+      responseHeaders['content-type'] = isStreaming ? 'text/event-stream; charset=utf-8' : 'application/json; charset=utf-8';
+    }
+
     res.writeHead(upstreamRes.status, responseHeaders);
 
     // The catch block's retry is guarded by `!res.headersSent`, so a stay
@@ -3926,6 +4146,39 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
 
     const contentType = upstreamRes.headers.get('content-type') || '';
     const isStreaming = contentType.includes('text/event-stream');
+    if (isCrossProvider && requestProvider === 'anthropic' && servingProvider === 'codex') {
+      if (isStreaming) {
+        const l = getLog();
+        const transform = createOpenAIToAnthropicTransformStream(ctx.model);
+        const stream = Readable.fromWeb(upstreamRes.body);
+        stream.pipe(transform).pipe(res);
+        await new Promise((resolve, reject) => {
+          transform.on('end', resolve);
+          transform.on('error', reject);
+          stream.on('error', reject);
+        }).catch(err => {
+          console.error('[Agent-LB] Stream translation error:', err.message);
+        });
+        l?.end();
+        ctx.delivered = answeredStatus(upstreamRes.status);
+        return;
+      } else {
+        const buf = bufferedResponseBody ?? Buffer.from(await upstreamRes.arrayBuffer());
+        let finalBuf = buf;
+        try {
+          const translated = translateOpenAIToAnthropicResponse(buf, ctx.model);
+          finalBuf = Buffer.from(JSON.stringify(translated), 'utf8');
+          extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
+        } catch (e) {
+          console.warn('[Agent-LB] JSON response translation warning:', e.message);
+        }
+        const l = getLog();
+        if (l) { l.body('RESPONSE BODY', finalBuf, 'application/json'); l.end(); }
+        res.end(finalBuf);
+        ctx.delivered = answeredStatus(upstreamRes.status);
+        return;
+      }
+    }
 
     if (isStreaming) {
       // Stream each chunk straight to the log as it is relayed — never hold the
@@ -3989,6 +4242,12 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         res.end(JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'Proxy upstream queue is full; retry shortly.' } }));
       }
       return;
+    }
+
+    account.consecutiveErrors = (account.consecutiveErrors || 0) + 1;
+    if (account.consecutiveErrors >= 3) {
+      account.circuitBreakerUntil = Date.now() + 60000;
+      console.warn(`[Agent-LB] Circuit breaker tripped on account "${account.name}" (${account.consecutiveErrors} consecutive errors) — isolated for 60s`);
     }
 
     // Would failing over dial anywhere else? Only an untried account pointing at

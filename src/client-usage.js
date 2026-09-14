@@ -51,6 +51,16 @@ const RESERVED_CUSTOM_HEADER_NAMES = new Set([
 const HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9a-z]+$/i;
 const DIMENSION_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 
+function currentUtcDay(nowMs) {
+  const d = new Date(nowMs);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+function currentUtcMonth(nowMs) {
+  const d = new Date(nowMs);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 export class ClientUsageTracker {
   // `maxKeys` stays unbounded for per-client accounting — clientKeys is
   // operator-configured, so the key space is bounded by the config file. It is
@@ -58,6 +68,7 @@ export class ClientUsageTracker {
   // callers and are therefore unbounded.
   constructor({ now = () => Date.now(), maxKeys = Infinity } = {}) {
     this.clients = new Map(); // name → { requests, connections, inputTokens, outputTokens, lastUsed(ms) }
+    this.clients = new Map(); // name → { requests, connections, inputTokens, outputTokens, dailyTokens, dailyResetDay, monthlyTokens, monthlyResetMonth, lastUsed(ms) }
     this._now = now;
     this.maxKeys = maxKeys;
   }
@@ -67,6 +78,17 @@ export class ClientUsageTracker {
     if (!c) {
       if (this.clients.size >= this.maxKeys && name !== OVERFLOW_KEY) return this._ensure(OVERFLOW_KEY);
       c = { requests: 0, connections: 0, inputTokens: 0, outputTokens: 0, lastUsed: null };
+      c = {
+        requests: 0,
+        connections: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        dailyTokens: 0,
+        dailyResetDay: currentUtcDay(this._now()),
+        monthlyTokens: 0,
+        monthlyResetMonth: currentUtcMonth(this._now()),
+        lastUsed: null,
+      };
       this.clients.set(name, c);
     }
     return c;
@@ -76,11 +98,112 @@ export class ClientUsageTracker {
   record(name, { requests = 0, connections = 0, inputTokens = 0, outputTokens = 0 } = {}) {
     if (!name) return;
     const c = this._ensure(name);
+    const now = this._now();
+    const today = currentUtcDay(now);
+    if (c.dailyResetDay !== today) {
+      c.dailyTokens = 0;
+      c.dailyResetDay = today;
+    }
+    const thisMonth = currentUtcMonth(now);
+    if (c.monthlyResetMonth !== thisMonth) {
+      c.monthlyTokens = 0;
+      c.monthlyResetMonth = thisMonth;
+    }
     c.requests += requests;
     c.connections += connections;
     c.inputTokens += inputTokens;
     c.outputTokens += outputTokens;
     c.lastUsed = this._now();
+    const tokens = (inputTokens || 0) + (outputTokens || 0);
+    c.dailyTokens += tokens;
+    c.monthlyTokens += tokens;
+    c.lastUsed = now;
+  }
+
+  /** Helper to record input and output tokens for a client */
+  recordTokens(name, inputTokens = 0, outputTokens = 0) {
+    return this.record(name, { inputTokens, outputTokens });
+  }
+
+  /** Retrieve client usage metrics */
+  getClient(name) {
+    return this.clients.get(name) || null;
+  }
+
+  /**
+   * Validate key quotas (expiry, daily token limit, monthly limit, allowed models).
+   * @returns {{ allowed: boolean, status?: number, error?: string, retryAfter?: number }}
+   */
+  checkQuota(name, keyConfig, requestedModel = null) {
+    if (!name || !keyConfig) return { allowed: true };
+    const now = this._now();
+
+    // Check expiration
+    if (keyConfig.expiresAt) {
+      const expTs = typeof keyConfig.expiresAt === 'number' ? keyConfig.expiresAt : Date.parse(keyConfig.expiresAt);
+      if (!Number.isNaN(expTs) && now > expTs) {
+        return {
+          allowed: false,
+          status: 403,
+          error: `Klucz stacji roboczej "${name}" wygasł w dniu ${new Date(expTs).toISOString().split('T')[0]}. Skontaktuj się z administratorem.`,
+        };
+      }
+    }
+
+    // Check model permissions
+    if (Array.isArray(keyConfig.allowedModels) && keyConfig.allowedModels.length > 0 && requestedModel) {
+      const allowed = keyConfig.allowedModels.some(m => {
+        if (m === '*') return true;
+        const pat = m.replace(/\*+$/, '');
+        return m === requestedModel || requestedModel.startsWith(pat) || requestedModel.includes(pat);
+      });
+      if (!allowed) {
+        return {
+          allowed: false,
+          status: 403,
+          error: `Klucz stacji "${name}" nie posiada uprawnień do modelu "${requestedModel}". Dozwolone modele: ${keyConfig.allowedModels.join(', ')}.`,
+        };
+      }
+    }
+
+    const c = this._ensure(name);
+    const today = currentUtcDay(now);
+    if (c.dailyResetDay !== today) {
+      c.dailyTokens = 0;
+      c.dailyResetDay = today;
+    }
+    const thisMonth = currentUtcMonth(now);
+    if (c.monthlyResetMonth !== thisMonth) {
+      c.monthlyTokens = 0;
+      c.monthlyResetMonth = thisMonth;
+    }
+
+    // Check daily quota
+    if (typeof keyConfig.maxDailyTokens === 'number' && keyConfig.maxDailyTokens > 0) {
+      if (c.dailyTokens >= keyConfig.maxDailyTokens) {
+        const tomorrow = new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), new Date(now).getUTCDate() + 1));
+        const retryAfter = Math.max(1, Math.ceil((tomorrow.getTime() - now) / 1000));
+        return {
+          allowed: false,
+          status: 429,
+          retryAfter,
+          error: `Dzienny limit tokenów (${keyConfig.maxDailyTokens.toLocaleString()}) dla klucza "${name}" został wyczerpany (${c.dailyTokens.toLocaleString()} zużyto). Reset nastąpi o 00:00 UTC.`,
+        };
+      }
+    }
+
+    // Check monthly quota
+    if (typeof keyConfig.maxMonthlyTokens === 'number' && keyConfig.maxMonthlyTokens > 0) {
+      if (c.monthlyTokens >= keyConfig.maxMonthlyTokens) {
+        return {
+          allowed: false,
+          status: 429,
+          error: `Miesięczny limit tokenów (${keyConfig.maxMonthlyTokens.toLocaleString()}) dla klucza "${name}" został wyczerpany (${c.monthlyTokens.toLocaleString()} zużyto).`,
+        };
+      }
+    }
+
+    return { allowed: true };
   }
 
   /**
@@ -99,6 +222,10 @@ export class ClientUsageTracker {
         connections: c.connections,
         inputTokens: c.inputTokens,
         outputTokens: c.outputTokens,
+        dailyTokens: c.dailyTokens || 0,
+        dailyResetDay: c.dailyResetDay || null,
+        monthlyTokens: c.monthlyTokens || 0,
+        monthlyResetMonth: c.monthlyResetMonth || null,
         lastUsed: c.lastUsed ? new Date(c.lastUsed).toISOString() : null,
       };
     }
@@ -121,6 +248,10 @@ export class ClientUsageTracker {
       c.connections += Number(s.connections) || 0;
       c.inputTokens += Number(s.inputTokens) || 0;
       c.outputTokens += Number(s.outputTokens) || 0;
+      c.dailyTokens = Number(s.dailyTokens) || 0;
+      c.dailyResetDay = s.dailyResetDay || currentUtcDay(this._now());
+      c.monthlyTokens = Number(s.monthlyTokens) || 0;
+      c.monthlyResetMonth = s.monthlyResetMonth || currentUtcMonth(this._now());
       const t = s.lastUsed ? Date.parse(s.lastUsed) : NaN;
       if (!Number.isNaN(t) && (c.lastUsed == null || t > c.lastUsed)) c.lastUsed = t;
     }

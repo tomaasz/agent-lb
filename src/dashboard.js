@@ -607,6 +607,35 @@ const PAGE = `<!doctype html>
     </div>
 
     <div id="accounts" style="display:none"></div>
+    <!-- Fleet Policy & Graceful Operations Bar -->
+    <div class="fleet-policy-bar" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; background:rgba(22,27,34,0.7); border:1px solid var(--line); border-radius:6px; padding:7px 12px; margin-bottom:12px;">
+      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:14px;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <label for="selDistributeSessions" style="font-size:12px; font-weight:600; color:var(--text); margin:0;">⚡ Affinity (Prompt Cache):</label>
+          <select id="selDistributeSessions" class="btn btn-sm" style="padding:2px 8px; font-size:11.5px; background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:4px;">
+            <option value="adaptive">Adaptive (Cache reuse + load balancing)</option>
+            <option value="even">Even (Rozkładanie sesji wg liczby)</option>
+            <option value="off">Off (Czysta rotacja)</option>
+          </select>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; font-size:11.5px; color:var(--text); margin:0;" title="Kieruj nowe sesje do kont, których 5h limit resetuje się najszybciej">
+            <input type="checkbox" id="chkExpiryRouting" style="margin:0; cursor:pointer;">
+            <span>🕒 Earliest-Reset-First</span>
+          </label>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; font-size:11.5px; color:var(--text); margin:0;" title="Gdy wszystkie konta Claude są wyczerpane, przekieruj zapytanie do OpenAI Codex">
+            <input type="checkbox" id="chkCrossProviderFallback" style="margin:0; cursor:pointer;">
+            <span>🔄 Cross-Provider Fallback</span>
+          </label>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span id="drainStatusBadge" class="badge error" style="display:none; font-size:11px;"></span>
+        <button id="btnDrainToggle" class="btn btn-sm" title="Przełącz tryb drain — dokończ aktywne żądania bez przyjmowania nowych">🛑 Drain Mode</button>
+      </div>
+    </div>
     <div class="dashboard-grid" id="accountsGrid">
       <!-- Sekcja nagłówka kont -->
       <div class="grid-head-accounts">
@@ -948,6 +977,26 @@ const PAGE = `<!doctype html>
         <div>
           <label>Własny klucz (opcjonalnie)</label>
           <input id="inClientCustomKey" type="text" placeholder="Pozostaw puste dla losowego tc-..." class="mono">
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div>
+            <label>Dzienny limit tokenów (opcjonalnie)</label>
+            <input id="inClientDailyTokens" type="number" min="1" placeholder="np. 500000 (puste = bez limitu)">
+          </div>
+          <div>
+            <label>Miesięczny limit tokenów (opcjonalnie)</label>
+            <input id="inClientMonthlyTokens" type="number" min="1" placeholder="np. 10000000 (puste = bez limitu)">
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div>
+            <label>Ważny do (data wygaśnięcia, opcjonalnie)</label>
+            <input id="inClientExpiresAt" type="date">
+          </div>
+          <div>
+            <label>Dozwolone modele (opcjonalnie)</label>
+            <input id="inClientAllowedModels" type="text" placeholder="np. claude-*, gpt-4o">
+          </div>
         </div>
         <div style="margin-top:8px;">
           <button class="btn btn-accent" id="btnSubmitClientKey">Utwórz klucz</button>
@@ -1329,8 +1378,11 @@ ${SHARED_HELPERS}
       var unavailText = a.unavailable === 'switch_threshold' ? 'Próg switcha' : (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable);
       var unavailBadge = el('span', 'badge ' + (a.unavailable === 'error' || a.status === 'error' ? 'error' : 'throttled'), '⚠️ ' + unavailText);
       var isCritical = a.unavailable === 'error' || a.status === 'error' || a.unavailable === 'identity-verification';
+      var unavailText = a.unavailable === 'circuit-breaker' ? 'Circuit Breaker (60s)' : (a.unavailable === 'switch_threshold' ? 'Próg switcha' : (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable));
+      var isCritical = a.unavailable === 'error' || a.status === 'error' || a.unavailable === 'identity-verification' || a.unavailable === 'circuit-breaker';
       var unavailBadge = el('span', 'badge ' + (isCritical ? 'error' : 'throttled'), '⚠️ ' + unavailText);
       unavailBadge.title = 'Blokada konta: ' + (UNAVAILABLE_TEXT[a.unavailable] || a.unavailable);
+      unavailBadge.title = 'Blokada konta: ' + unavailText;
       titleGroup.appendChild(unavailBadge);
     }
 
@@ -1477,6 +1529,11 @@ ${SHARED_HELPERS}
       }
     }
 
+    if (a.circuitBreakerUntil && parseTs(a.circuitBreakerUntil) > Date.now()) {
+      var cbSec = (parseTs(a.circuitBreakerUntil) - Date.now()) / 1000;
+      meta.appendChild(el('span', 'card-meta-item bad', '⚡ Circuit Breaker: ' + fmtIn(cbSec)));
+    }
+
     if (a.identityVerificationUntil && parseTs(a.identityVerificationUntil) > Date.now()) {
       var idSec = (parseTs(a.identityVerificationUntil) - Date.now()) / 1000;
       meta.appendChild(el('span', 'card-meta-item bad', '⚠️ Weryfikacja: cooldown ' + fmtIn(idSec)));
@@ -1487,6 +1544,7 @@ ${SHARED_HELPERS}
 
     if (a.sessions) {
       meta.appendChild(el('span', 'card-meta-item', '📡 ' + a.sessions + ' ses' + (a.sessions > 1 ? 'ji' : 'ja')));
+      meta.appendChild(el('span', 'card-meta-item ok', '⚡ ' + a.sessions + ' ses' + (a.sessions > 1 ? 'ji' : 'ja') + ' (cache)'));
     }
 
     // Usage & request counts (pushed to right)
@@ -1809,6 +1867,7 @@ ${SHARED_HELPERS}
     var acc = document.getElementById('accounts');
     if (acc) acc.textContent = '';
 
+    renderFleetPolicy(s);
     renderAccountsGrid(s);
     renderProblems(s);
     renderRoutes(s);
@@ -1817,6 +1876,80 @@ ${SHARED_HELPERS}
     renderDimensions(s.usageDimensions);
     renderSessions(s.sessions);
     document.getElementById('foot').textContent = 'refreshes every ' + (POLL_MS / 1000) + 's · ' + new Date().toLocaleTimeString();
+  }
+
+  function renderFleetPolicy(s) {
+    var sel = document.getElementById('selDistributeSessions');
+    if (sel && document.activeElement !== sel) {
+      sel.value = (s.sessions && s.sessions.distribute) || 'adaptive';
+    }
+    var chkExp = document.getElementById('chkExpiryRouting');
+    if (chkExp && document.activeElement !== chkExp) {
+      chkExp.checked = !!(s.expiryRouting && s.expiryRouting.enabled);
+    }
+    var chkFb = document.getElementById('chkCrossProviderFallback');
+    if (chkFb && document.activeElement !== chkFb) {
+      chkFb.checked = !!s.crossProviderFallback;
+    }
+
+    var btnDrain = document.getElementById('btnDrainToggle');
+    var badgeDrain = document.getElementById('drainStatusBadge');
+    if (btnDrain && badgeDrain) {
+      if (s.draining) {
+        btnDrain.textContent = '▶️ Anuluj Drain';
+        btnDrain.className = 'btn btn-sm btn-bad';
+        badgeDrain.style.display = '';
+        badgeDrain.textContent = '🛑 Draining (' + (s.activeRequests || 0) + ' req in flight)';
+      } else {
+        btnDrain.textContent = '🛑 Drain Mode';
+        btnDrain.className = 'btn btn-sm';
+        badgeDrain.style.display = 'none';
+      }
+    }
+  }
+
+  function updateFleetRouting() {
+    var sel = document.getElementById('selDistributeSessions');
+    var chkExp = document.getElementById('chkExpiryRouting');
+    var chkFb = document.getElementById('chkCrossProviderFallback');
+    var payload = {
+      distributeSessions: sel ? sel.value : 'adaptive',
+      expiryRouting: {
+        enabled: chkExp ? chkExp.checked : true,
+        tolerance: 1.5,
+        preempt: true,
+      },
+      crossProviderFallback: chkFb ? chkFb.checked : false,
+    };
+    apiCall('/teamclaude/api/routing', 'POST', payload)
+      .then(function (res) {
+        if (res && res.ok) {
+          note('ok', 'Zaktualizowano politykę floty (Routing / Cache)');
+          poll();
+        } else {
+          note('error', 'Błąd zapisu polityki: ' + (res && res.error ? res.error : 'nieznany'));
+        }
+      })
+      .catch(function (e) {
+        note('error', 'Błąd zapisu polityki: ' + e.message);
+      });
+  }
+
+  function toggleDrain() {
+    var isDraining = lastStatus && lastStatus.draining;
+    var endpoint = isDraining ? '/teamclaude/api/drain/cancel' : '/teamclaude/api/drain';
+    apiCall(endpoint, 'POST')
+      .then(function (res) {
+        if (res && res.ok) {
+          note('ok', isDraining ? 'Wznowiono normalną pracę floty (anulowano drain)' : 'Włączono tryb Drain (dokańczanie aktywnych zapytań)');
+          poll();
+        } else {
+          note('error', 'Błąd przełączania drain: ' + (res && res.error ? res.error : 'nieznany'));
+        }
+      })
+      .catch(function (e) {
+        note('error', 'Błąd: ' + e.message);
+      });
   }
 
   function note(kind, text) {
@@ -2587,12 +2720,32 @@ ${SHARED_HELPERS}
   function doAddClientKey(btn) {
     var name = document.getElementById('inClientName').value.trim();
     var customKey = document.getElementById('inClientCustomKey').value.trim();
+    var maxDailyStr = (document.getElementById('inClientDailyTokens')?.value || '').trim();
+    var maxMonthlyStr = (document.getElementById('inClientMonthlyTokens')?.value || '').trim();
+    var expiresAtStr = (document.getElementById('inClientExpiresAt')?.value || '').trim();
+    var allowedModelsStr = (document.getElementById('inClientAllowedModels')?.value || '').trim();
+
     if (!name) {
       note('error', 'Nazwa klienta / urządzenia jest wymagana');
       return;
     }
+    var payload = { name: name, key: customKey };
+    if (maxDailyStr) {
+      var d = parseInt(maxDailyStr, 10);
+      if (!isNaN(d) && d > 0) payload.maxDailyTokens = d;
+    }
+    if (maxMonthlyStr) {
+      var m = parseInt(maxMonthlyStr, 10);
+      if (!isNaN(m) && m > 0) payload.maxMonthlyTokens = m;
+    }
+    if (expiresAtStr) payload.expiresAt = expiresAtStr;
+    if (allowedModelsStr) {
+      payload.allowedModels = allowedModelsStr.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    }
+
     btn.disabled = true;
     apiCall('/teamclaude/api/keys/create', 'POST', { name: name, key: customKey })
+    apiCall('/teamclaude/api/keys/create', 'POST', payload)
       .then(function (res) {
         btn.disabled = false;
         if (!res) return;
@@ -2602,6 +2755,10 @@ ${SHARED_HELPERS}
           closeModal('modalAddClientKey');
           document.getElementById('inClientName').value = '';
           document.getElementById('inClientCustomKey').value = '';
+          if (document.getElementById('inClientDailyTokens')) document.getElementById('inClientDailyTokens').value = '';
+          if (document.getElementById('inClientMonthlyTokens')) document.getElementById('inClientMonthlyTokens').value = '';
+          if (document.getElementById('inClientExpiresAt')) document.getElementById('inClientExpiresAt').value = '';
+          if (document.getElementById('inClientAllowedModels')) document.getElementById('inClientAllowedModels').value = '';
           showKeyModal(res.name, res.key);
           poll();
         } else {
@@ -2820,6 +2977,21 @@ ${SHARED_HELPERS}
       var cBadge = el('span', 'badge', 'Panel & CLI');
       cBadge.style.cssText = 'font-size:10px; padding:1px 5px; background:rgba(16, 185, 129, 0.12); color:#34d399; border-radius:4px; border:1px solid rgba(16, 185, 129, 0.25);';
       nameWrap.appendChild(cBadge);
+
+      if (k.expiresAt) {
+        var expMs = parseTs(k.expiresAt);
+        var isExp = expMs < Date.now();
+        var expBadge = el('span', 'badge ' + (isExp ? 'bad' : 'ok'), isExp ? '⚠️ Wygasł' : '📅 ' + (typeof k.expiresAt === 'string' ? k.expiresAt.split('T')[0] : new Date(k.expiresAt).toLocaleDateString()));
+        expBadge.style.fontSize = '9.5px';
+        nameWrap.appendChild(expBadge);
+      }
+
+      if (Array.isArray(k.allowedModels) && k.allowedModels.length) {
+        var mBadge = el('span', 'badge', '🎯 ' + k.allowedModels.join(', '));
+        mBadge.style.cssText = 'font-size:9.5px; padding:1px 4px; background:rgba(255,255,255,0.06); border-radius:3px;';
+        nameWrap.appendChild(mBadge);
+      }
+
       topRow.appendChild(nameWrap);
 
       var acts = el('div', 'card-actions');
@@ -2875,8 +3047,35 @@ ${SHARED_HELPERS}
       var tokText = (inT || outT) ? (fmtNum(inT) + ' / ' + fmtNum(outT)) : '0 tok';
       var statSpan = el('span', 'client-key-stats', (stat.requests || 0) + ' req · ' + tokText);
       bottomRow.appendChild(statSpan);
+      card.appendChild(bottomRow);
 
       card.appendChild(bottomRow);
+      if (k.maxDailyTokens || k.maxMonthlyTokens) {
+        var limitWrap = el('div', 'client-key-limits');
+        limitWrap.style.cssText = 'font-size:10.5px; color:var(--dim); margin-top:5px; padding-top:4px; border-top:1px dashed rgba(255,255,255,0.07); display:flex; gap:12px; flex-wrap:wrap;';
+        if (k.maxDailyTokens) {
+          var dUsed = k.dailyTokens || 0;
+          var dPct = Math.min(100, Math.round((dUsed / k.maxDailyTokens) * 100));
+          var dColor = dPct >= 90 ? '#f85149' : (dPct >= 70 ? '#d29922' : 'var(--text)');
+          var dEl = el('span', '', 'Dziś: ');
+          var dVal = el('b', '', fmtNum(dUsed) + ' / ' + fmtNum(k.maxDailyTokens) + ' (' + dPct + '%)');
+          dVal.style.color = dColor;
+          dEl.appendChild(dVal);
+          limitWrap.appendChild(dEl);
+        }
+        if (k.maxMonthlyTokens) {
+          var mUsed = k.monthlyTokens || 0;
+          var mPct = Math.min(100, Math.round((mUsed / k.maxMonthlyTokens) * 100));
+          var mColor = mPct >= 90 ? '#f85149' : (mPct >= 70 ? '#d29922' : 'var(--text)');
+          var mEl = el('span', '', 'Miesiąc: ');
+          var mVal = el('b', '', fmtNum(mUsed) + ' / ' + fmtNum(k.maxMonthlyTokens) + ' (' + mPct + '%)');
+          mVal.style.color = mColor;
+          mEl.appendChild(mVal);
+          limitWrap.appendChild(mEl);
+        }
+        card.appendChild(limitWrap);
+      }
+
       container.appendChild(card);
     });
   }
@@ -3371,6 +3570,16 @@ ${SHARED_HELPERS}
       });
     }
   });
+
+  // Fleet Policy Bar Listeners
+  var selDist = document.getElementById('selDistributeSessions');
+  if (selDist) selDist.addEventListener('change', updateFleetRouting);
+  var chkExp = document.getElementById('chkExpiryRouting');
+  if (chkExp) chkExp.addEventListener('change', updateFleetRouting);
+  var chkFb = document.getElementById('chkCrossProviderFallback');
+  if (chkFb) chkFb.addEventListener('change', updateFleetRouting);
+  var btnDrain = document.getElementById('btnDrainToggle');
+  if (btnDrain) btnDrain.addEventListener('click', toggleDrain);
 
   checkAuthAndStart();
 })();
