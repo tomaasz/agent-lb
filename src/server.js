@@ -1455,7 +1455,9 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
 
-        const provider = (body?.provider || 'anthropic').toLowerCase();
+        let provider = (body?.provider || 'anthropic').toLowerCase();
+        if (provider === 'claude') provider = 'anthropic';
+        if (provider === 'openai') provider = 'codex';
         const model = typeof body?.model === 'string' && body.model.trim() ? body.model.trim() : (provider === 'codex' ? 'gpt-5.6-sol' : 'claude-sonnet-5');
         const message = typeof body?.message === 'string' && body.message.trim() ? body.message.trim() : 'Test połączenia z Agent-LB. Odpowiedz krótko w jednym zdaniu kim jesteś.';
         const targetAccount = typeof body?.account === 'string' && body.account.trim() ? body.account.trim() : null;
