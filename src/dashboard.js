@@ -334,19 +334,220 @@ const PAGE = `<!doctype html>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚖️</text></svg>">
 <style>
   :root {
-    --bg: #0d1117; --panel: #161b22; --line: #262c36;
-    --text: #c9d1d9; --dim: #8b949e; --accent: #58a6ff;
-    --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+    --bg: #0d1117;
+    --panel: #161b22;
+    --card-bg: rgba(22, 27, 34, 0.65);
+    --card-hover-border: rgba(255, 255, 255, 0.15);
+    --card-col-bg: rgba(22, 27, 34, 0.35);
+    --line: #262c36;
+    --line-subtle: rgba(255, 255, 255, 0.06);
+    --text: #c9d1d9;
+    --heading: #f0f6fc;
+    --dim: #8b949e;
+    --accent: #58a6ff;
+    --accent-glow: rgba(88, 166, 255, 0.12);
+    --ok: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+    --input-bg: #0d1117;
+    --input-border: #30363d;
+    --policy-card-bg: rgba(13, 17, 23, 0.65);
+    --policy-card-border: rgba(255, 255, 255, 0.08);
+    --shadow: 0 16px 36px rgba(0, 0, 0, 0.38), 0 2px 8px rgba(0, 0, 0, 0.2);
+    --modal-backdrop: rgba(0, 0, 0, 0.78);
   }
+
+  [data-theme="light"] {
+    --bg: #f6f8fa;
+    --panel: #ffffff;
+    --card-bg: #ffffff;
+    --card-hover-border: rgba(9, 105, 218, 0.35);
+    --card-col-bg: #f0f2f5;
+    --line: #d0d7de;
+    --line-subtle: rgba(0, 0, 0, 0.08);
+    --text: #24292f;
+    --heading: #1f2328;
+    --dim: #57606a;
+    --accent: #0969da;
+    --accent-glow: rgba(9, 105, 218, 0.12);
+    --ok: #1a7f37;
+    --warn: #9a6700;
+    --bad: #cf222e;
+    --input-bg: #ffffff;
+    --input-border: #d0d7de;
+    --policy-card-bg: #ffffff;
+    --policy-card-border: #d0d7de;
+    --shadow: 0 8px 24px rgba(140, 149, 159, 0.2), 0 2px 6px rgba(140, 149, 159, 0.12);
+    --modal-backdrop: rgba(31, 35, 40, 0.6);
+  }
+
   * { box-sizing: border-box; margin: 0; }
-  body { background: var(--bg); color: var(--text); font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 14px 18px; }
+  body { background: var(--bg); color: var(--text); font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 14px 18px; transition: background-color .15s ease, color .15s ease; }
   main { max-width: 1720px; margin: 0 auto; width: 100%; }
-  h1 { font-size: 18px; font-weight: 600; margin-bottom: 2px; display: inline-flex; align-items: center; gap: 8px; color: #f0f6fc; }
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 2px; display: inline-flex; align-items: center; gap: 8px; color: var(--heading); }
   h2 { font-size: 11.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; margin: 12px 0 6px; font-weight: 600; }
   .sub { color: var(--dim); margin-bottom: 10px; font-size: 12px; }
   .sub b { color: var(--text); font-weight: 500; }
   .header-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-  .header-actions { display: flex; gap: 6px; align-items: center; }
+  .header-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+  /* Policy & Operations Panel */
+  .policy-panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    transition: border-color .15s ease;
+  }
+  .policy-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--line-subtle);
+    flex-wrap: wrap;
+  }
+  .policy-head-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .policy-title-icon {
+    font-size: 22px;
+    line-height: 1;
+  }
+  .policy-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .policy-title {
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--heading);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .policy-subtitle {
+    font-size: 11.5px;
+    color: var(--dim);
+    margin: 2px 0 0;
+  }
+  .policy-head-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .policy-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 1200px) {
+    .policy-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 680px) {
+    .policy-grid { grid-template-columns: 1fr; }
+  }
+  .policy-card {
+    background: var(--policy-card-bg);
+    border: 1px solid var(--policy-card-border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 118px;
+    box-sizing: border-box;
+    transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+  }
+  .policy-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 3px 12px rgba(0,0,0,0.06);
+  }
+  .policy-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .policy-card-badge {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-glow);
+    padding: 1px 6px;
+    border-radius: 3px;
+    border: 1px solid rgba(88,166,255,0.25);
+  }
+  [data-theme="light"] .policy-card-badge {
+    border-color: rgba(9,105,218,0.25);
+  }
+  .policy-card-icon {
+    font-size: 14px;
+  }
+  .policy-card-head {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .policy-card-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--heading);
+    margin: 0;
+  }
+  .policy-check-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .policy-checkbox {
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--accent);
+    width: 15px;
+    height: 15px;
+  }
+  .policy-select {
+    width: 100%;
+    padding: 4px 8px;
+    font-size: 11.5px;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    color: var(--text);
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+  }
+  .policy-select:focus {
+    border-color: var(--accent);
+  }
+  .policy-card-desc {
+    font-size: 11px;
+    color: var(--dim);
+    line-height: 1.45;
+    margin: 0;
+    border-top: 1px solid var(--line-subtle);
+    padding-top: 6px;
+  }
+  .policy-panel.policy-compact .policy-card-desc {
+    display: none;
+  }
+  .policy-panel.policy-compact .policy-card {
+    min-height: auto;
+  }
 
   /* 3-column master dashboard grid: Col 1 Claude (1fr) | Col 2 Codex (1fr) | Col 3 Client Keys (compact 390px sidebar) */
   .dashboard-grid { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr) minmax(320px, 390px); gap: 14px; align-items: start; margin-top: 6px; }
@@ -367,18 +568,18 @@ const PAGE = `<!doctype html>
     .dashboard-grid { grid-template-columns: 1fr; }
     .grid-head-accounts, .grid-head-clients, #colClaude, #colCodex, .dash-col-side { grid-column: 1 / 2; grid-row: auto; }
   }
-  .account-col { background: rgba(22, 27, 34, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; min-width: 0; }
-  .col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.06); }
+  .account-col { background: var(--card-col-bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; min-width: 0; }
+  .col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line-subtle); }
   .col-title { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; display: inline-flex; align-items: center; gap: 6px; }
   .col-title.claude { color: #d2a8ff; }
   .col-title.codex { color: #56d364; }
   .col-hint { font-size: 10.5px; color: var(--dim); font-weight: normal; }
   .account-list { display: flex; flex-direction: column; gap: 8px; }
   .client-keys-list { display: flex; flex-direction: column; gap: 8px; }
-  .client-key-card { background: rgba(22, 27, 34, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; box-sizing: border-box; transition: border-color .15s ease; }
-  .client-key-card:hover { border-color: rgba(255, 255, 255, 0.15); }
+  .client-key-card { background: var(--card-bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; box-sizing: border-box; transition: border-color .15s ease; }
+  .client-key-card:hover { border-color: var(--card-hover-border); }
   .client-key-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .client-key-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 6px; border-top: 1px solid rgba(255, 255, 255, 0.04); font-size: 11px; }
+  .client-key-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line-subtle); font-size: 11px; }
   .client-key-stats { font-size: 11px; color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .card.draggable { cursor: grab; user-select: none; transition: opacity .15s ease, border-color .15s ease; }
   .card.draggable:active { cursor: grabbing; }
@@ -391,25 +592,25 @@ const PAGE = `<!doctype html>
   .prio-badge { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.3); color: var(--accent); line-height: 1.2; }
   .prio-badge.prio-badge-top { font-weight: 700; background: rgba(56, 189, 248, 0.2); border-color: var(--accent); color: var(--accent); box-shadow: 0 0 6px rgba(56, 189, 248, 0.25); }
 
-  .card { background: rgba(22, 27, 34, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 6px; padding: 8px 12px; margin-bottom: 0; box-sizing: border-box; transition: border-color .15s ease; }
+  .card { background: var(--card-bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; margin-bottom: 0; box-sizing: border-box; transition: border-color .15s ease; }
   .account-list .card { display: flex; flex-direction: column; justify-content: space-between; min-height: 114px; }
-  .card:hover { border-color: rgba(255, 255, 255, 0.15); }
+  .card:hover { border-color: var(--card-hover-border); }
   .card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
   .card-title-group { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; overflow: hidden; }
   .card-name-row { display: flex; align-items: center; margin: 2px 0 6px 0; min-height: 24px; width: 100%; }
   .card-name-display { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
-  .card-name-text { font-size: 13px; font-weight: 600; color: #f0f6fc; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: color .15s ease; }
+  .card-name-text { font-size: 13px; font-weight: 600; color: var(--heading); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: color .15s ease; }
   .card-name-text:hover { color: var(--accent); text-decoration: underline dotted; }
   .btn-rename { background: transparent; border: none; padding: 2px 4px; font-size: 11px; cursor: pointer; opacity: 0.45; transition: opacity .15s ease, transform .15s ease; border-radius: 3px; line-height: 1; color: var(--dim); }
-  .btn-rename:hover { opacity: 1; transform: scale(1.12); color: var(--accent); background: rgba(255, 255, 255, 0.08); }
+  .btn-rename:hover { opacity: 1; transform: scale(1.12); color: var(--accent); background: var(--line-subtle); }
   .card-rename-form { display: flex; align-items: center; gap: 4px; width: 100%; }
-  .card-rename-input { flex: 1; min-width: 0; background: rgba(13, 17, 23, 0.95); border: 1px solid var(--accent); color: #f0f6fc; font-size: 12px; padding: 2px 6px; border-radius: 4px; outline: none; }
-  .card-rename-input:focus { box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.3); }
+  .card-rename-input { flex: 1; min-width: 0; background: var(--input-bg); border: 1px solid var(--accent); color: var(--heading); font-size: 12px; padding: 2px 6px; border-radius: 4px; outline: none; }
+  .card-rename-input:focus { box-shadow: 0 0 0 2px var(--accent-glow); }
   .card-actions { display: flex; align-items: center; gap: 3px; margin-left: auto; flex-shrink: 0; }
   .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .name { font-size: 12.5px; font-weight: 600; color: #f0f6fc; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .name { font-size: 12.5px; font-weight: 600; color: var(--heading); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tag { font-size: 11px; color: var(--dim); }
-  .badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid rgba(255, 255, 255, 0.08); white-space: nowrap; line-height: 1.3; font-weight: 500; }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--line-subtle); white-space: nowrap; line-height: 1.3; font-weight: 500; }
   .badge.active { color: var(--ok); border-color: rgba(63,185,80,0.3); background: rgba(63,185,80,0.06); }
   .badge.throttled { color: var(--warn); border-color: rgba(210,153,34,0.35); background: rgba(210,153,34,0.08); }
   .badge.error, .badge.exhausted, .badge.bad { color: var(--bad); border-color: rgba(248,81,73,0.35); background: rgba(248,81,73,0.08); }
@@ -429,11 +630,11 @@ const PAGE = `<!doctype html>
   .quota { display: grid; grid-template-columns: 48px 1fr auto; gap: 8px; align-items: center; }
   .quota .lbl { color: var(--dim); font-size: 10.5px; font-weight: 500; }
   .quota .val { color: var(--dim); font-size: 10.5px; text-align: right; font-variant-numeric: tabular-nums; }
-  .bar { height: 4px; background: rgba(255, 255, 255, 0.06); border-radius: 2px; overflow: hidden; }
+  .bar { height: 4px; background: var(--line-subtle); border-radius: 2px; overflow: hidden; }
   .bar i { display: block; height: 100%; border-radius: 2px; background: var(--ok); transition: width .3s ease; }
   .bar i.warn { background: var(--warn); }
   .bar i.bad { background: var(--bad); }
-  .card-meta { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px 10px; margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255, 255, 255, 0.04); font-size: 11px; color: var(--dim); overflow: hidden; }
+  .card-meta { display: flex; align-items: center; flex-wrap: nowrap; gap: 4px 10px; margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line-subtle); font-size: 11px; color: var(--dim); overflow: hidden; }
   .card-meta-item { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
   .card-meta-item.ok { color: var(--ok); }
   .card-meta-item.warn { color: var(--warn); }
@@ -451,6 +652,30 @@ const PAGE = `<!doctype html>
   .act { font: inherit; font-size: 11px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; margin-left: auto; }
   .act:hover { background: var(--accent); color: var(--bg); }
   .act:disabled { opacity: .5; cursor: default; }
+
+  /* Light theme component overrides */
+  [data-theme="light"] .col-title.claude { color: #8250df; }
+  [data-theme="light"] .col-title.codex { color: #1a7f37; }
+  [data-theme="light"] .badge-plan { color: #8250df; border-color: rgba(130, 80, 223, 0.3); background: rgba(130, 80, 223, 0.08); }
+  [data-theme="light"] .badge.current { color: #0969da; border-color: rgba(9, 105, 218, 0.35); background: rgba(9, 105, 218, 0.1); }
+  [data-theme="light"] .badge.active { color: #1a7f37; border-color: rgba(26, 127, 55, 0.35); background: rgba(26, 127, 55, 0.08); }
+  [data-theme="light"] .badge.throttled { color: #9a6700; border-color: rgba(154, 103, 0, 0.35); background: rgba(154, 103, 0, 0.08); }
+  [data-theme="light"] .badge.error, [data-theme="light"] .badge.bad { color: #cf222e; border-color: rgba(207, 34, 46, 0.35); background: rgba(207, 34, 46, 0.08); }
+  [data-theme="light"] .badge-healthy { color: #1a7f37; border-color: rgba(26, 127, 55, 0.4); background: rgba(26, 127, 55, 0.1); }
+  [data-theme="light"] .card-healthy { border-color: rgba(26, 127, 55, 0.35) !important; background: rgba(26, 127, 55, 0.02) !important; }
+  [data-theme="light"] .card-unhealthy { border-color: rgba(207, 34, 46, 0.45) !important; background: rgba(207, 34, 46, 0.03) !important; }
+  [data-theme="light"] .card-quota-exhausted { border-color: rgba(154, 103, 0, 0.4) !important; background: rgba(154, 103, 0, 0.03) !important; }
+  [data-theme="light"] .prio-badge { background: rgba(9, 105, 218, 0.08); border-color: rgba(9, 105, 218, 0.25); color: #0969da; }
+  [data-theme="light"] .prio-badge.prio-badge-top { background: rgba(9, 105, 218, 0.16); border-color: #0969da; color: #0969da; box-shadow: 0 0 6px rgba(9, 105, 218, 0.2); }
+  [data-theme="light"] .btn-icon:hover { background: rgba(0, 0, 0, 0.06); }
+  [data-theme="light"] .btn-rename:hover { background: rgba(0, 0, 0, 0.06); }
+  [data-theme="light"] .quick-station-box { background: rgba(9, 105, 218, 0.05) !important; border-color: rgba(9, 105, 218, 0.2) !important; }
+  [data-theme="light"] .quick-cmd-wrap { background: #ffffff !important; border-color: #d0d7de !important; }
+  [data-theme="light"] #quickCmdText { color: #0969da !important; }
+  [data-theme="light"] #keybox button#go { color: #ffffff !important; }
+  [data-theme="light"] .btn-accent { color: #ffffff !important; }
+  [data-theme="light"] .tab-btn.active { color: #ffffff !important; }
+  [data-theme="light"] .btn-xs.btn-accent { color: #ffffff !important; }
   #note { font-size: 12px; margin: 8px 0; padding: 6px 10px; border-radius: 5px; display: none; }
   #note.ok { background: rgba(63,185,80,.12); color: var(--ok); border: 1px solid var(--ok); }
   #note.warn { background: rgba(210,153,34,.12); color: var(--warn); border: 1px solid var(--warn); }
@@ -581,6 +806,10 @@ const PAGE = `<!doctype html>
 <body>
 <main>
   <div id="keybox" style="display:none">
+    <div style="display:flex; justify-content:flex-end; gap:6px; margin-bottom:10px;">
+      <button class="btn btn-xs" id="btnLoginThemeToggle" type="button" title="Przełącz motyw / Switch theme">☀️ Jasny</button>
+      <button class="btn btn-xs" id="btnLoginLangToggle" type="button" title="Przełącz język / Switch language">🇬🇧 EN</button>
+    </div>
     <div class="login-card-head">
       <div class="login-card-icon">
         <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -588,17 +817,17 @@ const PAGE = `<!doctype html>
           <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
         </svg>
       </div>
-      <h1>Panel Zarządzania</h1>
-      <p>Wprowadź hasło, klucz administracyjny lub dowolny klucz stacji roboczej, aby uzyskać dostęp.</p>
+      <h1 data-i18n="loginTitle">Panel Zarządzania</h1>
+      <p data-i18n="loginSubtitle">Wprowadź hasło, klucz administracyjny lub dowolny klucz stacji roboczej, aby uzyskać dostęp.</p>
     </div>
     <div id="keyboxErr" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(239,68,68,0.12);border:1px solid var(--bad);color:var(--bad);font-size:13px;text-align:left"></div>
     <div id="keyboxInfo" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(63,185,80,0.12);border:1px solid var(--ok);color:var(--ok);font-size:13px;text-align:left"></div>
     <div class="login-field">
-      <label for="key">Klucz dostępu (administracyjny lub stacji roboczej)</label>
-      <input id="key" type="password" placeholder="tc-..." autocomplete="current-password">
+      <label for="key" data-i18n="loginKeyLabel">Klucz dostępu (administracyjny lub stacji roboczej)</label>
+      <input id="key" type="password" placeholder="tc-..." autocomplete="current-password" data-i18n-placeholder="loginKeyPlaceholder">
     </div>
-    <button id="go">Zaloguj się</button>
-    <div class="login-card-foot">
+    <button id="go" data-i18n="loginButton">Zaloguj się</button>
+    <div class="login-card-foot" data-i18n="loginFoot">
       Agent LB &bull; Zabezpieczony dostęp administracyjny
     </div>
   </div>
@@ -610,71 +839,128 @@ const PAGE = `<!doctype html>
       </div>
 
       <div class="header-actions">
-        <button class="btn btn-sm btn-outline" id="btnTestFleet" title="Wyślij szybkie zapytanie testowe do wszystkich kont i zweryfikuj ich stan">🩺 Testuj flotę</button>
-        <button class="btn btn-sm btn-accent" id="btnOpenTestChat" title="Otwórz interaktywny czat testowy dla Claude i Codex">💬 Test Chat</button>
-        <button class="btn btn-sm" id="btnProbeQuota" title="Odpytaj o aktualne zużycie limitów i salda kont">⚡ Odśwież salda</button>
-        <button class="btn btn-sm" id="btnReloadFleet" title="Przeładuj flotę kont z dysku">🔄 Przeładuj flotę</button>
-        <button class="btn btn-sm btn-bad" id="btnLogout" title="Wyloguj z panelu">🚪 Wyloguj</button>
+        <button class="btn btn-sm" id="btnThemeToggle" type="button" title="Przełącz motyw (Ciemny / Jasny)">☀️ Jasny</button>
+        <button class="btn btn-sm" id="btnLangToggle" type="button" title="Przełącz język (Polski / English)">🇬🇧 EN</button>
+        <button class="btn btn-sm btn-outline" id="btnTestFleet" title="Wyślij szybkie zapytanie testowe do wszystkich kont i zweryfikuj ich stan" data-i18n="btnTestFleet" data-i18n-title="btnTestFleetTitle">🩺 Testuj flotę</button>
+        <button class="btn btn-sm btn-accent" id="btnOpenTestChat" title="Otwórz interaktywny czat testowy dla Claude i Codex" data-i18n="btnOpenTestChat" data-i18n-title="btnOpenTestChatTitle">💬 Test Chat</button>
+        <button class="btn btn-sm" id="btnProbeQuota" title="Odpytaj o aktualne zużycie limitów i salda kont" data-i18n="btnProbeQuota" data-i18n-title="btnProbeQuotaTitle">⚡ Odśwież salda</button>
+        <button class="btn btn-sm" id="btnReloadFleet" title="Przeładuj flotę kont z dysku" data-i18n="btnReloadFleet" data-i18n-title="btnReloadFleetTitle">🔄 Przeładuj flotę</button>
+        <button class="btn btn-sm btn-bad" id="btnLogout" title="Wyloguj z panelu" data-i18n="btnLogout" data-i18n-title="btnLogoutTitle">🚪 Wyloguj</button>
       </div>
     </div>
     <div id="err"></div>
     <div id="problems"></div>
     <div id="note"></div>
     <div id="routesWrap" style="display:none">
-      <h2>Routing</h2>
+      <h2 data-i18n="routesHeading">Routing</h2>
       <div class="card table-responsive" style="padding:4px 6px"><table id="routes"></table></div>
     </div>
 
     <div id="accounts" style="display:none"></div>
-    <!-- Fleet Policy & Graceful Operations Bar -->
-    <div class="fleet-policy-bar" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; background:rgba(22,27,34,0.7); border:1px solid var(--line); border-radius:6px; padding:7px 12px; margin-bottom:12px;">
-      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:14px;">
-        <div style="display:flex; align-items:center; gap:6px;">
-          <label for="selDistributeSessions" style="font-size:12px; font-weight:600; color:var(--text); margin:0;">⚡ Affinity (Prompt Cache):</label>
-          <select id="selDistributeSessions" class="btn btn-sm" style="padding:2px 8px; font-size:11.5px; background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:4px;">
-            <option value="adaptive">Adaptive (Cache reuse + load balancing)</option>
-            <option value="even">Even (Rozkładanie sesji wg liczby)</option>
-            <option value="off">Off (Czysta rotacja)</option>
-          </select>
+    <!-- Fleet Policy & Graceful Operations Panel -->
+    <div class="policy-panel" id="fleetPolicyPanel">
+      <div class="policy-panel-head">
+        <div class="policy-head-left">
+          <span class="policy-title-icon">⚖️</span>
+          <div>
+            <div class="policy-title-row">
+              <h3 class="policy-title" data-i18n="policyTitle">Polityka routingu i działania floty</h3>
+              <button class="btn btn-xs" id="btnTogglePolicyHelp" type="button" data-i18n="btnPolicyHelp">ℹ️ Wyjaśnienia</button>
+            </div>
+            <p class="policy-subtitle" data-i18n="policySubtitle">Inteligentny podział obciążenia, pamięć podręczna promptów i odporność na limity API.</p>
+          </div>
         </div>
-        <div style="display:flex; align-items:center; gap:6px;">
-          <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; font-size:11.5px; color:var(--text); margin:0;" title="Kieruj nowe sesje do kont, których 5h limit resetuje się najszybciej">
-            <input type="checkbox" id="chkExpiryRouting" style="margin:0; cursor:pointer;">
-            <span>🕒 Earliest-Reset-First</span>
-          </label>
-        </div>
-        <div style="display:flex; align-items:center; gap:6px;">
-          <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; font-size:11.5px; color:var(--text); margin:0;" title="Gdy wszystkie konta Claude są wyczerpane, przekieruj zapytanie do OpenAI Codex">
-            <input type="checkbox" id="chkCrossProviderFallback" style="margin:0; cursor:pointer;">
-            <span>🔄 Cross-Provider Fallback</span>
-          </label>
-        </div>
-        <div style="display:flex; align-items:center; gap:6px;">
-          <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; font-size:11.5px; color:var(--text); margin:0;" title="Inteligentne okresowe sprawdzanie dostępności (0 tokenów dla aktywnych, 1 token dla bezczynnych)">
-            <input type="checkbox" id="chkAutoHealthCheck" style="margin:0; cursor:pointer;">
-            <span>🩺 Auto-Health</span>
-          </label>
-          <span id="autoHealthBadge" class="badge" style="font-size:10px; padding:1px 6px; display:none;"></span>
+        <div class="policy-head-right">
+          <span id="drainStatusBadge" class="badge error" style="display:none; font-size:11px;"></span>
+          <button id="btnDrainToggle" class="btn btn-sm" data-i18n="btnDrainMode" data-i18n-title="btnDrainModeTitle" title="Przełącz tryb drain — dokończ aktywne żądania bez przyjmowania nowych">🛑 Drain Mode</button>
         </div>
       </div>
-      <div style="display:flex; align-items:center; gap:8px;">
-        <span id="drainStatusBadge" class="badge error" style="display:none; font-size:11px;"></span>
-        <button id="btnDrainToggle" class="btn btn-sm" title="Przełącz tryb drain — dokończ aktywne żądania bez przyjmowania nowych">🛑 Drain Mode</button>
+
+      <div class="policy-grid">
+        <!-- Card 1: Session Affinity (Prompt Cache) -->
+        <div class="policy-card">
+          <div class="policy-card-top">
+            <span class="policy-card-badge">PROMPT CACHE</span>
+            <span class="policy-card-icon">⚡</span>
+          </div>
+          <div class="policy-card-head">
+            <label for="selDistributeSessions" class="policy-card-label" data-i18n="policyCardAffinityTitle">Affinity (Prompt Cache)</label>
+            <select id="selDistributeSessions" class="policy-select">
+              <option value="adaptive" data-i18n="optAffinityAdaptive">Adaptive (Cache reuse + load balancing)</option>
+              <option value="even" data-i18n="optAffinityEven">Even (Rozkładanie sesji wg liczby)</option>
+              <option value="off" data-i18n="optAffinityOff">Off (Czysta rotacja)</option>
+            </select>
+          </div>
+          <p class="policy-card-desc" id="descAffinity" data-i18n="policyCardAffinityDesc">
+            Kieruje kolejne zapytania tej samej sesji (projektu) do tego samego konta, aby wykorzystać pamięć podręczną Anthropic Prompt Cache (-90% kosztów tokenów wejściowych i 3-5x szybsza odpowiedź).
+          </p>
+        </div>
+
+        <!-- Card 2: Earliest-Reset-First -->
+        <div class="policy-card">
+          <div class="policy-card-top">
+            <span class="policy-card-badge">SMART ROTATION</span>
+            <span class="policy-card-icon">🕒</span>
+          </div>
+          <div class="policy-card-head">
+            <label class="policy-check-label" title="Kieruj nowe sesje do kont, których 5h limit resetuje się najszybciej">
+              <input type="checkbox" id="chkExpiryRouting" class="policy-checkbox">
+              <span class="policy-card-label" data-i18n="policyCardResetTitle">Earliest-Reset-First</span>
+            </label>
+          </div>
+          <p class="policy-card-desc" id="descReset" data-i18n="policyCardResetDesc">
+            Gdy rozpoczyna się nowa sesja, wybiera konto, którego limit 5h lub 7d zresetuje się najszybciej. Zapobiega blokowaniu floty i maksymalizuje łączną dostępność.
+          </p>
+        </div>
+
+        <!-- Card 3: Cross-Provider Fallback -->
+        <div class="policy-card">
+          <div class="policy-card-top">
+            <span class="policy-card-badge">ZERO DOWNTIME</span>
+            <span class="policy-card-icon">🔄</span>
+          </div>
+          <div class="policy-card-head">
+            <label class="policy-check-label" title="Gdy wszystkie konta Claude są wyczerpane, przekieruj zapytanie do OpenAI Codex">
+              <input type="checkbox" id="chkCrossProviderFallback" class="policy-checkbox">
+              <span class="policy-card-label" data-i18n="policyCardFallbackTitle">Cross-Provider Fallback</span>
+            </label>
+          </div>
+          <p class="policy-card-desc" id="descFallback" data-i18n="policyCardFallbackDesc">
+            W przypadku wyczerpania limitów wszystkich kont Claude lub blokady upstreamu, automatycznie przekierowuje zapytania do OpenAI Codex (i odwrotnie), zapewniając zerowy przestój.
+          </p>
+        </div>
+
+        <!-- Card 4: Auto-Health -->
+        <div class="policy-card">
+          <div class="policy-card-top">
+            <span class="policy-card-badge">DIAGNOSTICS</span>
+            <span id="autoHealthBadge" class="badge" style="font-size:10px; padding:1px 6px; display:none;"></span>
+          </div>
+          <div class="policy-card-head">
+            <label class="policy-check-label" title="Inteligentne okresowe sprawdzanie dostępności (0 tokenów dla aktywnych, 1 token dla bezczynnych)">
+              <input type="checkbox" id="chkAutoHealthCheck" class="policy-checkbox">
+              <span class="policy-card-label" data-i18n="policyCardHealthTitle">Auto-Health</span>
+            </label>
+          </div>
+          <p class="policy-card-desc" id="descHealth" data-i18n="policyCardHealthDesc">
+            Okresowe badanie stanu kont w tle (co 15 min). Bezpieczne dla limitów: 0 tokenów dla aktywnych kont, 1 mikro-token dla kont bezczynnych. Błyskawicznie wykrywa odblokowanie kont.
+          </p>
+        </div>
       </div>
     </div>
     <div class="dashboard-grid" id="accountsGrid">
       <!-- Sekcja nagłówka kont -->
       <div class="grid-head-accounts">
         <div class="sec-head" style="margin:0 0 4px; justify-content:flex-start; gap:12px;">
-          <h2>Konta Claude & Codex</h2>
-          <span style="font-size:11px; color:var(--dim);">💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet</span>
+          <h2 data-i18n="accountsHeading">Konta Claude & Codex</h2>
+          <span style="font-size:11px; color:var(--dim);" data-i18n="accountsHint">💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet</span>
         </div>
       </div>
 
       <!-- Sekcja nagłówka kluczy klientów -->
       <div class="grid-head-clients">
         <div class="sec-head" style="margin:0 0 4px;">
-          <h2>Stacje robocze & Klucze</h2>
+          <h2 data-i18n="clientsHeading">Stacje robocze & Klucze</h2>
         </div>
       </div>
 
@@ -682,10 +968,10 @@ const PAGE = `<!doctype html>
       <div class="account-col" id="colClaude">
         <div class="col-head">
           <div class="row" style="gap:6px; align-items:center;">
-            <span class="col-title claude">🟣 Claude (Anthropic)</span>
+            <span class="col-title claude" data-i18n="colClaudeTitle">🟣 Claude (Anthropic)</span>
             <span class="col-hint" id="countClaude">0 kont</span>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto Claude (Anthropic)">➕ Dodaj konto</button>
+          <button class="btn btn-sm btn-accent" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto Claude (Anthropic)" data-i18n="btnAddAccount">➕ Dodaj konto</button>
         </div>
         <div class="account-list" id="listClaude" data-provider="anthropic"></div>
       </div>
@@ -694,10 +980,10 @@ const PAGE = `<!doctype html>
       <div class="account-col" id="colCodex">
         <div class="col-head">
           <div class="row" style="gap:6px; align-items:center;">
-            <span class="col-title codex">🟢 OpenAI Codex</span>
+            <span class="col-title codex" data-i18n="colCodexTitle">🟢 OpenAI Codex</span>
             <span class="col-hint" id="countCodex">0 kont</span>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto OpenAI Codex">➕ Dodaj konto</button>
+          <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto OpenAI Codex" data-i18n="btnAddAccount">➕ Dodaj konto</button>
         </div>
         <div class="account-list" id="listCodex" data-provider="codex"></div>
       </div>
@@ -706,32 +992,32 @@ const PAGE = `<!doctype html>
       <div class="account-col dash-col-side" id="colClients">
         <div class="col-head">
           <div class="row" style="gap:6px; align-items:center;">
-            <span class="col-title" style="color:#58a6ff;">🔑 Klucze klientów</span>
+            <span class="col-title" style="color:#58a6ff;" data-i18n="colClientsTitle">🔑 Klucze klientów</span>
             <span class="col-hint" id="countClientKeys">0 kluczy</span>
           </div>
           <div class="row" style="gap:4px;">
-            <button class="btn btn-sm" id="btnPullSetupRepo" style="padding:2px 7px; font-size:11px;" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)">🔄 Aktualizuj</button>
-            <button class="btn btn-sm btn-accent" id="btnShowAddClientKey" style="padding:2px 7px; font-size:11px;" title="Utwórz nowy klucz klienta">➕ Nowy klucz</button>
+            <button class="btn btn-sm" id="btnPullSetupRepo" style="padding:2px 7px; font-size:11px;" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)" data-i18n="btnUpdate" data-i18n-title="btnUpdateTitle">🔄 Aktualizuj</button>
+            <button class="btn btn-sm btn-accent" id="btnShowAddClientKey" style="padding:2px 7px; font-size:11px;" title="Utwórz nowy klucz klienta" data-i18n="btnNewKey">➕ Nowy klucz</button>
           </div>
         </div>
 
-        <div class="card" style="margin-bottom:8px; background:rgba(83,177,253,0.06); border-color:rgba(83,177,253,0.2); padding:8px 10px;">
+        <div class="card quick-station-box" style="margin-bottom:8px; background:rgba(83,177,253,0.06); border-color:rgba(83,177,253,0.2); padding:8px 10px;">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
-            <span style="font-weight:600; font-size:11.5px; color:#f0f6fc;">⚡ Szybkie podłączenie stacji:</span>
+            <span style="font-weight:600; font-size:11.5px; color:var(--heading);" data-i18n="quickConnectTitle">⚡ Szybkie podłączenie stacji:</span>
             <div style="display:flex; gap:3px;">
               <button class="btn btn-xs active" id="btnQuickTabBash" type="button" style="padding:1px 7px; font-size:10px;" title="Skrypt instalacyjny Linux, macOS, WSL (Bash)">Linux / macOS</button>
               <button class="btn btn-xs" id="btnQuickTabPS" type="button" style="padding:1px 7px; font-size:10px;" title="Skrypt instalacyjny Windows (PowerShell)">Windows</button>
             </div>
           </div>
-          <div style="display:flex; align-items:center; gap:6px; background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:4px; padding:4px 7px;">
+          <div class="quick-cmd-wrap" style="display:flex; align-items:center; gap:6px; background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:4px; padding:4px 7px;">
             <code id="quickCmdText" class="mono" style="flex:1; font-size:10.5px; color:#58a6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" title="Kliknij, aby skopiować pełną komendę"></code>
-            <button class="btn btn-xs btn-accent" id="btnQuickCopyCmd" type="button" style="flex-shrink:0; padding:1px 7px;" title="Kopiuj polecenie do schowka">📋 Kopiuj</button>
+            <button class="btn btn-xs btn-accent" id="btnQuickCopyCmd" type="button" style="flex-shrink:0; padding:1px 7px;" title="Kopiuj polecenie do schowka" data-i18n="copyCmd">📋 Kopiuj</button>
           </div>
           <div style="display:flex; align-items:center; justify-content:space-between; margin-top:4px; font-size:10.5px; color:var(--dim);">
             <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none; color:var(--text);" title="Odznacz, jeśli chcesz uruchomić czystą komendę — instalator sam zapyta o wklejenie klucza">
-              <input type="checkbox" id="chkIncludeKeyInCmd" checked style="margin:0; cursor:pointer;"> Dołącz klucz
+              <input type="checkbox" id="chkIncludeKeyInCmd" checked style="margin:0; cursor:pointer;"> <span data-i18n="includeKey">Dołącz klucz</span>
             </label>
-            <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-size:10.5px;">instrukcja GitHub ↗</a>
+            <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-size:10.5px;" data-i18n="githubGuide">instrukcja GitHub ↗</a>
           </div>
         </div>
 
@@ -1205,6 +1491,272 @@ const PAGE = `<!doctype html>
   var sortState = { sessions: { key: 'lastSeen', dir: 'desc' } };
   var UNAVAILABLE_TEXT = ${JSON.stringify(UNAVAILABLE_TEXT)};
 
+  var currentTheme = 'dark';
+  try { currentTheme = localStorage.getItem('agentlb-theme') || 'dark'; } catch (e) {}
+  document.documentElement.setAttribute('data-theme', currentTheme);
+
+  var currentLang = 'pl';
+  try { currentLang = localStorage.getItem('agentlb-lang') || 'pl'; } catch (e) {}
+  document.documentElement.lang = currentLang;
+
+  var I18N = {
+    pl: {
+      appTitle: 'Agent LB',
+      themeDark: '🌙 Ciemny',
+      themeLight: '☀️ Jasny',
+      langBtn: '🇬🇧 EN',
+      loginTitle: 'Panel Zarządzania',
+      loginSubtitle: 'Wprowadź hasło, klucz administracyjny lub dowolny klucz stacji roboczej, aby uzyskać dostęp.',
+      loginKeyLabel: 'Klucz dostępu (administracyjny lub stacji roboczej)',
+      loginKeyPlaceholder: 'tc-...',
+      loginButton: 'Zaloguj się',
+      loginFoot: 'Agent LB • Zabezpieczony dostęp administracyjny',
+      btnTestFleet: '🩺 Testuj flotę',
+      btnTestFleetTitle: 'Wyślij szybkie zapytanie testowe do wszystkich kont i zweryfikuj ich stan',
+      btnOpenTestChat: '💬 Test Chat',
+      btnOpenTestChatTitle: 'Otwórz interaktywny czat testowy dla Claude i Codex',
+      btnProbeQuota: '⚡ Odśwież salda',
+      btnProbeQuotaTitle: 'Odpytaj o aktualne zużycie limitów i salda kont',
+      btnReloadFleet: '🔄 Przeładuj flotę',
+      btnReloadFleetTitle: 'Przeładuj flotę kont z dysku',
+      btnLogout: '🚪 Wyloguj',
+      btnLogoutTitle: 'Wyloguj z panelu',
+      routesHeading: 'Routing',
+      policyTitle: 'Polityka routingu i działania floty',
+      policySubtitle: 'Inteligentny podział obciążenia, pamięć podręczna promptów i odporność na limity API.',
+      btnPolicyHelp: 'ℹ️ Wyjaśnienia',
+      btnPolicyHelpCompact: '⚡ Zwiń opisy',
+      btnDrainMode: '🛑 Drain Mode',
+      btnDrainModeTitle: 'Przełącz tryb drain — dokończ aktywne żądania bez przyjmowania nowych',
+      btnDrainCancel: '▶️ Anuluj Drain',
+      drainActive: '🛑 Draining ({count} req in flight)',
+      policyCardAffinityTitle: 'Affinity (Prompt Cache)',
+      optAffinityAdaptive: 'Adaptive (Cache + Balancing)',
+      optAffinityEven: 'Even (Rozkładanie sesji wg liczby)',
+      optAffinityOff: 'Off (Czysta rotacja)',
+      policyCardAffinityDesc: 'Kieruje kolejne zapytania tej samej sesji (projektu) do tego samego konta, aby wykorzystać pamięć podręczną Anthropic Prompt Cache (-90% kosztów tokenów wejściowych i 3-5x szybsza odpowiedź).',
+      policyCardResetTitle: 'Earliest-Reset-First',
+      policyCardResetDesc: 'Gdy rozpoczyna się nowa sesja, wybiera konto, którego limit 5h lub 7d zresetuje się najszybciej. Zapobiega blokowaniu floty i maksymalizuje łączną dostępność.',
+      policyCardFallbackTitle: 'Cross-Provider Fallback',
+      policyCardFallbackDesc: 'W przypadku wyczerpania limitów wszystkich kont Claude lub blokady upstreamu, automatycznie przekierowuje zapytania do OpenAI Codex (i odwrotnie), zapewniając zerowy przestój.',
+      policyCardHealthTitle: 'Auto-Health',
+      policyCardHealthDesc: 'Okresowe badanie stanu kont w tle (co 15 min). Bezpieczne dla limitów: 0 tokenów dla aktywnych kont, 1 mikro-token dla kont bezczynnych. Błyskawicznie wykrywa odblokowanie kont.',
+      autoHealthActive: 'Aktywny',
+      autoHealthDisabled: 'Wyłączony',
+      accountsHeading: 'Konta Claude & Codex',
+      accountsHint: '💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet',
+      clientsHeading: 'Stacje robocze & Klucze',
+      colClaudeTitle: '🟣 Claude (Anthropic)',
+      colCodexTitle: '🟢 OpenAI Codex',
+      colClientsTitle: '🔑 Klucze klientów',
+      btnAddAccount: '➕ Dodaj konto',
+      btnNewKey: '➕ Nowy klucz',
+      btnUpdate: '🔄 Aktualizuj',
+      btnUpdateTitle: 'Pobierz najnowsze skrypty instalatora z GitHub (git pull)',
+      quickConnectTitle: '⚡ Szybkie podłączenie stacji:',
+      copyCmd: '📋 Kopiuj',
+      includeKey: 'Dołącz klucz',
+      githubGuide: 'instrukcja GitHub ↗',
+      countAccounts: '{n} kont',
+      countAccountsSingle: '1 konto',
+      countKeys: '{n} kluczy',
+      countKeysSingle: '1 klucz',
+      badgeActive: '● Aktywne',
+      badgeActiveRotation: '● Aktywne (rotacja)',
+      badgeHealthy: '🟢 SPRAWNE',
+      badgeHealthyTitle: 'Konto w pełni sprawne i gotowe do obsługi zapytań',
+      badgeDisabled: '⚪ Wyłączone',
+      btnQuickTest: '⚡ Test',
+      btnMoveTop: '▲ Na górę',
+      btnMoveTopTitle: 'Przenieś to konto na 1. miejsce (ustaw jako główne konto w kolejce)',
+      btnRelogin: '🔐 Zaloguj',
+      btnProbe: 'Odśwież salda i limity (Probe)',
+      btnEnable: 'Włącz konto do rotacji',
+      btnDisable: 'Wyłącz konto z rotacji',
+      btnExport: 'Eksportuj konfigurację i tokeny konta do pliku JSON',
+      btnDelete: 'Usuń konto z konfiguracji Agent LB',
+      renameAccount: 'Zmień nazwę konta',
+      renameAccountDblClick: 'Kliknij dwukrotnie lub użyj ikony ołówka ✏️, aby zmienić nazwę konta',
+      prioBadgeTopTitle: 'Pozycja #1 — główne konto obsługujące zapytania w pierwszej kolejności',
+      prioBadgeOtherTitle: 'Pozycja #{rank} — konto zapasowe w kolejce (kliknij „▲ Na górę” lub przeciągnij ⠿, aby zmienić)',
+      dragHandleTitle: 'Przeciągnij myszką, aby zmienić priorytet w kolumnie',
+      summaryActiveAccount: 'aktywne konto ',
+      summaryNone: 'brak',
+      summarySessions: ' · {active} aktywnych / {known} znanych sesji',
+      summaryRefreshes: 'odświeżanie co {sec}s · {time}',
+      emptyNoAccountsClaude: 'Brak kont Claude. Kliknij „➕ Dodaj konto” u góry.',
+      emptyNoAccountsCodex: 'Brak kont OpenAI Codex. Kliknij „➕ Dodaj konto” u góry.',
+      emptyNoKeys: 'Brak kluczy klientów. Kliknij „➕ Nowy klucz”, aby podłączyć stację roboczą.',
+      primaryAdminKeyName: 'Główny klucz administratora (proxy.apiKey)',
+      btnKeyConnect: '🚀 Podłącz',
+      keyShow: 'Pokaż',
+      keyHide: 'Ukryj'
+    },
+    en: {
+      appTitle: 'Agent LB',
+      themeDark: '🌙 Dark',
+      themeLight: '☀️ Light',
+      langBtn: '🇵🇱 PL',
+      loginTitle: 'Management Dashboard',
+      loginSubtitle: 'Enter password, administrative key, or any workstation client key to gain access.',
+      loginKeyLabel: 'Access Key (administrative or workstation)',
+      loginKeyPlaceholder: 'tc-...',
+      loginButton: 'Log In',
+      loginFoot: 'Agent LB • Secured administrative access',
+      btnTestFleet: '🩺 Test Fleet',
+      btnTestFleetTitle: 'Send quick test query to all accounts and verify their status',
+      btnOpenTestChat: '💬 Test Chat',
+      btnOpenTestChatTitle: 'Open interactive test chat playground for Claude and Codex',
+      btnProbeQuota: '⚡ Refresh Quotas',
+      btnProbeQuotaTitle: 'Query upstream for latest quota utilization and balances',
+      btnReloadFleet: '🔄 Reload Fleet',
+      btnReloadFleetTitle: 'Reload account fleet from disk configuration',
+      btnLogout: '🚪 Logout',
+      btnLogoutTitle: 'Sign out from dashboard',
+      routesHeading: 'Routing',
+      policyTitle: 'Fleet Routing & Operations Policy',
+      policySubtitle: 'Smart load balancing, prompt cache reuse, and upstream quota resilience.',
+      btnPolicyHelp: 'ℹ️ Explanations',
+      btnPolicyHelpCompact: '⚡ Collapse descriptions',
+      btnDrainMode: '🛑 Drain Mode',
+      btnDrainModeTitle: 'Toggle drain mode — finish in-flight requests without taking new ones',
+      btnDrainCancel: '▶️ Cancel Drain',
+      drainActive: '🛑 Draining ({count} req in flight)',
+      policyCardAffinityTitle: 'Affinity (Prompt Cache)',
+      optAffinityAdaptive: 'Adaptive (Cache + Balancing)',
+      optAffinityEven: 'Even (Equal session distribution)',
+      optAffinityOff: 'Off (Pure round-robin)',
+      policyCardAffinityDesc: 'Pins requests of the same session to the same account, saving up to 90% in input token costs and answering 3-5x faster using Anthropic Prompt Cache.',
+      policyCardResetTitle: 'Earliest-Reset-First',
+      policyCardResetDesc: 'New sessions prioritize the account whose 5h or 7d quota window resets earliest. Prevents full fleet lockups and steadily recycles available quota.',
+      policyCardFallbackTitle: 'Cross-Provider Fallback',
+      policyCardFallbackDesc: 'When all Claude accounts hit quota limits or upstream errors, requests seamlessly fail over to OpenAI Codex (and vice-versa), ensuring zero agent downtime.',
+      policyCardHealthTitle: 'Auto-Health',
+      policyCardHealthDesc: 'Silent background diagnostics every 15 minutes. Consumes 0 tokens for active accounts and only 1 micro-token for idle accounts, auto-recovering cleared accounts.',
+      autoHealthActive: 'Active',
+      autoHealthDisabled: 'Disabled',
+      accountsHeading: 'Claude & Codex Accounts',
+      accountsHint: '💡 Drag card ⠿ in column to adjust queue priority',
+      clientsHeading: 'Workstations & Keys',
+      colClaudeTitle: '🟣 Claude (Anthropic)',
+      colCodexTitle: '🟢 OpenAI Codex',
+      colClientsTitle: '🔑 Client Keys',
+      btnAddAccount: '➕ Add Account',
+      btnNewKey: '➕ New Key',
+      btnUpdate: '🔄 Update',
+      btnUpdateTitle: 'Pull latest installer scripts from GitHub (git pull)',
+      quickConnectTitle: '⚡ Quick Workstation Connect:',
+      copyCmd: '📋 Copy',
+      includeKey: 'Include key',
+      githubGuide: 'GitHub guide ↗',
+      countAccounts: '{n} accounts',
+      countAccountsSingle: '1 account',
+      countKeys: '{n} keys',
+      countKeysSingle: '1 key',
+      badgeActive: '● Active',
+      badgeActiveRotation: '● Active (rotation)',
+      badgeHealthy: '🟢 HEALTHY',
+      badgeHealthyTitle: 'Account is fully healthy and ready to handle requests',
+      badgeDisabled: '⚪ Disabled',
+      btnQuickTest: '⚡ Test',
+      btnMoveTop: '▲ Move to Top',
+      btnMoveTopTitle: 'Move this account to 1st place (set as primary queue account)',
+      btnRelogin: '🔐 Login',
+      btnProbe: 'Refresh quota & balances (Probe)',
+      btnEnable: 'Enable account for rotation',
+      btnDisable: 'Disable account from rotation',
+      btnExport: 'Export account config and tokens to JSON file',
+      btnDelete: 'Remove account from Agent LB config',
+      renameAccount: 'Rename account',
+      renameAccountDblClick: 'Double-click or click pencil ✏️ icon to rename account',
+      prioBadgeTopTitle: 'Rank #1 — primary account handling requests first',
+      prioBadgeOtherTitle: 'Rank #{rank} — fallback account in queue (click "▲ Move to Top" or drag ⠿ to reorder)',
+      dragHandleTitle: 'Drag with mouse to reorder queue priority in column',
+      summaryActiveAccount: 'active account ',
+      summaryNone: 'none',
+      summarySessions: ' · {active} active / {known} known sessions',
+      summaryRefreshes: 'refreshes every {sec}s · {time}',
+      emptyNoAccountsClaude: 'No Claude accounts. Click “➕ Add Account” above.',
+      emptyNoAccountsCodex: 'No OpenAI Codex accounts. Click “➕ Add Account” above.',
+      emptyNoKeys: 'No client keys configured. Click “➕ New Key” to connect a workstation.',
+      primaryAdminKeyName: 'Primary administrator key (proxy.apiKey)',
+      btnKeyConnect: '🚀 Connect',
+      keyShow: 'Show',
+      keyHide: 'Hide'
+    }
+  };
+
+  function t(key, params) {
+    var dict = I18N[currentLang] || I18N.pl;
+    var str = dict[key] != null ? dict[key] : (I18N.pl[key] != null ? I18N.pl[key] : (I18N.en[key] != null ? I18N.en[key] : key));
+    if (params && typeof params === 'object') {
+      for (var k in params) {
+        str = str.replace(new RegExp('\\{' + k + '\\}', 'g'), params[k]);
+      }
+    }
+    return str;
+  }
+
+  function updateI18nDOM() {
+    var nodes = document.querySelectorAll('[data-i18n]');
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      var k = n.getAttribute('data-i18n');
+      if (k) n.textContent = t(k);
+    }
+    var titleNodes = document.querySelectorAll('[data-i18n-title]');
+    for (var j = 0; j < titleNodes.length; j++) {
+      var tn = titleNodes[j];
+      var tk = tn.getAttribute('data-i18n-title');
+      if (tk) tn.title = t(tk);
+    }
+    var phNodes = document.querySelectorAll('[data-i18n-placeholder]');
+    for (var m = 0; m < phNodes.length; m++) {
+      var pn = phNodes[m];
+      var pk = pn.getAttribute('data-i18n-placeholder');
+      if (pk) pn.placeholder = t(pk);
+    }
+    var langBtn = document.getElementById('btnLangToggle');
+    if (langBtn) langBtn.textContent = currentLang === 'pl' ? '🇬🇧 EN' : '🇵🇱 PL';
+    var loginLangBtn = document.getElementById('btnLoginLangToggle');
+    if (loginLangBtn) loginLangBtn.textContent = currentLang === 'pl' ? '🇬🇧 EN' : '🇵🇱 PL';
+
+    var themeBtn = document.getElementById('btnThemeToggle');
+    if (themeBtn) themeBtn.textContent = currentTheme === 'dark' ? t('themeLight') : t('themeDark');
+    var loginThemeBtn = document.getElementById('btnLoginThemeToggle');
+    if (loginThemeBtn) loginThemeBtn.textContent = currentTheme === 'dark' ? t('themeLight') : t('themeDark');
+
+    var pHelp = document.getElementById('btnTogglePolicyHelp');
+    if (pHelp) {
+      var panel = document.getElementById('fleetPolicyPanel');
+      var isCompact = panel && panel.classList.contains('policy-compact');
+      pHelp.textContent = isCompact ? t('btnPolicyHelp') : t('btnPolicyHelpCompact');
+    }
+  }
+
+  function setLang(lang) {
+    if (lang !== 'pl' && lang !== 'en') lang = 'pl';
+    currentLang = lang;
+    try { localStorage.setItem('agentlb-lang', lang); } catch (e) {}
+    document.documentElement.lang = lang;
+    updateI18nDOM();
+    if (lastStatus) {
+      render(lastStatus);
+    }
+  }
+
+  function setTheme(theme) {
+    if (theme !== 'light' && theme !== 'dark') theme = 'dark';
+    currentTheme = theme;
+    try { localStorage.setItem('agentlb-theme', theme); } catch (e) {}
+    document.documentElement.setAttribute('data-theme', theme);
+    var label = theme === 'dark' ? t('themeLight') : t('themeDark');
+    var b = document.getElementById('btnThemeToggle');
+    if (b) b.textContent = label;
+    var bl = document.getElementById('btnLoginThemeToggle');
+    if (bl) bl.textContent = label;
+  }
+
 ${SHARED_CONSTS}
 
 ${SHARED_HELPERS}
@@ -1547,7 +2099,7 @@ ${SHARED_HELPERS}
 
     // Drag handle
     var dragHandle = el('span', 'drag-handle', '⠿');
-    dragHandle.title = 'Przeciągnij myszką, aby zmienić priorytet w kolumnie';
+    dragHandle.title = t('dragHandleTitle');
     titleGroup.appendChild(dragHandle);
 
     // Rank badge (#1, #2, #3...)
@@ -1555,8 +2107,8 @@ ${SHARED_HELPERS}
       var isTop = rankIndex === 0;
       var prioBadge = el('span', 'prio-badge' + (isTop ? ' prio-badge-top' : ''), '#' + (rankIndex + 1));
       prioBadge.title = isTop
-        ? 'Pozycja #1 — główne konto obsługujące zapytania w pierwszej kolejności'
-        : 'Pozycja #' + (rankIndex + 1) + ' — konto zapasowe w kolejce (kliknij „▲ Na górę” lub przeciągnij ⠿, aby zmienić)';
+        ? t('prioBadgeTopTitle')
+        : t('prioBadgeOtherTitle', { rank: rankIndex + 1 });
       if (!isTop) {
         prioBadge.style.cursor = 'pointer';
         prioBadge.addEventListener('click', function (e) {
@@ -1575,14 +2127,14 @@ ${SHARED_HELPERS}
 
     if (a.name === current) {
       var isTopActive = rankIndex === 0;
-      titleGroup.appendChild(el('span', 'badge current', isTopActive ? '● Aktywne' : '● Aktywne (rotacja)'));
+      titleGroup.appendChild(el('span', 'badge current', isTopActive ? t('badgeActive') : t('badgeActiveRotation')));
     }
     var hasFailedTest = Boolean(a.lastTest && !a.lastTest.ok);
     var hasActiveError = Boolean(a.lastError && a.lastError.reason);
     var isUnavail = Boolean(a.unavailable || hasActiveError || hasFailedTest);
 
     if (a.disabled) {
-      titleGroup.appendChild(el('span', 'badge bad', '⚪ Wyłączone'));
+      titleGroup.appendChild(el('span', 'badge bad', t('badgeDisabled')));
       card.classList.add('account-disabled');
     } else if (isUnavail) {
       var unavailKey = a.unavailable
@@ -1593,15 +2145,15 @@ ${SHARED_HELPERS}
       var cardClass = 'card-quota-exhausted';
 
       if (unavailKey === 'identity-verification') {
-        badgeText = '🔴 Wymagana weryfikacja SMS';
+        badgeText = currentLang === 'pl' ? '🔴 Wymagana weryfikacja SMS' : '🔴 SMS Verification Required';
         badgeClass = 'error';
         cardClass = 'card-unhealthy';
       } else if (unavailKey === 'entitlement') {
-        badgeText = '🔴 Blokada organizacji (OAuth 403)';
+        badgeText = currentLang === 'pl' ? '🔴 Blokada organizacji (OAuth 403)' : '🔴 Org Block (OAuth 403)';
         badgeClass = 'error';
         cardClass = 'card-unhealthy';
       } else if (unavailKey === 'auth') {
-        badgeText = '🔴 Błąd autoryzacji (401/403)';
+        badgeText = currentLang === 'pl' ? '🔴 Błąd autoryzacji (401/403)' : '🔴 Auth Error (401/403)';
         badgeClass = 'error';
         cardClass = 'card-unhealthy';
       } else if (unavailKey === 'circuit-breaker') {
@@ -1609,11 +2161,11 @@ ${SHARED_HELPERS}
         badgeClass = 'error';
         cardClass = 'card-unhealthy';
       } else if (unavailKey === 'error' || a.status === 'error' || unavailKey === 'server_error' || (typeof unavailKey === 'string' && unavailKey.startsWith('http_'))) {
-        badgeText = '🔴 Błąd konta / upstream';
+        badgeText = currentLang === 'pl' ? '🔴 Błąd konta / upstream' : '🔴 Account / Upstream Error';
         badgeClass = 'error';
         cardClass = 'card-unhealthy';
       } else if (unavailKey === 'quota' || unavailKey === 'upstream-rejected' || unavailKey === 'exhausted') {
-        badgeText = '🟡 Quota 100% (Wyczerpany)';
+        badgeText = currentLang === 'pl' ? '🟡 Quota 100% (Wyczerpany)' : '🟡 Quota 100% (Exhausted)';
         badgeClass = 'throttled';
         cardClass = 'card-quota-exhausted';
       } else if (unavailKey === 'throttled' || unavailKey === 'rate-limit') {
@@ -1622,19 +2174,19 @@ ${SHARED_HELPERS}
         badgeClass = 'throttled';
         cardClass = 'card-quota-exhausted';
       } else if (unavailKey === 'capped' || unavailKey === 'advisor-capped') {
-        badgeText = '🟡 Przekroczono limit użycia';
+        badgeText = currentLang === 'pl' ? '🟡 Przekroczono limit użycia' : '🟡 Usage limit capped';
         badgeClass = 'throttled';
         cardClass = 'card-quota-exhausted';
       }
 
       var unavailBadge = el('span', 'badge ' + badgeClass, badgeText);
-      unavailBadge.title = 'Status dostępności: ' + (UNAVAILABLE_TEXT[unavailKey] || unavailKey);
+      unavailBadge.title = 'Status: ' + (UNAVAILABLE_TEXT[unavailKey] || unavailKey);
       titleGroup.appendChild(unavailBadge);
       card.classList.add(cardClass);
     } else {
       // Fully healthy and operational account
-      var healthyBadge = el('span', 'badge badge-healthy', '🟢 SPRAWNE');
-      healthyBadge.title = 'Konto w pełni sprawne i gotowe do obsługi zapytań';
+      var healthyBadge = el('span', 'badge badge-healthy', t('badgeHealthy'));
+      healthyBadge.title = t('badgeHealthyTitle');
       titleGroup.appendChild(healthyBadge);
       card.classList.add('card-healthy');
     }
@@ -1649,17 +2201,17 @@ ${SHARED_HELPERS}
     if (a.lastTest) {
       if (a.lastTest.ok) {
         btnQuickTest.textContent = '🟢 ' + (a.lastTest.durationMs ? a.lastTest.durationMs + 'ms' : 'OK');
-        btnQuickTest.title = 'Ostatni test: SUKCES (' + (a.lastTest.durationMs || 0) + 'ms). Kliknij, aby powtórzyć.';
+        btnQuickTest.title = (currentLang === 'pl' ? 'Ostatni test: SUKCES (' : 'Last test: SUCCESS (') + (a.lastTest.durationMs || 0) + 'ms).';
         btnQuickTest.style.borderColor = 'rgba(34, 197, 94, 0.4)';
         btnQuickTest.style.color = '#22c55e';
       } else {
-        btnQuickTest.textContent = '🔴 Błąd';
-        btnQuickTest.title = 'Ostatni test: BŁĄD (' + (a.lastTest.status || a.lastTest.error || '') + '). Kliknij, aby ponowić.';
+        btnQuickTest.textContent = '🔴 ' + (currentLang === 'pl' ? 'Błąd' : 'Error');
+        btnQuickTest.title = (currentLang === 'pl' ? 'Ostatni test: BŁĄD (' : 'Last test: ERROR (') + (a.lastTest.status || a.lastTest.error || '') + ').';
         btnQuickTest.style.borderColor = 'rgba(239, 68, 68, 0.5)';
         btnQuickTest.style.color = '#ef4444';
       }
     } else {
-      btnQuickTest.title = 'Przetestuj to konto natychmiast zapytaniem próbnym';
+      btnQuickTest.title = currentLang === 'pl' ? 'Przetestuj to konto natychmiast zapytaniem próbnym' : 'Test this account immediately with a probe query';
     }
     btnQuickTest.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -1668,8 +2220,8 @@ ${SHARED_HELPERS}
     acts.appendChild(btnQuickTest);
 
     if (rankIndex > 0 && !a.disabled) {
-      var btnMoveTop = el('button', 'btn btn-xs btn-accent', '▲ Na górę');
-      btnMoveTop.title = 'Przenieś to konto na 1. miejsce (ustaw jako główne konto w kolejce)';
+      var btnMoveTop = el('button', 'btn btn-xs btn-accent', t('btnMoveTop'));
+      btnMoveTop.title = t('btnMoveTopTitle');
       btnMoveTop.addEventListener('click', function (e) {
         e.stopPropagation();
         moveToTop(a.name, card);
@@ -1680,35 +2232,35 @@ ${SHARED_HELPERS}
     if (a.type === 'oauth') {
       var isErr = a.status === 'error' || a.unavailable === 'error';
       if (isErr) {
-        var btnRelogin = el('button', 'btn btn-xs btn-accent', '🔐 Zaloguj');
-        btnRelogin.title = 'Odnów sesję przez ' + (prov === 'codex' ? 'OpenAI Codex' : 'Claude') + ' OAuth';
+        var btnRelogin = el('button', 'btn btn-xs btn-accent', t('btnRelogin'));
+        btnRelogin.title = (currentLang === 'pl' ? 'Odnów sesję przez ' : 'Renew session via ') + (prov === 'codex' ? 'OpenAI Codex' : 'Claude') + ' OAuth';
         btnRelogin.addEventListener('click', function () { startReLogin(a.name, a.priority, a.provider); });
         acts.appendChild(btnRelogin);
       } else {
         var btnReloginIcon = el('button', 'btn-icon', '🔐');
-        btnReloginIcon.title = 'Zaloguj ponownie konto przez OAuth';
+        btnReloginIcon.title = currentLang === 'pl' ? 'Zaloguj ponownie konto przez OAuth' : 'Re-login account via OAuth';
         btnReloginIcon.addEventListener('click', function () { startReLogin(a.name, a.priority, a.provider); });
         acts.appendChild(btnReloginIcon);
       }
     }
 
     var btnProbe = el('button', 'btn-icon', '⟳');
-    btnProbe.title = 'Odśwież salda i limity (Probe)';
+    btnProbe.title = t('btnProbe');
     btnProbe.addEventListener('click', function () { doProbeSingle(a.name, btnProbe); });
     acts.appendChild(btnProbe);
 
     var btnToggle = el('button', 'btn-icon', a.disabled ? '▶️' : '⏸️');
-    btnToggle.title = a.disabled ? 'Włącz konto do rotacji' : 'Wyłącz konto z rotacji';
+    btnToggle.title = a.disabled ? t('btnEnable') : t('btnDisable');
     btnToggle.addEventListener('click', function () { doToggleDisabled(a.name, !!a.disabled, btnToggle); });
     acts.appendChild(btnToggle);
 
     var btnExport = el('button', 'btn-icon', '💾');
-    btnExport.title = 'Eksportuj konfigurację i tokeny konta do pliku JSON';
+    btnExport.title = t('btnExport');
     btnExport.addEventListener('click', function () { doExportAccount(a.name); });
     acts.appendChild(btnExport);
 
     var btnDel = el('button', 'btn-icon btn-icon-del', '🗑️');
-    btnDel.title = 'Usuń konto z konfiguracji Agent LB';
+    btnDel.title = t('btnDelete');
     btnDel.addEventListener('click', function () { doRemoveAccount(a.name, btnDel); });
     acts.appendChild(btnDel);
 
@@ -1719,13 +2271,13 @@ ${SHARED_HELPERS}
     // Account name row (dedicated row with inline edit capability)
     var nameRow = el('div', 'card-name-row');
     var nameDisplay = el('div', 'card-name-display');
-    var nameText = el('span', 'card-name-text', a.name || '(bez nazwy)');
-    nameText.title = 'Kliknij dwukrotnie lub użyj ikony ołówka ✏️, aby zmienić nazwę konta';
+    var nameText = el('span', 'card-name-text', a.name || (currentLang === 'pl' ? '(bez nazwy)' : '(unnamed)'));
+    nameText.title = t('renameAccountDblClick');
     nameDisplay.appendChild(nameText);
 
     var btnRename = el('button', 'btn-rename', '✏️');
-    btnRename.title = 'Zmień nazwę konta';
-    btnRename.setAttribute('aria-label', 'Zmień nazwę konta ' + (a.name || ''));
+    btnRename.title = t('renameAccount');
+    btnRename.setAttribute('aria-label', t('renameAccount') + ' ' + (a.name || ''));
     nameDisplay.appendChild(btnRename);
     nameRow.appendChild(nameDisplay);
 
@@ -2144,16 +2696,16 @@ ${SHARED_HELPERS}
     // Column counters
     var countClaude = document.getElementById('countClaude');
     if (countClaude) {
-      countClaude.textContent = claudeAccts.length + (claudeAccts.length === 1 ? ' konto' : ' kont');
+      countClaude.textContent = claudeAccts.length + (claudeAccts.length === 1 ? (currentLang === 'pl' ? ' konto' : ' account') : (currentLang === 'pl' ? ' kont' : ' accounts'));
     }
     var countCodex = document.getElementById('countCodex');
     if (countCodex) {
-      countCodex.textContent = codexAccts.length + (codexAccts.length === 1 ? ' konto' : ' kont');
+      countCodex.textContent = codexAccts.length + (codexAccts.length === 1 ? (currentLang === 'pl' ? ' konto' : ' account') : (currentLang === 'pl' ? ' kont' : ' accounts'));
     }
 
     // Render Claude accounts
     if (claudeAccts.length === 0) {
-      var emptyC = el('div', '', 'Brak kont Claude. Kliknij „➕ Dodaj konto” u góry.');
+      var emptyC = el('div', '', t('emptyNoAccountsClaude'));
       emptyC.style.cssText = 'padding:16px; text-align:center; color:var(--dim); font-size:12px; border:1px dashed var(--line); border-radius:6px;';
       listClaude.appendChild(emptyC);
     } else {
@@ -2164,7 +2716,7 @@ ${SHARED_HELPERS}
 
     // Render Codex accounts
     if (codexAccts.length === 0) {
-      var emptyX = el('div', '', 'Brak kont OpenAI Codex. Kliknij „➕ Dodaj konto” u góry.');
+      var emptyX = el('div', '', t('emptyNoAccountsCodex'));
       emptyX.style.cssText = 'padding:16px; text-align:center; color:var(--dim); font-size:12px; border:1px dashed var(--line); border-radius:6px;';
       listCodex.appendChild(emptyX);
     } else {
@@ -2181,9 +2733,9 @@ ${SHARED_HELPERS}
     var up = s.server && s.server.uptimeSeconds != null ? 'up ' + fmtIn(s.server.uptimeSeconds) : '';
     var sum = document.getElementById('summary');
     sum.textContent = '';
-    sum.appendChild(el('span', '', 'active account '));
-    sum.appendChild(el('b', '', s.currentAccount || 'none'));
-    sum.appendChild(el('span', '', ' · ' + (sess.active || 0) + ' active / ' + (sess.known || 0) + ' known sessions' + (up ? ' · ' + up : '')));
+    sum.appendChild(el('span', '', t('summaryActiveAccount')));
+    sum.appendChild(el('b', '', s.currentAccount || t('summaryNone')));
+    sum.appendChild(el('span', '', t('summarySessions', { active: sess.active || 0, known: sess.known || 0 }) + (up ? ' · ' + up : '')));
     var acc = document.getElementById('accounts');
     if (acc) acc.textContent = '';
 
@@ -2195,7 +2747,10 @@ ${SHARED_HELPERS}
     renderClients(s.clients);
     renderDimensions(s.usageDimensions);
     renderSessions(s.sessions);
-    document.getElementById('foot').textContent = 'refreshes every ' + (POLL_MS / 1000) + 's · ' + new Date().toLocaleTimeString();
+    var foot = document.getElementById('foot');
+    if (foot) {
+      foot.textContent = t('summaryRefreshes', { sec: (POLL_MS / 1000), time: new Date().toLocaleTimeString() });
+    }
   }
 
   function renderFleetPolicy(s) {
@@ -2222,13 +2777,13 @@ ${SHARED_HELPERS}
         badgeHealth.style.display = '';
         badgeHealth.className = 'badge ok';
         var nextMin = ah.nextRunAt ? Math.max(0, Math.round((ah.nextRunAt - Date.now()) / 60000)) : null;
-        badgeHealth.textContent = 'Aktywny' + (nextMin != null ? ' (~' + nextMin + 'm)' : '');
-        badgeHealth.title = 'Sprawdzanie co ' + (ah.intervalSeconds || 900) + 's (0 tokenów dla aktywnych, 1 token dla bezczynnych)';
+        badgeHealth.textContent = t('autoHealthActive') + (nextMin != null ? ' (~' + nextMin + 'm)' : '');
+        badgeHealth.title = currentLang === 'pl' ? 'Sprawdzanie co ' + (ah.intervalSeconds || 900) + 's (0 tokenów dla aktywnych, 1 token dla bezczynnych)' : 'Checking every ' + (ah.intervalSeconds || 900) + 's (0 tokens for active, 1 token for idle)';
       } else {
         badgeHealth.style.display = '';
         badgeHealth.className = 'badge dim';
-        badgeHealth.textContent = 'Wyłączony';
-        badgeHealth.title = 'Automatyczna diagnostyka w tle jest wyłączona';
+        badgeHealth.textContent = t('autoHealthDisabled');
+        badgeHealth.title = currentLang === 'pl' ? 'Automatyczna diagnostyka w tle jest wyłączona' : 'Automatic background diagnostics are disabled';
       }
     }
 
@@ -2236,13 +2791,14 @@ ${SHARED_HELPERS}
     var badgeDrain = document.getElementById('drainStatusBadge');
     if (btnDrain && badgeDrain) {
       if (s.draining) {
-        btnDrain.textContent = '▶️ Anuluj Drain';
+        btnDrain.textContent = t('btnDrainCancel');
         btnDrain.className = 'btn btn-sm btn-bad';
         badgeDrain.style.display = '';
-        badgeDrain.textContent = '🛑 Draining (' + (s.activeRequests || 0) + ' req in flight)';
+        badgeDrain.textContent = t('drainActive', { count: s.activeRequests || 0 });
       } else {
-        btnDrain.textContent = '🛑 Drain Mode';
+        btnDrain.textContent = t('btnDrainMode');
         btnDrain.className = 'btn btn-sm';
+        btnDrain.title = t('btnDrainModeTitle');
         badgeDrain.style.display = 'none';
       }
     }
@@ -3317,7 +3873,7 @@ ${SHARED_HELPERS}
     var totalCount = list.length + (primaryAdminKey ? 1 : 0);
     var countEl = document.getElementById('countClientKeys');
     if (countEl) {
-      countEl.textContent = totalCount + (totalCount === 1 ? ' klucz' : ' kluczy');
+      countEl.textContent = totalCount + (totalCount === 1 ? (currentLang === 'pl' ? ' klucz' : ' key') : (currentLang === 'pl' ? ' kluczy' : ' keys'));
     }
 
     // Pinned primary admin key card at top
@@ -3332,7 +3888,7 @@ ${SHARED_HELPERS}
       var pIcon = el('span', '', '👑');
       pIcon.style.fontSize = '13px';
       pNameWrap.appendChild(pIcon);
-      var pName = el('span', 'name', 'Główny klucz administratora (proxy.apiKey)');
+      var pName = el('span', 'name', t('primaryAdminKeyName'));
       pName.style.fontWeight = '600';
       pNameWrap.appendChild(pName);
       var pBadge = el('span', 'badge', 'Admin & CLI');
@@ -3341,8 +3897,8 @@ ${SHARED_HELPERS}
       pTopRow.appendChild(pNameWrap);
 
       var pActs = el('div', 'card-actions');
-      var btnPSetup = el('button', 'btn btn-xs btn-accent', '🚀 Podłącz');
-      btnPSetup.title = 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tego klucza';
+      var btnPSetup = el('button', 'btn btn-xs btn-accent', t('btnKeyConnect'));
+      btnPSetup.title = currentLang === 'pl' ? 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tego klucza' : 'Show installer commands (Linux, Windows, VS Code) for this key';
       btnPSetup.addEventListener('click', function () {
         currentQuickKey = primaryAdminKey;
         updateQuickCmd();
@@ -3361,7 +3917,7 @@ ${SHARED_HELPERS}
       pKeyWrap.appendChild(pKeySpan);
 
       if (primaryAdminKey && primaryAdminKey !== pMasked) {
-        var btnPToggle = el('button', 'btn btn-xs', isPRevealed ? 'Ukryj' : 'Pokaż');
+        var btnPToggle = el('button', 'btn btn-xs', isPRevealed ? t('keyHide') : t('keyShow'));
         btnPToggle.addEventListener('click', function () {
           revealedKeys['__primary__'] = !revealedKeys['__primary__'];
           renderClientKeys(keys, clients);
@@ -3369,14 +3925,14 @@ ${SHARED_HELPERS}
         pKeyWrap.appendChild(btnPToggle);
       }
 
-      var btnPCopy = el('button', 'btn btn-xs', '📋 Kopiuj');
+      var btnPCopy = el('button', 'btn btn-xs', t('copyCmd'));
       btnPCopy.addEventListener('click', function () {
         copyToClipboard(primaryAdminKey, 'Główny klucz administratora');
       });
       pKeyWrap.appendChild(btnPCopy);
       pBottomRow.appendChild(pKeyWrap);
 
-      var pDesc = el('span', 'client-key-stats', 'Logowanie do panelu + pełny dostęp CLI');
+      var pDesc = el('span', 'client-key-stats', currentLang === 'pl' ? 'Logowanie do panelu + pełny dostęp CLI' : 'Dashboard login + full CLI access');
       pBottomRow.appendChild(pDesc);
       pCard.appendChild(pBottomRow);
 
@@ -3384,7 +3940,7 @@ ${SHARED_HELPERS}
     }
 
     if (!list.length && !primaryAdminKey) {
-      var empty = el('div', '', 'Brak zdefiniowanych kluczy. Kliknij „➕ Nowy klucz” powyżej.');
+      var empty = el('div', '', t('emptyNoKeys'));
       empty.style.cssText = 'padding:14px; text-align:center; color:var(--dim); font-size:12px; border:1px dashed var(--line); border-radius:6px;';
       container.appendChild(empty);
       return;
@@ -3415,7 +3971,7 @@ ${SHARED_HELPERS}
       if (k.expiresAt) {
         var expMs = parseTs(k.expiresAt);
         var isExp = expMs < Date.now();
-        var expBadge = el('span', 'badge ' + (isExp ? 'bad' : 'ok'), isExp ? '⚠️ Wygasł' : '📅 ' + (typeof k.expiresAt === 'string' ? k.expiresAt.split('T')[0] : new Date(k.expiresAt).toLocaleDateString()));
+        var expBadge = el('span', 'badge ' + (isExp ? 'bad' : 'ok'), isExp ? (currentLang === 'pl' ? '⚠️ Wygasł' : '⚠️ Expired') : '📅 ' + (typeof k.expiresAt === 'string' ? k.expiresAt.split('T')[0] : new Date(k.expiresAt).toLocaleDateString()));
         expBadge.style.fontSize = '9.5px';
         nameWrap.appendChild(expBadge);
       }
@@ -3430,8 +3986,8 @@ ${SHARED_HELPERS}
 
       var acts = el('div', 'card-actions');
 
-      var btnSetup = el('button', 'btn btn-xs btn-accent', '🚀 Podłącz');
-      btnSetup.title = 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tego klienta';
+      var btnSetup = el('button', 'btn btn-xs btn-accent', t('btnKeyConnect'));
+      btnSetup.title = currentLang === 'pl' ? 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tego klienta' : 'Show installer commands (Linux, Windows, VS Code) for this client';
       btnSetup.addEventListener('click', function () {
         currentQuickKey = raw;
         updateQuickCmd();
@@ -3439,8 +3995,8 @@ ${SHARED_HELPERS}
       });
       acts.appendChild(btnSetup);
 
-      var btnDel = el('button', 'btn btn-xs btn-bad', 'Unieważnij');
-      btnDel.title = 'Unieważnij i usuń ten klucz';
+      var btnDel = el('button', 'btn btn-xs btn-bad', currentLang === 'pl' ? 'Unieważnij' : 'Revoke');
+      btnDel.title = currentLang === 'pl' ? 'Unieważnij i usuń ten klucz' : 'Revoke and delete this key';
       btnDel.addEventListener('click', function () {
         doRemoveClientKey(k.name, btnDel);
       });
@@ -3460,7 +4016,7 @@ ${SHARED_HELPERS}
       keyWrap.appendChild(keySpan);
 
       if (raw && raw !== masked) {
-        var btnToggle = el('button', 'btn btn-xs', isRevealed ? 'Ukryj' : 'Pokaż');
+        var btnToggle = el('button', 'btn btn-xs', isRevealed ? t('keyHide') : t('keyShow'));
         btnToggle.addEventListener('click', function () {
           revealedKeys[k.name] = !revealedKeys[k.name];
           renderClientKeys(keys, clients);
@@ -3468,7 +4024,7 @@ ${SHARED_HELPERS}
         keyWrap.appendChild(btnToggle);
       }
 
-      var btnCopy = el('button', 'btn btn-xs', '📋 Kopiuj');
+      var btnCopy = el('button', 'btn btn-xs', t('copyCmd'));
       btnCopy.addEventListener('click', function () {
         copyToClipboard(raw, 'Klucz klienta ' + k.name);
       });
@@ -3562,6 +4118,7 @@ ${SHARED_HELPERS}
     if (timer) { clearInterval(timer); timer = null; }
     document.getElementById('app').style.display = 'none';
     document.getElementById('keybox').style.display = 'block';
+    updateI18nDOM();
     var kErr = document.getElementById('keyboxErr');
     if (kErr) {
       if (errMsg) {
@@ -3734,7 +4291,7 @@ ${SHARED_HELPERS}
   if (btnLogout) {
     btnLogout.addEventListener('click', function () {
       localStorage.removeItem(KEY);
-      showKeybox(null, 'Zostałeś pomyślnie wylogowany.');
+      showKeybox(null, currentLang === 'pl' ? 'Zostałeś pomyślnie wylogowany.' : 'You have been logged out successfully.');
     });
   }
 
@@ -4451,6 +5008,49 @@ ${SHARED_HELPERS}
       }
     });
   });
+
+  // Language & theme switchers
+  ['btnThemeToggle', 'btnLoginThemeToggle'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) {
+      b.addEventListener('click', function () {
+        setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+      });
+    }
+  });
+
+  ['btnLangToggle', 'btnLoginLangToggle'].forEach(function (id) {
+    var b = document.getElementById(id);
+    if (b) {
+      b.addEventListener('click', function () {
+        setLang(currentLang === 'pl' ? 'en' : 'pl');
+      });
+    }
+  });
+
+  // Fleet policy help / explanations toggle
+  var btnTogglePolicyHelp = document.getElementById('btnTogglePolicyHelp');
+  if (btnTogglePolicyHelp) {
+    var panel = document.getElementById('fleetPolicyPanel');
+    var isCompact = false;
+    try { isCompact = localStorage.getItem('agentlb-policy-compact') === 'true'; } catch (e) {}
+    if (isCompact && panel) {
+      panel.classList.add('policy-compact');
+      btnTogglePolicyHelp.textContent = t('btnPolicyHelp');
+    } else {
+      btnTogglePolicyHelp.textContent = t('btnPolicyHelpCompact');
+    }
+    btnTogglePolicyHelp.addEventListener('click', function () {
+      if (!panel) return;
+      var nowCompact = panel.classList.toggle('policy-compact');
+      try { localStorage.setItem('agentlb-policy-compact', nowCompact ? 'true' : 'false'); } catch (e) {}
+      btnTogglePolicyHelp.textContent = nowCompact ? t('btnPolicyHelp') : t('btnPolicyHelpCompact');
+    });
+  }
+
+  // Initial theme and i18n DOM update
+  setTheme(currentTheme);
+  updateI18nDOM();
 
   checkAuthAndStart();
 })();

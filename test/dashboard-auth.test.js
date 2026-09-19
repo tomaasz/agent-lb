@@ -129,6 +129,47 @@ describe('Dashboard Authentication and Layout', () => {
     assert.ok(html.includes('function openAddAccountModal'), 'script defines openAddAccountModal');
   });
 
+  it('renders spacious policy panel with explanations, PL/EN dual-language support, and dark/light themes', () => {
+    const html = renderDashboardHtml();
+
+    // Theme toggles
+    assert.ok(html.includes('id="btnThemeToggle"'), 'header contains #btnThemeToggle');
+    assert.ok(html.includes('id="btnLoginThemeToggle"'), 'login card contains #btnLoginThemeToggle');
+    assert.ok(html.includes('[data-theme="light"]'), 'styles include [data-theme="light"] overrides');
+
+    // Language toggles
+    assert.ok(html.includes('id="btnLangToggle"'), 'header contains #btnLangToggle');
+    assert.ok(html.includes('id="btnLoginLangToggle"'), 'login card contains #btnLoginLangToggle');
+
+    // Policy Panel & Grid
+    assert.ok(html.includes('id="fleetPolicyPanel"'), 'contains #fleetPolicyPanel');
+    assert.ok(html.includes('class="policy-panel"'), 'contains .policy-panel');
+    assert.ok(html.includes('class="policy-grid"'), 'contains .policy-grid');
+    const cardCount = (html.match(/class="policy-card"/g) || []).length;
+    assert.equal(cardCount, 4, 'contains exactly 4 policy cards for routing features');
+
+    // Required control IDs preserved
+    assert.ok(html.includes('id="selDistributeSessions"'), 'contains #selDistributeSessions');
+    assert.ok(html.includes('id="chkExpiryRouting"'), 'contains #chkExpiryRouting');
+    assert.ok(html.includes('id="chkCrossProviderFallback"'), 'contains #chkCrossProviderFallback');
+    assert.ok(html.includes('id="chkAutoHealthCheck"'), 'contains #chkAutoHealthCheck');
+    assert.ok(html.includes('id="btnDrainToggle"'), 'contains #btnDrainToggle');
+    assert.ok(html.includes('id="btnTogglePolicyHelp"'), 'contains #btnTogglePolicyHelp');
+
+    // Explanations present
+    assert.ok(html.includes('id="descAffinity"'), 'contains prompt cache explanation');
+    assert.ok(html.includes('id="descReset"'), 'contains earliest-reset explanation');
+    assert.ok(html.includes('id="descFallback"'), 'contains cross-provider fallback explanation');
+    assert.ok(html.includes('id="descHealth"'), 'contains auto-health explanation');
+
+    // i18n dictionary and functions in script
+    assert.ok(html.includes('var I18N = {'), 'script contains I18N dictionary');
+    assert.ok(html.includes('function t('), 'script defines t() translation helper');
+    assert.ok(html.includes('function updateI18nDOM()'), 'script defines updateI18nDOM()');
+    assert.ok(html.includes('function setLang('), 'script defines setLang()');
+    assert.ok(html.includes('function setTheme('), 'script defines setTheme()');
+  });
+
   it('updates account priority and persists order on POST /api/accounts/reorder', async () => {
     const fs = await import('node:fs/promises');
     const os = await import('node:os');
