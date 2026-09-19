@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { createProxyServer } from '../src/server.js';
+import { createProxyServer, normalizeCodexModelForOAuth, rewriteRequestBody } from '../src/server.js';
 import { AccountManager } from '../src/account-manager.js';
 import { renderDashboardHtml } from '../src/dashboard.js';
 
@@ -489,6 +489,105 @@ describe('Test Chat & Playground Support', () => {
       assert.equal(acc.rateLimitedUntil, null, 'rateLimitedUntil should remain null');
       assert.equal(am.unavailableReason(acc), null, 'unavailableReason should be null');
       assert.equal(acc.lastError?.reason, 'upstream-refusal');
+    } finally {
+      server.close();
+      mockUpstream.close();
+    }
+  });
+
+  it('normalizes gpt-5.6 and gpt-5 model aliases to gpt-5.6-sol for Codex OAuth accounts', () => {
+    // 1. normalizeCodexModelForOAuth directly
+    const body1 = Buffer.from(JSON.stringify({ model: 'gpt-5.6', messages: [] }));
+    const norm1 = normalizeCodexModelForOAuth(body1);
+    assert.equal(JSON.parse(norm1.toString()).model, 'gpt-5.6-sol');
+
+    const body2 = Buffer.from(JSON.stringify({ model: 'gpt-5', messages: [] }));
+    const norm2 = normalizeCodexModelForOAuth(body2);
+    assert.equal(JSON.parse(norm2.toString()).model, 'gpt-5.6-sol');
+
+    const body3 = Buffer.from(JSON.stringify({ model: 'codex', messages: [] }));
+    const norm3 = normalizeCodexModelForOAuth(body3);
+    assert.equal(JSON.parse(norm3.toString()).model, 'gpt-5.6-sol');
+
+    const body4 = Buffer.from(JSON.stringify({ model: 'o3-mini', messages: [] }));
+    const norm4 = normalizeCodexModelForOAuth(body4);
+    assert.equal(JSON.parse(norm4.toString()).model, 'o3-mini');
+
+    // 2. rewriteRequestBody integration
+    const codexOAuthAcct = { name: 'codex-sub', provider: 'codex', type: 'oauth' };
+    const rewritten = rewriteRequestBody(body1, codexOAuthAcct, '/backend-api/codex/responses', 'application/json');
+    assert.equal(JSON.parse(rewritten.toString()).model, 'gpt-5.6-sol');
+
+    // Non-oauth codex account (e.g. apikey) should not be rewritten
+    const codexApiKeyAcct = { name: 'codex-key', provider: 'codex', type: 'apikey' };
+    const untouched = rewriteRequestBody(body1, codexApiKeyAcct, '/v1/chat/completions', 'application/json');
+    assert.equal(JSON.parse(untouched.toString()).model, 'gpt-5.6');
+  });
+
+  it('maps gpt-5.6 to gpt-5.6-sol in test-chat for Codex OAuth accounts', async () => {
+    let capturedPayload = null;
+
+    const mockUpstream = http.createServer((req, res) => {
+      if (req.url.endsWith('/backend-api/codex/responses')) {
+        let buf = '';
+        req.on('data', c => { buf += c; });
+        req.on('end', () => {
+          capturedPayload = JSON.parse(buf);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            model: capturedPayload.model,
+            output: [{ content: [{ type: 'text', text: `Codex responded with model ${capturedPayload.model}` }] }],
+            usage: { prompt_tokens: 10, completion_tokens: 12 }
+          }));
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await new Promise(resolve => mockUpstream.listen(0, '127.0.0.1', resolve));
+    const upstreamUrl = `http://127.0.0.1:${mockUpstream.address().port}`;
+
+    const accounts = [
+      { name: 'codex-chatgpt', provider: 'codex', type: 'oauth', accessToken: 'token-chatgpt', upstream: upstreamUrl }
+    ];
+
+    const am = new AccountManager(accounts, 0.98);
+    const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {}, null, null, null);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const proxyPort = server.address().port;
+
+    try {
+      // Send request with model: 'gpt-5.6'
+      const res = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': 'tc-test-admin',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          provider: 'codex',
+          model: 'gpt-5.6',
+          message: 'Hello'
+        })
+      });
+
+      assert.equal(res.status, 200);
+      const json = await res.json();
+      assert.equal(json.ok, true);
+      assert.equal(json.model, 'gpt-5.6-sol');
+      assert.ok(capturedPayload, 'upstream received payload');
+      // Crucial: upstream ChatGPT Codex backend MUST receive gpt-5.6-sol
+      assert.equal(capturedPayload.model, 'gpt-5.6-sol');
+
+      // Also test /backend-api/codex/models with query params (client_version)
+      const resModels = await fetch(`http://127.0.0.1:${proxyPort}/backend-api/codex/models?client_version=0.1.0`);
+      assert.equal(resModels.status, 200);
+      const modelsJson = await resModels.json();
+      assert.ok(Array.isArray(modelsJson.data));
+      assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.6-sol'));
+      assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.6'));
     } finally {
       server.close();
       mockUpstream.close();

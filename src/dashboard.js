@@ -1740,6 +1740,9 @@ const PAGE = `<!doctype html>
     try { localStorage.setItem('agentlb-lang', lang); } catch (e) {}
     document.documentElement.lang = lang;
     updateI18nDOM();
+    if (typeof updateTestModelsAndAccounts === 'function') {
+      try { updateTestModelsAndAccounts(); } catch (e) {}
+    }
     if (lastStatus) {
       render(lastStatus);
     }
@@ -4593,21 +4596,27 @@ ${SHARED_HELPERS}
   if (btnDrain) btnDrain.addEventListener('click', toggleDrain);
 
   // --- Test Chat (Playground) ---
-  var CLAUDE_MODELS = [
-    { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (Domyślny Claude Code)' },
-    { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Szybki / Lekki ping)' },
-    { id: 'claude-opus-5', name: 'Claude Opus 5 (Flagowy / Główny)' },
-    { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
-    { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
-  ];
+  function getClaudeModels() {
+    var isEn = currentLang === 'en';
+    return [
+      { id: 'claude-sonnet-5', name: isEn ? 'Claude Sonnet 5 (Default Claude Code)' : 'Claude Sonnet 5 (Domyślny Claude Code)' },
+      { id: 'claude-haiku-4-5-20251001', name: isEn ? 'Claude Haiku 4.5 (Fast / Light ping)' : 'Claude Haiku 4.5 (Szybki / Lekki ping)' },
+      { id: 'claude-opus-5', name: isEn ? 'Claude Opus 5 (Flagship / Primary)' : 'Claude Opus 5 (Flagowy / Główny)' },
+      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
+      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+    ];
+  }
 
-  var CODEX_MODELS = [
-    { id: 'gpt-5.6-sol', name: 'GPT 5.6 Sol (Domyślny ChatGPT Codex)' },
-    { id: 'gpt-5.6', name: 'GPT 5.6' },
-    { id: 'o3-mini', name: 'o3-mini' },
-    { id: 'o1', name: 'o1' },
-    { id: 'gpt-4o', name: 'GPT-4o' },
-  ];
+  function getCodexModels() {
+    var isEn = currentLang === 'en';
+    return [
+      { id: 'gpt-5.6-sol', name: isEn ? 'GPT 5.6 Sol (Default ChatGPT Codex / OAuth)' : 'GPT 5.6 Sol (Domyślny ChatGPT Codex / OAuth)' },
+      { id: 'gpt-5.6', name: isEn ? 'GPT 5.6 (alias → gpt-5.6-sol)' : 'GPT 5.6 (alias → gpt-5.6-sol)' },
+      { id: 'o3-mini', name: isEn ? 'o3-mini (OpenAI API key)' : 'o3-mini (Tylko klucz OpenAI API)' },
+      { id: 'o1', name: isEn ? 'o1 (OpenAI API key)' : 'o1 (Tylko klucz OpenAI API)' },
+      { id: 'gpt-4o', name: isEn ? 'GPT-4o (OpenAI API key)' : 'GPT-4o (Tylko klucz OpenAI API)' },
+    ];
+  }
 
   function updateTestModelsAndAccounts() {
     var provEl = document.getElementById('selTestProvider');
@@ -4616,16 +4625,23 @@ ${SHARED_HELPERS}
     if (!provEl || !selModel || !selAccount) return;
 
     var prov = provEl.value;
-    selModel.innerHTML = '';
-    selAccount.innerHTML = '<option value="">⚡ Auto (Agent-LB Policy)</option>';
+    var prevModel = selModel.value;
+    var prevAccount = selAccount.value;
 
-    var models = prov === 'codex' ? CODEX_MODELS : CLAUDE_MODELS;
+    selModel.innerHTML = '';
+    selAccount.innerHTML = '<option value="">' + (currentLang === 'pl' ? '⚡ Auto (Polityka Agent-LB)' : '⚡ Auto (Agent-LB Policy)') + '</option>';
+
+    var models = prov === 'codex' ? getCodexModels() : getClaudeModels();
     models.forEach(function (m) {
       var opt = document.createElement('option');
       opt.value = m.id;
       opt.textContent = m.name;
       selModel.appendChild(opt);
     });
+    if (prevModel) {
+      selModel.value = prevModel;
+      if (!selModel.value && selModel.options.length > 0) selModel.selectedIndex = 0;
+    }
 
     var accounts = (lastStatus && lastStatus.accounts) || [];
     accounts.forEach(function (a) {
@@ -4637,19 +4653,19 @@ ${SHARED_HELPERS}
         var note = '';
         if (a.disabled) {
           icon = '⚪';
-          note = ' [wyłączone]';
+          note = currentLang === 'pl' ? ' [wyłączone]' : ' [disabled]';
         } else if (a.unavailable === 'identity-verification') {
           icon = '🔴';
-          note = ' [Weryfikacja SMS]';
+          note = currentLang === 'pl' ? ' [Weryfikacja SMS]' : ' [SMS Verification]';
         } else if (a.unavailable === 'entitlement') {
           icon = '🔴';
-          note = ' [Blokada 403]';
+          note = currentLang === 'pl' ? ' [Blokada 403]' : ' [Blocked 403]';
         } else if (a.unavailable === 'circuit-breaker') {
           icon = '🔴';
           note = ' [Circuit Breaker]';
         } else if (a.unavailable === 'error' || a.status === 'error') {
           icon = '🔴';
-          note = ' [Błąd]';
+          note = currentLang === 'pl' ? ' [Błąd]' : ' [Error]';
         } else if (a.unavailable === 'quota' || a.unavailable === 'upstream-rejected') {
           icon = '🟡';
           note = ' [Quota 100%]';
@@ -4664,6 +4680,9 @@ ${SHARED_HELPERS}
         selAccount.appendChild(opt);
       }
     });
+    if (prevAccount) {
+      selAccount.value = prevAccount;
+    }
   }
 
   var testChatLog = [];

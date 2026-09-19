@@ -15,6 +15,11 @@ export const DEFAULT_FALLBACK_ANTHROPIC_MODEL = 'claude-3-5-sonnet-20241022';
  */
 export const MODEL_FALLBACK_MAP = {
   // Claude -> OpenAI
+  'claude-sonnet-5': 'gpt-5.6-sol',
+  'claude-opus-5': 'gpt-5.6-sol',
+  'claude-opus-4-6': 'gpt-5.6-sol',
+  'claude-sonnet-4-6': 'gpt-5.6-sol',
+  'claude-haiku-4-5-20251001': 'gpt-5.6-sol',
   'claude-3-5-sonnet-20241022': 'gpt-4o',
   'claude-3-5-sonnet-20240620': 'gpt-4o',
   'claude-3-7-sonnet-20250219': 'gpt-4o',
@@ -22,6 +27,8 @@ export const MODEL_FALLBACK_MAP = {
   'claude-3-5-haiku-20241022': 'gpt-4o-mini',
   'claude-3-haiku-20240307': 'gpt-4o-mini',
   // OpenAI -> Claude
+  'gpt-5.6-sol': 'claude-sonnet-5',
+  'gpt-5.6': 'claude-sonnet-5',
   'gpt-4o': 'claude-3-5-sonnet-20241022',
   'gpt-4o-mini': 'claude-3-5-haiku-20241022',
   'o1': 'claude-3-7-sonnet-20250219',

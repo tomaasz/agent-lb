@@ -584,13 +584,14 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Codex models endpoint — live verification for Codex CLI & setup scripts
-      if (req.method === 'GET' && (req.url === '/backend-api/codex/models' || req.url === '/backend-api/codex/v1/models' || req.url === '/v1/models' || req.url === '/models')) {
+      const codexPathname = req.url.split('?')[0];
+      if (req.method === 'GET' && (codexPathname === '/backend-api/codex/models' || codexPathname === '/backend-api/codex/v1/models' || codexPathname === '/v1/models' || codexPathname === '/models')) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           object: 'list',
           data: [
             { id: 'gpt-5.6-sol', object: 'model', name: 'GPT 5.6 Sol' },
-            { id: 'gpt-5.6', object: 'model', name: 'GPT 5.6' },
+            { id: 'gpt-5.6', object: 'model', name: 'GPT 5.6 (alias → gpt-5.6-sol)' },
             { id: 'o3-mini', object: 'model', name: 'o3-mini' },
             { id: 'o1', object: 'model', name: 'o1' },
             { id: 'gpt-4o', object: 'model', name: 'GPT-4o' }
@@ -1836,15 +1837,21 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
               };
               applyAuthHeaders(reqHeaders, account);
 
+              let effectiveModel = model;
+              if (isOauth && (effectiveModel === 'gpt-5.6' || effectiveModel === 'gpt-5' || effectiveModel === 'codex')) {
+                effectiveModel = 'gpt-5.6-sol';
+              }
+              responseModel = effectiveModel;
+
               const payload = isOauth
                 ? {
-                    model,
+                    model: effectiveModel,
                     store: false,
                     stream: true,
                     input: [{ role: 'user', content: [{ type: 'input_text', text: message }] }]
                   }
                 : {
-                    model,
+                    model: effectiveModel,
                     messages: [{ role: 'user', content: message }]
                   };
 
@@ -1962,6 +1969,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   errorMsg = errData.error?.message || errData.detail || errData.message || JSON.stringify(errData);
                 } catch {
                   errorMsg = await upstreamRes.text().catch(() => errorMsg);
+                }
+
+                if (isOauth && upstreamRes.status === 400 && typeof errorMsg === 'string' && errorMsg.includes('not supported when using Codex with a ChatGPT account')) {
+                  errorMsg += ` (Wskazówka: backend ChatGPT Codex dla kont subskrypcyjnych OAuth obsługuje model 'gpt-5.6-sol' lub alias 'gpt-5.6'. Modele OpenAI API o3-mini/o1/gpt-4o wymagają konta z kluczem OpenAI API).`;
                 }
 
                 const codexRateLimitHeaders = {};
@@ -5233,6 +5244,10 @@ export function rewriteRequestBody(body, account, url, contentType) {
   // Rewrite the model name for accounts that target a different upstream (e.g.
   // GLM), which uses different model identifiers than Anthropic.
   if (account.modelMap) sendBody = rewriteModel(sendBody, account.modelMap);
+  // ChatGPT Codex backend requires 'gpt-5.6-sol' and rejects generic 'gpt-5.6' / 'gpt-5'.
+  if (providerOf(account) === 'codex' && account.type === 'oauth') {
+    sendBody = normalizeCodexModelForOAuth(sendBody);
+  }
   // Third-party upstreams (e.g. OpenCode Zen, GLM) implement the Anthropic
   // message API but reject fields Claude Code legitimately sends — observed:
   // `context_management` -> 400 "Extra inputs are not permitted", which breaks
@@ -5274,6 +5289,23 @@ export function rewriteModel(body, modelMap) {
     if (typeof obj.model === 'string' && Object.hasOwn(modelMap, obj.model) && typeof modelMap[obj.model] === 'string') {
       obj.model = modelMap[obj.model];
       return Buffer.from(JSON.stringify(obj), 'utf8');
+    }
+  } catch { /* not JSON — pass through unchanged */ }
+  return body;
+}
+
+// Automatically normalize model aliases for ChatGPT OAuth accounts.
+// OpenAI's ChatGPT Codex backend strictly requires 'gpt-5.6-sol' for GPT-5.6
+// and rejects generic 'gpt-5.6', 'gpt-5', or 'codex' with HTTP 400.
+export function normalizeCodexModelForOAuth(body) {
+  try {
+    const obj = JSON.parse(body.toString('utf8'));
+    if (typeof obj.model === 'string') {
+      const trimmed = obj.model.trim();
+      if (trimmed === 'gpt-5.6' || trimmed === 'gpt-5' || trimmed === 'codex') {
+        obj.model = 'gpt-5.6-sol';
+        return Buffer.from(JSON.stringify(obj), 'utf8');
+      }
     }
   } catch { /* not JSON — pass through unchanged */ }
   return body;
