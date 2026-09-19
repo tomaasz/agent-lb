@@ -245,7 +245,7 @@ server {
 
 ## ⚙️ Configuration Reference
 
-Configuration is stored in `~/.config/claude-lb.json` (or `~/.config/teamclaude.json` for backward compatibility).
+Configuration is stored in `~/.config/agent-lb.json` (or `~/.config/claude-lb.json`).
 
 ```json
 {
@@ -331,16 +331,7 @@ Configuration is stored in `~/.config/claude-lb.json` (or `~/.config/teamclaude.
 
 ---
 
-## 🔄 Backward Compatibility
-
-`claude-lb` includes complete backward compatibility with **TeamClaude**:
-- Existing configuration files (`~/.config/teamclaude.json`) are automatically detected and preserved.
-- CLI aliases (`teamclaude`) and legacy endpoints (`/teamclaude/status`, `/teamclaude/dashboard`) continue to function without changes.
-- Existing environment files (`~/.config/teamclaude.env`) are kept synchronized with new configurations.
-
----
-
 ## 📄 License
 
 MIT © [Tomasz](https://github.com/tomaasz)
-Based on upstream work by [KarpelesLab](https://github.com/KarpelesLab/teamclaude).
+Based on upstream work by [KarpelesLab](https://github.com/KarpelesLab/agentlb).

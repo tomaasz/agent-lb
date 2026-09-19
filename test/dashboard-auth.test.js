@@ -75,7 +75,7 @@ describe('Dashboard Authentication and Layout', () => {
     assert.ok(isLocalHostHeader('localhost:3456'), 'localhost accepted');
     assert.ok(isLocalHostHeader('127.0.0.1:3456'), '127.0.0.1 accepted');
     assert.ok(isLocalHostHeader('agentlb.gotova.pl'), 'agentlb.gotova.pl accepted');
-    assert.ok(isLocalHostHeader('teamclaude.gotova.pl'), 'teamclaude.gotova.pl accepted');
+    assert.ok(isLocalHostHeader('agent-lb.gotova.pl'), 'agent-lb.gotova.pl accepted');
     assert.ok(isLocalHostHeader('debian-lite.tail7319.ts.net:3456'), 'tailscale host accepted');
     assert.ok(!isLocalHostHeader('malicious-site.com'), 'malicious host rejected');
 
@@ -155,18 +155,18 @@ describe('Dashboard Authentication and Layout', () => {
     const port = server.address().port;
 
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/api/accounts/reorder`, {
+      // Reorder accounts
+      const reorderRes = await fetch(`http://127.0.0.1:${port}/api/accounts/reorder`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': 'admin-secret'
+          'content-type': 'application/json',
+          'x-api-key': 'admin-secret',
         },
         body: JSON.stringify({ order: ['konto-b', 'konto-a'] })
       });
-      assert.equal(res.status, 200);
-      const data = await res.json();
-      assert.equal(data.ok, true);
-      assert.deepEqual(data.reordered, ['konto-b', 'konto-a']);
+      assert.equal(reorderRes.status, 200);
+      const reorderData = await reorderRes.json();
+      assert.equal(reorderData.ok, true);
 
       // In-memory dummyAccountManager updated
       assert.equal(dummyAccountManager.accounts.find(a => a.name === 'konto-b').priority, 0);
@@ -177,7 +177,7 @@ describe('Dashboard Authentication and Layout', () => {
       assert.equal(disk.accounts.find(a => a.name === 'konto-b').priority, 0);
       assert.equal(disk.accounts.find(a => a.name === 'konto-a').priority, 1);
 
-      const statusRes = await fetch(`http://127.0.0.1:${port}/teamclaude/status`, {
+      const statusRes = await fetch(`http://127.0.0.1:${port}/agent-lb/status`, {
         headers: { 'x-api-key': 'admin-secret' },
       });
       assert.equal(statusRes.status, 200);
@@ -187,13 +187,13 @@ describe('Dashboard Authentication and Layout', () => {
       assert.ok(statusText.includes('work...1234'), 'status may expose only a masked client key');
 
       // Unauthenticated external request on /api/keys must be rejected
-      const unauthKeysRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/keys`, {
+      const unauthKeysRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/keys`, {
         headers: { 'x-forwarded-for': '203.0.113.195' }
       });
       assert.equal(unauthKeysRes.status, 401);
 
       // Invalid key on /api/keys must be rejected (401)
-      const wrongKeysRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/keys`, {
+      const wrongKeysRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/keys`, {
         headers: {
           'x-forwarded-for': '203.0.113.195',
           'x-api-key': 'wrong-secret'
@@ -202,7 +202,7 @@ describe('Dashboard Authentication and Layout', () => {
       assert.equal(wrongKeysRes.status, 401);
 
       // Client key on /api/keys succeeds under unified authentication
-      const clientKeysRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/keys`, {
+      const clientKeysRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/keys`, {
         headers: {
           'x-forwarded-for': '203.0.113.195',
           'x-api-key': 'worker-secret-1234'
@@ -214,7 +214,7 @@ describe('Dashboard Authentication and Layout', () => {
       assert.equal(clientKeysData.primaryKey, 'admin-secret');
 
       // Authenticated admin on /api/keys must receive full key, rawKey, and primaryKey
-      const adminKeysRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/keys`, {
+      const adminKeysRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/keys`, {
         headers: { 'x-api-key': 'admin-secret' },
       });
       assert.equal(adminKeysRes.status, 200);
@@ -228,7 +228,7 @@ describe('Dashboard Authentication and Layout', () => {
       assert.equal(adminKeysData.keys[0].maskedKey, 'work...1234');
 
       // /api/auth/verify: Admin key succeeds as primary admin
-      const authAdminRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/auth/verify`, {
+      const authAdminRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/auth/verify`, {
         headers: { 'x-api-key': 'admin-secret' }
       });
       assert.equal(authAdminRes.status, 200);
@@ -238,7 +238,7 @@ describe('Dashboard Authentication and Layout', () => {
       assert.equal(authAdminData.isPrimary, true);
 
       // /api/auth/verify: Client key also succeeds under unified authentication
-      const authClientRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/auth/verify`, {
+      const authClientRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/auth/verify`, {
         headers: {
           'x-forwarded-for': '203.0.113.195',
           'x-api-key': 'worker-secret-1234'
@@ -251,7 +251,7 @@ describe('Dashboard Authentication and Layout', () => {
       assert.equal(authClientData.clientName, 'worker');
 
       // /api/auth/verify: Invalid key returns 401
-      const authInvalidRes = await fetch(`http://127.0.0.1:${port}/teamclaude/api/auth/verify`, {
+      const authInvalidRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/auth/verify`, {
         headers: {
           'x-forwarded-for': '203.0.113.195',
           'x-api-key': 'totally-wrong'

@@ -85,7 +85,7 @@ export async function importCodexCredentials(filePath = DEFAULT_CODEX_CREDENTIAL
  * kept when it does not.
  */
 export async function refreshCodexToken(refreshToken, endpoint = TOKEN_ENDPOINT) {
-  const timeoutMs = Number(process.env.TEAMCLAUDE_REFRESH_TIMEOUT_MS) || 30_000;
+  const timeoutMs = Number(process.env.AGENT_LB_REFRESH_TIMEOUT_MS) || 30_000;
   const res = await proxyFetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -168,7 +168,7 @@ export function parseCodexResetCredits(data) {
  * Fetch available rate limit reset credits for a Codex account.
  */
 export async function fetchCodexResetCredits(account) {
-  const timeoutMs = Number(process.env.TEAMCLAUDE_PROBE_TIMEOUT_MS) || 10_000;
+  const timeoutMs = Number(process.env.AGENT_LB_PROBE_TIMEOUT_MS) || 10_000;
   const token = account.credential || account.accessToken;
   const headers = {
     'Authorization': `Bearer ${token}`,
@@ -198,7 +198,7 @@ export async function fetchCodexResetCredits(account) {
  * Consume / redeem one available rate limit reset credit on OpenAI ChatGPT.
  */
 export async function consumeCodexResetCredit(account, creditId = null) {
-  const timeoutMs = Number(process.env.TEAMCLAUDE_PROBE_TIMEOUT_MS) || 15_000;
+  const timeoutMs = Number(process.env.AGENT_LB_PROBE_TIMEOUT_MS) || 15_000;
   const token = account.credential || account.accessToken;
   const headers = {
     'Authorization': `Bearer ${token}`,
@@ -244,7 +244,7 @@ export async function consumeCodexResetCredit(account, creditId = null) {
  * Read account usage and rate limits from ChatGPT backend.
  */
 export async function fetchCodexUsage(account) {
-  const timeoutMs = Number(process.env.TEAMCLAUDE_PROBE_TIMEOUT_MS) || 10_000;
+  const timeoutMs = Number(process.env.AGENT_LB_PROBE_TIMEOUT_MS) || 10_000;
   const token = account.credential || account.accessToken;
   const headers = {
     'Authorization': `Bearer ${token}`,

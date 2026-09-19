@@ -26,9 +26,9 @@ import { AdmissionGate, DEFAULT_MAX_QUEUE, DEFAULT_QUEUE_TIMEOUT_MS } from './ad
 // connections have no application-layer flow control: each upload fills its own
 // socket at TCP speed, exactly like N direct Claude Code processes. maxSockets is
 // per-origin and bounds the fan-out. Escape hatch:
-// TEAMCLAUDE_UPSTREAM_GLOBAL_FETCH=1 reverts to the old global-fetch path.
+// AGENT_LB_UPSTREAM_GLOBAL_FETCH=1 reverts to the old global-fetch path.
 export const DEFAULT_UPSTREAM_MAX_SOCKETS = 256;
-const MAX_SOCKETS = positiveInt(process.env.TEAMCLAUDE_UPSTREAM_MAX_SOCKETS, DEFAULT_UPSTREAM_MAX_SOCKETS);
+const MAX_SOCKETS = positiveInt(process.env.AGENT_LB_UPSTREAM_MAX_SOCKETS, DEFAULT_UPSTREAM_MAX_SOCKETS);
 
 // Admission in front of the pool. Node's Agent queues a request past
 // maxSockets internally, without bound and without a deadline, and destroying
@@ -36,17 +36,17 @@ const MAX_SOCKETS = positiveInt(process.env.TEAMCLAUDE_UPSTREAM_MAX_SOCKETS, DEF
 // a socket — so a client that had already gone away kept its (megabyte) body
 // retained until a long-lived stream ahead of it ended. Requests are admitted
 // here, per origin, BEFORE the ClientRequest exists: the queue is bounded
-// (TEAMCLAUDE_UPSTREAM_MAX_QUEUE), the wait is bounded
-// (TEAMCLAUDE_UPSTREAM_QUEUE_TIMEOUT_MS), and a caller whose signal aborts
+// (AGENT_LB_UPSTREAM_MAX_QUEUE), the wait is bounded
+// (AGENT_LB_UPSTREAM_QUEUE_TIMEOUT_MS), and a caller whose signal aborts
 // leaves the queue immediately. A request the gate turns away fails with
-// TEAMCLAUDE_UPSTREAM_OVERLOADED, which server.js answers with a 503 and no
+// AGENTLB_UPSTREAM_OVERLOADED, which server.js answers with a 503 and no
 // account rotation: the proxy is saturated, not the account. The limit is
 // MAX_SOCKETS itself, so an admitted request always finds a pooled socket
 // free (a permit is held until the response body ends or is dropped).
 export const DEFAULT_UPSTREAM_MAX_QUEUE = DEFAULT_MAX_QUEUE;
 export const DEFAULT_UPSTREAM_QUEUE_TIMEOUT_MS = DEFAULT_QUEUE_TIMEOUT_MS;
-const MAX_QUEUE = nonNegativeInt(process.env.TEAMCLAUDE_UPSTREAM_MAX_QUEUE, DEFAULT_UPSTREAM_MAX_QUEUE);
-const QUEUE_TIMEOUT_MS = positiveInt(process.env.TEAMCLAUDE_UPSTREAM_QUEUE_TIMEOUT_MS, DEFAULT_UPSTREAM_QUEUE_TIMEOUT_MS);
+const MAX_QUEUE = nonNegativeInt(process.env.AGENT_LB_UPSTREAM_MAX_QUEUE, DEFAULT_UPSTREAM_MAX_QUEUE);
+const QUEUE_TIMEOUT_MS = positiveInt(process.env.AGENT_LB_UPSTREAM_QUEUE_TIMEOUT_MS, DEFAULT_UPSTREAM_QUEUE_TIMEOUT_MS);
 const admissionByOrigin = new Map();
 
 // Counters only (no origins, no request data): for the status endpoint.
@@ -68,7 +68,7 @@ function nonNegativeInt(value, fallback) {
 }
 const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: MAX_SOCKETS });
 const httpAgent = new http.Agent({ keepAlive: true, maxSockets: MAX_SOCKETS });
-const USE_GLOBAL_FETCH = /^(1|true|yes|on)$/i.test(process.env.TEAMCLAUDE_UPSTREAM_GLOBAL_FETCH || '');
+const USE_GLOBAL_FETCH = /^(1|true|yes|on)$/i.test(process.env.AGENT_LB_UPSTREAM_GLOBAL_FETCH || '');
 
 // Time to wait for RESPONSE HEADERS before treating the upstream socket as dead.
 // This is NOT a limit on the response body (SSE completions can stream for
@@ -100,13 +100,13 @@ const USE_GLOBAL_FETCH = /^(1|true|yes|on)$/i.test(process.env.TEAMCLAUDE_UPSTRE
 //
 // Default is generous (well above Claude's realistic first-byte, even when
 // queued or under load) so a slow-but-legitimate response is never mistaken for
-// a dead socket. Override with TEAMCLAUDE_UPSTREAM_HEADERS_TIMEOUT_MS (or
+// a dead socket. Override with AGENT_LB_UPSTREAM_HEADERS_TIMEOUT_MS (or
 // per-call opts).
 const DEFAULT_HEADERS_TIMEOUT_MS = 120_000;
 
 function resolveHeadersTimeout(perCall) {
   if (perCall != null) return perCall;
-  const env = Number(process.env.TEAMCLAUDE_UPSTREAM_HEADERS_TIMEOUT_MS);
+  const env = Number(process.env.AGENT_LB_UPSTREAM_HEADERS_TIMEOUT_MS);
   return env > 0 ? env : DEFAULT_HEADERS_TIMEOUT_MS;
 }
 
@@ -114,7 +114,7 @@ function headersTimeoutError(ms) {
   const err = new Error(`upstream response headers timed out after ${ms}ms`);
   // Recognized by server.js isTransient → fail fast + let the client retry, so
   // Node's fetch pool evicts the stale connection instead of wedging.
-  err.code = 'TEAMCLAUDE_HEADERS_TIMEOUT';
+  err.code = 'AGENTLB_HEADERS_TIMEOUT';
   return err;
 }
 
@@ -137,7 +137,7 @@ export function upstreamFetch(url, opts = {}, sx = null, useProxy = false) {
 }
 
 /**
- * `fetch` for teamclaude's own control-plane calls — OAuth token exchange and
+ * `fetch` for agentlb's own control-plane calls — OAuth token exchange and
  * refresh, profile, usage. Identical to global fetch when no upstream proxy is
  * configured; tunneled through it when one is.
  *
@@ -235,7 +235,7 @@ async function nodeRequest(u, opts, timeoutMs, { transport, agent }) {
     forget();
     if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('aborted');
     const err = new Error(`upstream admission queue for ${u.origin} is full or its wait deadline passed`);
-    err.code = 'TEAMCLAUDE_UPSTREAM_OVERLOADED';
+    err.code = 'AGENTLB_UPSTREAM_OVERLOADED';
     throw err;
   }
   // Idempotent: the permit is released on whichever of the response's end,

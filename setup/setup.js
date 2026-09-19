@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 /**
- * teamclaude-setup.js — uniwersalny skrypt konfiguracji klienta Claude dla Windows, Debian, Ubuntu i macOS.
+ * setup.js — uniwersalny skrypt konfiguracji klienta Claude i Codex dla Windows, Debian, Ubuntu i macOS.
  *
  * Konfiguruje:
  *  1. Claude Code CLI (~/.claude/settings.json -> sekcja env)
  *  2. Oficjalne rozszerzenie Claude Code w VS Code (settings.json -> claudeCode.environmentVariables)
- *  3. Zmienne środowiskowe systemowe (Rejestr Windows User / ~/.config/teamclaude.env + .bashrc/.zshrc na Linux)
+ *  3. Zmienne środowiskowe systemowe (Rejestr Windows User / ~/.config/agent-lb.env + .bashrc/.zshrc na Linux)
  *  4. Bezpiecznie usuwa/backupuje starą sesję OAuth (~/.claude/.credentials.json), zapobiegając błędowi "Auth conflict".
  *
  * Użycie:
  *   node setup.js
  *   node setup.js --url https://your-server.com
  *   node setup.js --key tc-...
- *   node teamclaude-setup.js --test
+ *   node setup.js --test
  */
 
 const fs = require('fs');
@@ -33,8 +33,8 @@ const isWsl = process.platform === 'linux' && (
 );
 
 // Domyślne wartości
-let targetUrl = process.env.CLAUDE_LB_URL || process.env.TEAMCLAUDE_URL || 'http://localhost:3456';
-let apiKey = process.env.CLAUDE_LB_API_KEY || process.env.TEAMCLAUDE_API_KEY
+let targetUrl = process.env.AGENT_LB_URL || process.env.AGENTLB_URL || process.env.CLAUDE_LB_URL || 'http://localhost:3456';
+let apiKey = process.env.AGENT_LB_API_KEY || process.env.AGENTLB_API_KEY || process.env.CLAUDE_LB_API_KEY
   || process.env.CODEX_LB_API_KEY || keyFromCustomHeaders(process.env.ANTHROPIC_CUSTOM_HEADERS)
   || process.env.ANTHROPIC_API_KEY || '';
 let runTest = false;
@@ -63,7 +63,7 @@ for (let i = 0; i < args.length; i++) {
     uninstall = true;
   } else if (arg === '-h' || arg === '--help') {
     console.log(`
-Claude-LB / TeamClaude Client Setup (Universal: Windows / Linux / macOS)
+Agent-LB / Claude-LB Client Setup (Universal: Windows / Linux / macOS)
 
 Użycie:
   node setup.js [opcje]
@@ -160,7 +160,7 @@ function checkUrlOnce(urlPath, urlStr, key) {
 }
 
 async function checkConnection(urlStr, key) {
-  const code = await checkUrlOnce('/teamclaude/status', urlStr, key);
+  const code = await checkUrlOnce('/agent-lb/status', urlStr, key);
   if (code === 404) {
     const code2 = await checkUrlOnce('/status', urlStr, key);
     return code2 === 200 || code2 < 500;
@@ -280,7 +280,7 @@ function keyFromCustomHeaders(value) {
 function removeMarkedSource(rcPath) {
   if (!fs.existsSync(rcPath)) return;
   const text = fs.readFileSync(rcPath, 'utf8');
-  const cleaned = text.replace(/\n?[^\n]*# (?:claude-lb|teamclaude)[^\n]*\n?/gi, '\n');
+  const cleaned = text.replace(/\n?[^\n]*# (?:agent-lb|claude-lb)[^\n]*\n?/gi, '\n');
   if (cleaned !== text) writeTextAtomic(rcPath, cleaned, fs.statSync(rcPath).mode & 0o777);
 }
 
@@ -326,7 +326,7 @@ function uninstallClientSettings() {
     delete codex.base_url;
     writeJsonSafe(codexPath, codex, 0o600);
   }
-  for (const file of [path.join(home, '.config', 'claude-lb.env'), path.join(home, '.config', 'teamclaude.env')]) {
+  for (const file of [path.join(home, '.config', 'agent-lb.env'), path.join(home, '.config', 'claude-lb.env')]) {
     try { if (fs.existsSync(file)) fs.unlinkSync(file); } catch (err) { console.warn(`[Ostrzeżenie] Nie udało się usunąć ${file}: ${err.message}`); }
   }
   for (const rc of ['.bashrc', '.zshrc', '.profile']) removeMarkedSource(path.join(home, rc));
@@ -362,7 +362,7 @@ function hasOAuthSession(credentialsPath) {
 }
 
 async function main() {
-  console.log('=== Konfigurator klienta Claude-LB / TeamClaude dla Claude Code i IDE ===\n');
+  console.log('=== Konfigurator klienta Agent-LB dla Claude Code, Codex i IDE ===\n');
 
   if (isWsl) {
     console.warn('[Ostrzeżenie] Wykryto WSL. Ten proces zapisuje konfigurację w linuksowym profilu WSL, nie w C:\\Users\\... Windows. W PowerShell uruchom setup.ps1 bez potoku do bash.');
@@ -388,7 +388,7 @@ async function main() {
 
   if (!apiKey) {
     // Sprawdź pliki env
-    for (const envName of ['claude-lb.env', 'teamclaude.env']) {
+    for (const envName of ['agent-lb.env', 'claude-lb.env']) {
       const p = path.join(os.homedir(), '.config', envName);
       if (fs.existsSync(p)) {
         try {
@@ -405,7 +405,7 @@ async function main() {
   }
 
   if (!apiKey) {
-    apiKey = await promptHidden(`Wklej klucz API z Claude-LB / TeamClaude (${targetUrl}): `);
+    apiKey = await promptHidden(`Wklej klucz API z Agent-LB (${targetUrl}): `);
     console.log('');
   }
 
@@ -566,11 +566,10 @@ async function main() {
     } else {
       // Linux / macOS
       const configDir = path.join(os.homedir(), '.config');
-      const envFile = path.join(configDir, 'claude-lb.env');
-      const legacyEnvFile = path.join(configDir, 'teamclaude.env');
+      const envFile = path.join(configDir, 'agent-lb.env');
       try {
         if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
-        let envContent = `# Claude-LB / TeamClaude environment configuration\nexport ANTHROPIC_BASE_URL=${shQuote(targetUrl)}\n`;
+        let envContent = `# Agent-LB environment configuration\nexport ANTHROPIC_BASE_URL=${shQuote(targetUrl)}\n`;
         if (oauthSession) {
           envContent += 'unset ANTHROPIC_API_KEY  # preserve Claude Code OAuth session\n';
           const customHeaders = proxyCustomHeaders(apiKey, process.env.ANTHROPIC_CUSTOM_HEADERS);
@@ -585,18 +584,17 @@ async function main() {
         if (setupCodex || fs.existsSync(codexDir)) {
           envContent += `export CODEX_BASE_URL=${shQuote(`${targetUrl}/backend-api/codex`)}\nexport OPENAI_BASE_URL=${shQuote(`${targetUrl}/v1`)}\n`;
         }
-        backupPath(envFile); backupPath(legacyEnvFile);
+        backupPath(envFile);
         writeTextAtomic(envFile, envContent, 0o600);
-        writeTextAtomic(legacyEnvFile, envContent, 0o600);
-        console.log(`[OK] Zapisano plik środowiskowy ${envFile} (oraz ${legacyEnvFile}).`);
+        console.log(`[OK] Zapisano plik środowiskowy ${envFile}.`);
 
         // Podepnij pod .bashrc i .zshrc
-        const srcLine = `. "${envFile}"  # claude-lb`;
+        const srcLine = `. "${envFile}"  # agent-lb`;
         for (const rcName of ['.bashrc', '.zshrc']) {
             const rcPath = path.join(os.homedir(), rcName);
             if (fs.existsSync(rcPath)) {
               const rcContent = fs.readFileSync(rcPath, 'utf-8');
-              if (!rcContent.includes('# claude-lb') && !rcContent.includes('# teamclaude')) {
+              if (!rcContent.includes('# agent-lb') && !rcContent.includes('# claude-lb')) {
               backupPath(rcPath);
               writeTextAtomic(rcPath, `${rcContent}${rcContent.endsWith('\n') ? '' : '\n'}${srcLine}\n`, fs.statSync(rcPath).mode & 0o777);
               console.log(`[OK] Dopisano ładowanie zmiennych do ~/${rcName}.`);

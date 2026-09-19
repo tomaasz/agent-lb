@@ -475,7 +475,7 @@ export class TUI {
     this._activityStream.on('error', err => {
       // Swallow write errors — can't log them to the TUI without recursion
       this._activityStream = null;
-      process.stderr.write(`[TeamClaude] activity log error: ${err.message}\n`);
+      process.stderr.write(`[AgentLB] activity log error: ${err.message}\n`);
     });
     return this._activityStream;
   }
@@ -592,7 +592,7 @@ export class TUI {
     // The screen copy keeps the colour callers painted on, and only that: a
     // request's model string is repainted from this list every frame for as
     // long as the entry lives, so an escape stored here would fire 200 times.
-    msg = scrubLine(msg).replace(/^\[TeamClaude\]\s*/, '');
+    msg = scrubLine(msg).replace(/^\[AgentLB\]\s*/, '');
     const t = timestamp();
     this.log.unshift({ t, msg });
     if (this.log.length > 200) this.log.length = 200;
@@ -1365,7 +1365,7 @@ export class TUI {
     const lines = [];
 
     // ── Header
-    const left = bold(' TeamClaude');
+    const left = bold(' AgentLB');
     const port = this.config.proxy?.port || 3456;
     const sess = this.am.sessionStats();
     const sessStr = (sess.active || sess.known)
@@ -1779,7 +1779,7 @@ export class TUI {
     if (!key) {
       lines.push('');
       lines.push(dim('  No sx.org account yet? Signing up via https://sx.org/c/ufVrLW'));
-      lines.push(dim('  costs nothing extra and supports TeamClaude development.'));
+      lines.push(dim('  costs nothing extra and supports AgentLB development.'));
     }
   }
 

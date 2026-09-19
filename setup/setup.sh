@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-lb / teamclaude client setup script (Debian/Ubuntu/WSL/macOS).
+# agent-lb / claude-lb client setup script (Debian/Ubuntu/WSL/macOS).
 #
 # Jeśli w systemie jest Node.js, deleguje zadanie do uniwersalnego setup.js,
 # który kompleksowo konfiguruje CLI, VS Code oraz zapobiega konfliktom OAuth.
@@ -7,34 +7,30 @@
 # Użycie:
 #   ./setup.sh
 #   ./setup.sh --url https://your-server.com
-#   ./setup.sh --key tc-...
-#   ./setup.sh --test
+# agent-lb client setup script (Debian/Ubuntu/WSL/macOS).
+#
+# Idempotentny skrypt konfiguracji środowiska pod proxy Agent-LB.
 
-set -euo pipefail
+set -eu
 
-if [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/version 2>/dev/null; then
-	printf '%s\n' "OSTRZEŻENIE: wykryto WSL — setup.sh zapisuje profil Linuksa WSL. W PowerShell uruchom setup.ps1 bez potoku do bash."
-fi
-
-if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+# Jeśli dostępny jest Node.js, przekaż wykonanie do pełnego instalatora setup.js
+if [ -z "${SETUP_FORCE_BASH:-}" ]; then
 	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 	if command -v node >/dev/null 2>&1; then
 		if [ -f "$SCRIPT_DIR/setup.js" ]; then
 			exec node "$SCRIPT_DIR/setup.js" "$@"
-		elif [ -f "$SCRIPT_DIR/teamclaude-setup.js" ]; then
-			exec node "$SCRIPT_DIR/teamclaude-setup.js" "$@"
 		fi
 	fi
 fi
 
 # Fallback w czystym bashu, gdy brak node
-URL="${CLAUDE_LB_URL:-${TEAMCLAUDE_URL:-http://localhost:3456}}"
-ENV_FILE="${CLAUDE_LB_ENV_FILE:-${TEAMCLAUDE_ENV_FILE:-$HOME/.config/claude-lb.env}}"
+URL="${AGENT_LB_URL:-${AGENTLB_URL:-${CLAUDE_LB_URL:-http://localhost:3456}}}"
+ENV_FILE="${AGENT_LB_ENV_FILE:-${CLAUDE_LB_ENV_FILE:-$HOME/.config/agent-lb.env}}"
 BIN_DIR="${HOME}/bin"
 RUN_TEST=0
 SETUP_CODEX=0
 UNINSTALL=0
-KEY="${CLAUDE_LB_API_KEY:-${TEAMCLAUDE_API_KEY:-${CODEX_LB_API_KEY:-${ANTHROPIC_API_KEY:-}}}}"
+KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${CLAUDE_LB_API_KEY:-${CODEX_LB_API_KEY:-${ANTHROPIC_API_KEY:-}}}}}"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -64,13 +60,13 @@ backup_existing() {
 }
 
 if [ "$UNINSTALL" -eq 1 ]; then
-	for f in "$HOME/.config/claude-lb.env" "$HOME/.config/teamclaude.env"; do
+	for f in "$HOME/.config/agent-lb.env" "$HOME/.config/claude-lb.env"; do
 		rm -f "$f" 2>/dev/null || say "Ostrzeżenie: nie udało się usunąć $f"
 	done
 	for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
 		[ -f "$rc" ] || continue
 		tmp="${rc}.tmp.$$"
-		if sed -E '/# (claude-lb|teamclaude)/d' "$rc" > "$tmp" && mv "$tmp" "$rc"; then :; else
+		if sed -E '/# (agent-lb|claude-lb)/d' "$rc" > "$tmp" && mv "$tmp" "$rc"; then :; else
 			rm -f "$tmp"; say "Ostrzeżenie: nie udało się zaktualizować $rc"
 		fi
 	done
@@ -140,10 +136,6 @@ if [ -z "$KEY" ] && [ -r "$ENV_FILE" ]; then
 	KEY="$(sed -n -e 's/^export CODEX_LB_API_KEY=//p' -e 's/^export ANTHROPIC_API_KEY=//p' "$ENV_FILE" | tr -d '"'\''' | head -1)"
 	[ -n "$KEY" ] && say "Używam klucza zapisanego w $ENV_FILE."
 fi
-if [ -z "$KEY" ] && [ -r "$HOME/.config/teamclaude.env" ]; then
-	KEY="$(sed -n -e 's/^export CODEX_LB_API_KEY=//p' -e 's/^export ANTHROPIC_API_KEY=//p' "$HOME/.config/teamclaude.env" | tr -d '"'\''' | head -1)"
-	[ -n "$KEY" ] && say "Używam klucza zapisanego w ~/.config/teamclaude.env."
-fi
 if [ -z "$KEY" ]; then
 	printf 'Klucz API z Agent LB (%s), wklej i Enter: ' "$URL"
 	if [ -e /dev/tty ]; then
@@ -157,7 +149,7 @@ KEY="$(printf '%s' "${KEY:-}" | tr -d '\r\n\t ')"
 [ -n "$KEY" ] || die "nie podano klucza"
 
 say "Sprawdzam połączenie z $URL..."
-code="$(curl -s -o /dev/null -m 15 -w '%{http_code}' -H "x-api-key: $KEY" "$URL/teamclaude/status" || true)"
+code="$(curl -s -o /dev/null -m 15 -w '%{http_code}' -H "x-api-key: $KEY" "$URL/agent-lb/status" || true)"
 if [ "$code" = "404" ]; then
 	code="$(curl -s -o /dev/null -m 15 -w '%{http_code}' -H "x-api-key: $KEY" "$URL/status" || true)"
 fi
@@ -239,10 +231,6 @@ shell_quote() {
 } > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 say "Zapisano $ENV_FILE."
-if [ "$ENV_FILE" != "$HOME/.config/teamclaude.env" ]; then
-	backup_existing "$HOME/.config/teamclaude.env"
-	cp -f "$ENV_FILE" "$HOME/.config/teamclaude.env" 2>/dev/null || true
-fi
 
 # Konfiguracja ~/.claude/settings.json (CLI Claude Code)
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
@@ -337,11 +325,11 @@ PY
 fi
 
 # Integracja z powłoką
-src_line=". \"$ENV_FILE\"  # teamclaude"
+src_line=". \"$ENV_FILE\"  # agent-lb"
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
 	[ -f "$rc" ] || continue
 	if [ -w "$rc" ]; then
-		if ! grep -qF "# teamclaude" "$rc" 2>/dev/null; then
+		if ! grep -qF "# agent-lb" "$rc" 2>/dev/null; then
 			printf '\n%s\n' "$src_line" >> "$rc" 2>/dev/null && say "Dopisano wczytywanie do $rc." || true
 		fi
 	else

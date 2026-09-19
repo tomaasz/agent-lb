@@ -1,5 +1,5 @@
 // Tracks Claude Code sessions by their `x-claude-code-session-id` header so
-// teamclaude can (a) report how many sessions are running and (b) optionally
+// agentlb can (a) report how many sessions are running and (b) optionally
 // keep each session pinned to one account while spreading NEW sessions across
 // accounts (the opt-in fix for concurrency funnelling — issue #109).
 //

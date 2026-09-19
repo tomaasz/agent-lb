@@ -36,7 +36,7 @@ EXPOSE 3456
 USER node
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3456/teamclaude/status || curl -f http://localhost:3456/status || exit 1
+  CMD curl -f http://localhost:3456/agent-lb/status || curl -f http://localhost:3456/status || exit 1
 
 ENTRYPOINT ["node", "src/index.js"]
 CMD ["headless"]

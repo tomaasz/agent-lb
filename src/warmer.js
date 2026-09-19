@@ -98,10 +98,10 @@ export class Warmer {
       if (!wasOn) this.warmAll().catch(() => {});
       this.timer = setInterval(() => this.warmAll().catch(() => {}), intervalMs);
       this.timer.unref?.();
-      this.log(`[TeamClaude] Keep-warm enabled (every ${Math.round(intervalMs / 1000)}s)`);
+      this.log(`[AgentLB] Keep-warm enabled (every ${Math.round(intervalMs / 1000)}s)`);
     } else if (wasOn) {
       this.nextRunAt = null;
-      this.log('[TeamClaude] Keep-warm disabled');
+      this.log('[AgentLB] Keep-warm disabled');
     }
   }
 
@@ -144,7 +144,7 @@ export class Warmer {
     }, delay);
     this.timer = timer;
     this.timer.unref?.();
-    this.log(`[TeamClaude] Keep-warm scheduled for ${this.scheduleStatus.nextWarmupAt}`);
+    this.log(`[AgentLB] Keep-warm scheduled for ${this.scheduleStatus.nextWarmupAt}`);
   }
 
   stop() {
@@ -279,7 +279,7 @@ export class Warmer {
     }, delay);
     this._deferredWarmups.set(account, timer);
     timer.unref?.();
-    this.log(`[TeamClaude] Keep-warm delaying "${account.name}" until ${new Date(runAt).toISOString()} (5h reset within 2m)`);
+    this.log(`[AgentLB] Keep-warm delaying "${account.name}" until ${new Date(runAt).toISOString()} (5h reset within 2m)`);
   }
 
   _clearDeferredWarmups() {

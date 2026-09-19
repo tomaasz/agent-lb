@@ -1,4 +1,4 @@
-// Outbound (egress) proxy for everything teamclaude sends to Anthropic.
+// Outbound (egress) proxy for everything agentlb sends to Anthropic.
 //
 // Distinct from two other things that also say "proxy" in this codebase:
 //   - `config.proxy` is the LOCAL server Claude Code talks to (inbound).
@@ -111,8 +111,8 @@ export function bypassesProxy(hostname, noProxy) {
 
 // ── Self-proxy guard ─────────────────────────────────────────
 //
-// TeamClaude honours HTTPS_PROXY for its own egress, and `teamclaude env`
-// exports HTTPS_PROXY pointing AT TeamClaude (that is how MITM mode aims the
+// AgentLB honours HTTPS_PROXY for its own egress, and `agentlb env`
+// exports HTTPS_PROXY pointing AT AgentLB (that is how MITM mode aims the
 // client). So a server or CLI started from a shell already set up for MITM
 // inherits ITSELF as its egress proxy.
 //
@@ -151,7 +151,7 @@ function isLoopbackHost(host) {
 export function localListener(config = {}, env = process.env) {
   const port = Number(config?.proxy?.port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) return null;
-  return { host: env.TEAMCLAUDE_HOST || config?.proxy?.host || '127.0.0.1', port };
+  return { host: env.AGENT_LB_HOST || config?.proxy?.host || '127.0.0.1', port };
 }
 
 /** True when `proxy` addresses `listener` — sending through it comes straight back. */

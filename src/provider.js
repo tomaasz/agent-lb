@@ -1,6 +1,6 @@
 // Backend providers.
 //
-// TeamClaude was built around one upstream (Anthropic), so the things that
+// AgentLB was built around one upstream (Anthropic), so the things that
 // differ per backend — which host to reach, how to present the account's
 // credential, which request paths belong to it — were inlined at the call
 // sites. Adding a second subscription backend (OpenAI's Codex) makes those the

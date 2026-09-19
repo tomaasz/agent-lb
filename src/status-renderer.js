@@ -17,7 +17,7 @@ export function renderStatus(status, { color = process.stdout.isTTY, now = Date.
   // configured order (the sort is stable), which is also the rotation cursor's.
     const accounts = [...(status.accounts || [])].sort((a, b) => (a.priority || 0) - (b.priority || 0));
   const blocked = (status.blockedModels || []).filter(p => typeof p === 'string' && p.length).map(p => safeLine(p, 64));
-  // This payload can come off the wire (`teamclaude status` against a running
+  // This payload can come off the wire (`agentlb status` against a running
   // server), and account/route strings in it started life in an OAuth reply or
   // a config file. Names are cut down once here and compared in that form, so a
   // stripped account still matches a stripped current-account marker.
@@ -27,7 +27,7 @@ export function renderStatus(status, { color = process.stdout.isTTY, now = Date.
   // the `>` marker follow the sessions; see formatActive for why the modes differ.
   const adaptiveMode = status.sessions?.mode === 'adaptive';
 
-  lines.push(paint.bold('TeamClaude status'));
+  lines.push(paint.bold('AgentLB status'));
   lines.push(`${paint.dim(activeLabel(adaptiveMode).padEnd(12))} ${formatActive(status, currentAccount, adaptiveMode, paint)}`);
   lines.push(`${paint.dim('Switch at'.padEnd(12))} ${formatPercent(status.switchThreshold)}`);
   // Only when something is blocked: a always-visible "Blocked" row would be
@@ -332,7 +332,7 @@ function bucketLabel(key) {
 
 // A number in the adaptive readout, or `?` when the payload did not carry one:
 // an older server omits fields, a hostile one sends strings, and neither may
-// throw inside `teamclaude status`.
+// throw inside `agentlb status`.
 function pct(value, digits) {
   return Number.isFinite(value) ? `${(value * 100).toFixed(digits)}%` : '?';
 }

@@ -36,7 +36,7 @@ export function startEventLoopMonitor({
     lastStallAt = new Date().toISOString();
     if (current - lastWarningClock < warnCooldownMs) return;
     lastWarningClock = current;
-    log(`[TeamClaude] Event loop stalled: lag=${Math.round(lag)}ms (threshold=${warnLagMs}ms, stalls=${stallCount})`);
+    log(`[AgentLB] Event loop stalled: lag=${Math.round(lag)}ms (threshold=${warnLagMs}ms, stalls=${stallCount})`);
   }, intervalMs);
   timer.unref?.();
 

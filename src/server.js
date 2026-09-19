@@ -91,7 +91,7 @@ const INLINE_RETRY_AFTER_MAX_SECONDS = 15;
 // rate-limit 429 never rotates accounts (that just moves the burst); it pauses
 // the account so concurrent requests wait, then retries the same account.
 const RATE_LIMIT_ABSORB_MAX_SECONDS =
-  Number(process.env.TEAMCLAUDE_RATE_LIMIT_ABSORB_MAX_SECONDS) || 60;
+  Number(process.env.AGENT_LB_RATE_LIMIT_ABSORB_MAX_SECONDS || process.env.AGENTLB_RATE_LIMIT_ABSORB_MAX_SECONDS) || 60;
 const OAUTH_ENTITLEMENT_ERROR_CODE = 'oauth_not_allowed_for_organization';
 const ERROR_BODY_INSPECTION_LIMIT = 64 * 1024;
 
@@ -302,9 +302,9 @@ function usableClientKeys(clientKeys) {
     for (const entry of clientKeys) {
       const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
       if (!name || !entry?.key) {
-        console.error('[TeamClaude] proxy.clientKeys: an entry without a name and a key is ignored (usage is attributed by name)');
+        console.error('[AgentLB] proxy.clientKeys: an entry without a name and a key is ignored (usage is attributed by name)');
       } else if (seen.has(name)) {
-        console.error(`[TeamClaude] proxy.clientKeys: duplicate name "${name}" — its keys share one usage counter`);
+        console.error(`[AgentLB] proxy.clientKeys: duplicate name "${name}" — its keys share one usage counter`);
       }
       seen.add(name);
     }
@@ -360,7 +360,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
     try {
       mkdirSync(logDir, { recursive: true, mode: 0o700 });
     } catch (err) {
-      console.error(`[TeamClaude] Request logging disabled: cannot create logDir ${logDir}: ${err.message}`);
+      console.error(`[AgentLB] Request logging disabled: cannot create logDir ${logDir}: ${err.message}`);
       logDir = null;
     }
   }
@@ -369,15 +369,15 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
     try {
       // Dashboard page — served BEFORE the auth gate on purpose. The page is a
       // static asset containing no data: everything it shows comes from
-      // /teamclaude/status, which stays behind the gate and is fetched by the
+      // /agentlb/status, which stays behind the gate and is fetched by the
       // page's own script with the key. A browser address bar cannot send
       // x-api-key, so gating the asset would just 401 every remote browser
       // without protecting anything.
       const rawPath = (req.url || '').split('?')[0];
       const normPath = rawPath.replace(/\/+$/, '') || '/';
       const reqPath = rawPath;
-      const normApiPath = reqPath.replace(/^\/(?:agent-lb|teamclaude|claude-lb)/, '');
-      const isDashboardPath = normPath === '/' || normPath === '/dashboard' || normPath === '/agent-lb/dashboard' || normPath === '/teamclaude/dashboard' || normPath === '/claude-lb/dashboard' || normPath === '/agent-lb' || normPath === '/teamclaude' || normPath === '/claude-lb';
+      const normApiPath = reqPath.replace(/^\/(?:agent-lb|agentlb|claude-lb)/, '');
+      const isDashboardPath = normPath === '/' || normPath === '/dashboard' || normPath === '/agent-lb/dashboard' || normPath === '/claude-lb/dashboard' || normPath === '/agent-lb' || normPath === '/claude-lb';
 
       if ((req.method === 'GET' || req.method === 'HEAD') && isDashboardPath) {
         // The page keeps the proxy key in localStorage; the policy is what
@@ -397,7 +397,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Serve client setup scripts without auth (Claude Code & OpenAI Codex)
-      const setupScriptMatch = normPath.match(/^\/(?:agent-lb\/|teamclaude\/|claude-lb\/)?(setup|codexlb-setup|codex-setup|setup-codex)(?:\.(sh|ps1|js))?$/);
+      const setupScriptMatch = normPath.match(/^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|codexlb-setup|codex-setup|setup-codex)(?:\.(sh|ps1|js))?$/);
       if ((req.method === 'GET' || req.method === 'HEAD') && setupScriptMatch) {
         const scriptBase = setupScriptMatch[1];
         let ext = setupScriptMatch[2];
@@ -408,11 +408,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         const isCodex = scriptBase.includes('codex');
         const possibleNames = isCodex
           ? [`codexlb-setup.${ext}`, `codex-setup.${ext}`]
-          : [`setup.${ext}`, `agent-lb-setup.${ext}`, `teamclaude-setup.${ext}`];
+          : [`setup.${ext}`, `agent-lb-setup.${ext}`];
         const scriptDirs = [
           join(__dirname, '..', 'setup'),
           join(homedir(), 'agent-lb-setup'),
-          join(homedir(), 'teamclaude-setup'),
           join(homedir(), 'bin'),
         ];
         let content = null;
@@ -438,7 +437,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           const currentOrigin = `${reqProto}://${reqHost}`;
           content = content.replace(/http:\/\/localhost:3456/g, currentOrigin);
           content = content.replace(/https:\/\/codexlb\.gotova\.pl/g, currentOrigin);
-          content = content.replace(/https:\/\/teamclaude\.gotova\.pl/g, currentOrigin);
           content = content.replace(/https:\/\/agentlb\.gotova\.pl/g, currentOrigin);
         }
 
@@ -451,7 +449,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Friendly redirect to dashboard for legacy browser navigation
-      if ((req.method === 'GET' || req.method === 'HEAD') && (normPath === '/' || normPath === '/agent-lb' || normPath === '/teamclaude' || normPath === '/claude-lb')) {
+      if ((req.method === 'GET' || req.method === 'HEAD') && (normPath === '/' || normPath === '/agent-lb' || normPath === '/claude-lb')) {
         res.writeHead(307, {
           'Location': '/dashboard',
           'Content-Type': 'text/plain',
@@ -530,9 +528,9 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // forged from page JavaScript, while curl and the CLI send neither — so
       // this costs legitimate callers nothing. Deliberately not a content-type
       // requirement, which would also close the hole but would break the
-      // documented `curl -X POST .../teamclaude/reload` that sends no body.
+      // documented `curl -X POST .../agentlb/reload` that sends no body.
       const crossOrigin = !isSameOriginControlRequest(req);
-      if (crossOrigin && req.method === 'POST' && (req.url || '').startsWith('/teamclaude/')) {
+      if (crossOrigin && req.method === 'POST' && (req.url || '').startsWith('/agent-lb/')) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           ok: false,
@@ -559,7 +557,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         // gate above covers its mutations, but the same no-cors trick reaches
         // POST /v1/messages, where the proxy injects a fleet credential (a quota
         // drain, with prompt content booked to the operator), and a GET of
-        // /teamclaude/status is unreadable to the page only for as long as no
+        // /agentlb/status is unreadable to the page only for as long as no
         // CORS header ever leaks. Same browser-set headers, same zero cost to
         // curl, the CLI and Node clients, which send neither.
         if (crossOrigin) {
@@ -602,7 +600,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Ready endpoint (liveness & drain readiness probe)
-      if (req.method === 'GET' && (normApiPath === '/ready' || normApiPath === '/api/ready' || req.url === '/ready' || req.url === '/teamclaude/ready')) {
+      if (req.method === 'GET' && (normApiPath === '/ready' || normApiPath === '/api/ready' || req.url === '/ready')) {
         if (drainState.isDraining) {
           res.writeHead(503, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, ready: false, draining: true, activeRequests: drainState.activeRequests }));
@@ -614,7 +612,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Status endpoint
-      if (req.method === 'GET' && (req.url === '/agent-lb/status' || req.url === '/teamclaude/status' || req.url === '/claude-lb/status' || req.url === '/status' || req.url === '/api/status')) {
+      if (req.method === 'GET' && (req.url === '/agent-lb/status' || req.url === '/claude-lb/status' || req.url === '/status' || req.url === '/api/status')) {
         const status = accountManager.getStatus({ sessionDetail: config.proxy?.sessionDetail === true });
         const extra = hooks.getStatusExtra?.() || {};
         const clientKeys = (config.proxy?.clientKeys || []).map(k => ({
@@ -634,9 +632,9 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Tier-weighted fleet quota for lightweight consumers such as a shell or
-      // Claude Code status line. Unlike /teamclaude/status this omits routing,
+      // Claude Code status line. Unlike /agentlb/status this omits routing,
       // usage counters and server diagnostics, and never reaches upstream.
-      if (req.method === 'GET' && (req.url === '/agent-lb/quota' || req.url === '/teamclaude/quota' || req.url === '/claude-lb/quota' || req.url === '/quota' || req.url === '/api/quota')) {
+      if (req.method === 'GET' && (req.url === '/agent-lb/quota' || req.url === '/claude-lb/quota' || req.url === '/quota' || req.url === '/api/quota')) {
         const extra = hooks.getQuotaExtra?.() || {};
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ...accountManager.getQuotaSummary(), ...extra }, null, 2));
@@ -646,7 +644,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // Reload endpoint — re-sync accounts from config without a restart. This
       // is the headless equivalent of pressing 'R' in the TUI. Local control
       // only (no upstream calls); the auth gate above already applies.
-      if (req.method === 'POST' && (req.url === '/agent-lb/reload' || req.url === '/teamclaude/reload' || req.url === '/claude-lb/reload' || req.url === '/reload' || req.url === '/api/reload')) {
+      if (req.method === 'POST' && (req.url === '/agent-lb/reload' || req.url === '/claude-lb/reload' || req.url === '/reload' || req.url === '/api/reload')) {
         if (!hooks.reload) {
           res.writeHead(501, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'reload not supported' }));
@@ -660,7 +658,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           // The reason belongs in the log, not the reply: a reload failure
           // names config paths and account details, and this endpoint is
           // reachable by anyone holding a client key.
-          console.error('[TeamClaude] Reload failed:', err.message);
+          console.error('[AgentLB] Reload failed:', err.message);
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'reload failed; see the proxy log' }));
         }
@@ -668,7 +666,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Probe endpoint — force a fleet-wide quota and spend probe on demand.
-      if (req.method === 'POST' && (req.url === '/agent-lb/probe' || req.url === '/agent-lb/api/probe' || req.url === '/teamclaude/probe' || req.url === '/teamclaude/api/probe' || req.url === '/claude-lb/probe' || req.url === '/claude-lb/api/probe' || req.url === '/probe' || req.url === '/api/probe')) {
+      if (req.method === 'POST' && (req.url === '/agent-lb/probe' || req.url === '/agent-lb/api/probe' || req.url === '/claude-lb/probe' || req.url === '/claude-lb/api/probe' || req.url === '/probe' || req.url === '/api/probe')) {
         if (!hooks.probeQuota) {
           res.writeHead(501, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'probe not supported' }));
@@ -679,7 +677,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
         } catch (err) {
-          console.error('[TeamClaude] Probe failed:', err.message);
+          console.error('[AgentLB] Probe failed:', err.message);
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: false, error: 'probe failed; see the proxy log' }));
         }
@@ -687,7 +685,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Pull latest claude-lb code and scripts from GitHub repo
-      if (req.method === 'POST' && (req.url === '/agent-lb/api/setup/pull' || req.url === '/teamclaude/api/setup/pull' || req.url === '/claude-lb/api/setup/pull' || req.url === '/api/setup/pull' || req.url === '/teamclaude/setup/pull')) {
+      if (req.method === 'POST' && (req.url === '/agent-lb/api/setup/pull' || req.url === '/claude-lb/api/setup/pull' || req.url === '/api/setup/pull')) {
         const { exec } = await import('node:child_process');
         const repoDir = join(__dirname, '..');
         exec('git pull', { cwd: repoDir }, (err, stdout, stderr) => {
@@ -711,7 +709,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // that it was recorded. Body:
       // {"account": "<name|email|accountUuid|accountUuid/orgUuid|orgUuid>"}.
       // Local control only (no upstream calls); the auth gate above applies.
-      if (req.method === 'POST' && (req.url === '/agent-lb/switch' || req.url === '/teamclaude/switch' || req.url === '/claude-lb/switch' || req.url === '/switch' || req.url === '/api/switch')) {
+      if (req.method === 'POST' && (req.url === '/agent-lb/switch' || req.url === '/claude-lb/switch' || req.url === '/switch' || req.url === '/api/switch')) {
         const names = () => (accountManager.accounts || []).map(a => a.name);
         let target;
         try {
@@ -749,7 +747,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         // to the activity log, so this one line covers both. Without it a manual
         // switch is the only account change that happens invisibly — on exactly
         // the background-service deployment this endpoint exists for.
-        console.log(`[TeamClaude] Switched to account "${name}" (manual)`
+        console.log(`[AgentLB] Switched to account "${name}" (manual)`
           + (eligible ? '' : ` — ${reason}, so rotation will not use it`));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, account: name, eligible, ...(reason ? { reason } : {}) }));
@@ -836,7 +834,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
       }
 
-      // Client Keys: List (GET /teamclaude/api/keys & GET /teamclaude/client-keys)
+      // Client Keys: List (GET /agentlb/api/keys & GET /agentlb/client-keys)
       if (req.method === 'GET' && (normApiPath === '/api/keys' || normApiPath === '/client-keys')) {
         const clientsStats = clientUsage?.export() || hooks.getStatusExtra?.()?.clients || {};
         const keys = (config.proxy?.clientKeys || []).map(k => {
@@ -870,7 +868,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Client Keys: Create / Add (POST /teamclaude/api/keys/create & POST /teamclaude/client-keys/add)
+      // Client Keys: Create / Add (POST /agentlb/api/keys/create & POST /agentlb/client-keys/add)
       if (req.method === 'POST' && (normApiPath === '/api/keys/create' || normApiPath === '/client-keys/add' || normApiPath === '/client-keys')) {
         let body;
         try {
@@ -944,13 +942,13 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
 
         if (hooks.reload) await hooks.reload();
-        console.log(`[TeamClaude] Created/updated client access key for "${name}" (web control)`);
+        console.log(`[AgentLB] Created/updated client access key for "${name}" (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, name, key, client: { name, key } }));
         return;
       }
 
-      // Client Keys: Delete / Remove (POST /teamclaude/api/keys/delete & POST /teamclaude/client-keys/remove)
+      // Client Keys: Delete / Remove (POST /agentlb/api/keys/delete & POST /agentlb/client-keys/remove)
       if ((req.method === 'POST' && (normApiPath === '/api/keys/delete' || normApiPath === '/client-keys/remove')) ||
           (req.method === 'DELETE' && (normApiPath === '/client-keys' || normApiPath === '/api/keys'))) {
         let body;
@@ -982,7 +980,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
 
         if (hooks.reload) await hooks.reload();
-        console.log(`[TeamClaude] Removed client access key "${target}" (web control)`);
+        console.log(`[AgentLB] Removed client access key "${target}" (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, removed: target }));
         return;
@@ -1031,13 +1029,13 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
 
         if (hooks.reload) await hooks.reload();
-        console.log(`[TeamClaude] Rotated client access key for "${name}" (web control)`);
+        console.log(`[AgentLB] Rotated client access key for "${name}" (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, client: { name, key: newKey } }));
         return;
       }
 
-      // Accounts: Toggle disable/enable (POST /teamclaude/api/accounts/toggle & POST /teamclaude/accounts/toggle)
+      // Accounts: Toggle disable/enable (POST /agentlb/api/accounts/toggle & POST /agentlb/accounts/toggle)
       if (req.method === 'POST' && (normApiPath === '/api/accounts/toggle' || normApiPath === '/accounts/toggle')) {
         let body;
         try {
@@ -1082,7 +1080,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           else delete cAcct.disabled;
         }
 
-        console.log(`[TeamClaude] Account "${mgr.name}" ${newDisabled ? 'disabled' : 'enabled'} (web control)`);
+        console.log(`[AgentLB] Account "${mgr.name}" ${newDisabled ? 'disabled' : 'enabled'} (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, account: mgr.name, id: mgr.id, disabled: newDisabled }));
         return;
@@ -1127,7 +1125,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         const cAcct = (config.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === mgr.name);
         if (cAcct) cAcct.priority = prio;
 
-        console.log(`[TeamClaude] Set priority of "${mgr.name}" to ${prio} (web control)`);
+        console.log(`[AgentLB] Set priority of "${mgr.name}" to ${prio} (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, account: mgr.name, id: mgr.id, priority: prio }));
         return;
@@ -1194,7 +1192,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Accounts: Remove (POST /teamclaude/api/accounts/remove & POST /teamclaude/accounts/remove)
+      // Accounts: Remove (POST /agentlb/api/accounts/remove & POST /agentlb/accounts/remove)
       if (req.method === 'POST' && (normApiPath === '/api/accounts/remove' || normApiPath === '/accounts/remove')) {
         let body;
         try {
@@ -1236,7 +1234,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
 
         if (hooks.reload) await hooks.reload();
-        console.log(`[TeamClaude] Removed account "${name}" (web control)`);
+        console.log(`[AgentLB] Removed account "${name}" (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, account: name, id }));
         return;
@@ -1315,7 +1313,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
 
-        console.log(`[TeamClaude] Consumed reset credit for account "${accountManager.accounts[index].name}"`);
+        console.log(`[AgentLB] Consumed reset credit for account "${accountManager.accounts[index].name}"`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, account: accountManager.accounts[index].name, result }));
         return;
@@ -1364,7 +1362,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           cAcct.routingPolicy = policy;
         }
 
-        console.log(`[TeamClaude] Account "${mgr.name}" routing policy set to "${policy}" (web control)`);
+        console.log(`[AgentLB] Account "${mgr.name}" routing policy set to "${policy}" (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, account: mgr.name, routingPolicy: policy }));
         return;
@@ -1706,7 +1704,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   }));
                   return;
                 }
-                console.warn(`[TeamClaude] Test chat failed on "${account.name}" (${upstreamRes.status}): ${errorMsg}. Sprawdzanie kolejnego konta...`);
+                console.warn(`[AgentLB] Test chat failed on "${account.name}" (${upstreamRes.status}): ${errorMsg}. Sprawdzanie kolejnego konta...`);
                 continue;
               }
             } else {
@@ -1916,7 +1914,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   }));
                   return;
                 }
-                console.warn(`[TeamClaude] Test chat failed on "${account.name}" (${upstreamRes.status}): ${errorMsg}. Sprawdzanie kolejnego konta...`);
+                console.warn(`[AgentLB] Test chat failed on "${account.name}" (${upstreamRes.status}): ${errorMsg}. Sprawdzanie kolejnego konta...`);
                 continue;
               }
             }
@@ -1939,7 +1937,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
               }));
               return;
             }
-            console.warn(`[TeamClaude] Test chat network error on "${account.name}": ${netErr.message}. Sprawdzanie kolejnego konta...`);
+            console.warn(`[AgentLB] Test chat network error on "${account.name}": ${netErr.message}. Sprawdzanie kolejnego konta...`);
             continue;
           }
         }
@@ -2045,7 +2043,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Accounts: Add (POST /teamclaude/api/accounts/add & POST /teamclaude/accounts/add)
+      // Accounts: Add (POST /agentlb/api/accounts/add & POST /agentlb/accounts/add)
 
       if (req.method === 'POST' && (normApiPath === '/api/accounts/add' || normApiPath === '/accounts/add')) {
         let body;
@@ -2092,7 +2090,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           });
 
           if (hooks.reload) await hooks.reload();
-          console.log(`[TeamClaude] Added API key account "${name}" (web control)`);
+          console.log(`[AgentLB] Added API key account "${name}" (web control)`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'api' }));
           return;
@@ -2141,7 +2139,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             });
 
             if (hooks.reload) await hooks.reload();
-            console.log(`[TeamClaude] Imported Codex account "${name}" from ${fromPath} (web control)`);
+            console.log(`[AgentLB] Imported Codex account "${name}" from ${fromPath} (web control)`);
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'oauth', provider: 'codex', importFrom: fromPath, email: codexCreds?.email }));
             return;
@@ -2196,7 +2194,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           });
 
           if (hooks.reload) await hooks.reload();
-          console.log(`[TeamClaude] Imported account "${name}" from ${fromPath} (web control)`);
+          console.log(`[AgentLB] Imported account "${name}" from ${fromPath} (web control)`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'oauth', importFrom: fromPath }));
           return;
@@ -2273,7 +2271,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           });
 
           if (hooks.reload) await hooks.reload();
-          console.log(`[TeamClaude] Added/updated OAuth account "${name}" (web control)`);
+          console.log(`[AgentLB] Added/updated OAuth account "${name}" (web control)`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'oauth', email: profile?.email }));
           return;
@@ -2285,7 +2283,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // OAuth Flow: Start
-      if (req.method === 'GET' && (normApiPath === '/oauth/start' || reqPath === '/teamclaude/oauth/start')) {
+      if (req.method === 'GET' && (normApiPath === '/oauth/start' || reqPath === '/agent-lb/oauth/start')) {
         cleanExpiredOAuthStates();
         const reqUrl = new URL(req.url, 'http://localhost');
         const provider = reqUrl.searchParams.get('provider') || 'anthropic';
@@ -2331,7 +2329,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // OAuth Flow: Complete
-      if (req.method === 'POST' && (normApiPath === '/oauth/complete' || reqPath === '/teamclaude/oauth/complete')) {
+      if (req.method === 'POST' && (normApiPath === '/oauth/complete' || reqPath === '/agent-lb/oauth/complete')) {
         let body;
         try {
           const raw = await readControlBody(req);
@@ -2411,7 +2409,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           });
 
           if (hooks.reload) await hooks.reload();
-          console.log(`[TeamClaude] Successfully authenticated Codex OAuth account "${name}" (web control)`);
+          console.log(`[AgentLB] Successfully authenticated Codex OAuth account "${name}" (web control)`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, account: name, provider: 'codex', email: codexCreds?.email }));
           return;
@@ -2484,7 +2482,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         });
 
         if (hooks.reload) await hooks.reload();
-        console.log(`[TeamClaude] Successfully authenticated OAuth account "${name}" (web control)`);
+        console.log(`[AgentLB] Successfully authenticated OAuth account "${name}" (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, account: name, email: profile?.email }));
         return;
@@ -2492,7 +2490,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
       return forward(req, res);
     } catch (err) {
-      reportFailure('[TeamClaude] Unhandled error:', err);
+      reportFailure('[AgentLB] Unhandled error:', err);
       // The window above throws for real: `getStatusExtra` is a hook the
       // application installs, and reload/switch reach the account manager.
       answerUnhandled(res);
@@ -2520,7 +2518,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       const hours = resolveLogRetentionHours(config);
       return sweepRequestLogs(logDir, hours)
         .then((n) => {
-          if (n) console.log(`[TeamClaude] Removed ${n} expired request log(s) from ${logDir} (logRetentionHours=${hours}, set 0 to keep them)`);
+          if (n) console.log(`[AgentLB] Removed ${n} expired request log(s) from ${logDir} (logRetentionHours=${hours}, set 0 to keep them)`);
         })
         .catch(() => {});
     };
@@ -2566,7 +2564,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // line, so the 401 alone leaves an operator with a channel that is
       // silently dead — the same shape as the outage this gate could cause if
       // a client turns out not to send the key.
-      console.log(`[TeamClaude] WebSocket upgrade refused (no proxy key) from ${safeLine(socket?.remoteAddress || 'unknown')} for ${safeLine(req.url)}`);
+      console.log(`[AgentLB] WebSocket upgrade refused (no proxy key) from ${safeLine(socket?.remoteAddress || 'unknown')} for ${safeLine(req.url)}`);
       try { socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n'); } catch { /* already gone */ }
       socket.destroy();
       return;
@@ -2599,7 +2597,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
  * and is refused — deliberately: widening the fallback to guess our own host
  * is the trade this comment declines.
  *
- * Non-browser callers (curl, the CLI, `teamclaude attach`) send neither and are
+ * Non-browser callers (curl, the CLI, `agentlb attach`) send neither and are
  * unaffected.
  */
 export function isSameOriginControlRequest(req) {
@@ -2654,9 +2652,8 @@ export function isLocalHostHeader(host, bindHost = null, allowedHosts = []) {
   const rawEnvHosts = [
     process.env.AGENT_LB_HOST,
     process.env.CLAUDE_LB_HOST,
-    process.env.TEAMCLAUDE_HOST,
     'agentlb.gotova.pl',
-    'teamclaude.gotova.pl',
+    'agent-lb.gotova.pl',
   ].filter(Boolean).flatMap(h => typeof h === 'string' ? h.split(',').map(s => s.trim()) : []);
   if (rawEnvHosts.some(h => name === hostnameOf(h) || name.endsWith('.' + hostnameOf(h)))) return true;
   if (Array.isArray(allowedHosts) && allowedHosts.some(h => name === hostnameOf(h) || name.endsWith('.' + hostnameOf(h)))) return true;
@@ -2728,7 +2725,7 @@ export function resolveAccountPin(accountManager, token) {
  * `.errors`. Any multi-address host reaches this, and the upstream is one, so
  * `err.message` prints nothing for the failure operators most need to read.
  *
- * Looked for one level down as well, because `TEAMCLAUDE_UPSTREAM_GLOBAL_FETCH`
+ * Looked for one level down as well, because `AGENT_LB_UPSTREAM_GLOBAL_FETCH`
  * routes through global fetch, which wraps the same failure in a TypeError whose
  * own message is the equally unhelpful "fetch failed".
  *
@@ -2747,7 +2744,7 @@ export function describeConnectError(err) {
 
 // Paths that must reach upstream with the client's own credential (never a
 // rotated account token): the Remote Control channel and attachment transfers.
-// teamclaude applies its account logic (rotation, exhaustion, token injection)
+// agentlb applies its account logic (rotation, exhaustion, token injection)
 // ONLY to hosts it manages — the Anthropic upstream. Anything else must be
 // forwarded transparently, never hijacked into "all accounts exhausted". For
 // HTTPS this is already true (the CONNECT tunnel in mitm.js blind-relays
@@ -2766,7 +2763,7 @@ export function relayHttpForward(req, res) {
   }
   // Destination policy, same as the CONNECT tunnel's (forward-target.js): a
   // relay may not target this machine's loopback, the unspecified address, or
-  // link-local. `GET http://127.0.0.1:<our port>/teamclaude/status` would
+  // link-local. `GET http://127.0.0.1:<our port>/agentlb/status` would
   // otherwise arrive at our own listener from a loopback socket and pass the
   // API-key gate as a local caller. Refused by literal name here; the guarded
   // lookup below refuses by resolved address, so a DNS alias for 127.0.0.1 does
@@ -2774,7 +2771,7 @@ export function relayHttpForward(req, res) {
   // legitimate request is lost.
   const hostname = target.hostname.replace(/^\[|\]$/g, '');
   const refuse = (why) => {
-    console.error(`[TeamClaude] HTTP forward to ${target.host} refused: ${why}`);
+    console.error(`[AgentLB] HTTP forward to ${target.host} refused: ${why}`);
     if (res.headersSent) { res.destroy(); return; }
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ type: 'error', error: { type: 'permission_error', message: `Forward to ${target.host} refused: ${why}` } }));
@@ -2811,7 +2808,7 @@ export function relayHttpForward(req, res) {
   });
   upstreamReq.on('error', (err) => {
     if (err.code === FORBIDDEN_FORWARD) { refuse(err.message); return; }
-    console.error(`[TeamClaude] HTTP forward to ${target.host} failed:`, describeConnectError(err));
+    console.error(`[AgentLB] HTTP forward to ${target.host} failed:`, describeConnectError(err));
     if (!res.headersSent) {
       res.writeHead(502, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ type: 'error', error: { type: 'proxy_error', message: 'Upstream unreachable' } }));
@@ -3052,7 +3049,7 @@ export function createProxyRequestListener({
       if (blockedBy) {
         if (!res.headersSent) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: `Model "${model}" is blocked by teamclaude (matched "${blockedBy}").` } }));
+          res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: `Model "${model}" is blocked by agent-lb (matched "${blockedBy}").` } }));
         }
         recordEarlyOutcome(accountManager, sessionId, req.url, true);
         openEntry = null;   // this path owns the close below; the outer catch must not repeat it
@@ -3133,7 +3130,7 @@ export function createProxyRequestListener({
       if (parsedBody) {
         const dedupeResult = toolDedupe.inspectRequest(parsedBody, sessionId);
         if (dedupeResult.hasDuplicate) {
-          console.warn(`[TeamClaude] [ToolDedupe] Warning: detected replayed side-effect tool calls in session "${sessionId}": ${dedupeResult.duplicates.map(d => d.name).join(', ')}`);
+          console.warn(`[AgentLB] [ToolDedupe] Warning: detected replayed side-effect tool calls in session "${sessionId}": ${dedupeResult.duplicates.map(d => d.name).join(', ')}`);
         }
         const clientEntry = req.tcClientEntry || null;
         if (parsedBody.model && clientEntry?.allowedModels && clientUsage && client) {
@@ -3159,7 +3156,7 @@ export function createProxyRequestListener({
         // through a console that may be the thing that failed. Here it also
         // decides which error gets reported at all, since a throw from the
         // report would carry the render failure outward in place of this one.
-        reportFailure('[TeamClaude] Unhandled error:', err);
+        reportFailure('[AgentLB] Unhandled error:', err);
         if (!res.headersSent) {
           res.writeHead(502, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ type: 'error', error: { type: 'proxy_error', message: 'Internal proxy error' } }));
@@ -3203,7 +3200,7 @@ export function createProxyRequestListener({
         if (!hideActivity) hooks.onRequestEnd?.(reqId, { method: req.method, path: req.url, account: ctx.account, status: ctx.status, model: ctx.model, sessionId, pinned: ctx.pinnedIndex != null, client });
       }
     } catch (err) {
-      reportFailure('[TeamClaude] Unhandled error:', err);
+      reportFailure('[AgentLB] Unhandled error:', err);
       // Close the activity entry. Only the inner path has a `finally`, so a
       // throw above it opens a row that nothing else will ever close, and every
       // consumer holds an open row indefinitely: the TUI keeps it in `active`
@@ -3229,7 +3226,7 @@ export function createProxyRequestListener({
             model: null, sessionId: entry.sessionId, pinned: false,
           });
         } catch (hookErr) {
-          reportFailure('[TeamClaude] activity hook failed while closing a request:', hookErr);
+          reportFailure('[AgentLB] activity hook failed while closing a request:', hookErr);
         }
       }
       // The code above the inner try (the egress hold, the pin parsing, body
@@ -3330,7 +3327,7 @@ function recordEarlyOutcome(accountManager, sessionId, url, usable) {
 // this, and the catch recognises it by code.
 function clientGoneError() {
   const err = new Error('client disconnected');
-  err.code = 'TEAMCLAUDE_CLIENT_GONE';
+  err.code = 'AGENTLB_CLIENT_GONE';
   return err;
 }
 
@@ -3429,7 +3426,7 @@ function relayStream(req, res, upstream, sx) {
   });
 
   upstreamReq.on('error', (err) => {
-    console.error('[TeamClaude] Remote Control relay error:', describeConnectError(err));
+    console.error('[AgentLB] Remote Control relay error:', describeConnectError(err));
     if (!res.headersSent) {
       res.writeHead(502, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ type: 'error', error: { type: 'proxy_error', message: 'Upstream unreachable' } }));
@@ -3535,8 +3532,8 @@ export function relayUpgrade(req, socket, head, upstream, sx, { client = null, c
     upstreamSocket.pipe(socket);
     clientUsage?.record(client, { connections: 1 });
     const opened = Date.now();
-    log(`[TeamClaude] ${tag}WebSocket ${path} connected`);
-    socket.once('close', () => log(`[TeamClaude] ${tag}WebSocket ${path} closed (${((Date.now() - opened) / 1000).toFixed(1)}s)`));
+    log(`[AgentLB] ${tag}WebSocket ${path} connected`);
+    socket.once('close', () => log(`[AgentLB] ${tag}WebSocket ${path} closed (${((Date.now() - opened) / 1000).toFixed(1)}s)`));
     // An upgraded socket defaults to half-open: the peer's FIN only ends the
     // READABLE side ('end'), it does NOT destroy the socket or fire 'close' —
     // so without this, one side hanging up (dropped wifi, killed CLI) leaves
@@ -3559,7 +3556,7 @@ export function relayUpgrade(req, socket, head, upstream, sx, { client = null, c
   // client socket hung with no answer until it timed out, and nothing was
   // logged. Relay the status so the client sees the refusal it was given.
   upstreamReq.on('response', (upstreamRes) => {
-    log(`[TeamClaude] ${tag}WebSocket ${path} refused by upstream (${upstreamRes.statusCode})`);
+    log(`[AgentLB] ${tag}WebSocket ${path} refused by upstream (${upstreamRes.statusCode})`);
     const headerLines = Object.entries(upstreamRes.headers)
       .filter(([k]) => !CONNECTION_SPECIFIC_HEADERS.has(k.toLowerCase()) && k.toLowerCase() !== 'content-length')
       .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('\r\n');
@@ -3571,7 +3568,7 @@ export function relayUpgrade(req, socket, head, upstream, sx, { client = null, c
   });
 
   upstreamReq.on('error', (err) => {
-    console.error('[TeamClaude] Remote Control WebSocket relay error:', describeConnectError(err));
+    console.error('[AgentLB] Remote Control WebSocket relay error:', describeConnectError(err));
     socket.destroy();
   });
   socket.on('error', () => upstreamReq.destroy());
@@ -3643,7 +3640,7 @@ async function relayRaw(req, res, upstream, sx, maxBodyBytes = DEFAULT_MAX_BODY_
     res.writeHead(upstreamRes.status, responseHeaders);
     res.end(responseBody);
   } catch (err) {
-    console.error('[TeamClaude] Raw relay error:', describeConnectError(err));
+    console.error('[AgentLB] Raw relay error:', describeConnectError(err));
     if (!res.headersSent) {
       res.writeHead(502, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ type: 'error', error: { type: 'proxy_error', message: 'Upstream unreachable' } }));
@@ -3799,7 +3796,7 @@ function openRequestLog(logDir, _reqId, { level = DEFAULT_LOG_LEVEL, maxBodyByte
   const fail = (err) => {
     if (failed) return;
     failed = true;
-    console.error(`[TeamClaude] Request log ${filename} abandoned: ${err.message}`);
+    console.error(`[AgentLB] Request log ${filename} abandoned: ${err.message}`);
   };
   ws.on('error', fail);
   const write = (s) => {
@@ -3894,7 +3891,7 @@ export function formatHeaders(headers) {
 const SOCKET_TRANSIENT = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE',
   'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
-  'TEAMCLAUDE_HEADERS_TIMEOUT', 'TEAMCLAUDE_BODY_TIMEOUT',
+  'AGENTLB_HEADERS_TIMEOUT', 'AGENTLB_BODY_TIMEOUT', 'AGENTLB_HEADERS_TIMEOUT', 'AGENTLB_BODY_TIMEOUT',
 ]);
 
 // Failures that are a property of the HOST being dialled: name resolution and
@@ -3937,7 +3934,7 @@ export function isTransientUpstreamError(err, { otherHostAvailable = false } = {
   if (codes.some(c => SOCKET_TRANSIENT.has(c))) return true;
   if (codes.some(c => HOST_TRANSIENT.has(c))) return !otherHostAvailable;
   // Read last, and only once no code has been found. Node's global fetch, which
-  // `TEAMCLAUDE_UPSTREAM_GLOBAL_FETCH` selects, reports every failure with this
+  // `AGENT_LB_UPSTREAM_GLOBAL_FETCH` selects, reports every failure with this
   // message and the real error on `.cause`; checking it earlier would answer for
   // the whole transport before the codes above were consulted, so a host-scoped
   // failure there would never reach its conditional arm.
@@ -4138,9 +4135,9 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       if (allEntitlementDenied && ctx.pinnedIndex != null) {
         message = `No account served this request. The pinned account ${names} returned OAuth entitlement denial (${OAUTH_ENTITLEMENT_ERROR_CODE}). An explicit pin targets that account exactly; choose a different eligible account or change its organization's OAuth policy.`;
       } else if (allEntitlementDenied) {
-        message = `No account served this request. Every configured account returned OAuth entitlement denial (${OAUTH_ENTITLEMENT_ERROR_CODE}): ${names}. TeamClaude temporarily removed them from automatic rotation; retry after the cooldown or pin a different eligible account.`;
+        message = `No account served this request. Every configured account returned OAuth entitlement denial (${OAUTH_ENTITLEMENT_ERROR_CODE}): ${names}. AgentLB temporarily removed them from automatic rotation; retry after the cooldown or pin a different eligible account.`;
       } else {
-        message = `Upstream refused the credential for account ${names} (403). Check the account, then re-add it with: teamclaude login`;
+        message = `Upstream refused the credential for account ${names} (403). Check the account, then re-add it with: agentlb login`;
       }
       ctx.status = 502;
       ctx.account = `(${[...rejected].join(', ')} refused)`;
@@ -4183,7 +4180,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // minute instead of sleeping the full retryAfter (often 3600s).
       const waitMs = Math.min(retryAfter * 1000, ctx.holdBudgetMs, 60_000);
       ctx.holdBudgetMs -= waitMs;
-      console.log(`[TeamClaude] All accounts exhausted — holding connection, retry in ${Math.ceil(waitMs / 1000)}s (${Math.ceil(ctx.holdBudgetMs / 1000)}s budget left)`);
+      console.log(`[AgentLB] All accounts exhausted — holding connection, retry in ${Math.ceil(waitMs / 1000)}s (${Math.ceil(ctx.holdBudgetMs / 1000)}s budget left)`);
       await waitForRetry(waitMs, ctx.signal);
       if (clientGone(res)) { ctx.abandoned = true; return; }
       return forwardRequest(req, res, body, accountManager, upstream, retryCount, hooks, reqId, ctx, logDir, sx, route);
@@ -4192,7 +4189,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     const exhaustedRetries = ctx.exhaustedRetries || 0;
     if (exhaustedRetries < 1 && retryAfter <= INLINE_RETRY_AFTER_MAX_SECONDS) {
       ctx.exhaustedRetries = exhaustedRetries + 1;
-      console.log(`[TeamClaude] All accounts exhausted — waiting ${retryAfter}s before retry`);
+      console.log(`[AgentLB] All accounts exhausted — waiting ${retryAfter}s before retry`);
       await waitForRetry(retryAfter * 1000, ctx.signal);
       if (clientGone(res)) { ctx.abandoned = true; return; }
       return forwardRequest(req, res, body, accountManager, upstream, retryCount, hooks, reqId, ctx, logDir, sx, route);
@@ -4411,10 +4408,10 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         // selection skip it for Fable requests only. A general rejection spends a
         // shared bucket, so hold the whole account for its reset window.
         if (fableRejected) {
-          console.log(`[TeamClaude] Fable weekly exhausted on "${account.name}" — switching account for this Fable request`);
+          console.log(`[AgentLB] Fable weekly exhausted on "${account.name}" — switching account for this Fable request`);
         } else {
           const hold = Math.min(Math.max(retryAfter, 1), 3600);
-          console.log(`[TeamClaude] Quota rejection (429) on "${account.name}" — throttling ${hold}s and switching account`);
+          console.log(`[AgentLB] Quota rejection (429) on "${account.name}" — throttling ${hold}s and switching account`);
           accountManager.markRateLimited(account.index, hold);
         }
         ctx.tried.add(account.index);
@@ -4487,20 +4484,20 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
           ctx.rateLimitHopped = true;
           ctx.hopTo = alt.index;
           ctx.tried.add(account.index);
-          console.log(`[TeamClaude] Rate-limit 429 on "${account.name}" — failing over once to idle account "${alt.name}"`);
+          console.log(`[AgentLB] Rate-limit 429 on "${account.name}" — failing over once to idle account "${alt.name}"`);
           if (clientGone(res)) { ctx.abandoned = true; return; }
           return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
         }
       } else if (ctx.rateLimitHopped && requestScoped) {
         // Second headerless 429, on a different account: it followed the
         // request. Nothing here is about either account.
-        console.log(`[TeamClaude] 429 followed the request onto "${account.name}" with no rate-limit headers — it is about the request, not the accounts; returning it to the client`
+        console.log(`[AgentLB] 429 followed the request onto "${account.name}" with no rate-limit headers — it is about the request, not the accounts; returning it to the client`
           + (refusal ? ` (${safeLine(refusal)})` : ''));
       } else if (ctx.rateLimitHopped) {
         // Second 429 this request, on a different account. Say so once: the
         // operator chasing "why is my fleet throttled" is looking for exactly
         // this, and it points at the egress IP rather than at the accounts.
-        console.log('[TeamClaude] Second account rate-limited too — the limit looks IP-scoped, not per-account'
+        console.log('[AgentLB] Second account rate-limited too — the limit looks IP-scoped, not per-account'
           + (sx?.useOn429() ? '' : ' (sx.org mode "429" would retry from a fresh egress IP)'));
       }
 
@@ -4508,7 +4505,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // Bounded by retryCount like the inline-wait path below, so a persistently
       // 429ing upstream can't loop forever through sx.
       if (switchingToSx && retryCount < maxRetries) {
-        console.log(`[TeamClaude] 429 on "${account.name}" — retrying via sx.org (fresh egress IP)`);
+        console.log(`[AgentLB] 429 on "${account.name}" — retrying via sx.org (fresh egress IP)`);
         if (clientGone(res)) { ctx.abandoned = true; return; }
         return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, nextUseSx);
       }
@@ -4522,7 +4519,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       if (requestScoped) {
         if (!ctx.rateLimitHopped && !ctx.requestScopedRetried && retryCount < maxRetries) {
           ctx.requestScopedRetried = true;
-          console.log(`[TeamClaude] 429 with no rate-limit headers on "${account.name}" — retrying once in 2s${refusal ? ` (${safeLine(refusal)})` : ''}`);
+          console.log(`[AgentLB] 429 with no rate-limit headers on "${account.name}" — retrying once in 2s${refusal ? ` (${safeLine(refusal)})` : ''}`);
           await waitForRetry(2000, ctx.signal);
           if (clientGone(res)) { ctx.abandoned = true; return; }
           return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, nextUseSx);
@@ -4541,7 +4538,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // 429. Bounded by retryCount (maxRetries = account count) so a persistently
       // rate-limited account can't loop forever tying up the connection.
       if (retryAfter <= RATE_LIMIT_ABSORB_MAX_SECONDS && retryCount < maxRetries) {
-        console.log(`[TeamClaude] Rate-limit 429 on "${account.name}" — waiting ${retryAfter}s, retrying same account (no switch)`);
+        console.log(`[AgentLB] Rate-limit 429 on "${account.name}" — waiting ${retryAfter}s, retrying same account (no switch)`);
         await waitForRetry(retryAfter * 1000, ctx.signal);
         if (clientGone(res)) { ctx.abandoned = true; return; }
         return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, nextUseSx);
@@ -4550,7 +4547,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // Longer retry-after (or retries exhausted): don't hold the connection and
       // don't rotate — surface the 429 with retry-after so the client backs off.
       // The pause above keeps other requests off this account meanwhile.
-      console.log(`[TeamClaude] Rate-limit 429 on "${account.name}" — retry-after ${retryAfter}s over inline cap; returning 429 to client (no switch)`);
+      console.log(`[AgentLB] Rate-limit 429 on "${account.name}" — retry-after ${retryAfter}s over inline cap; returning 429 to client (no switch)`);
       ctx.status = 429;
       if (!res.headersSent && !clientGone(res)) {
         res.writeHead(429, { 'Content-Type': 'application/json', 'retry-after': String(retryAfter) });
@@ -4593,7 +4590,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         ctx.serverErrorHopped = true;
         ctx.hopTo = alt.index;
         ctx.tried.add(account.index);
-        console.log(`[TeamClaude] Upstream ${upstreamRes.status} on "${account.name}" — failing over once to "${alt.name}"`);
+        console.log(`[AgentLB] Upstream ${upstreamRes.status} on "${account.name}" — failing over once to "${alt.name}"`);
         if (clientGone(res)) { ctx.abandoned = true; return; }
         return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
       }
@@ -4624,7 +4621,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
           const cooldown = deniedUntil
             ? ` until ${new Date(deniedUntil).toISOString()}`
             : '';
-          console.error(`[TeamClaude] 400 on "${account.name}"; Anthropic requires identity verification — excluding account${cooldown} and retrying`);
+          console.error(`[AgentLB] 400 on "${account.name}"; Anthropic requires identity verification — excluding account${cooldown} and retrying`);
           if (clientGone(res)) { ctx.abandoned = true; return; }
           return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
         }
@@ -4670,7 +4667,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       const cooldown = deniedUntil
         ? `; OAuth entitlement cooldown until ${new Date(deniedUntil).toISOString()}`
         : '';
-      console.error(`[TeamClaude] 403 on "${account.name}"; upstream refused the account credential${cooldown}`);
+      console.error(`[AgentLB] 403 on "${account.name}"; upstream refused the account credential${cooldown}`);
       return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
     }
 
@@ -4678,7 +4675,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         && retryCount < maxRetries && !ctx.reauthed.has(account.index)) {
       ctx.reauthed.add(account.index);
       await upstreamRes.body?.cancel();
-      console.log(`[TeamClaude] 401 on "${account.name}" — token rejected; forcing refresh and retrying`);
+      console.log(`[AgentLB] 401 on "${account.name}" — token rejected; forcing refresh and retrying`);
       await accountManager.ensureTokenFresh(account.index, true);
       if (clientGone(res)) { ctx.abandoned = true; return; }
       return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
@@ -4793,11 +4790,11 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // away. Both still go through the log block below, so the request-log
     // file is closed on every exit from this catch — they are only classified
     // after it.
-    const clientLeft = err?.code === 'TEAMCLAUDE_CLIENT_GONE';
-    const overloaded = err?.code === 'TEAMCLAUDE_UPSTREAM_OVERLOADED';
-    if (clientLeft) console.log(`[TeamClaude] Client disconnected while waiting on "${account.name}" — upstream request cancelled`);
-    else if (overloaded) console.error(`[TeamClaude] Upstream admission queue full (${describeConnectError(err)}) — 503 to the client, no account rotation`);
-    else console.error(`[TeamClaude] Upstream error (account "${account.name}"):`, describeConnectError(err));
+    const clientLeft = err?.code === 'AGENTLB_CLIENT_GONE';
+    const overloaded = err?.code === 'AGENTLB_UPSTREAM_OVERLOADED';
+    if (clientLeft) console.log(`[AgentLB] Client disconnected while waiting on "${account.name}" — upstream request cancelled`);
+    else if (overloaded) console.error(`[AgentLB] Upstream admission queue full (${describeConnectError(err)}) — 503 to the client, no account rotation`);
+    else console.error(`[AgentLB] Upstream error (account "${account.name}"):`, describeConnectError(err));
 
     logRequestHead();
     const l = getLog();
@@ -4916,16 +4913,16 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
 // converting a mid-stream hang into a fast failure that evicts the dead socket
 // (reader.cancel destroys the underlying connection on both the direct-fetch and
 // the sx-tunnel path, since both hand back a web ReadableStream). Override with
-// TEAMCLAUDE_UPSTREAM_BODY_TIMEOUT_MS.
+// AGENT_LB_UPSTREAM_BODY_TIMEOUT_MS.
 const DEFAULT_BODY_IDLE_TIMEOUT_MS = 120_000;
 
 function resolveBodyIdleTimeout() {
-  const env = Number(process.env.TEAMCLAUDE_UPSTREAM_BODY_TIMEOUT_MS);
+  const env = Number(process.env.AGENT_LB_UPSTREAM_BODY_TIMEOUT_MS);
   return env > 0 ? env : DEFAULT_BODY_IDLE_TIMEOUT_MS;
 }
 
 // Race a single reader.read() against an inactivity deadline. Resolves to the
-// read result, or rejects with a transient TEAMCLAUDE_BODY_TIMEOUT if no chunk
+// read result, or rejects with a transient AGENTLB_BODY_TIMEOUT if no chunk
 // arrives within `ms`. The pending read is abandoned on timeout; the caller
 // cancels the reader (evicting the socket) in its finally block.
 export function readWithIdleTimeout(reader, ms) {
@@ -4933,7 +4930,7 @@ export function readWithIdleTimeout(reader, ms) {
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => {
       const err = new Error(`upstream stream idle for ${ms}ms`);
-      err.code = 'TEAMCLAUDE_BODY_TIMEOUT';
+      err.code = 'AGENTLB_BODY_TIMEOUT';
       reject(err);
     }, ms);
     timer.unref?.();

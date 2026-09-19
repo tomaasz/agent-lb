@@ -1,4 +1,4 @@
-# setup.ps1 — konfiguracja klienta Claude pod Claude-LB / TeamClaude na Windows / PowerShell.
+# setup.ps1 — konfiguracja klienta Claude i Codex pod Agent-LB na Windows / PowerShell.
 #
 # Jeśli w systemie jest Node.js, deleguje zadanie do uniwersalnego setup.js.
 # W przeciwnym wypadku wykonuje natywne kroki w PowerShellu (CLI, VS Code, rejestr zmiennych).
@@ -20,8 +20,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not $Url) {
-	if ($env:CLAUDE_LB_URL) { $Url = $env:CLAUDE_LB_URL }
-	elseif ($env:TEAMCLAUDE_URL) { $Url = $env:TEAMCLAUDE_URL }
+	if ($env:AGENT_LB_URL) { $Url = $env:AGENT_LB_URL }
+	elseif ($env:AGENTLB_URL) { $Url = $env:AGENTLB_URL }
+	elseif ($env:CLAUDE_LB_URL) { $Url = $env:CLAUDE_LB_URL }
 	else { $Url = 'http://localhost:3456' }
 }
 $Url = $Url.TrimEnd('/')
@@ -30,9 +31,6 @@ $Url = $Url.TrimEnd('/')
 if ($PSScriptRoot) {
 	$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
 	$jsScript = Join-Path $PSScriptRoot "setup.js"
-	if (-not (Test-Path $jsScript)) {
-		$jsScript = Join-Path $PSScriptRoot "teamclaude-setup.js"
-	}
 	if ($nodeCmd -and (Test-Path $jsScript)) {
 		$nodeArgs = @($jsScript, "--url", $Url)
 		if ($Uninstall) { $nodeArgs += '--uninstall' }
@@ -71,8 +69,8 @@ function Remove-CustomHeader([string]$existing, [string]$name) {
 if ($Uninstall) {
 	$homeDir = if ($HOME) { $HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } else { '.' }
 	foreach ($p in @(
-		(Join-Path $homeDir '.config\claude-lb.env'),
-		(Join-Path $homeDir '.config\teamclaude.env')
+		(Join-Path $homeDir '.config\agent-lb.env'),
+		(Join-Path $homeDir '.config\claude-lb.env')
 	)) { try { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue } catch { Say "[Uwaga] Nie udało się usunąć $p" } }
 	$settingsPath = Join-Path $homeDir '.claude\settings.json'
 	if (Test-Path $settingsPath) {
@@ -128,20 +126,16 @@ if ($Uninstall) {
 
 # ---------------------------------------------------------------- klucz API
 if (-not $Key) {
-	if ($env:CLAUDE_LB_API_KEY) { $Key = $env:CLAUDE_LB_API_KEY }
-	elseif ($env:TEAMCLAUDE_API_KEY) { $Key = $env:TEAMCLAUDE_API_KEY }
+	if ($env:AGENT_LB_API_KEY) { $Key = $env:AGENT_LB_API_KEY }
+	elseif ($env:AGENTLB_API_KEY) { $Key = $env:AGENTLB_API_KEY }
+	elseif ($env:CLAUDE_LB_API_KEY) { $Key = $env:CLAUDE_LB_API_KEY }
 	elseif ($env:CODEX_LB_API_KEY) { $Key = $env:CODEX_LB_API_KEY }
 	elseif ($env:ANTHROPIC_CUSTOM_HEADERS) {
-	if (-not $Key -and $env:CLAUDE_LB_API_KEY) { $Key = $env:CLAUDE_LB_API_KEY }
-	if (-not $Key -and $env:TEAMCLAUDE_API_KEY) { $Key = $env:TEAMCLAUDE_API_KEY }
-	if (-not $Key -and $env:CODEX_LB_API_KEY) { $Key = $env:CODEX_LB_API_KEY }
-	if (-not $Key -and $env:ANTHROPIC_CUSTOM_HEADERS) {
 		foreach ($line in ($env:ANTHROPIC_CUSTOM_HEADERS -split "`r?`n")) {
 			if ($line -match '^\s*x-api-key\s*:\s*(.+?)\s*$') { $Key = $Matches[1]; break }
 		}
 	}
 	elseif ($env:ANTHROPIC_API_KEY) { $Key = $env:ANTHROPIC_API_KEY }
-	if (-not $Key -and $env:ANTHROPIC_API_KEY) { $Key = $env:ANTHROPIC_API_KEY }
 }
 if (-not $Key) {
 	$secure = Read-Host -Prompt "Klucz API z Agent LB ($Url), wklej i Enter" -AsSecureString
@@ -155,7 +149,7 @@ if ($Key -match '[\r\n]') { throw 'Klucz API nie może zawierać znaku nowej lin
 # ------------------------------------------------------- sprawdzenie klucza
 Say "Sprawdzam połączenie i klucz na $Url ..."
 try {
-	$statusUri = "$Url/teamclaude/status"
+	$statusUri = "$Url/agent-lb/status"
 	try {
 		$resp = Invoke-WebRequest -Uri $statusUri -Method Get `
 			-Headers @{ "x-api-key" = $Key } -TimeoutSec 15 -UseBasicParsing

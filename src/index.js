@@ -48,13 +48,13 @@ import { startEventLoopMonitor } from './event-loop-monitor.js';
 // reaches through a top-level `await`. The await suspends module evaluation at
 // the switch, so a const declared under the switch is still in the temporal
 // dead zone when the command body runs — keep them above the dispatch.
-// Ceiling for `teamclaude probe <seconds>`: setInterval takes a 32-bit signed
+// Ceiling for `agentlb probe <seconds>`: setInterval takes a 32-bit signed
 // millisecond delay, so anything past ~2,147,483 s overflows to 1 ms.
 const MAX_PROBE_SECONDS = 7 * 24 * 3600;
 const ROUTE_USAGE = [
-  'Usage: teamclaude route [list]',
-  '       teamclaude route add <name> --match "<glob>[,<glob>]" [--accounts "<name-or-index>[,...]"] [--bucket <quota-bucket>] [--color <name>]',
-  '       teamclaude route rm <name>',
+  'Usage: agentlb route [list]',
+  '       agentlb route add <name> --match "<glob>[,<glob>]" [--accounts "<name-or-index>[,...]"] [--bucket <quota-bucket>] [--color <name>]',
+  '       agentlb route rm <name>',
   '',
   'A route pins model ids matching its globs to an exclusive set of accounts.',
   'Omit --accounts to route to all accounts (e.g. just to override --bucket).',
@@ -65,10 +65,10 @@ const ROUTE_USAGE = [
 const ROUTE_COLORS = ['red', 'green', 'yellow', 'blue', 'magenta', 'cyan'];
 
 const THRESHOLD_USAGE = [
-  'Usage: teamclaude threshold                 (show the current thresholds)',
-  '       teamclaude threshold <1-100>         (one number for every bucket)',
-  '       teamclaude threshold <bucket>=<1-100> [...]',
-  '       teamclaude threshold <bucket>=default (drop that bucket)',
+  'Usage: agentlb threshold                 (show the current thresholds)',
+  '       agentlb threshold <1-100>         (one number for every bucket)',
+  '       agentlb threshold <bucket>=<1-100> [...]',
+  '       agentlb threshold <bucket>=default (drop that bucket)',
   '',
   'The utilization at which rotation stops sending work to an account. Tenths of',
   'a percent are kept, as on the TUI settings screen. Changes apply to a running',
@@ -80,7 +80,7 @@ const THRESHOLD_USAGE = [
 // never consulted, so the CLI refuses it rather than storing a typo.
 const QUOTA_BUCKETS = ['unified5h', 'unified7d', 'unified7dSonnet', 'unified7dFable', 'tokens', 'requests'];
 
-const DISTRIBUTE_USAGE = 'Usage: teamclaude distribute <on|off|adaptive>';
+const DISTRIBUTE_USAGE = 'Usage: agentlb distribute <on|off|adaptive>';
 
 // What each mode writes to the config, and what to say once it is set. Keyed by
 // the mode `distributionMode` resolves to, so the command and the router cannot
@@ -254,7 +254,7 @@ async function serverCommand() {
   for (const acct of config.accounts) {
     if (!acct.models?.length) continue;
     const route = { name: acct.name, match: acct.models, accounts: [acct.name] };
-    console.error(`[TeamClaude] Deprecated: account "${acct.name}" uses "models" — replace it with a routes entry: ${JSON.stringify(route)}`);
+    console.error(`[AgentLB] Deprecated: account "${acct.name}" uses "models" — replace it with a routes entry: ${JSON.stringify(route)}`);
   }
 
   const threshold = config.switchThreshold || 0.98;
@@ -262,12 +262,12 @@ async function serverCommand() {
   // in this block would not crash the router, it would make every adaptive
   // score NaN and silently fall through to even distribution, with nothing
   // pointing at the field that caused it. Checked whether or not the mode is
-  // on, so `teamclaude distribute adaptive` later cannot activate a bad block.
+  // on, so `agentlb distribute adaptive` later cannot activate a bad block.
   let adaptive;
   try {
     adaptive = validateAdaptiveConfig(config.adaptiveDistribution);
   } catch (err) {
-    console.error(`[TeamClaude] Bad adaptiveDistribution setting in ${getConfigPath()}: ${err.message}`);
+    console.error(`[AgentLB] Bad adaptiveDistribution setting in ${getConfigPath()}: ${err.message}`);
     process.exit(1);
   }
   const accountManager = new AccountManager(accounts, threshold, { routes: config.routes, ramp: config.stormRamp, distributeSessions: config.distributeSessions, expiryRouting: config.expiryRouting, crossProviderFallback: config.crossProviderFallback, adaptive });
@@ -280,7 +280,7 @@ async function serverCommand() {
   // state (passive — we never call the API to re-learn it). Stale windows are
   // cleared automatically on first use by _clearExpiredQuotas.
   const savedState = await loadState().catch(err => {
-    console.error(`[TeamClaude] Could not read saved state: ${err.message}`);
+    console.error(`[AgentLB] Could not read saved state: ${err.message}`);
     return null;
   });
   if (savedState?.quota) accountManager.restoreQuotaState(savedState.quota);
@@ -299,11 +299,11 @@ async function serverCommand() {
   // Periodically persist quota (and once more on shutdown) to the state file.
   const persistQuotaState = () =>
     saveState({ quota: accountManager.exportQuotaState(), clients: clientUsage.export(), usageDimensions: dimensionUsage.export() })
-      .catch(err => console.error(`[TeamClaude] Failed to save quota state: ${err.message}`));
+      .catch(err => console.error(`[AgentLB] Failed to save quota state: ${err.message}`));
   let quotaSaveInterval = null;
 
   // Persist refreshed tokens back to config (re-read from disk to avoid clobbering
-  // accounts added externally, e.g. by `teamclaude import` while server is running)
+  // accounts added externally, e.g. by `agentlb import` while server is running)
   accountManager.onTokenRefresh((idx, newTokens) => {
     const account = accountManager.accounts[idx];
     if (!account) return;
@@ -334,14 +334,14 @@ async function serverCommand() {
         diskConfig.accounts[cfgIdx].refreshToken = newTokens.refreshToken;
         diskConfig.accounts[cfgIdx].expiresAt = newTokens.expiresAt;
       }
-    }).catch(err => console.error(`[TeamClaude] Failed to save refreshed token: ${err.message}`));
+    }).catch(err => console.error(`[AgentLB] Failed to save refreshed token: ${err.message}`));
   });
   const port = config.proxy.port;
   // Bind loopback by default so the proxy isn't reachable off-box (it injects
   // account tokens and — via CONNECT — can relay arbitrarily). Opt into a wider
-  // bind explicitly with TEAMCLAUDE_HOST or config.proxy.host (e.g. '0.0.0.0'),
+  // bind explicitly with AGENT_LB_HOST or config.proxy.host (e.g. '0.0.0.0'),
   // in which case set proxy.apiKey so the auth gate protects remote clients.
-  const bindHost = process.env.TEAMCLAUDE_HOST || config.proxy.host || '127.0.0.1';
+  const bindHost = process.env.AGENT_LB_HOST || config.proxy.host || '127.0.0.1';
   const headless = args.includes('--headless') || args.includes('--no-tui') || command === 'headless';
   const useTUI = !headless && process.stdout.isTTY && process.stdin.isTTY;
 
@@ -356,15 +356,15 @@ async function serverCommand() {
   const sx = new SxManager({ log: console.error });
   if (config.sx?.apiKey) {
     const r = await sx.configure(config.sx.apiKey, config.sx.mode);
-    if (!r.ok) console.error(`[TeamClaude] sx.org disabled: ${r.error}`);
+    if (!r.ok) console.error(`[AgentLB] sx.org disabled: ${r.error}`);
   } else if (config.sx?.mode) {
     await sx.setMode(config.sx.mode);
   }
 
   // Re-sync accounts from disk without a restart. The TUI's 'R' key, the
-  // POST /teamclaude/reload endpoint, and the CLI notify after add/change all
+  // POST /agent-lb/reload endpoint, and the CLI notify after add/change all
   // funnel through here. Returns the number of newly added accounts. Also picks
-  // up a changed probe interval so `teamclaude probe` applies live.
+  // up a changed probe interval so `agentlb probe` applies live.
   const reloadAccounts = async () => {
     const diskConfig = await loadConfig();
     if (!diskConfig) return 0;
@@ -382,7 +382,7 @@ async function serverCommand() {
       // takes effect on reload the same way.
       config.proxy.apiKey = diskConfig.proxy.apiKey;
     }
-    // Pick up route table edits (teamclaude route …, TUI editor, or a hand edit).
+    // Pick up route table edits (agentlb route …, TUI editor, or a hand edit).
     config.routes = diskConfig.routes || [];
     accountManager.setRoutes(config.routes);
     // Pick up a distributeSessions change (hand edit or another writer) the same
@@ -392,7 +392,7 @@ async function serverCommand() {
     config.distributeSessions = diskConfig.distributeSessions ?? false;
     config.distributeSessions = diskConfig.distributeSessions ?? 'adaptive';
     accountManager.setDistributeSessions(config.distributeSessions);
-    // Pick up a switchThreshold change the same way (teamclaude threshold, the
+    // Pick up a switchThreshold change the same way (agentlb threshold, the
     // TUI settings screen, or a hand edit). thresholdFor() reads it off the
     // manager on every decision, so assigning it is the whole application —
     // and without this a change from outside the TUI waited for a restart.
@@ -408,7 +408,7 @@ async function serverCommand() {
     accountManager.setCrossProviderFallback(config.crossProviderFallback);
     config.sessionTitles = diskConfig.sessionTitles;
     sessionTitles.configure(config.sessionTitles);
-    // Apply an sx.org key/mode change made on disk (e.g. via POST /teamclaude/reload).
+    // Apply an sx.org key/mode change made on disk (e.g. via POST /agent-lb/reload).
     const diskSxKey = diskConfig.sx?.apiKey || null;
     const diskSxMode = diskConfig.sx?.mode || 'always';
     if (diskSxKey !== sx.apiKey || diskSxMode !== sx.mode) {
@@ -495,14 +495,14 @@ async function serverCommand() {
   if (!tui && activityLogPath) {
     // 0600, matching the request log and the config (see tui.js for why).
     const aStream = createWriteStream(activityLogPath, { flags: 'a', mode: 0o600 });
-    aStream.on('error', err => process.stderr.write(`[TeamClaude] activity log error: ${err.message}\n`));
+    aStream.on('error', err => process.stderr.write(`[AgentLB] activity log error: ${err.message}\n`));
     const ts = () => new Date().toLocaleTimeString('en-US', { hour12: false });
     const writeActivity = msg => {
-      // Strip [TeamClaude] prefix to match TUI behaviour. Sanitized because a
+      // Strip [AgentLB] prefix to match TUI behaviour. Sanitized because a
       // log line is one line: a value carrying a newline would otherwise write
       // a second entry that reads as genuine, and this file is what deployments
       // join against to attribute traffic to a person.
-      aStream.write(`${ts()}  ${sanitizeText(msg.replace(/^\[TeamClaude\]\s*/, ''))}\n`);
+      aStream.write(`${ts()}  ${sanitizeText(msg.replace(/^\[AgentLB\]\s*/, ''))}\n`);
     };
     // Capture request completions via the hook
     const inFlight = new Map();
@@ -598,18 +598,18 @@ async function serverCommand() {
     // Bind succeeded: stop treating errors as listen failures, but keep a
     // benign runtime handler so a later 'error' is logged rather than thrown.
     server.removeListener('error', onListenError);
-    server.on('error', err => console.error(`[TeamClaude] Server error: ${err.message}`));
+    server.on('error', err => console.error(`[AgentLB] Server error: ${err.message}`));
     // Announce an egress proxy, especially one inherited from the environment:
     // it changes where every upstream byte goes, and a value nobody typed here
     // should never be in force silently.
     const egressProxy = getUpstreamProxy();
     if (egressProxy.proxy) {
       const via = egressProxy.source.startsWith('env:') ? ` (from ${egressProxy.source.slice(4)})` : '';
-      console.log(`[TeamClaude] Upstream proxy: ${describeProxy(egressProxy.proxy)}${via}`);
+      console.log(`[AgentLB] Upstream proxy: ${describeProxy(egressProxy.proxy)}${via}`);
     } else if (egressProxy.source === 'self') {
-      // Almost always a shell that ran `eval "$(teamclaude env)"` before starting
+      // Almost always a shell that ran `eval "$(agentlb env)"` before starting
       // the server. Silently going direct is right; saying nothing is not.
-      console.log(`[TeamClaude] Upstream proxy: direct — ${describeSelfProxy(egressProxy)}`);
+      console.log(`[AgentLB] Upstream proxy: direct — ${describeSelfProxy(egressProxy)}`);
     }
     if (tui) {
       tui.start();
@@ -640,8 +640,8 @@ async function serverCommand() {
           console.log(`  [${i + 1}] ${a.name} (${a.type})`);
         });
         console.log('');
-        console.log('  Run Claude through proxy:  teamclaude run');
-        console.log('  Show env vars:             teamclaude env');
+        console.log('  Run Claude through proxy:  agentlb run');
+        console.log('  Show env vars:             agentlb env');
       }
       console.log(sep);
       console.log('');
@@ -677,7 +677,7 @@ async function serverCommand() {
 
   // Background self-update for a backgrounded (headless) server. Skipped under
   // the TUI, where npm's install output would corrupt the display — interactive
-  // users update via `teamclaude run` (post-session) or `teamclaude update`.
+  // users update via `agentlb run` (post-session) or `agentlb update`.
   if (!tui) autoUpdate({ config }).catch(() => {});
 
   // One idempotent shutdown funnel for BOTH modes and BOTH triggers: POSIX
@@ -692,7 +692,7 @@ async function serverCommand() {
     shuttingDown = true;
     try { tui?.stop(); } catch { /* terminal already restored */ }
     stopTitle();
-    if (!tui) console.log('\n[TeamClaude] Shutting down...');
+    if (!tui) console.log('\n[AgentLB] Shutting down...');
     server.healthChecker?.stop();
     prober?.stop();
     warmer?.stop();
@@ -757,7 +757,7 @@ async function importCommand() {
 // ── login ───────────────────────────────────────────────────
 
 /**
- * `teamclaude login --codex` — browser OAuth against OpenAI, then store the
+ * `agentlb login --codex` — browser OAuth against OpenAI, then store the
  * account.
  *
  * Deliberately simpler than the Anthropic path: that one calls the profile
@@ -900,8 +900,8 @@ async function loginOAuthCommand({ pasteOnly = false } = {}) {
     console.error(`OAuth login failed: ${err.message}`);
     console.error('');
     console.error('Alternatives:');
-    console.error('  teamclaude import        Import from existing Claude Code credentials');
-    console.error('  teamclaude login --api   Add an API key instead');
+    console.error('  agentlb import        Import from existing Claude Code credentials');
+    console.error('  agentlb login --api   Add an API key instead');
     process.exit(1);
   }
 
@@ -910,8 +910,8 @@ async function loginOAuthCommand({ pasteOnly = false } = {}) {
 
 // ── env ─────────────────────────────────────────────────────
 
-// `teamclaude env [--no-mitm]` — print the export lines that point Claude Code
-// at the proxy, for `eval "$(teamclaude env)"`. Mirrors `teamclaude run`'s
+// `agentlb env [--no-mitm]` — print the export lines that point Claude Code
+// at the proxy, for `eval "$(agentlb env)"`. Mirrors `agentlb run`'s
 // environment (MITM forward-proxy by default; --no-mitm for base-URL only) so a
 // tool that spawns claude itself — an agent multiplexer, a CI job, a manual
 // shell — gets the same routing without going through `run`. Only the export
@@ -919,10 +919,10 @@ async function loginOAuthCommand({ pasteOnly = false } = {}) {
 async function envCommand() {
   // Use loadConfig (not loadOrCreateConfig): a query command must never write to
   // stdout — creating a config prints "Created config at …", which would poison
-  // `eval "$(teamclaude env)"` — nor silently create config as a side effect.
+  // `eval "$(agentlb env)"` — nor silently create config as a side effect.
   const config = await loadConfig();
   if (!config) {
-    process.stderr.write(`No config found at ${getConfigPath()}. Add an account first: teamclaude login\n`);
+    process.stderr.write(`No config found at ${getConfigPath()}. Add an account first: agentlb login\n`);
     process.exit(1);
   }
   const port = config.proxy.port;
@@ -933,7 +933,7 @@ async function envCommand() {
   // a second provider fails the handshake instead of being served.
   if (useMitm) ({ caPath } = await ensureCerts(mitmHosts(config)));
 
-  // Same pin as `teamclaude run`, so `eval "$(teamclaude env)"` and `run` agree.
+  // Same pin as `agentlb run`, so `eval "$(agentlb env)"` and `run` agree.
   const account = (process.env.TC_ACCT || '').trim();
   let lines;
   try {
@@ -943,13 +943,13 @@ async function envCommand() {
     });
   } catch (err) {
     // A bad proxy.port. Nothing reaches stdout: the shell is eval'ing it.
-    process.stderr.write(`teamclaude env: ${err.message} (in ${getConfigPath()})\n`);
+    process.stderr.write(`agentlb env: ${err.message} (in ${getConfigPath()})\n`);
     process.exit(1);
   }
   process.stdout.write(`${lines.join('\n')}\n`);
 
   const mode = useMitm ? 'MITM forward-proxy' : 'base-URL';
-  process.stderr.write(`# TeamClaude env: ${mode} mode, localhost:${port}\n`);
+  process.stderr.write(`# AgentLB env: ${mode} mode, localhost:${port}\n`);
   if (account) {
     process.stderr.write(`# pinned to account "${account}" (TC_ACCT)\n`);
     // Warn, don't fail: the account list can change before the shell is used,
@@ -958,9 +958,9 @@ async function envCommand() {
       process.stderr.write(`# warning: no account named "${account}" in the config — the proxy will refuse this pin\n`);
     }
   }
-  process.stderr.write(`# apply to this shell:  eval "$(teamclaude env${useMitm ? '' : ' --no-mitm'})"\n`);
+  process.stderr.write(`# apply to this shell:  eval "$(agentlb env${useMitm ? '' : ' --no-mitm'})"\n`);
   if (!(await isProxyUp(port))) {
-    process.stderr.write(`# note: proxy not running on port ${port} — start it with: teamclaude server\n`);
+    process.stderr.write(`# note: proxy not running on port ${port} — start it with: agentlb server\n`);
   }
   if (config.proxy?.apiKey) {
     process.stderr.write(`# remote (non-loopback) clients must also present the proxy key: ANTHROPIC_API_KEY=<proxy.apiKey> (base-URL), or http://<key>@host:${port} (MITM)\n`);
@@ -972,7 +972,7 @@ async function envCommand() {
 async function runCommand() {
   const config = await loadOrCreateConfig();
 
-  // Args after 'run'. teamclaude flags (e.g. --no-mitm) are recognized only
+  // Args after 'run'. agentlb flags (e.g. --no-mitm) are recognized only
   // before an optional `--` separator; everything after `--` goes verbatim to
   // claude. MITM forward-proxy mode is the default so hardcoded api.anthropic.com
   // endpoints are intercepted too; --no-mitm opts back into base-URL-only routing.
@@ -992,7 +992,7 @@ async function runCommand() {
   // opt back into the transparent direct launch (e.g. for a dumb shell alias).
   const port = config.proxy.port;
   const env = { ...process.env };
-  // TC_ACCT pins this session to one account, in either mode. It is teamclaude's
+  // TC_ACCT pins this session to one account, in either mode. It is agentlb's
   // own knob, so it never reaches the child: claude has no use for it, and an
   // account name is not something to leak into a subprocess environment that
   // gets inherited by every tool and MCP server claude spawns.
@@ -1020,31 +1020,31 @@ async function runCommand() {
       env.HTTPS_PROXY = env.HTTP_PROXY = env.https_proxy = env.http_proxy = proxyUrl;
       env.NO_PROXY = env.no_proxy = 'localhost,127.0.0.1,::1';
       env.NODE_EXTRA_CA_CERTS = caPath;
-      if (tcAcct) console.error(`[TeamClaude] Pinned to account "${tcAcct}" (TC_ACCT)`);
+      if (tcAcct) console.error(`[AgentLB] Pinned to account "${tcAcct}" (TC_ACCT)`);
       else if (pinnedBase) {
-        console.error('[TeamClaude] Account pin in ANTHROPIC_BASE_URL ignored: MITM mode does not use a base URL.');
-        console.error('[TeamClaude] Use TC_ACCT=<account> instead — it pins in both modes.');
+        console.error('[AgentLB] Account pin in ANTHROPIC_BASE_URL ignored: MITM mode does not use a base URL.');
+        console.error('[AgentLB] Use TC_ACCT=<account> instead — it pins in both modes.');
       }
       delete env.ANTHROPIC_BASE_URL;
     } else {
       // Only set ANTHROPIC_BASE_URL — Claude Code keeps its own OAuth token
       // which the proxy accepts from localhost. Not setting ANTHROPIC_API_KEY
       // lets Claude Code stay in subscription mode (full model access).
-      // TC_ACCT wins; teamclaude builds the pinned URL itself rather than making
+      // TC_ACCT wins; agentlb builds the pinned URL itself rather than making
       // the caller hand-write one. Otherwise an existing /tc-acct/ base URL
       // pointing at this proxy is preserved for configs written against 1.1.10.
       if (tcAcct) {
         env.ANTHROPIC_BASE_URL = `http://localhost:${port}/tc-acct/${encodePinComponent(tcAcct)}`;
-        console.error(`[TeamClaude] Pinned to account "${tcAcct}" (TC_ACCT)`);
+        console.error(`[AgentLB] Pinned to account "${tcAcct}" (TC_ACCT)`);
       } else if (!pinnedBase) {
         env.ANTHROPIC_BASE_URL = `http://localhost:${port}`;
       }
     }
   } else if (autoFallback) {
-    console.error(`[TeamClaude] Proxy not running on port ${port} — launching claude directly (--auto-fallback; start it with: teamclaude server)`);
+    console.error(`[AgentLB] Proxy not running on port ${port} — launching claude directly (--auto-fallback; start it with: agentlb server)`);
   } else {
-    console.error(`[TeamClaude] Proxy not running on port ${port}.`);
-    console.error('Start it with: teamclaude server');
+    console.error(`[AgentLB] Proxy not running on port ${port}.`);
+    console.error('Start it with: agentlb server');
     console.error('Or pass --auto-fallback to launch claude directly (bypassing the proxy) when it is down.');
     process.exit(1);
   }
@@ -1078,7 +1078,7 @@ async function runCommand() {
     process.exit(1);
   }
 
-  // Session over — check for a newer teamclaude and (for a global npm install)
+  // Session over — check for a newer agentlb and (for a global npm install)
   // self-update. Throttled to once/day, so this is a no-op on almost every run;
   // it applies to the NEXT launch, never the session that just ran.
   await autoUpdate({ config }).catch(() => {});
@@ -1090,7 +1090,7 @@ async function runCommand() {
 
 async function statusCommand() {
   const config = await loadOrCreateConfig();
-  const url = `http://localhost:${config.proxy.port}/teamclaude/status`;
+  const url = `http://localhost:${config.proxy.port}/agent-lb/status`;
   const json = args.includes('--json');
   const colorArg = argValue('--color') || args.find(arg => arg.startsWith('--color='))?.slice('--color='.length);
   const color = colorArg === 'always'
@@ -1099,7 +1099,7 @@ async function statusCommand() {
   // A connection that is accepted and then never answered is a different
   // failure from a refused one — a stalled or overloaded server rather than a
   // stopped one — and without a deadline this command would just hang on it.
-  const configuredTimeout = Number(process.env.TEAMCLAUDE_STATUS_TIMEOUT_MS);
+  const configuredTimeout = Number(process.env.AGENT_LB_STATUS_TIMEOUT_MS);
   const timeoutMs = configuredTimeout > 0 ? configuredTimeout : 5_000;
 
   try {
@@ -1121,7 +1121,7 @@ async function statusCommand() {
       process.exit(1);
     }
     console.error('Cannot connect to proxy at localhost:' + config.proxy.port);
-    console.error('Is the server running? Start with: teamclaude server');
+    console.error('Is the server running? Start with: agentlb server');
     if (err?.message) console.error(`Details: ${err.message}`);
     process.exit(1);
   }
@@ -1140,13 +1140,13 @@ async function attachCommand() {
   // the config or the environment is not reachable as localhost, and reporting
   // "not running" for a server that is plainly up is the worst of the answers.
   // A wildcard bind is not an address to dial, so dial this machine instead.
-  const bound = process.env.TEAMCLAUDE_HOST || config.proxy.host || '127.0.0.1';
+  const bound = process.env.AGENT_LB_HOST || config.proxy.host || '127.0.0.1';
   const host = (bound === '0.0.0.0' || bound === '::') ? '127.0.0.1' : bound;
 
   // Checked before connecting: the dashboard needs raw-mode input, and failing
   // on that after a successful poll would be a confusing order to report it in.
   if (!process.stdin.isTTY) {
-    console.error('teamclaude attach needs a terminal. For a one-shot readout use: teamclaude status');
+    console.error('agentlb attach needs a terminal. For a one-shot readout use: agentlb status');
     process.exit(1);
   }
 
@@ -1156,7 +1156,7 @@ async function attachCommand() {
     first = await control.status(); // fail here, with a usable message, not inside the TUI
   } catch (err) {
     console.error(`Cannot connect to proxy at ${host}:${port}`);
-    console.error('Is the server running? Start with: teamclaude server');
+    console.error('Is the server running? Start with: agentlb server');
     if (err?.message) console.error(`Details: ${err.message}`);
     process.exit(1);
   }
@@ -1185,14 +1185,14 @@ async function switchCommand() {
 
   try {
     if (!name) {
-      const res = await fetch(`http://localhost:${port}/teamclaude/status`, { headers });
+      const res = await fetch(`http://localhost:${port}/agent-lb/status`, { headers });
       // Something answered on the port. Whether it is our proxy is a separate
       // question, and getting it wrong would blame a down server for a reply we
       // simply could not read — or report an unreadable reply as an empty fleet.
       const data = res.ok ? await res.json().catch(() => null) : null;
       if (!data || !Array.isArray(data.accounts)) {
         console.error(`Unexpected reply from localhost:${port} (HTTP ${res.status}) — no account list in it.`);
-        console.error('Something is listening there, but it does not answer like this teamclaude version.');
+        console.error('Something is listening there, but it does not answer like this agentlb version.');
         process.exit(1);
       }
       if (!data.accounts.length) {
@@ -1206,11 +1206,11 @@ async function switchCommand() {
         const state = a.disabled ? 'disabled' : (a.status && a.status !== 'active' ? a.status : null);
         console.log(`${a.name === data.currentAccount ? '*' : ' '} ${a.name}${state ? `  (${state})` : ''}`);
       }
-      console.log('\nSwitch with: teamclaude switch <name>');
+      console.log('\nSwitch with: agentlb switch <name>');
       return;
     }
 
-    const res = await fetch(`http://localhost:${port}/teamclaude/switch`, {
+    const res = await fetch(`http://localhost:${port}/agent-lb/switch`, {
       method: 'POST',
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ account: name }),
@@ -1237,7 +1237,7 @@ async function switchCommand() {
     }
   } catch (err) {
     console.error('Cannot connect to proxy at localhost:' + port);
-    console.error('Is the server running? Start with: teamclaude server');
+    console.error('Is the server running? Start with: agentlb server');
     if (err?.message) console.error(`Details: ${err.message}`);
     process.exit(1);
   }
@@ -1251,7 +1251,7 @@ async function accountsCommand() {
 
   if (config.accounts.length === 0) {
     console.log('No accounts configured.');
-    console.log('Add one with: teamclaude import, teamclaude login, or teamclaude login --api');
+    console.log('Add one with: agentlb import, agentlb login, or agentlb login --api');
     return;
   }
 
@@ -1402,8 +1402,8 @@ async function apiCommand() {
   const path = args[1];
 
   if (!path) {
-    console.error('Usage: teamclaude api <path> [--account NAME] [--method POST] [--data JSON]');
-    console.error('Example: teamclaude api /api/oauth/claude_cli/roles');
+    console.error('Usage: agentlb api <path> [--account NAME] [--method POST] [--data JSON]');
+    console.error('Example: agentlb api /api/oauth/claude_cli/roles');
     process.exit(1);
   }
 
@@ -1474,25 +1474,25 @@ async function serviceCommand() {
   const sub = args[1] || 'status';
   const kind = serviceKind();
   if (!kind) {
-    console.error(`teamclaude service: no service integration for ${process.platform}`);
-    console.error('Run the proxy yourself with: teamclaude server --headless');
+    console.error(`agentlb service: no service integration for ${process.platform}`);
+    console.error('Run the proxy yourself with: agentlb server --headless');
     process.exit(1);
   }
   // Carry an explicit config path into the unit: a service started by launchd or
-  // systemd does not inherit the shell's TEAMCLAUDE_CONFIG, so a non-default
+  // systemd does not inherit the shell's AGENT_LB_CONFIG, so a non-default
   // config would silently be ignored and the service would serve a different
   // (or empty) account list than the CLI does.
-  const configPath = process.env.TEAMCLAUDE_CONFIG || null;
+  const configPath = process.env.AGENT_LB_CONFIG || null;
 
   switch (sub) {
     case 'install': {
       const res = await installService({ configPath });
-      if (!res.ok) { console.error(`teamclaude service install failed: ${res.error}`); process.exit(1); }
+      if (!res.ok) { console.error(`agentlb service install failed: ${res.error}`); process.exit(1); }
       break;
     }
     case 'uninstall': {
       const res = await uninstallService();
-      if (!res.ok) { console.error(`teamclaude service uninstall failed: ${res.error}`); process.exit(1); }
+      if (!res.ok) { console.error(`agentlb service uninstall failed: ${res.error}`); process.exit(1); }
       break;
     }
     case 'print':
@@ -1503,11 +1503,11 @@ async function serviceCommand() {
       console.log(`Service:   ${s.installed ? s.file : 'not installed'}`);
       console.log(`State:     ${s.running ? `running${s.pid ? ` (pid ${s.pid})` : ''}` : s.detail}`);
       if (kind === 'launchd') console.log(`Logs:      ${logPath()}`);
-      else console.log('Logs:      journalctl --user --unit teamclaude.service');
+      else console.log('Logs:      journalctl --user --unit agentlb.service');
       break;
     }
     default:
-      console.error('Usage: teamclaude service <install|uninstall|status|print>');
+      console.error('Usage: agentlb service <install|uninstall|status|print>');
       process.exit(1);
   }
 }
@@ -1521,7 +1521,7 @@ async function probeCommand() {
   if (arg === undefined) {
     const cur = config.quotaProbeSeconds || 0;
     console.log(cur > 0 ? `Quota probe: every ${cur}s` : 'Quota probe: off (passive only)');
-    console.log('Set with: teamclaude probe <off|seconds>   e.g. teamclaude probe 300');
+    console.log('Set with: agentlb probe <off|seconds>   e.g. agentlb probe 300');
     return;
   }
 
@@ -1531,7 +1531,7 @@ async function probeCommand() {
   } else {
     seconds = parseInt(arg, 10);
     if (Number.isNaN(seconds) || seconds < 0) {
-      console.error('Usage: teamclaude probe <off|seconds>');
+      console.error('Usage: agentlb probe <off|seconds>');
       process.exit(1);
     }
     if (seconds > 0 && seconds < 30) {
@@ -1566,9 +1566,9 @@ async function warmupCommand() {
     }
     const cur = config.warmupSeconds || 0;
     console.log(cur > 0 ? `Keep-warm: every ${cur}s` : 'Keep-warm: off');
-    console.log('Set with: teamclaude warmup <off|seconds>');
-    console.log('          teamclaude warmup reset HH:MM --timezone Area/City');
-    console.log('          teamclaude warmup rolling HH:MM --timezone Area/City');
+    console.log('Set with: agentlb warmup <off|seconds>');
+    console.log('          agentlb warmup reset HH:MM --timezone Area/City');
+    console.log('          agentlb warmup rolling HH:MM --timezone Area/City');
     console.log('Note: warming spawns a minimal `claude` per idle account and DOES spend a little quota');
     console.log('(unlike the passive quota probe). It only warms accounts whose 5h window is idle.');
     return;
@@ -1579,7 +1579,7 @@ async function warmupCommand() {
     const timezoneFlag = args.indexOf('--timezone', 3);
     const timezone = timezoneFlag >= 0 ? args[timezoneFlag + 1] : null;
     if (!resetTime || !timezone || args.length !== 5 || timezoneFlag !== 3) {
-      console.error(`Usage: teamclaude warmup ${arg} HH:MM --timezone Area/City`);
+      console.error(`Usage: agentlb warmup ${arg} HH:MM --timezone Area/City`);
       process.exit(1);
     }
     const schedule = { resetTime, timezone };
@@ -1610,7 +1610,7 @@ async function warmupCommand() {
   } else {
     seconds = parseInt(arg, 10);
     if (Number.isNaN(seconds) || seconds < 0) {
-      console.error('Usage: teamclaude warmup <off|seconds>');
+      console.error('Usage: agentlb warmup <off|seconds>');
       process.exit(1);
     }
     if (seconds > 0 && seconds < 60) {
@@ -1665,8 +1665,8 @@ async function thresholdCommand() {
 
   if (!rest.length) {
     printThresholds(config.switchThreshold);
-    console.log('Set with: teamclaude threshold <1-100>   e.g. teamclaude threshold 90');
-    console.log('Per bucket: teamclaude threshold unified7d=90   (=default drops it again)');
+    console.log('Set with: agentlb threshold <1-100>   e.g. agentlb threshold 90');
+    console.log('Per bucket: agentlb threshold unified7d=90   (=default drops it again)');
     return;
   }
 
@@ -1745,7 +1745,7 @@ async function distributeCommand() {
 
   if (arg === undefined) {
     console.log(`Session distribution: ${current}`);
-    console.log('Set with: teamclaude distribute <on|off|adaptive>');
+    console.log('Set with: agentlb distribute <on|off|adaptive>');
     console.log('On: each session stays on its account for cache reuse, and new sessions spread');
     console.log('across equal-priority accounts by load. Off: quota-driven rotation only.');
     console.log('Adaptive: spread by remaining weekly credit and load rather than evenly, so the');
@@ -1799,7 +1799,7 @@ async function updateCommand() {
   console.log(`Updating ${info.current} → ${info.latest} …`);
   const ok = runUpdate(info.latest);
   if (ok) {
-    console.log(`Updated to ${info.latest}. Restart teamclaude to use the new version.`);
+    console.log(`Updated to ${info.latest}. Restart agentlb to use the new version.`);
   } else {
     console.error(`Update failed. Try manually: npm install -g ${PKG_NAME}@latest`);
     process.exitCode = 1;
@@ -1832,7 +1832,7 @@ async function removeCommand() {
   const name = args[1];
 
   if (!name) {
-    console.error('Usage: teamclaude remove <account-name|email> [--org <name|uuid>]');
+    console.error('Usage: agentlb remove <account-name|email> [--org <name|uuid>]');
     process.exit(1);
   }
 
@@ -1922,8 +1922,8 @@ async function priorityCommand() {
   const name = args[1];
 
   if (!name) {
-    console.error('Usage: teamclaude priority <account-name|email> <n> [--org <name|uuid>]');
-    console.error('       teamclaude priority <account-name|email> --first | --last');
+    console.error('Usage: agentlb priority <account-name|email> <n> [--org <name|uuid>]');
+    console.error('       agentlb priority <account-name|email> --first | --last');
     console.error('Lower priority is preferred for rotation (default 0).');
     process.exit(1);
   }
@@ -1964,7 +1964,7 @@ async function setDisabledCommand(disabled) {
   const verb = disabled ? 'disable' : 'enable';
 
   if (!name) {
-    console.error(`Usage: teamclaude ${verb} <account-name|email> [--org <name|uuid>]`);
+    console.error(`Usage: agentlb ${verb} <account-name|email> [--org <name|uuid>]`);
     process.exit(1);
   }
 
@@ -1987,9 +1987,9 @@ async function setDisabledCommand(disabled) {
 // ── help ────────────────────────────────────────────────────
 
 function showHelp() {
-  console.log(`TeamClaude - Multi-account Claude proxy
+  console.log(`AgentLB - Multi-account Claude proxy
 
-Usage: teamclaude [command] [options]
+Usage: agentlb [command] [options]
 
 Commands:
   server              Start the proxy server (default; --headless to skip the TUI)
@@ -1999,9 +1999,9 @@ Commands:
   login --token       OAuth login via copy/paste (no local callback; for headless/remote)
   login --api         Add an API key account
   env [--no-mitm]     Print export lines to point Claude Code at the proxy, for
-                      'eval "$(teamclaude env)"' (MITM forward-proxy by default;
+                      'eval "$(agentlb env)"' (MITM forward-proxy by default;
                       --no-mitm for base-URL only). Handy for agent multiplexers
-                      that spawn claude themselves instead of via 'teamclaude run'
+                      that spawn claude themselves instead of via 'agentlb run'
   run [--no-mitm] [--auto-fallback] [-- args...]
                       Run Claude Code through the proxy (errors if it's down,
                       unless --auto-fallback launches claude directly instead).
@@ -2043,7 +2043,7 @@ Commands:
   warmup rolling HH:MM --timezone Area/City
                       Anchor a continuous five-hour reset cadence in an IANA zone
   api <path>          Call an API endpoint with account credentials
-  update              Check npm for a newer teamclaude and install it
+  update              Check npm for a newer agentlb and install it
   version             Print the installed version
   help                Show this help
 
@@ -2065,23 +2065,23 @@ Environment:
   TC_ACCT             Pin a session to ONE account, bypassing rotation. Works in
                       both modes. Accepts accountUuid, orgUuid,
                       accountUuid/orgUuid, or a display name/email:
-                        TC_ACCT=me@example.com teamclaude run
+                        TC_ACCT=me@example.com agentlb run
                       Prefer a UUID for anything scripted: display names are
                       rewritten when an email gains a second org. Read by 'run'
                       and 'env', then removed from the environment so it never
                       reaches claude or the tools it spawns. An unknown account
                       is refused rather than silently rotated.
-  TEAMCLAUDE_CONFIG   Path to the config file (default below)
-  TEAMCLAUDE_DISABLE_AUTOUPDATE=1
+  AGENT_LB_CONFIG   Path to the config file (default below)
+  AGENT_LB_DISABLE_AUTOUPDATE=1
                       Skip the background self-update check
 
 The server always accepts both base-URL and proxy/CONNECT clients, so instances
 launched with and without --no-mitm can share one server.
 
-A running server re-syncs accounts from config on POST /teamclaude/reload
+A running server re-syncs accounts from config on POST /agent-lb/reload
 (local only). add/login/enable/disable/priority trigger it automatically.
-POST /teamclaude/switch {"account": "<name>"} makes one account the preferred
-one, which is what 'teamclaude switch' calls.
+POST /agent-lb/switch {"account": "<name>"} makes one account the preferred
+one, which is what 'agentlb switch' calls.
 
 Upstream proxy. On a host with no direct route to the internet, set
 "upstreamProxy": "http://user:pass@host:3128" (or just "host:3128") and every
@@ -2101,7 +2101,7 @@ them) pins those. Held requests wait up to holdSeconds (default 120), then get a
 503. See config.example.json.
 
 A global npm install self-updates in the background (checked once/day, applied
-on the next launch). Disable with TEAMCLAUDE_DISABLE_AUTOUPDATE=1 or
+on the next launch). Disable with AGENT_LB_DISABLE_AUTOUPDATE=1 or
 "autoUpdate": false in the config.
 
 Config: ${getConfigPath()}
@@ -2268,15 +2268,15 @@ function argValue(flag) {
   return (i >= 0 && args[i + 1]) ? args[i + 1] : null;
 }
 
-// Keep the terminal title in sync with the active account (e.g. "teamclaude 2/4
-// work") so a backgrounded or tabbed `teamclaude server` is glanceable. TTY-only
+// Keep the terminal title in sync with the active account (e.g. "agentlb 2/4
+// work") so a backgrounded or tabbed `agentlb server` is glanceable. TTY-only
 // — never emit escapes into a pipe, a `--log-to` redirect, or a systemd journal;
-// opt out entirely with TEAMCLAUDE_NO_TITLE. Polls (rather than hooking every
+// opt out entirely with AGENT_LB_NO_TITLE. Polls (rather than hooking every
 // currentIndex mutation) and writes only when the title actually changes.
 // Returns an idempotent stop() that restores the shell's previous title.
 function startTerminalTitleUpdater(accountManager) {
   const out = process.stdout;
-  if (!out.isTTY || process.env.TEAMCLAUDE_NO_TITLE) return () => {};
+  if (!out.isTTY || process.env.AGENT_LB_NO_TITLE) return () => {};
 
   let last = null;
   const render = () => {
@@ -2312,7 +2312,7 @@ async function notifyRunningServer(config) {
   const port = config?.proxy?.port;
   if (!port) return;
   try {
-    const res = await fetch(`http://localhost:${port}/teamclaude/reload`, {
+    const res = await fetch(`http://localhost:${port}/agent-lb/reload`, {
       method: 'POST',
       headers: { 'x-api-key': config.proxy?.apiKey || '' },
     });
@@ -2339,15 +2339,15 @@ function isProxyUp(port, timeout = 600) {
 
 function handleServerListenError(err, port) {
   if (err.code === 'EADDRINUSE') {
-    console.error(`[TeamClaude] Port ${port} is already in use.`);
-    console.error('Another TeamClaude proxy may already be running.');
-    console.error('Check the existing server with: teamclaude status');
+    console.error(`[AgentLB] Port ${port} is already in use.`);
+    console.error('Another AgentLB proxy may already be running.');
+    console.error('Check the existing server with: agentlb status');
     console.error(`Find the listener with: lsof -nP -iTCP:${port} -sTCP:LISTEN`);
   } else if (err.code === 'EACCES') {
-    console.error(`[TeamClaude] Permission denied while listening on port ${port}.`);
-    console.error('Choose a non-privileged port in the TeamClaude config.');
+    console.error(`[AgentLB] Permission denied while listening on port ${port}.`);
+    console.error('Choose a non-privileged port in the AgentLB config.');
   } else {
-    console.error(`[TeamClaude] Failed to listen on port ${port}: ${err.message}`);
+    console.error(`[AgentLB] Failed to listen on port ${port}: ${err.message}`);
   }
   process.exit(1);
 }

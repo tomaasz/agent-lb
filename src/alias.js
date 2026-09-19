@@ -1,6 +1,6 @@
 // `claude` shell alias — print or install/uninstall.
 //
-// The alias simply routes plain `claude` through `teamclaude run`, which probes
+// The alias simply routes plain `claude` through `agentlb run`, which probes
 // the proxy and, when it's down, errors out rather than silently bypassing the
 // proxy. All the smarts live in `run`; add `--auto-fallback` to the alias if you
 // want plain `claude` to launch directly when the proxy is down instead.
@@ -14,7 +14,7 @@ import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 
-const MARKER = '# teamclaude alias';
+const MARKER = '# agentlb alias';
 
 /**
  * Replace `path` with `text` atomically: write a sibling temp file, then rename
@@ -50,14 +50,14 @@ function commandOnPath(cmd) {
 }
 
 /**
- * How the alias should invoke teamclaude. Prefer the bare `teamclaude` when it's
+ * How the alias should invoke agentlb. Prefer the bare `agentlb` when it's
  * on $PATH; otherwise embed the absolute path to this CLI (quoted) so the alias
- * still works when teamclaude isn't installed on PATH — e.g. run from a clone.
+ * still works when agentlb isn't installed on PATH — e.g. run from a clone.
  */
-export function teamclaudeRef() {
-  if (commandOnPath('teamclaude')) return 'teamclaude';
+export function agentlbRef() {
+  if (commandOnPath('agentlb')) return 'agentlb';
   const entry = process.argv[1];
-  if (!entry) return 'teamclaude';
+  if (!entry) return 'agentlb';
   let abs;
   try { abs = realpathSync(entry); } catch { abs = entry; }
   // The double quotes are read by the shell each time the alias runs, so the
@@ -74,7 +74,7 @@ export function teamclaudeRef() {
  * the POSIX way — close the quote, add a double-quoted `'`, reopen — which
  * fish accepts too, since it also concatenates adjacent quoted strings.
  */
-export function aliasLine(shell = detectShell(), ref = teamclaudeRef()) {
+export function aliasLine(shell = detectShell(), ref = agentlbRef()) {
   const body = `${ref} run --`.replaceAll("'", "'\"'\"'");
   if (shell === 'fish') return `alias claude '${body}'`;
   return `alias claude='${body}'`;
@@ -88,7 +88,7 @@ export function rcPathForShell(shell = detectShell()) {
     case 'sh':   return join(home, '.profile');
     case 'fish': {
       const cfg = process.env.XDG_CONFIG_HOME || join(home, '.config');
-      return join(cfg, 'fish', 'conf.d', 'teamclaude.fish');
+      return join(cfg, 'fish', 'conf.d', 'agentlb.fish');
     }
     case 'bash':
     default:     return join(home, '.bashrc');
@@ -103,7 +103,7 @@ export function printAlias({ shell = detectShell() } = {}) {
   console.log('');
   console.log(`  ${line}`);
   console.log('');
-  console.log(`# Or install it automatically: teamclaude alias --install`);
+  console.log(`# Or install it automatically: agentlb alias --install`);
   console.log(`#   → writes to ${rcPathForShell(shell)} (override with --shell <bash|zsh|fish|sh>)`);
 }
 
@@ -131,7 +131,7 @@ export function uninstallAlias({ shell = detectShell(), rcPath = rcPathForShell(
   const text = readFileSync(rcPath, 'utf8');
   // Strip our marked block: the marker comment + the single line after it.
   // Matching by marker (not by exact alias text) makes this robust even if the
-  // embedded teamclaude path differs from what's computed now.
+  // embedded agentlb path differs from what's computed now.
   const blockRe = new RegExp(`\\n?${escapeRe(MARKER)}\\n[^\\n]*\\n?`, 'g');
   let cleaned = text.replace(blockRe, '\n');
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
@@ -142,7 +142,7 @@ export function uninstallAlias({ shell = detectShell(), rcPath = rcPathForShell(
   }
 
   // For the dedicated fish drop-file, remove it entirely if now empty.
-  if (rcPath.endsWith('teamclaude.fish') && cleaned.trim() === '') {
+  if (rcPath.endsWith('agentlb.fish') && cleaned.trim() === '') {
     rmSync(rcPath);
     console.log(`Removed ${rcPath}`);
     return;

@@ -8,15 +8,13 @@ import { ensureAccountIds } from './account-id.js';
 
 export function getConfigPath() {
   if (process.env.AGENT_LB_CONFIG) return process.env.AGENT_LB_CONFIG;
+  if (process.env.AGENTLB_CONFIG) return process.env.AGENTLB_CONFIG;
   if (process.env.CLAUDE_LB_CONFIG) return process.env.CLAUDE_LB_CONFIG;
-  if (process.env.TEAMCLAUDE_CONFIG) return process.env.TEAMCLAUDE_CONFIG;
   const configDir = process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
   const agentPath = join(configDir, 'agent-lb.json');
   const lbPath = join(configDir, 'claude-lb.json');
-  const tcPath = join(configDir, 'teamclaude.json');
   if (existsSync(agentPath)) return agentPath;
   if (existsSync(lbPath)) return lbPath;
-  if (existsSync(tcPath)) return tcPath;
   return agentPath;
 }
 
@@ -172,7 +170,7 @@ function applyUpstreamProxy(config) {
   try {
     setUpstreamProxy(resolveUpstreamProxy(config));
   } catch (err) {
-    console.error(`[TeamClaude] Bad proxy setting in ${getConfigPath()}: ${err.message}`);
+    console.error(`[AgentLB] Bad proxy setting in ${getConfigPath()}: ${err.message}`);
     process.exit(1);
   }
 }
@@ -189,7 +187,7 @@ export async function loadOrCreateConfig() {
     // the lazy fallback resolves it from the environment against an EMPTY
     // config. That fallback has no listener to compare against, so the
     // self-proxy guard cannot fire: an operator whose HTTPS_PROXY points at
-    // their own TeamClaude gets a CONNECT back into the proxy and a timeout,
+    // their own AgentLB gets a CONNECT back into the proxy and a timeout,
     // on the one run where there is no config to explain it.
     applyUpstreamProxy(config);
   }
@@ -207,7 +205,7 @@ export function getLockPath() {
 }
 
 /**
- * Acquire filesystem lock on teamclaude.json.lock to coordinate with external tools and processes.
+ * Acquire filesystem lock on agent-lb.json.lock to coordinate with external tools and processes.
  */
 export async function acquireConfigLock(timeoutMs = 5000) {
   const lockPath = getLockPath();
@@ -233,7 +231,7 @@ export async function acquireConfigLock(timeoutMs = 5000) {
           }
         } catch { /* ignore */ }
         if (Date.now() - start > timeoutMs) {
-          console.warn(`[TeamClaude] Breaking stale lock on ${lockPath}`);
+          console.warn(`[AgentLB] Breaking stale lock on ${lockPath}`);
           await unlink(lockPath).catch(() => {});
           continue;
         }
@@ -248,7 +246,7 @@ export async function acquireConfigLock(timeoutMs = 5000) {
 let configUpdateChain = Promise.resolve();
 
 /**
- * Atomically update the config: acquires file lock on teamclaude.json.lock,
+ * Atomically update the config: acquires file lock on agent-lb.json.lock,
  * re-reads from disk, calls updater(config), then saves atomically.
  * Returns the updated config.
  */
@@ -258,7 +256,7 @@ export function atomicConfigUpdate(updater) {
     try {
       release = await acquireConfigLock();
     } catch (e) {
-      console.warn('[TeamClaude] Warning: could not acquire config lock:', e.message);
+      console.warn('[AgentLB] Warning: could not acquire config lock:', e.message);
     }
     try {
       const config = await loadConfig() || createDefaultConfig();

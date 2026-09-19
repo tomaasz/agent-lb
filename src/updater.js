@@ -1,11 +1,11 @@
 // Opt-out-able self-update, in the spirit of Claude Code's auto-updater.
 //
-// We ONLY ever touch a global npm install (`npm install -g @karpeleslab/teamclaude`):
+// We ONLY ever touch a global npm install (`npm install -g @karpeleslab/agentlb`):
 //   - a git checkout (a `.git` at the package root) is a dev tree — never touched;
 //   - a local dependency / npx copy is left alone (we only notify).
 // Checks hit the npm registry at most once a day (cached in a small file next to
 // the config), so the overwhelmingly common invocation does zero network I/O.
-// Disable entirely with TEAMCLAUDE_DISABLE_AUTOUPDATE=1 or config.autoUpdate=false.
+// Disable entirely with AGENT_LB_DISABLE_AUTOUPDATE=1 or config.autoUpdate=false.
 //
 // Every side-effecting dependency (fetch, spawn, the clock, the cache path) is
 // injectable so the logic is unit-testable without network or npm.
@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { getConfigPath } from './config.js';
 
-export const PKG_NAME = '@karpeleslab/teamclaude';
+export const PKG_NAME = 'agent-lb';
 const REGISTRY = 'https://registry.npmjs.org';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -158,9 +158,9 @@ let rootWarned = false;
  * common case: the expensive `npm root -g` probe only runs when an update is
  * actually available.
  *
- * Never runs as root. `sudo teamclaude server` would otherwise run
+ * Never runs as root. `sudo agentlb server` would otherwise run
  * `npm install -g` as root on a daily schedule, off a version string fetched
- * from the network — the operator can run `teamclaude update` deliberately.
+ * from the network — the operator can run `agentlb update` deliberately.
  *
  * `root`, `uid`, `check`, `kind` and `install` are injectable for tests.
  */
@@ -170,13 +170,13 @@ export async function autoUpdate({
   check = checkForUpdate, kind = installKind, install = runUpdate,
 } = {}) {
   if (existsSync(join(root, '.git'))) return { skipped: 'git' }; // dev checkout — never touch
-  if (process.env.TEAMCLAUDE_DISABLE_AUTOUPDATE || config.autoUpdate === false) {
+  if (process.env.AGENT_LB_DISABLE_AUTOUPDATE || config.autoUpdate === false) {
     return { skipped: 'disabled' };
   }
   if (uid === 0) {
     if (!rootWarned) {
       rootWarned = true;
-      log('[TeamClaude] Auto-update is disabled when running as root. Update deliberately with: teamclaude update');
+      log('[AgentLB] Auto-update is disabled when running as root. Update deliberately with: agentlb update');
     }
     return { skipped: 'root' };
   }
@@ -184,18 +184,18 @@ export async function autoUpdate({
   if (!info) return { skipped: 'check-failed' };
   if (!info.updateAvailable) return { ...info, upToDate: true };
   if (!isReleaseVersion(info.latest)) {
-    log(`[TeamClaude] Ignoring registry "latest" that is not a release version: ${JSON.stringify(String(info.latest)).slice(0, 80)}`);
+    log(`[AgentLB] Ignoring registry "latest" that is not a release version: ${JSON.stringify(String(info.latest)).slice(0, 80)}`);
     return { ...info, skipped: 'bad-version' };
   }
 
   if (kind({ root }) !== 'global') {
-    log(`[TeamClaude] Update available: ${info.current} → ${info.latest}. Run: teamclaude update`);
+    log(`[AgentLB] Update available: ${info.current} → ${info.latest}. Run: agentlb update`);
     return { ...info, notified: true };
   }
-  log(`[TeamClaude] Updating ${info.current} → ${info.latest}…`);
+  log(`[AgentLB] Updating ${info.current} → ${info.latest}…`);
   const ok = install(info.latest);
   log(ok
-    ? `[TeamClaude] Updated to ${info.latest}. Restart teamclaude to use the new version.`
-    : `[TeamClaude] Auto-update failed. Run manually: npm install -g ${PKG_NAME}@latest`);
+    ? `[AgentLB] Updated to ${info.latest}. Restart agentlb to use the new version.`
+    : `[AgentLB] Auto-update failed. Run manually: npm install -g ${PKG_NAME}@latest`);
   return { ...info, updated: ok };
 }

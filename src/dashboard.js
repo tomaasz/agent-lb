@@ -1,8 +1,8 @@
 // The status dashboard: a single self-contained HTML page served at
-// GET /teamclaude/dashboard, rendering /teamclaude/status for humans.
+// GET /agent-lb/dashboard, rendering /agent-lb/status for humans.
 //
 // The page itself contains NO data — it is a static asset whose script fetches
-// /teamclaude/status (same origin) with the proxy key and re-renders every few
+// /agent-lb/status (same origin) with the proxy key and re-renders every few
 // seconds. That split is what lets the asset be served without the key (a
 // browser address bar cannot send x-api-key) while every byte of actual status
 // stays behind the existing gate. The key is asked for once and kept in
@@ -143,12 +143,12 @@ export function uniqSorted(values) {
   return Object.keys(seen).sort();
 }
 
-// The request the switch button sends: POST /teamclaude/switch with the same
+// The request the switch button sends: POST /agent-lb/switch with the same
 // key the status poll uses. Pure, so the test suite can send exactly this
 // through a real proxy and prove the same-origin CSRF gate lets the page in.
 export function switchRequest(name, key) {
   return {
-    url: '/teamclaude/switch',
+    url: '/agent-lb/switch',
     init: {
       method: 'POST',
       headers: { 'x-api-key': key || '', 'content-type': 'application/json' },
@@ -311,7 +311,7 @@ export function problems(status) {
   // Deliberately no spend line. `usedMinor` is month-to-date overage, so on a
   // fleet that has overage switched on it is non-zero for most of the month —
   // an always-lit banner, which is the thing this is trying not to be. The
-  // account card and `teamclaude status` both carry it, with the amount.
+  // account card and `agentlb status` both carry it, with the amount.
 
   return out;
 }
@@ -1181,7 +1181,7 @@ const PAGE = `<!doctype html>
 <script>
 (function () {
   'use strict';
-  var KEY = 'teamclaude-dashboard-key';
+  var KEY = 'agentlb-dashboard-key';
   var POLL_MS = 5000;
   var timer = null;
   var lastStatus = null;
@@ -1398,7 +1398,7 @@ ${SHARED_HELPERS}
     });
 
     note('ok', 'Zapisywanie nowego priorytetu kont...');
-    apiCall('/teamclaude/api/accounts/reorder', 'POST', { order: names })
+    apiCall('/agent-lb/api/accounts/reorder', 'POST', { order: names })
       .then(function (res) {
         if (res && res.ok) {
           note('ok', 'Zapisano nowy priorytet kont (' + names.length + ' kont)');
@@ -2114,7 +2114,7 @@ ${SHARED_HELPERS}
       },
       crossProviderFallback: chkFb ? chkFb.checked : false,
     };
-    apiCall('/teamclaude/api/routing', 'POST', payload)
+    apiCall('/agent-lb/api/routing', 'POST', payload)
       .then(function (res) {
         if (res && res.ok) {
           note('ok', 'Zaktualizowano politykę floty (Routing / Cache)');
@@ -2130,7 +2130,7 @@ ${SHARED_HELPERS}
 
   function toggleDrain() {
     var isDraining = lastStatus && lastStatus.draining;
-    var endpoint = isDraining ? '/teamclaude/api/drain/cancel' : '/teamclaude/api/drain';
+    var endpoint = isDraining ? '/agent-lb/api/drain/cancel' : '/agent-lb/api/drain';
     apiCall(endpoint, 'POST')
       .then(function (res) {
         if (res && res.ok) {
@@ -2220,7 +2220,7 @@ ${SHARED_HELPERS}
 
   function doToggleDisabled(name, currentDisabled, btn) {
     btn.disabled = true;
-    apiCall('/teamclaude/api/accounts/toggle', 'POST', { id: name, account: name, disabled: !currentDisabled })
+    apiCall('/agent-lb/api/accounts/toggle', 'POST', { id: name, account: name, disabled: !currentDisabled })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
@@ -2245,7 +2245,7 @@ ${SHARED_HELPERS}
       note('error', 'Priorytet musi być liczbą całkowitą');
       return;
     }
-    apiCall('/teamclaude/api/accounts/priority', 'POST', { id: name, account: name, priority: prio })
+    apiCall('/agent-lb/api/accounts/priority', 'POST', { id: name, account: name, priority: prio })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
@@ -2263,7 +2263,7 @@ ${SHARED_HELPERS}
   function doRemoveAccount(name, btn) {
     if (!confirm('Czy na pewno chcesz usunąć konto "' + name + '" z konfiguracji Agent LB?')) return;
     if (btn) btn.disabled = true;
-    apiCall('/teamclaude/api/accounts/remove', 'POST', { id: name, account: name })
+    apiCall('/agent-lb/api/accounts/remove', 'POST', { id: name, account: name })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
@@ -2283,7 +2283,7 @@ ${SHARED_HELPERS}
   function doProbeSingle(name, btn) {
     if (btn) btn.disabled = true;
     note('ok', 'Odpytywanie limitów konta "' + name + '"...');
-    apiCall('/teamclaude/api/accounts/probe-single', 'POST', { account: name })
+    apiCall('/agent-lb/api/accounts/probe-single', 'POST', { account: name })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
@@ -2352,7 +2352,7 @@ ${SHARED_HELPERS}
 
   function doSetPolicy(name, policy, btn) {
     if (btn) btn.disabled = true;
-    apiCall('/teamclaude/api/accounts/policy', 'POST', { account: name, policy: policy })
+    apiCall('/agent-lb/api/accounts/policy', 'POST', { account: name, policy: policy })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
@@ -2375,7 +2375,7 @@ ${SHARED_HELPERS}
     if (btn) btn.disabled = true;
 
     note('ok', 'Wysyłanie żądania resetu limitu do OpenAI...');
-    apiCall('/teamclaude/api/accounts/consume-reset-credit', 'POST', { account: name })
+    apiCall('/agent-lb/api/accounts/consume-reset-credit', 'POST', { account: name })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
@@ -2395,7 +2395,7 @@ ${SHARED_HELPERS}
 
   function doExportAccount(name) {
     var key = localStorage.getItem(KEY) || '';
-    var url = '/teamclaude/api/accounts/export?account=' + encodeURIComponent(name);
+    var url = '/agent-lb/api/accounts/export?account=' + encodeURIComponent(name);
     var headers = {};
     if (key) headers['x-api-key'] = key;
     fetch(url, { headers: headers })
@@ -2424,7 +2424,7 @@ ${SHARED_HELPERS}
       btn.textContent = '⏳ Diagnozowanie...';
     }
     note('ok', 'Rozpoczęto diagnostykę floty (weryfikacja aktywnych kont)...');
-    apiCall('/teamclaude/api/health-check/run', 'POST', { force: true })
+    apiCall('/agent-lb/api/health-check/run', 'POST', { force: true })
       .then(function (res) {
         if (!res) return;
         var sum = res.summary || {};
@@ -2446,7 +2446,7 @@ ${SHARED_HELPERS}
   function doReloadFleet(btn) {
 
     if (btn) btn.disabled = true;
-    apiCall('/teamclaude/reload', 'POST')
+    apiCall('/agent-lb/reload', 'POST')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res) return;
@@ -2466,7 +2466,7 @@ ${SHARED_HELPERS}
   function doProbeQuota(btn) {
     if (btn) btn.disabled = true;
     note('ok', 'Sprawdzanie sald i limitów kont w Anthropic...');
-    apiCall('/teamclaude/probe', 'POST')
+    apiCall('/agent-lb/probe', 'POST')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res) return;
@@ -2497,7 +2497,7 @@ ${SHARED_HELPERS}
       return;
     }
     btn.disabled = true;
-    apiCall('/teamclaude/api/accounts/add', 'POST', {
+    apiCall('/agent-lb/api/accounts/add', 'POST', {
       type: 'api',
       apiKey: key,
       name: name,
@@ -2535,7 +2535,7 @@ ${SHARED_HELPERS}
       return;
     }
     btn.disabled = true;
-    apiCall('/teamclaude/api/accounts/add', 'POST', {
+    apiCall('/agent-lb/api/accounts/add', 'POST', {
       type: 'oauth',
       credentialsJson: jsonStr || null,
       accessToken: access || null,
@@ -2574,7 +2574,7 @@ ${SHARED_HELPERS}
       return;
     }
     btn.disabled = true;
-    apiCall('/teamclaude/api/accounts/add', 'POST', {
+    apiCall('/agent-lb/api/accounts/add', 'POST', {
       type: 'import',
       importFrom: path,
       name: name,
@@ -2661,7 +2661,7 @@ ${SHARED_HELPERS}
 
     var prov = getSelectedAddProvider();
     note('ok', 'Inicjowanie logowania w przeglądarce (' + (prov === 'codex' ? 'OpenAI Codex' : 'Claude') + ')...');
-    apiCall('/teamclaude/oauth/start?provider=' + encodeURIComponent(prov), 'GET')
+    apiCall('/agent-lb/oauth/start?provider=' + encodeURIComponent(prov), 'GET')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res || !res.ok) {
@@ -2701,7 +2701,7 @@ ${SHARED_HELPERS}
       return;
     }
     btn.disabled = true;
-    apiCall('/teamclaude/oauth/complete', 'POST', {
+    apiCall('/agent-lb/oauth/complete', 'POST', {
       code: code,
       state: pendingOAuthState,
       name: name,
@@ -2798,7 +2798,7 @@ ${SHARED_HELPERS}
       authWindow = window.open('about:blank', '_blank');
     } catch {}
 
-    var startUrl = '/teamclaude/oauth/start?provider=' + encodeURIComponent(currentReloginProvider || 'anthropic');
+    var startUrl = '/agent-lb/oauth/start?provider=' + encodeURIComponent(currentReloginProvider || 'anthropic');
     apiCall(startUrl, 'GET')
       .then(function (res) {
         if (btn) btn.disabled = false;
@@ -2836,7 +2836,7 @@ ${SHARED_HELPERS}
       return;
     }
     if (btn) btn.disabled = true;
-    apiCall('/teamclaude/oauth/complete', 'POST', {
+    apiCall('/agent-lb/oauth/complete', 'POST', {
       code: code,
       state: pendingOAuthState,
       name: currentReloginAccount,
@@ -2868,7 +2868,7 @@ ${SHARED_HELPERS}
       return;
     }
     if (btn) btn.disabled = true;
-    apiCall('/teamclaude/api/accounts/add', 'POST', {
+    apiCall('/agent-lb/api/accounts/add', 'POST', {
       type: 'oauth',
       credentialsJson: raw,
       name: currentReloginAccount,
@@ -2899,7 +2899,7 @@ ${SHARED_HELPERS}
       return;
     }
     if (btn) btn.disabled = true;
-    apiCall('/teamclaude/api/accounts/add', 'POST', {
+    apiCall('/agent-lb/api/accounts/add', 'POST', {
       type: 'import',
       importFrom: path,
       name: currentReloginAccount,
@@ -3011,8 +3011,8 @@ ${SHARED_HELPERS}
     }
 
     btn.disabled = true;
-    apiCall('/teamclaude/api/keys/create', 'POST', { name: name, key: customKey })
-    apiCall('/teamclaude/api/keys/create', 'POST', payload)
+    apiCall('/agent-lb/api/keys/create', 'POST', { name: name, key: customKey })
+    apiCall('/agent-lb/api/keys/create', 'POST', payload)
       .then(function (res) {
         btn.disabled = false;
         if (!res) return;
@@ -3041,7 +3041,7 @@ ${SHARED_HELPERS}
   function doRemoveClientKey(name, btn) {
     if (!confirm('Czy na pewno chcesz unieważnić klucz klienta dla "' + name + '"? Ruch z tego urządzenia zostanie natychmiast odrzucony.')) return;
     if (btn) btn.disabled = true;
-    apiCall('/teamclaude/api/keys/delete', 'POST', { name: name })
+    apiCall('/agent-lb/api/keys/delete', 'POST', { name: name })
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res) return;
@@ -3350,7 +3350,7 @@ ${SHARED_HELPERS}
   function doPullSetup(btn) {
     if (btn) btn.disabled = true;
     note('ok', 'Pobieranie aktualizacji repozytorium claude-lb z GitHub...');
-    apiCall('/teamclaude/api/setup/pull', 'POST')
+    apiCall('/agent-lb/api/setup/pull', 'POST')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res) return;
@@ -3424,7 +3424,7 @@ ${SHARED_HELPERS}
     var apiKey = localStorage.getItem(KEY) || '';
     var headers = {};
     if (apiKey) headers['x-api-key'] = apiKey;
-    fetch('/teamclaude/status', { headers: headers })
+    fetch('/agent-lb/status', { headers: headers })
       .then(function (res) {
         if (res.status === 401 || res.status === 403) {
           if (apiKey) {
@@ -3448,7 +3448,7 @@ ${SHARED_HELPERS}
         // Also fetch full client keys info with live stats
         var apiHeaders = {};
         if (apiKey) apiHeaders['x-api-key'] = apiKey;
-        fetch('/teamclaude/api/keys', { headers: apiHeaders })
+        fetch('/agent-lb/api/keys', { headers: apiHeaders })
           .then(function (kr) { return kr.ok ? kr.json() : null; })
           .then(function (kd) {
             if (kd) {
@@ -3481,7 +3481,7 @@ ${SHARED_HELPERS}
   function checkAuthAndStart() {
     var apiKey = localStorage.getItem(KEY) || '';
     if (!apiKey) {
-      fetch('/teamclaude/api/auth/verify')
+      fetch('/agent-lb/api/auth/verify')
         .then(function (res) {
           if (res.status === 200) {
             document.getElementById('keybox').style.display = 'none';
@@ -3497,7 +3497,7 @@ ${SHARED_HELPERS}
       return;
     }
 
-    fetch('/teamclaude/api/auth/verify', {
+    fetch('/agent-lb/api/auth/verify', {
       headers: { 'x-api-key': apiKey }
     })
       .then(function (res) {
@@ -3533,7 +3533,7 @@ ${SHARED_HELPERS}
     btn.disabled = true;
     btn.textContent = 'Logowanie...';
 
-    fetch('/teamclaude/api/auth/verify', {
+    fetch('/agent-lb/api/auth/verify', {
       headers: { 'x-api-key': v }
     })
       .then(function (res) {
@@ -3855,7 +3855,7 @@ ${SHARED_HELPERS}
   var chkHealth = document.getElementById('chkAutoHealthCheck');
   if (chkHealth) {
     chkHealth.addEventListener('change', function () {
-      apiCall('/teamclaude/api/health-check/config', 'POST', { enabled: chkHealth.checked })
+      apiCall('/agent-lb/api/health-check/config', 'POST', { enabled: chkHealth.checked })
         .then(function () {
           note('ok', 'Zaktualizowano tryb auto-diagnostyki');
           poll();

@@ -1,6 +1,6 @@
 // MITM forward-proxy support: local cert lifecycle + terminating CONNECT proxy.
 //
-// When a claude instance is launched with HTTPS_PROXY pointed at teamclaude it
+// When a claude instance is launched with HTTPS_PROXY pointed at agentlb it
 // sends `CONNECT api.anthropic.com:443`. Rather than byte-relaying the tunnel, we
 // TERMINATE it with a real Node HTTP/2 server (allowHTTP1, so an h1 client works
 // too) presenting our locally-minted leaf, then forward each request with a
@@ -25,9 +25,9 @@ import { interceptHostsFor, isNeverIntercepted } from './provider.js';
 import { forwardRefusal, guardedLookup, FORBIDDEN_FORWARD } from './forward-target.js';
 import { safeLine } from './safe-text.js';
 
-const CA_CERT = 'teamclaude-ca.pem';
-const LEAF_CERT = 'teamclaude-leaf.pem';
-const LEAF_KEY = 'teamclaude-leaf.key';
+const CA_CERT = 'agentlb-ca.pem';
+const LEAF_CERT = 'agentlb-leaf.pem';
+const LEAF_KEY = 'agentlb-leaf.key';
 
 // A built-in host the MITM proxy always intercepts and answers itself (never
 // forwarded upstream). Lets you verify the proxy + CA end-to-end with no
@@ -244,7 +244,7 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
     srv.on('upgrade', (req, socket, head) => {
       const target = upgradeUpstreamFor(req.headers.host, config, upstream);
       if (!target) {
-        log(`[TeamClaude] MITM: refusing a WebSocket Upgrade for host ${JSON.stringify(safeLine(req.headers.host, 64))}, which this proxy does not intercept`);
+        log(`[AgentLB] MITM: refusing a WebSocket Upgrade for host ${JSON.stringify(safeLine(req.headers.host, 64))}, which this proxy does not intercept`);
         try { socket.write('HTTP/1.1 421 Misdirected Request\r\nConnection: close\r\n\r\n'); } catch { /* client already gone */ }
         socket.destroy();
         return;
@@ -259,13 +259,13 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
     if (!http1Only) {
       srv.on('stream', (stream, headers) => {
         if (headers[':method'] === 'CONNECT' || headers[':protocol']) {
-          log('[TeamClaude] A client tried to open a WebSocket over HTTP/2, which this proxy cannot relay. '
+          log('[AgentLB] A client tried to open a WebSocket over HTTP/2, which this proxy cannot relay. '
             + 'Remote Control will appear connected and silently deliver nothing. '
             + 'Set "mitm": { "http1Only": true } in the config to force HTTP/1.1 (see #164).');
         }
       });
     }
-    srv.on('sessionError', (e) => log(`[TeamClaude] MITM session error: ${e.message}`));
+    srv.on('sessionError', (e) => log(`[AgentLB] MITM session error: ${e.message}`));
     srv.on('clientError', (e, sock) => { try { sock.destroy(); } catch { /* already gone */ } });
     return srv;
     })().catch((err) => {
@@ -292,7 +292,7 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
     const auth = resolveConnectAuth(req, clientSocket, config.proxy);
     if (!auth.ok) {
       try {
-        clientSocket.write('HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="teamclaude"\r\nConnection: close\r\n\r\n');
+        clientSocket.write('HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="agentlb"\r\nConnection: close\r\n\r\n');
       } catch { /* client already gone */ }
       clientSocket.destroy();
       return;
@@ -315,7 +315,7 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
       // in the lookup below so a DNS alias for 127.0.0.1 does not get past.
       const refused = forwardRefusal(host, null, clientSocket);
       if (refused) {
-        log(`[TeamClaude] CONNECT ${host}:${port} refused: ${refused}`);
+        log(`[AgentLB] CONNECT ${host}:${port} refused: ${refused}`);
         refuseRaw(clientSocket, '403 Forbidden');
         return;
       }
@@ -347,7 +347,7 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
         const refusedAfter = forwardRefusal(host, up.remoteAddress, clientSocket)
           || (up.remotePort === ownPort && up.localAddress === up.remoteAddress ? 'that is this proxy\'s own listener' : null);
         if (refusedAfter) {
-          log(`[TeamClaude] CONNECT ${host}:${port} refused: ${refusedAfter}`);
+          log(`[AgentLB] CONNECT ${host}:${port} refused: ${refusedAfter}`);
           teardown('403 Forbidden');
           return;
         }
@@ -363,11 +363,11 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
       });
       up.on('error', (err) => {
         if (err.code === FORBIDDEN_FORWARD) {
-          log(`[TeamClaude] CONNECT ${host}:${port} refused: ${err.message}`);
+          log(`[AgentLB] CONNECT ${host}:${port} refused: ${err.message}`);
           teardown('403 Forbidden');
           return;
         }
-        if (!established) log(`[TeamClaude] tunnel ${host}:${port} failed: ${describeConnectError(err)}`);
+        if (!established) log(`[AgentLB] tunnel ${host}:${port} failed: ${describeConnectError(err)}`);
         teardown('502 Bad Gateway');
       });
       // A FIN before the tunnel is live (no preceding 'error') is still a failed
@@ -383,7 +383,7 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
       ensureLeaf().then(({ key, cert }) => {
         reply200Raw(clientSocket);
         serveTest(termClaude(clientSocket, head, key, cert, ['http/1.1']));
-      }).catch((err) => { log(`[TeamClaude] MITM ${host}: ${err.message}`); reply502Raw(clientSocket); clientSocket.destroy(); });
+      }).catch((err) => { log(`[AgentLB] MITM ${host}: ${err.message}`); reply502Raw(clientSocket); clientSocket.destroy(); });
       return;
     }
 
@@ -399,9 +399,9 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
     // down unrelated traffic over a typo meant for Anthropic.
     const { pin, error } = resolveConnectPin(req, accountManager, config.proxy);
     if (error) {
-      log(`[TeamClaude] CONNECT ${host}: ${error}`);
+      log(`[AgentLB] CONNECT ${host}: ${error}`);
       try {
-        clientSocket.write(`HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="teamclaude"\r\nConnection: close\r\n\r\n`);
+        clientSocket.write(`HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm="agentlb"\r\nConnection: close\r\n\r\n`);
       } catch { /* client already gone */ }
       clientSocket.destroy();
       return;
@@ -411,13 +411,13 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
       reply200Raw(clientSocket);
       if (head && head.length) clientSocket.unshift(head);
       srv.emit('connection', clientSocket);
-    }).catch((err) => { log(`[TeamClaude] MITM ${host}: ${err.message}`); reply502Raw(clientSocket); clientSocket.destroy(); });
+    }).catch((err) => { log(`[AgentLB] MITM ${host}: ${err.message}`); reply502Raw(clientSocket); clientSocket.destroy(); });
   };
 }
 
 // The Basic username from a CONNECT's `Proxy-Authorization`, or null. This is
 // the only pin channel expressible in an HTTPS_PROXY URL, which is what
-// `teamclaude run` has to work with in MITM mode (there is no request path to
+// `agentlb run` has to work with in MITM mode (there is no request path to
 // carry a `/tc-acct/` prefix — inside the tunnel the path is the real upstream
 // one). Clients send this preemptively on every CONNECT.
 export function connectPinToken(req) {
@@ -548,7 +548,7 @@ function serveTest(tlsSock) {
     tlsSock.removeListener('data', onData);
     const reqLine = buf.subarray(0, buf.indexOf('\r\n')).toString('latin1');
     const path = reqLine.split(' ')[1] || '/';
-    const body = JSON.stringify({ teamclaude: 'mitm-proxy-ok', host: TEST_HOST, path });
+    const body = JSON.stringify({ agentlb: 'mitm-proxy-ok', host: TEST_HOST, path });
     tlsSock.end(
       `HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: ${Buffer.byteLength(body)}\r\nconnection: close\r\n\r\n${body}`,
     );

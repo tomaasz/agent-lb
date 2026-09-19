@@ -8,13 +8,13 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
-const installers = ['setup/setup.js', 'setup/teamclaude-setup.js'];
+const installers = ['setup/setup.js'];
 
 function childEnv(home) {
   const env = { ...process.env, HOME: home };
   for (const name of [
     'CLAUDE_LB_API_KEY',
-    'TEAMCLAUDE_API_KEY',
+    'AGENT_LB_API_KEY',
     'CODEX_LB_API_KEY',
     'ANTHROPIC_API_KEY',
     'ANTHROPIC_CUSTOM_HEADERS',
@@ -69,7 +69,7 @@ test('installers preserve Claude OAuth and authenticate to the proxy with a cust
             { name: 'ANTHROPIC_CUSTOM_HEADERS', value: 'x-api-key: proxy-test-key' },
           ]);
 
-          const envFile = await fs.readFile(path.join(home, '.config', 'claude-lb.env'), 'utf8');
+          const envFile = await fs.readFile(path.join(home, '.config', 'agent-lb.env'), 'utf8');
           assert.match(envFile, /^unset ANTHROPIC_API_KEY/m);
           assert.match(envFile, /^export ANTHROPIC_CUSTOM_HEADERS='x-api-key: proxy-test-key'$/m);
           assert.match(envFile, /^export CODEX_LB_API_KEY='proxy-test-key'$/m);
@@ -87,7 +87,7 @@ test('installers preserve Claude OAuth and authenticate to the proxy with a cust
           const uninstalled = JSON.parse(await fs.readFile(path.join(claudeDir, 'settings.json'), 'utf8'));
           assert.equal(uninstalled.env, undefined);
           assert.deepEqual(JSON.parse(await fs.readFile(path.join(claudeDir, '.credentials.json'), 'utf8')), credentials);
-          await assert.rejects(fs.access(path.join(home, '.config', 'claude-lb.env')));
+          await assert.rejects(fs.access(path.join(home, '.config', 'agent-lb.env')));
         } finally {
           await fs.rm(home, { recursive: true, force: true });
         }

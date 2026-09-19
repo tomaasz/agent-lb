@@ -143,7 +143,7 @@ export async function refreshAccessToken(refreshToken, endpoint = DEFAULT_TOKEN_
   // can't hang the refresh forever. A hung refresh is especially harmful here:
   // ensureTokenFresh coalesces callers into a single _refreshPromise, so one
   // stuck refresh wedges every request for that account until a restart.
-  const timeoutMs = Number(process.env.TEAMCLAUDE_REFRESH_TIMEOUT_MS) || 30_000;
+  const timeoutMs = Number(process.env.AGENT_LB_REFRESH_TIMEOUT_MS) || 30_000;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -266,7 +266,7 @@ export function isTokenExpired(expiresAt) {
   return Date.now() >= at;
 }
 
-/** Normalize the OAuth profile fields TeamClaude persists and exposes. */
+/** Normalize the OAuth profile fields AgentLB persists and exposes. */
 export function normalizeProfile(data) {
   return {
     accountUuid: data.account?.uuid,

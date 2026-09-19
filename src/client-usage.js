@@ -207,7 +207,7 @@ export class ClientUsageTracker {
   }
 
   /**
-   * Plain-object snapshot for the state file and /teamclaude/status
+   * Plain-object snapshot for the state file and /agentlb/status
    * (lastUsed as ISO string, matching how the status endpoint reports times).
    */
   export() {

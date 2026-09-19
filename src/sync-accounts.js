@@ -73,8 +73,8 @@ export async function syncAccountsFromDisk(diskConfig, memConfig, accountManager
       claimed.add(accountManager.accounts.length - 1);
       added++;
       console.log(cfgAcct
-        ? `[TeamClaude] Re-admitting known account "${diskAcct.name}" from config`
-        : `[TeamClaude] Picked up new account "${diskAcct.name}" from config`);
+        ? `[AgentLB] Re-admitting known account "${diskAcct.name}" from config`
+        : `[AgentLB] Picked up new account "${diskAcct.name}" from config`);
       continue;
     }
 
@@ -122,7 +122,7 @@ export async function syncAccountsFromDisk(diskConfig, memConfig, accountManager
         const creds = await importCredentials(diskAcct.importFrom);
         freshCred = { accessToken: creds.accessToken, refreshToken: creds.refreshToken, expiresAt: creds.expiresAt };
       } catch (err) {
-        console.error(`[TeamClaude] Re-import failed for "${diskAcct.name}": ${err.message}`);
+        console.error(`[AgentLB] Re-import failed for "${diskAcct.name}": ${err.message}`);
       }
     } else if (diskAcct.type === 'oauth' && diskAcct.accessToken) {
       freshCred = { accessToken: diskAcct.accessToken, refreshToken: diskAcct.refreshToken, expiresAt: diskAcct.expiresAt };
@@ -141,19 +141,19 @@ export async function syncAccountsFromDisk(diskConfig, memConfig, accountManager
         freshCred.expiresAt < mgr.expiresAt;
       if (changed && !diskIsStaler) {
         accountManager.updateAccountTokens(mgr.index, freshCred);
-        console.log(`[TeamClaude] Refreshed credentials for "${mgr.name}"`);
+        console.log(`[AgentLB] Refreshed credentials for "${mgr.name}"`);
       }
     } else if (freshCred.apiKey && mgr.credential !== freshCred.apiKey) {
       mgr.credential = freshCred.apiKey;
       if (mgr.status === 'error') mgr.status = 'active';
-      console.log(`[TeamClaude] Updated API key for "${mgr.name}"`);
+      console.log(`[AgentLB] Updated API key for "${mgr.name}"`);
     }
   }
 
   // Prune accounts from memory that were deleted from disk config
   for (let i = accountManager.accounts.length - 1; i >= 0; i--) {
     if (!claimed.has(i)) {
-      console.log(`[TeamClaude] Removing account "${accountManager.accounts[i].name}" (no longer in config)`);
+      console.log(`[AgentLB] Removing account "${accountManager.accounts[i].name}" (no longer in config)`);
       accountManager.removeAccount(i);
     }
   }
