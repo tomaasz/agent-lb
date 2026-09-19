@@ -380,6 +380,56 @@ describe('Test Chat & Playground Support', () => {
     }
   });
 
+  it('correctly parses Codex response.output_text.delta streaming events', async () => {
+    const mockUpstream = http.createServer((req, res) => {
+      if (req.url.endsWith('/backend-api/codex/responses')) {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.write('event: response.created\ndata: {"type":"response.created","response":{"id":"resp_1"}}\n\n');
+        res.write('event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"Cześć! "}\n\n');
+        res.write('event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"W czym mogę pomóc?"}\n\n');
+        res.write('event: response.completed\ndata: {"type":"response.completed","response":{"usage":{"prompt_tokens":8,"completion_tokens":15}}}\n\n');
+        res.end('data: [DONE]\n\n');
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await new Promise(resolve => mockUpstream.listen(0, '127.0.0.1', resolve));
+    const upstreamUrl = `http://127.0.0.1:${mockUpstream.address().port}`;
+
+    const accounts = [
+      { name: 'codex-delta-test', provider: 'codex', type: 'oauth', accessToken: 'token-codex-delta', upstream: upstreamUrl }
+    ];
+
+    const am = new AccountManager(accounts, 0.98);
+    const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {}, null, null, null);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const proxyPort = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: { 'x-api-key': 'tc-test-admin', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'codex',
+          account: 'codex-delta-test',
+          model: 'gpt-5.6-sol',
+          message: 'cześć'
+        })
+      });
+
+      assert.equal(res.status, 200);
+      const json = await res.json();
+      assert.equal(json.ok, true);
+      assert.equal(json.reply, 'Cześć! W czym mogę pomóc?');
+      assert.notEqual(json.reply, '(Odpowiedź strumieniowa zakończona pomyślnie)');
+    } finally {
+      server.close();
+      mockUpstream.close();
+    }
+  });
+
   it('sends Claude Code billing header, modern headers, and filters thinking blocks in Anthropic test chat', async () => {
     let capturedHeaders = null;
     let capturedBody = null;

@@ -1895,15 +1895,22 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                       if (dataStr === '[DONE]') continue;
                       try {
                         const item = JSON.parse(dataStr);
-                        const deltaText = item.delta?.text
+                        const deltaText = (typeof item.delta === 'string' ? item.delta : null)
+                          || (item.type === 'response.output_text.delta' && typeof item.delta === 'string' ? item.delta : null)
+                          || (item.type === 'response.text.delta' && typeof item.delta === 'string' ? item.delta : null)
+                          || item.delta?.text
                           || item.choices?.[0]?.delta?.content
                           || item.output?.[0]?.content?.[0]?.text
-                          || (item.type === 'response.text.delta' && item.delta)
                           || (item.type === 'response.output_item.added' && item.item?.content?.[0]?.text)
                           || '';
                         if (deltaText) replyText += deltaText;
+                        if (!replyText && item.text) replyText = item.text;
+                        if (!replyText && item.part?.text) replyText = item.part.text;
+                        if (!replyText && item.item?.content?.[0]?.text) replyText = item.item.content[0].text;
                         if (item.usage) usage = item.usage;
+                        if (item.response?.usage) usage = item.response.usage;
                         if (item.model) responseModel = item.model;
+                        if (item.response?.model) responseModel = item.response.model;
                       } catch { /* skip non-JSON stream lines */ }
                     }
                   }
@@ -1919,15 +1926,22 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                       if (dataStr === '[DONE]') continue;
                       try {
                         const item = JSON.parse(dataStr);
-                        const deltaText = item.delta?.text
+                        const deltaText = (typeof item.delta === 'string' ? item.delta : null)
+                          || (item.type === 'response.output_text.delta' && typeof item.delta === 'string' ? item.delta : null)
+                          || (item.type === 'response.text.delta' && typeof item.delta === 'string' ? item.delta : null)
+                          || item.delta?.text
                           || item.choices?.[0]?.delta?.content
                           || item.output?.[0]?.content?.[0]?.text
-                          || (item.type === 'response.text.delta' && item.delta)
                           || (item.type === 'response.output_item.added' && item.item?.content?.[0]?.text)
                           || '';
                         if (deltaText) replyText += deltaText;
+                        if (!replyText && item.text) replyText = item.text;
+                        if (!replyText && item.part?.text) replyText = item.part.text;
+                        if (!replyText && item.item?.content?.[0]?.text) replyText = item.item.content[0].text;
                         if (item.usage) usage = item.usage;
+                        if (item.response?.usage) usage = item.response.usage;
                         if (item.model) responseModel = item.model;
+                        if (item.response?.model) responseModel = item.response.model;
                       } catch { /* skip non-JSON stream lines */ }
                     }
                     if (!replyText.trim()) replyText = '(Odpowiedź strumieniowa zakończona pomyślnie)';
