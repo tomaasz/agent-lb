@@ -160,6 +160,7 @@ custom_providers:
     base_url: "{url}"
     api_key: "{key}"
     api_mode: "chat_completions"
+    context_length: 1050000
     models:
 {models_yaml}
 providers:
@@ -169,6 +170,7 @@ providers:
     api: "{url}"
     api_key: "{key}"
     api_mode: "chat_completions"
+    context_length: 1050000
     models:
 {models_yaml}{extra_providers}
 # --- End AgentLB ---"""
@@ -206,7 +208,7 @@ if (hasAgy) {
   extraProviders = '\n  agy:\n    name: "AGY"\n    provider: "agy"\n    models:\n      - "gemini-3.8-flash-high"\n      - "agy"\n  agy-fast:\n    name: "AGY Fast"\n    provider: "agy-fast"\n    models:\n      - "gemini-3.8-flash-low"\n      - "agy-fast"\n';
 }
 
-const block = '\n# --- AgentLB Multi-Provider ---' + modelAliasesBlock + '\ncustom_providers:\n  - name: "agentlb"\n    base_url: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    models:\n' + modelsYaml + '\nproviders:\n  agentlb:\n    name: "AgentLB (All Models)"\n    base_url: "' + url + '"\n    api: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    models:\n' + modelsYaml + extraProviders + '\n# --- End AgentLB ---\n';
+const block = '\n# --- AgentLB Multi-Provider ---' + modelAliasesBlock + '\ncustom_providers:\n  - name: "agentlb"\n    base_url: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 1050000\n    models:\n' + modelsYaml + '\nproviders:\n  agentlb:\n    name: "AgentLB (All Models)"\n    base_url: "' + url + '"\n    api: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 1050000\n    models:\n' + modelsYaml + extraProviders + '\n# --- End AgentLB ---\n';
 let content = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : '';
 content = content.replace(/# --- AgentLB Multi-Provider ---[\s\S]*?(?:# --- End AgentLB ---|(?=\n[a-zA-Z0-9_]+:)|\$)/, '').trim();
 fs.writeFileSync(configPath, (content ? content + '\n' : '') + block);
