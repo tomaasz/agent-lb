@@ -177,7 +177,7 @@ describe('FleetHealthChecker Intelligent Auto Diagnostics', () => {
       assert.equal(jsonStatus.healthCheck.enabled, true);
       assert.equal(jsonStatus.healthCheck.intervalSeconds, 600);
 
-      // 2. POST /api/health-check/run
+      // 2. POST /api/health-check/run (force: false)
       const resRun = await fetch(`http://127.0.0.1:${port}/api/health-check/run`, {
         method: 'POST',
         headers: { 'x-api-key': 'tc-test-admin', 'content-type': 'application/json' },
@@ -190,6 +190,19 @@ describe('FleetHealthChecker Intelligent Auto Diagnostics', () => {
       assert.equal(jsonRun.summary.skipped, 1, 'Skipped due to recent traffic');
       assert.equal(jsonRun.summary.probed, 0);
       assert.equal(jsonRun.summary.tokensUsed, 0);
+
+      // 2b. POST /api/health-check/run (force: true)
+      const resRunForce = await fetch(`http://127.0.0.1:${port}/api/health-check/run`, {
+        method: 'POST',
+        headers: { 'x-api-key': 'tc-test-admin', 'content-type': 'application/json' },
+        body: JSON.stringify({ force: true })
+      });
+      assert.equal(resRunForce.status, 200);
+      const jsonRunForce = await resRunForce.json();
+      assert.equal(jsonRunForce.ok, true);
+      assert.equal(jsonRunForce.summary.totalAccounts, 1);
+      assert.equal(jsonRunForce.summary.probed, 1, 'Probed because force was true');
+      assert.equal(jsonRunForce.summary.skipped, 0);
 
       // 3. POST /api/health-check/config
       const resConfig = await fetch(`http://127.0.0.1:${port}/api/health-check/config`, {

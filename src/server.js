@@ -1718,7 +1718,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
               const reqHeaders = {
                 'content-type': 'application/json',
-                'accept': 'application/json'
+                'accept': isOauth ? 'text/event-stream, application/json;q=0.9, */*;q=0.8' : 'application/json'
               };
               applyAuthHeaders(reqHeaders, account);
 
@@ -1743,7 +1743,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
               const durationMs = Date.now() - startTime;
               if (upstreamRes.ok) {
                 const cType = upstreamRes.headers.get('content-type') || '';
-                if (cType.includes('text/event-stream') && upstreamRes.body) {
+                if (cType.includes('text/event-stream') && upstreamRes.body && typeof upstreamRes.body.getReader === 'function') {
                   const reader = upstreamRes.body.getReader();
                   const decoder = new TextDecoder('utf-8');
                   let streamBuf = '';
@@ -1774,18 +1774,47 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   }
                   if (!replyText.trim()) replyText = '(Odpowiedź strumieniowa zakończona pomyślnie)';
                 } else {
-                  const data = await upstreamRes.json();
-                  responseModel = data.model || model;
-                  if (isOauth) {
-                    replyText = data.output?.[0]?.content?.[0]?.text
-                      || data.message?.content?.parts?.[0]
-                      || (typeof data.response === 'string' ? data.response : '')
-                      || (data.choices?.[0]?.message?.content)
-                      || JSON.stringify(data);
+                  const rawText = await upstreamRes.text();
+                  if (rawText.includes('data:') || rawText.trim().startsWith('event:')) {
+                    const lines = rawText.split('\n');
+                    for (const line of lines) {
+                      const trimmed = line.trim();
+                      if (!trimmed.startsWith('data:')) continue;
+                      const dataStr = trimmed.slice(5).trim();
+                      if (dataStr === '[DONE]') continue;
+                      try {
+                        const item = JSON.parse(dataStr);
+                        const deltaText = item.delta?.text
+                          || item.choices?.[0]?.delta?.content
+                          || item.output?.[0]?.content?.[0]?.text
+                          || (item.type === 'response.text.delta' && item.delta)
+                          || (item.type === 'response.output_item.added' && item.item?.content?.[0]?.text)
+                          || '';
+                        if (deltaText) replyText += deltaText;
+                        if (item.usage) usage = item.usage;
+                        if (item.model) responseModel = item.model;
+                      } catch { /* skip non-JSON stream lines */ }
+                    }
+                    if (!replyText.trim()) replyText = '(Odpowiedź strumieniowa zakończona pomyślnie)';
                   } else {
-                    replyText = data.choices?.[0]?.message?.content || '';
+                    let data = {};
+                    try {
+                      data = JSON.parse(rawText);
+                    } catch {
+                      data = { response: rawText };
+                    }
+                    responseModel = data.model || model;
+                    if (isOauth) {
+                      replyText = data.output?.[0]?.content?.[0]?.text
+                        || data.message?.content?.parts?.[0]
+                        || (typeof data.response === 'string' ? data.response : '')
+                        || (data.choices?.[0]?.message?.content)
+                        || JSON.stringify(data);
+                    } else {
+                      replyText = data.choices?.[0]?.message?.content || rawText;
+                    }
+                    usage = data.usage || null;
                   }
-                  usage = data.usage || null;
                 }
                 accountManager.clearRateLimited(account.index);
                 accountManager.recordAccountSuccess(account);

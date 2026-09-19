@@ -2423,12 +2423,12 @@ ${SHARED_HELPERS}
       btn.disabled = true;
       btn.textContent = '⏳ Diagnozowanie...';
     }
-    note('ok', 'Rozpoczęto inteligentną diagnostykę floty (0 tokenów dla aktywnych)...');
-    apiCall('/teamclaude/api/health-check/run', 'POST', { force: false })
+    note('ok', 'Rozpoczęto diagnostykę floty (weryfikacja aktywnych kont)...');
+    apiCall('/teamclaude/api/health-check/run', 'POST', { force: true })
       .then(function (res) {
         if (!res) return;
         var sum = res.summary || {};
-        var msg = 'Zakończono diagnostykę: ' + (sum.ok || 0) + ' sprawnych, ' + (sum.errors || 0) + ' z błędami, ' + (sum.skipped || 0) + ' pominiętych (0 tokenów), zużyto łącznie ' + (sum.tokensUsed || 0) + ' tokenów.';
+        var msg = 'Zakończono diagnostykę: ' + (sum.ok || 0) + ' sprawnych, ' + (sum.errors || 0) + ' z błędami, ' + (sum.skipped || 0) + ' pominiętych, zużyto łącznie ' + (sum.tokensUsed || 0) + ' tokenów.';
         note(sum.errors > 0 ? 'warn' : 'ok', msg);
         poll();
       })
@@ -3870,9 +3870,9 @@ ${SHARED_HELPERS}
 
   // --- Test Chat (Playground) ---
   var CLAUDE_MODELS = [
-    { id: 'claude-opus-5', name: 'Claude Opus 5 (Flagowy / Główny)' },
     { id: 'claude-sonnet-5', name: 'Claude Sonnet 5 (Domyślny Claude Code)' },
     { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5 (Szybki / Lekki ping)' },
+    { id: 'claude-opus-5', name: 'Claude Opus 5 (Flagowy / Główny)' },
     { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
     { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
   ];

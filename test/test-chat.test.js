@@ -327,5 +327,55 @@ describe('Test Chat & Playground Support', () => {
       mockUpstream.close();
     }
   });
+
+  it('correctly parses Codex SSE responses even when Content-Type is text/plain or not event-stream', async () => {
+    const mockUpstream = http.createServer((req, res) => {
+      if (req.url.endsWith('/backend-api/codex/responses')) {
+        // Return SSE formatted text with non-event-stream Content-Type (e.g. text/plain or application/json)
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('event: response.created\ndata: {"type":"response.created","response":{"id":"resp_123"}}\n\nevent: response.output_item.added\ndata: {"type":"response.output_item.added","item":{"content":[{"type":"text","text":"Odpowiedź z Codex SSE!"}]}}\n\ndata: [DONE]\n\n');
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await new Promise(resolve => mockUpstream.listen(0, '127.0.0.1', resolve));
+    const upstreamUrl = `http://127.0.0.1:${mockUpstream.address().port}`;
+
+    const accounts = [
+      { name: 'codex-sse-test', provider: 'codex', type: 'oauth', accessToken: 'token-codex-sse', upstream: upstreamUrl }
+    ];
+
+    const am = new AccountManager(accounts, 0.98);
+    const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {}, null, null, null);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const proxyPort = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: { 'x-api-key': 'tc-test-admin', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'codex',
+          account: 'codex-sse-test',
+          model: 'gpt-5.6-sol',
+          message: 'Test Codex SSE parsing'
+        })
+      });
+
+      assert.equal(res.status, 200);
+      const json = await res.json();
+      assert.equal(json.ok, true);
+      assert.equal(json.account, 'codex-sse-test');
+      assert.match(json.reply, /Odpowiedź z Codex SSE!/);
+      assert.equal(am.accounts[0].status, 'active');
+      assert.equal(am.accounts[0].lastError, null);
+      assert.equal(am.accounts[0].lastTest?.ok, true);
+    } finally {
+      server.close();
+      mockUpstream.close();
+    }
+  });
 });
 
