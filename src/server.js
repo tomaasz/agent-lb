@@ -1979,8 +1979,9 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
               } else {
                 let errorMsg = `HTTP ${upstreamRes.status}`;
                 let errorReason = 'http_' + upstreamRes.status;
+                let errData = null;
                 try {
-                  const errData = await upstreamRes.json();
+                  errData = await upstreamRes.json();
                   errorMsg = errData.error?.message || errData.detail || errData.message || JSON.stringify(errData);
                 } catch {
                   errorMsg = await upstreamRes.text().catch(() => errorMsg);
@@ -2000,19 +2001,34 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                 accountManager.updateQuota(account.index, codexRateLimitHeaders);
 
                 if (upstreamRes.status === 429) {
-                  errorReason = 'rate-limit';
-                  const retryAfterHeader = upstreamRes.headers.get('retry-after');
-                  let retryAfter = parseInt(retryAfterHeader, 10);
-                  if (Number.isNaN(retryAfter) || retryAfter <= 0) retryAfter = 60;
-                  retryAfter = Math.min(Math.max(retryAfter, 1), 300);
-                  accountManager.markRateLimited(account.index, retryAfter);
-                  errorMsg = `Limit zapytań (429 Rate Limit / cooldown ${retryAfter}s) w ChatGPT/Codex dla konta "${account.name}".`;
-                  account.lastError = {
-                    reason: 'rate-limit',
-                    status: 429,
-                    error: errorMsg,
-                    timestamp: Date.now()
-                  };
+                  const isUsageLimit = isOauth && (errData?.error?.type === 'usage_limit_reached' || codexRateLimitHeaders['x-codex-primary-used-percent'] === '100');
+                  if (isUsageLimit) {
+                    errorReason = 'quota';
+                    account.status = 'exhausted';
+                    const resetSec = errData?.error?.resets_in_seconds || parseInt(codexRateLimitHeaders['x-codex-primary-reset-after-seconds'], 10) || 3600;
+                    const resetMin = Math.ceil(resetSec / 60);
+                    errorMsg = `Limit zapytań ChatGPT Plus wyczerpany (100% quota / reset za ok. ${resetMin} min) dla konta "${account.name}".`;
+                    account.lastError = {
+                      reason: 'quota',
+                      status: 429,
+                      error: errorMsg,
+                      timestamp: Date.now()
+                    };
+                  } else {
+                    errorReason = 'rate-limit';
+                    const retryAfterHeader = upstreamRes.headers.get('retry-after');
+                    let retryAfter = parseInt(retryAfterHeader, 10);
+                    if (Number.isNaN(retryAfter) || retryAfter <= 0) retryAfter = 60;
+                    retryAfter = Math.min(Math.max(retryAfter, 1), 300);
+                    accountManager.markRateLimited(account.index, retryAfter);
+                    errorMsg = `Limit zapytań (429 Rate Limit / cooldown ${retryAfter}s) w ChatGPT/Codex dla konta "${account.name}".`;
+                    account.lastError = {
+                      reason: 'rate-limit',
+                      status: 429,
+                      error: errorMsg,
+                      timestamp: Date.now()
+                    };
+                  }
                 } else if (upstreamRes.status === 401 || upstreamRes.status === 403) {
                   errorReason = 'auth';
                   account.lastError = {
