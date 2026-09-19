@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent-lb / claude-lb client setup script (Debian/Ubuntu/WSL/macOS).
+# agent-lb client setup script (Debian/Ubuntu/WSL/macOS).
 #
 # Jeśli w systemie jest Node.js, deleguje zadanie do uniwersalnego setup.js,
 # który kompleksowo konfiguruje CLI, VS Code oraz zapobiega konfliktom OAuth.
