@@ -38,6 +38,8 @@ export const MODEL_FALLBACK_MAP = {
   'gpt-4o-mini': 'claude-3-5-haiku-20241022',
   'o1': 'claude-3-7-sonnet-20250219',
   'o3-mini': 'claude-3-5-sonnet-20241022',
+  'agy': 'claude-sonnet-5',
+  'agy-fast': 'claude-haiku-4-5-20251001',
 };
 
 /**
@@ -47,6 +49,10 @@ export function resolveTargetModel(sourceModel, targetProvider) {
   if (!sourceModel) return targetProvider === 'codex' ? DEFAULT_FALLBACK_OPENAI_MODEL : DEFAULT_FALLBACK_ANTHROPIC_MODEL;
   if (targetProvider === 'anthropic' && sourceModel.startsWith('claude-')) return sourceModel;
   if (targetProvider === 'codex' && (sourceModel.startsWith('gpt-') || sourceModel.startsWith('o1') || sourceModel.startsWith('o3'))) return sourceModel;
+  if (targetProvider === 'codex' && sourceModel === 'agy') return 'gpt-5.6-sol';
+  if (targetProvider === 'codex' && sourceModel === 'agy-fast') return 'gpt-5.6-terra';
+  if (targetProvider === 'anthropic' && sourceModel === 'agy') return 'claude-sonnet-5';
+  if (targetProvider === 'anthropic' && sourceModel === 'agy-fast') return 'claude-haiku-4-5-20251001';
   if (MODEL_FALLBACK_MAP[sourceModel]) return MODEL_FALLBACK_MAP[sourceModel];
   if (targetProvider === 'codex') {
     if (sourceModel.includes('haiku')) return 'gpt-4o-mini';

@@ -620,7 +620,9 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             { id: 'o3-mini', object: 'model', type: 'model', name: 'o3-mini', display_name: 'o3-mini' },
             { id: 'o1', object: 'model', type: 'model', name: 'o1', display_name: 'o1' },
             { id: 'gpt-4o', object: 'model', type: 'model', name: 'GPT-4o', display_name: 'GPT-4o' },
-            { id: 'gpt-4o-mini', object: 'model', type: 'model', name: 'GPT-4o mini', display_name: 'GPT-4o mini' }
+            { id: 'gpt-4o-mini', object: 'model', type: 'model', name: 'GPT-4o mini', display_name: 'GPT-4o mini' },
+            { id: 'agy', object: 'model', type: 'model', name: 'AGY (Antigravity)', display_name: 'AGY (Antigravity)' },
+            { id: 'agy-fast', object: 'model', type: 'model', name: 'AGY Fast', display_name: 'AGY Fast' }
           ],
           has_more: false
         }));
@@ -3328,7 +3330,8 @@ export function createProxyRequestListener({
       const requestProvider = providerForPath(req.url);
       const isClaudeModel = typeof model === 'string' && (model.startsWith('claude-') || model.startsWith('claude/'));
       const isOpenAIModel = typeof model === 'string' && (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('codex'));
-      const targetProvider = isClaudeModel ? 'anthropic' : (isOpenAIModel ? 'codex' : requestProvider);
+      const isAgyModel = typeof model === 'string' && (model === 'agy' || model === 'agy-fast');
+      const targetProvider = isClaudeModel ? 'anthropic' : (isOpenAIModel ? 'codex' : (isAgyModel ? (accountManager.getActiveCount('codex') > 0 ? 'codex' : 'anthropic') : requestProvider));
 
       const ctx = { account: null, status: null, tried: new Set(), reauthed: new Set(), model, advisorModel, pinnedIndex, provider: targetProvider, requestProvider, holdBudgetMs: holdMs, sessionId, client, delivered: false, abandoned: false, onUsage: usageRecorder.onUsage, stripHeaders, logLevel: resolveLogLevel(config), logMaxBodyBytes: resolveLogMaxBodyBytes(config) };
       // Hold the session "in flight" across the WHOLE request (incl. retries and
@@ -5403,7 +5406,11 @@ export function normalizeAnthropicModelForOAuth(body) {
     if (typeof obj.model === 'string') {
       const trimmed = obj.model.trim();
       let target = null;
-      if (trimmed.startsWith('claude-3-7-sonnet') || trimmed === 'claude-3-7') {
+      if (trimmed === 'agy') {
+        target = 'claude-sonnet-5';
+      } else if (trimmed === 'agy-fast') {
+        target = 'claude-haiku-4-5-20251001';
+      } else if (trimmed.startsWith('claude-3-7-sonnet') || trimmed === 'claude-3-7') {
         target = 'claude-sonnet-5';
       } else if (trimmed.startsWith('claude-3-5-sonnet') || trimmed === 'claude-3-sonnet-20240229' || trimmed === 'claude-sonnet') {
         target = 'claude-sonnet-4-6';
@@ -5559,11 +5566,11 @@ export function normalizeCodexModelForOAuth(body) {
         obj.model = 'gpt-6-astra';
         return Buffer.from(JSON.stringify(obj), 'utf8');
       }
-      if (trimmed === 'gpt-5.6' || trimmed === 'gpt-5' || trimmed === 'codex') {
+      if (trimmed === 'agy' || trimmed === 'gpt-5.6' || trimmed === 'gpt-5' || trimmed === 'codex') {
         obj.model = 'gpt-5.6-sol';
         return Buffer.from(JSON.stringify(obj), 'utf8');
       }
-      if (trimmed === 'codex-mini') {
+      if (trimmed === 'agy-fast' || trimmed === 'codex-mini') {
         obj.model = 'gpt-5.6-terra';
         return Buffer.from(JSON.stringify(obj), 'utf8');
       }
