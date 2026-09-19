@@ -394,8 +394,17 @@ const PAGE = `<!doctype html>
   .card { background: rgba(22, 27, 34, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 6px; padding: 8px 12px; margin-bottom: 0; box-sizing: border-box; transition: border-color .15s ease; }
   .account-list .card { display: flex; flex-direction: column; justify-content: space-between; min-height: 114px; }
   .card:hover { border-color: rgba(255, 255, 255, 0.15); }
-  .card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
   .card-title-group { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+  .card-name-row { display: flex; align-items: center; margin: 2px 0 6px 0; min-height: 24px; width: 100%; }
+  .card-name-display { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
+  .card-name-text { font-size: 13px; font-weight: 600; color: #f0f6fc; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: color .15s ease; }
+  .card-name-text:hover { color: var(--accent); text-decoration: underline dotted; }
+  .btn-rename { background: transparent; border: none; padding: 2px 4px; font-size: 11px; cursor: pointer; opacity: 0.45; transition: opacity .15s ease, transform .15s ease; border-radius: 3px; line-height: 1; color: var(--dim); }
+  .btn-rename:hover { opacity: 1; transform: scale(1.12); color: var(--accent); background: rgba(255, 255, 255, 0.08); }
+  .card-rename-form { display: flex; align-items: center; gap: 4px; width: 100%; }
+  .card-rename-input { flex: 1; min-width: 0; background: rgba(13, 17, 23, 0.95); border: 1px solid var(--accent); color: #f0f6fc; font-size: 12px; padding: 2px 6px; border-radius: 4px; outline: none; }
+  .card-rename-input:focus { box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.3); }
   .card-actions { display: flex; align-items: center; gap: 3px; margin-left: auto; flex-shrink: 0; }
   .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .name { font-size: 12.5px; font-weight: 600; color: #f0f6fc; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1395,7 +1404,7 @@ ${SHARED_HELPERS}
     cards.forEach(function (c, idx) {
       var pb = c.querySelector('.prio-badge');
       if (pb) {
-        pb.textContent = idx === 0 ? '#1 Główny' : '#' + (idx + 1);
+        pb.textContent = '#' + (idx + 1);
         if (idx === 0) {
           pb.classList.add('prio-badge-top');
           pb.title = 'Pozycja #1 — główne konto obsługujące zapytania w pierwszej kolejności';
@@ -1437,6 +1446,94 @@ ${SHARED_HELPERS}
     saveReorderedList(parent);
   }
 
+  function startInlineRename(currentName, nameRow, nameDisplay, card) {
+    nameRow.innerHTML = '';
+    var form = el('form', 'card-rename-form');
+    var input = el('input', 'card-rename-input');
+    input.type = 'text';
+    input.value = currentName;
+    input.placeholder = 'Wpisz nową nazwę konta...';
+    input.required = true;
+
+    var btnSave = el('button', 'btn btn-xs btn-accent', '✓ Zapisz');
+    btnSave.type = 'submit';
+    btnSave.title = 'Zapisz nową nazwę konta';
+
+    var btnCancel = el('button', 'btn btn-xs btn-outline', '✕');
+    btnCancel.type = 'button';
+    btnCancel.title = 'Anuluj';
+
+    form.appendChild(input);
+    form.appendChild(btnSave);
+    form.appendChild(btnCancel);
+    nameRow.appendChild(form);
+
+    input.focus();
+    input.select();
+
+    function cancel() {
+      nameRow.innerHTML = '';
+      nameRow.appendChild(nameDisplay);
+    }
+
+    btnCancel.addEventListener('click', function (e) {
+      e.stopPropagation();
+      cancel();
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        cancel();
+      }
+    });
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var val = input.value.trim();
+      if (!val) {
+        note('warn', 'Nazwa konta nie może być pusta');
+        input.focus();
+        return;
+      }
+      if (val === currentName) {
+        cancel();
+        return;
+      }
+      btnSave.disabled = true;
+      btnCancel.disabled = true;
+      input.disabled = true;
+
+      apiCall('/agent-lb/api/accounts/rename', 'POST', { oldName: currentName, newName: val })
+        .then(function (res) {
+          if (!res) {
+            cancel();
+            return;
+          }
+          if (res.ok) {
+            note('ok', 'Zmieniono nazwę konta z "' + currentName + '" na "' + res.newName + '"');
+            if (card) {
+              card.dataset.accountName = res.newName;
+            }
+            poll();
+          } else {
+            note('error', 'Błąd zmiany nazwy: ' + (res.error || 'nieznany błąd'));
+            btnSave.disabled = false;
+            btnCancel.disabled = false;
+            input.disabled = false;
+            input.focus();
+          }
+        })
+        .catch(function (err) {
+          note('error', 'Błąd: ' + err.message);
+          btnSave.disabled = false;
+          btnCancel.disabled = false;
+          input.disabled = false;
+        });
+    });
+  }
+
   function renderAccount(a, current, rankIndex) {
     var prov = (a.provider || 'anthropic').toLowerCase();
     var card = el('div', 'card draggable');
@@ -1453,10 +1550,10 @@ ${SHARED_HELPERS}
     dragHandle.title = 'Przeciągnij myszką, aby zmienić priorytet w kolumnie';
     titleGroup.appendChild(dragHandle);
 
-    // Rank badge (#1 Główny, #2, #3...)
+    // Rank badge (#1, #2, #3...)
     if (rankIndex != null) {
       var isTop = rankIndex === 0;
-      var prioBadge = el('span', 'prio-badge' + (isTop ? ' prio-badge-top' : ''), isTop ? '#1 Główny' : '#' + (rankIndex + 1));
+      var prioBadge = el('span', 'prio-badge' + (isTop ? ' prio-badge-top' : ''), '#' + (rankIndex + 1));
       prioBadge.title = isTop
         ? 'Pozycja #1 — główne konto obsługujące zapytania w pierwszej kolejności'
         : 'Pozycja #' + (rankIndex + 1) + ' — konto zapasowe w kolejce (kliknij „▲ Na górę” lub przeciągnij ⠿, aby zmienić)';
@@ -1469,8 +1566,6 @@ ${SHARED_HELPERS}
       }
       titleGroup.appendChild(prioBadge);
     }
-
-    if (a.name) titleGroup.appendChild(el('span', 'name', a.name));
 
     // Subscription plan badge
     var planName = a.hasClaudeMax ? 'Claude Max' : (a.hasClaudePro || a.organizationType === 'claude_pro' ? 'Pro' : (a.planType ? (a.planType.toLowerCase() === 'plus' ? 'Plus' : a.planType.toUpperCase()) : (a.organizationType ? a.organizationType.replace(/_/g, ' ') : null)));
@@ -1620,6 +1715,31 @@ ${SHARED_HELPERS}
     head.appendChild(acts);
     card.appendChild(head);
     attachCardDragListeners(card);
+
+    // Account name row (dedicated row with inline edit capability)
+    var nameRow = el('div', 'card-name-row');
+    var nameDisplay = el('div', 'card-name-display');
+    var nameText = el('span', 'card-name-text', a.name || '(bez nazwy)');
+    nameText.title = 'Kliknij dwukrotnie lub użyj ikony ołówka ✏️, aby zmienić nazwę konta';
+    nameDisplay.appendChild(nameText);
+
+    var btnRename = el('button', 'btn-rename', '✏️');
+    btnRename.title = 'Zmień nazwę konta';
+    btnRename.setAttribute('aria-label', 'Zmień nazwę konta ' + (a.name || ''));
+    nameDisplay.appendChild(btnRename);
+    nameRow.appendChild(nameDisplay);
+
+    if (a.name) {
+      btnRename.addEventListener('click', function (e) {
+        e.stopPropagation();
+        startInlineRename(a.name, nameRow, nameDisplay, card);
+      });
+      nameText.addEventListener('dblclick', function (e) {
+        e.stopPropagation();
+        startInlineRename(a.name, nameRow, nameDisplay, card);
+      });
+    }
+    card.appendChild(nameRow);
 
     // Body: quota rows
     var qBody = el('div', 'card-body');
@@ -2280,6 +2400,26 @@ ${SHARED_HELPERS}
           poll();
         } else {
           note('error', 'Błąd zmiany priorytetu: ' + (res.error || 'nieznany błąd'));
+        }
+      })
+      .catch(function (e) {
+        note('error', 'Błąd: ' + e.message);
+      });
+  }
+
+  function doRenameAccount(oldName) {
+    var input = prompt('Podaj nową nazwę dla konta "' + oldName + '":', oldName);
+    if (input == null) return;
+    var newName = input.trim();
+    if (!newName || newName === oldName) return;
+    apiCall('/agent-lb/api/accounts/rename', 'POST', { oldName: oldName, newName: newName })
+      .then(function (res) {
+        if (!res) return;
+        if (res.ok) {
+          note('ok', 'Zmieniono nazwę konta z "' + oldName + '" na "' + res.newName + '"');
+          poll();
+        } else {
+          note('error', 'Błąd zmiany nazwy: ' + (res.error || 'nieznany błąd'));
         }
       })
       .catch(function (e) {

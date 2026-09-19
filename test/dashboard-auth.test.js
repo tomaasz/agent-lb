@@ -114,6 +114,11 @@ describe('Dashboard Authentication and Layout', () => {
     assert.ok(html.includes('function moveToTop'), 'script defines moveToTop for 1-click priority promotion');
     assert.ok(!html.includes('⚡ Aktywuj'), 'removed confusing Aktywuj button');
     assert.ok(!html.includes('Polityka Burn-first'), 'removed confusing Burn-first button');
+    assert.ok(html.includes('card-name-row'), 'dashboard defines card-name-row for dedicated account name line');
+    assert.ok(html.includes('btn-rename'), 'dashboard contains account rename button');
+    assert.ok(html.includes('function startInlineRename'), 'script defines inline account renaming');
+    assert.ok(html.includes('function doRenameAccount'), 'script defines fallback rename helper');
+    assert.ok(!html.includes('#1 Główny'), 'rank badge does not contain confusing Główny label');
     assert.ok(html.includes('function doStartOAuth'), 'script defines doStartOAuth');
     assert.ok(html.includes('function doCompleteOAuth'), 'script defines doCompleteOAuth');
     assert.ok(html.includes('function updateAddAccountProviderUI'), 'script defines updateAddAccountProviderUI');
@@ -179,6 +184,42 @@ describe('Dashboard Authentication and Layout', () => {
       const disk = JSON.parse(await fs.readFile(tmpCfg, 'utf8'));
       assert.equal(disk.accounts.find(a => a.name === 'konto-b').priority, 0);
       assert.equal(disk.accounts.find(a => a.name === 'konto-a').priority, 1);
+
+      // Rename account via POST /api/accounts/rename
+      const renameRes = await fetch(`http://127.0.0.1:${port}/api/accounts/rename`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': 'admin-secret',
+        },
+        body: JSON.stringify({ oldName: 'konto-a', newName: 'konto-glówne' })
+      });
+      assert.equal(renameRes.status, 200);
+      const renameData = await renameRes.json();
+      assert.equal(renameData.ok, true);
+      assert.equal(renameData.oldName, 'konto-a');
+      assert.equal(renameData.newName, 'konto-glówne');
+
+      // In-memory dummyAccountManager and disk updated
+      assert.ok(dummyAccountManager.accounts.find(a => a.name === 'konto-glówne'), 'in-memory name updated');
+      const diskAfterRename = JSON.parse(await fs.readFile(tmpCfg, 'utf8'));
+      assert.ok(diskAfterRename.accounts.find(a => a.name === 'konto-glówne'), 'disk config name updated');
+
+      // Duplicate rename rejected with 409
+      const dupRes = await fetch(`http://127.0.0.1:${port}/api/accounts/rename`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': 'admin-secret' },
+        body: JSON.stringify({ oldName: 'konto-glówne', newName: 'konto-b' })
+      });
+      assert.equal(dupRes.status, 409);
+
+      // Nonexistent account returns 404
+      const nonExistentRes = await fetch(`http://127.0.0.1:${port}/api/accounts/rename`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': 'admin-secret' },
+        body: JSON.stringify({ oldName: 'nonexistent', newName: 'anything' })
+      });
+      assert.equal(nonExistentRes.status, 404);
 
       const statusRes = await fetch(`http://127.0.0.1:${port}/agent-lb/status`, {
         headers: { 'x-api-key': 'admin-secret' },

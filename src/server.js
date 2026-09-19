@@ -1165,6 +1165,67 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
+      // Accounts: Rename (POST /agentlb/api/accounts/rename & POST /api/accounts/rename & POST /accounts/rename)
+      if (req.method === 'POST' && (normApiPath === '/api/accounts/rename' || normApiPath === '/accounts/rename')) {
+        let body;
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch (err) {
+          const tooLarge = err.message === 'body too large';
+          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          return;
+        }
+
+        const target = body?.oldName || body?.account || body?.id;
+        const newName = typeof body?.newName === 'string' ? body.newName.trim() : (typeof body?.name === 'string' ? body.name.trim() : '');
+
+        if (typeof target !== 'string' || !target.trim() || !newName) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'missing "account" (or "oldName") or "newName"' }));
+          return;
+        }
+
+        const index = resolveAccountPin(accountManager, target);
+        if (index == null) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          return;
+        }
+
+        const mgr = accountManager.accounts[index];
+        const oldName = mgr.name;
+
+        if (oldName === newName) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, oldName, newName, unchanged: true }));
+          return;
+        }
+
+        const duplicate = accountManager.accounts.find(a => a.name.toLowerCase() === newName.toLowerCase() && a !== mgr);
+        if (duplicate) {
+          res.writeHead(409, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: `account with name "${newName}" already exists` }));
+          return;
+        }
+
+        mgr.name = newName;
+
+        await atomicConfigUpdate(disk => {
+          const dAcct = (disk.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === oldName);
+          if (dAcct) dAcct.name = newName;
+        });
+
+        const cAcct = (config.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === oldName);
+        if (cAcct) cAcct.name = newName;
+
+        console.log(`[Agent-LB] Renamed account "${oldName}" to "${newName}" (web control)`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, oldName, newName }));
+        return;
+      }
+
       // Accounts: Reorder and assign priorities (POST /api/accounts/reorder & POST /accounts/reorder)
       if (req.method === 'POST' && (normApiPath === '/api/accounts/reorder' || normApiPath === '/accounts/reorder')) {
         let body;
