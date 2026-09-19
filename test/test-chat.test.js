@@ -379,5 +379,119 @@ describe('Test Chat & Playground Support', () => {
       mockUpstream.close();
     }
   });
-});
 
+  it('sends Claude Code billing header, modern headers, and filters thinking blocks in Anthropic test chat', async () => {
+    let capturedHeaders = null;
+    let capturedBody = null;
+
+    const mockUpstream = http.createServer(async (req, res) => {
+      capturedHeaders = req.headers;
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      capturedBody = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        model: 'claude-sonnet-5',
+        content: [
+          { type: 'thinking', thinking: 'Hmm, let me think about this response...' },
+          { type: 'text', text: 'To jest właściwa odpowiedź tekstowa.' }
+        ],
+        usage: { input_tokens: 25, output_tokens: 40 }
+      }));
+    });
+
+    await new Promise(resolve => mockUpstream.listen(0, '127.0.0.1', resolve));
+    const upstreamUrl = `http://127.0.0.1:${mockUpstream.address().port}`;
+
+    const accounts = [
+      { name: 'claude-sonnet-user', provider: 'anthropic', type: 'oauth', accessToken: 'token-sonnet', upstream: upstreamUrl }
+    ];
+
+    const am = new AccountManager(accounts, 0.98);
+    const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {}, null, null, null);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const proxyPort = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: { 'x-api-key': 'tc-test-admin', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'anthropic',
+          account: 'claude-sonnet-user',
+          model: 'claude-sonnet-5',
+          message: 'Cześć'
+        })
+      });
+
+      assert.equal(res.status, 200);
+      const json = await res.json();
+      assert.equal(json.ok, true);
+      assert.equal(json.reply, 'To jest właściwa odpowiedź tekstowa.');
+      assert.ok(!json.reply.includes('thinking'), 'Thinking block was not leaked into reply');
+
+      // Verify billing header in body
+      assert.ok(Array.isArray(capturedBody.system), 'body.system is an array');
+      assert.ok(capturedBody.system.some(s => s.text?.includes('x-anthropic-billing-header')), 'system contains billing header');
+
+      // Verify modern headers
+      assert.match(capturedHeaders['user-agent'], /^claude-cli\//, 'user-agent starts with claude-cli/');
+      assert.equal(capturedHeaders['x-app'], 'cli');
+      assert.ok(capturedHeaders['anthropic-beta'].includes('claude-code-20250219'));
+    } finally {
+      server.close();
+      mockUpstream.close();
+    }
+  });
+
+  it('does not mark account throttled when receiving a request-scoped 429 without rate limit headers', async () => {
+    const mockUpstream = http.createServer((req, res) => {
+      // 429 without retry-after or anthropic-ratelimit-* headers (upstream request refusal)
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        type: 'error',
+        error: { type: 'rate_limit_error', message: 'Error' }
+      }));
+    });
+
+    await new Promise(resolve => mockUpstream.listen(0, '127.0.0.1', resolve));
+    const upstreamUrl = `http://127.0.0.1:${mockUpstream.address().port}`;
+
+    const accounts = [
+      { name: 'acc-unthrottled', provider: 'anthropic', type: 'oauth', accessToken: 'token-un', upstream: upstreamUrl }
+    ];
+
+    const am = new AccountManager(accounts, 0.98);
+    const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {}, null, null, null);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const proxyPort = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: { 'x-api-key': 'tc-test-admin', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'anthropic',
+          account: 'acc-unthrottled',
+          model: 'claude-sonnet-5',
+          message: 'ping'
+        })
+      });
+
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.match(json.error, /429 Request Refusal/);
+
+      const acc = am.accounts[0];
+      // Account should NOT be marked throttled or given rateLimitedUntil
+      assert.notEqual(acc.status, 'throttled', 'Account status should not be throttled');
+      assert.equal(acc.rateLimitedUntil, null, 'rateLimitedUntil should remain null');
+      assert.equal(am.unavailableReason(acc), null, 'unavailableReason should be null');
+      assert.equal(acc.lastError?.reason, 'upstream-refusal');
+    } finally {
+      server.close();
+      mockUpstream.close();
+    }
+  });
+});

@@ -1544,13 +1544,20 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
               const payload = {
                 model,
                 max_tokens: 512,
+                system: [
+                  {
+                    type: 'text',
+                    text: 'x-anthropic-billing-header: cc_version=2.1.251.76b; cc_entrypoint=sdk-cli;'
+                  }
+                ],
                 messages: [{ role: 'user', content: message }]
               };
               const reqHeaders = {
                 'content-type': 'application/json',
                 'anthropic-version': '2023-06-01',
-                'anthropic-beta': 'oauth-2025-04-20',
-                'user-agent': 'claude-code/0.2.29',
+                'anthropic-beta': 'claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,effort-2025-11-24,afk-mode-2026-01-31',
+                'user-agent': 'claude-cli/2.1.251 (external, sdk-cli)',
+                'x-app': 'cli',
                 'accept': 'application/json'
               };
               applyAuthHeaders(reqHeaders, account);
@@ -1566,7 +1573,8 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                 const data = await upstreamRes.json();
                 responseModel = data.model || model;
                 replyText = Array.isArray(data.content)
-                  ? data.content.map(c => c.text || '').join('')
+                  ? (data.content.filter(c => c.type === 'text').map(c => c.text || '').join('').trim() ||
+                     data.content.map(c => c.text || c.thinking || '').join('').trim())
                   : (data.text || JSON.stringify(data));
                 usage = data.usage || null;
                 accountManager.clearRateLimited(account.index);
@@ -1613,13 +1621,14 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                 accountManager.updateQuota(account.index, rateLimitHeaders);
 
                 if (upstreamRes.status === 429) {
-                  errorReason = 'rate-limit';
                   const generalRejected = rateLimitHeaders['anthropic-ratelimit-unified-5h-status'] === 'rejected'
                     || rateLimitHeaders['anthropic-ratelimit-unified-7d-status'] === 'rejected';
 
                   let hold = 60;
                   const retryAfterHeader = upstreamRes.headers.get('retry-after');
                   const parsedRetryAfter = parseInt(retryAfterHeader, 10);
+                  const requestScoped = retryAfterHeader == null && Object.keys(rateLimitHeaders).length === 0;
+                  errorReason = requestScoped ? 'upstream-refusal' : 'rate-limit';
 
                   if (generalRejected) {
                     const resetTime = account?.quota?.unified5hReset || account?.quota?.unified7dReset;
@@ -1632,7 +1641,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                     accountManager.markRateLimited(account.index, hold);
                     const resetTimeStr = resetTime ? new Date(resetTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
                     errorMsg = `Limit zapytań (Quota 100% / rejected) osiągnięty w Anthropic dla konta "${account.name}" (${model}). Reset ok. ${resetTimeStr || 'nieznany'}.`;
-                  } else {
+                  } else if (!requestScoped) {
                     if (!Number.isNaN(parsedRetryAfter) && parsedRetryAfter > 0) {
                       hold = parsedRetryAfter;
                     } else {
@@ -1641,10 +1650,12 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                     hold = Math.min(Math.max(hold, 1), 300);
                     accountManager.markRateLimited(account.index, hold);
                     errorMsg = `Limit zapytań (429 Rate Limit / cooldown ${hold}s) w Anthropic dla konta "${account.name}" (${model}).`;
+                  } else {
+                    errorMsg = `Odmowa upstreamu (429 Request Refusal): ${errorMsg}`;
                   }
 
                   account.lastError = {
-                    reason: 'rate-limit',
+                    reason: errorReason,
                     status: 429,
                     error: errorMsg,
                     timestamp: Date.now()
