@@ -180,19 +180,41 @@ providers:
 {models_yaml}{extra_providers}
 # --- End AgentLB ---"""
 
-content = ""
-if os.path.exists(config_path):
-    with open(config_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    content = re.sub(r"# --- AgentLB Multi-Provider ---[\s\S]*?(?:# --- End AgentLB ---|(?=\n[a-zA-Z0-9_]+:)|\Z)", "", content)
+config_paths = ["$CONFIG_FILE"]
+profiles_dir = os.path.join(os.path.dirname("$CONFIG_FILE"), "profiles")
+if os.path.isdir(profiles_dir):
+    for entry in os.listdir(profiles_dir):
+        pdir = os.path.join(profiles_dir, entry)
+        if os.path.isdir(pdir):
+            config_paths.append(os.path.join(pdir, "config.yaml"))
 
-with open(config_path, "w", encoding="utf-8") as f:
-    f.write(content.strip() + "\n" + block + "\n")
+for p in config_paths:
+    content = ""
+    if os.path.exists(p):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                content = f.read()
+        except Exception:
+            content = ""
+        content = re.sub(r"# --- AgentLB Multi-Provider ---[\s\S]*?(?:# --- End AgentLB ---|(?=\n[a-zA-Z0-9_]+:)|\Z)", "", content)
+    with open(p, "w", encoding="utf-8") as f:
+        f.write(content.strip() + "\n" + block + "\n")
+    print(f"✓ Zaktualizowano konfigurację: {p}")
 EOF
 elif command -v node >/dev/null 2>&1; then
   node - << EOF
 const fs = require('fs');
-const configPath = "$CONFIG_FILE";
+const path = require('path');
+const configPaths = ["$CONFIG_FILE"];
+const profilesDir = path.join(path.dirname("$CONFIG_FILE"), "profiles");
+if (fs.existsSync(profilesDir)) {
+  for (const entry of fs.readdirSync(profilesDir)) {
+    const pdir = path.join(profilesDir, entry);
+    if (fs.statSync(pdir).isDirectory()) {
+      configPaths.push(path.join(pdir, "config.yaml"));
+    }
+  }
+}
 const url = "$URL/v1";
 const key = "$KEY";
 const hasAgy = "$HAS_AGY_PLUGIN" === "true";
@@ -215,19 +237,34 @@ if (hasAgy) {
 }
 
 const block = '\n# --- AgentLB Multi-Provider ---' + modelAliasesBlock + '\ncustom_providers:\n  - name: "agentlb"\n    base_url: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 1050000\n    models:\n' + modelsYaml + '\nproviders:\n  agentlb:\n    name: "AgentLB (All Models)"\n    base_url: "' + url + '"\n    api: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 1050000\n    models:\n' + modelsYaml + extraProviders + '\n# --- End AgentLB ---\n';
-let content = fs.existsSync(configPath) ? fs.readFileSync(configPath, 'utf8') : '';
-content = content.replace(/# --- AgentLB Multi-Provider ---[\s\S]*?(?:# --- End AgentLB ---|(?=\n[a-zA-Z0-9_]+:)|\$)/, '').trim();
-fs.writeFileSync(configPath, (content ? content + '\n' : '') + block);
+
+for (const p of configPaths) {
+  let content = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+  content = content.replace(/# --- AgentLB Multi-Provider ---[\s\S]*?(?:# --- End AgentLB ---|(?=\n[a-zA-Z0-9_]+:)|\$)/, '').trim();
+  fs.writeFileSync(p, (content ? content + '\n' : '') + block);
+  console.log('✓ Zaktualizowano konfigurację:', p);
+}
 EOF
 fi
 
-# Zapisz też klucz do ~/.hermes/.env
-touch "$ENV_FILE"
-grep -v "^AGENT_LB_API_KEY=" "$ENV_FILE" | grep -v "^AGENTLB_API_KEY=" > "$ENV_FILE.tmp" 2>/dev/null || true
-echo "AGENT_LB_API_KEY=\"$KEY\"" >> "$ENV_FILE.tmp"
-echo "OPENAI_BASE_URL=\"$URL/v1\"" >> "$ENV_FILE.tmp"
-mv "$ENV_FILE.tmp" "$ENV_FILE"
-chmod 600 "$ENV_FILE" 2>/dev/null || true
+# Zapisz też klucz do ~/.hermes/.env oraz każdego profilu w ~/.hermes/profiles/*/.env
+env_files=("$ENV_FILE")
+if [ -d "$HERMES_DIR/profiles" ]; then
+  for pdir in "$HERMES_DIR/profiles"/*; do
+    if [ -d "$pdir" ]; then
+      env_files+=("$pdir/.env")
+    fi
+  done
+fi
+
+for ef in "${env_files[@]}"; do
+  touch "$ef"
+  grep -v "^AGENT_LB_API_KEY=" "$ef" | grep -v "^AGENTLB_API_KEY=" > "$ef.tmp" 2>/dev/null || true
+  echo "AGENT_LB_API_KEY=\"$KEY\"" >> "$ef.tmp"
+  echo "OPENAI_BASE_URL=\"$URL/v1\"" >> "$ef.tmp"
+  mv "$ef.tmp" "$ef"
+  chmod 600 "$ef" 2>/dev/null || true
+done
 
 echo "Zaktualizowano konfigurację Hermes: $CONFIG_FILE"
 echo "Gotowe!"
