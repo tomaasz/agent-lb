@@ -889,7 +889,8 @@ const PAGE = `<!doctype html>
         <button class="btn btn-sm btn-accent" id="btnOpenTestChat" title="Otwórz interaktywny czat testowy dla Claude i Codex" data-i18n="btnOpenTestChat" data-i18n-title="btnOpenTestChatTitle">💬 Test Chat</button>
         <button class="btn btn-sm" id="btnProbeQuota" title="Odpytaj o aktualne zużycie limitów i salda kont" data-i18n="btnProbeQuota" data-i18n-title="btnProbeQuotaTitle">⚡ Odśwież salda</button>
         <button class="btn btn-sm" id="btnReloadFleet" title="Przeładuj flotę kont z dysku" data-i18n="btnReloadFleet" data-i18n-title="btnReloadFleetTitle">🔄 Przeładuj flotę</button>
-        <button class="btn btn-sm btn-bad" id="btnLogout" title="Wyloguj z panelu" data-i18n="btnLogout" data-i18n-title="btnLogoutTitle">🚪 Wyloguj</button>
+        <button class="btn btn-sm btn-bad" id="btnRebootServer" title="Zrestartuj aplikację Agent-LB i wszystkie jej procesy (Reboot)" data-i18n="btnReboot" data-i18n-title="btnRebootTitle">⚡ Reboot</button>
+        <button class="btn btn-sm" id="btnLogout" title="Wyloguj z panelu" data-i18n="btnLogout" data-i18n-title="btnLogoutTitle">🚪 Wyloguj</button>
       </div>
     </div>
     <div id="err"></div>
@@ -1619,6 +1620,11 @@ const PAGE = `<!doctype html>
       btnProbeQuotaTitle: 'Odpytaj o aktualne zużycie limitów i salda kont',
       btnReloadFleet: '🔄 Przeładuj flotę',
       btnReloadFleetTitle: 'Przeładuj flotę kont z dysku',
+      btnReboot: '⚡ Reboot',
+      btnRebootTitle: 'Zrestartuj aplikację Agent-LB i wszystkie procesy proxy',
+      rebootConfirm: 'Czy na pewno chcesz zrestartować aplikację Agent-LB i wszystkie jej procesy?',
+      rebootInitiated: 'Inicjalizacja restartu... Ponowne łączenie z serwerem...',
+      rebootSuccess: 'Serwer Agent-LB został pomyślnie zrestartowany.',
       btnLogout: '🚪 Wyloguj',
       btnLogoutTitle: 'Wyloguj z panelu',
       routesHeading: 'Routing',
@@ -1717,6 +1723,11 @@ const PAGE = `<!doctype html>
       btnProbeQuotaTitle: 'Query upstream for latest quota utilization and balances',
       btnReloadFleet: '🔄 Reload Fleet',
       btnReloadFleetTitle: 'Reload account fleet from disk configuration',
+      btnReboot: '⚡ Reboot',
+      btnRebootTitle: 'Restart Agent-LB service and all proxy processes',
+      rebootConfirm: 'Are you sure you want to reboot Agent-LB application and all its processes?',
+      rebootInitiated: 'Reboot initiated... Reconnecting to server...',
+      rebootSuccess: 'Agent-LB server restarted successfully.',
       btnLogout: '🚪 Logout',
       btnLogoutTitle: 'Sign out from dashboard',
       routesHeading: 'Routing',
@@ -3323,6 +3334,66 @@ ${SHARED_HELPERS}
       });
   }
 
+  function doRebootServer(btn) {
+    var confirmMsg = (I18N[currentLang] && I18N[currentLang].rebootConfirm) || 'Czy na pewno chcesz zrestartować aplikację Agent-LB i wszystkie jej procesy?';
+    if (!confirm(confirmMsg)) return;
+
+    if (btn) btn.disabled = true;
+    note('ok', (I18N[currentLang] && I18N[currentLang].rebootInitiated) || 'Inicjalizacja restartu... Ponowne łączenie...');
+
+    apiCall('/agent-lb/api/system/reboot', 'POST', {})
+      .then(function () {
+        waitForServerReboot();
+      })
+      .catch(function () {
+        waitForServerReboot();
+      });
+  }
+
+  function waitForServerReboot() {
+    var attempts = 0;
+    var maxAttempts = 35;
+    var overlay = document.createElement('div');
+    overlay.id = 'rebootOverlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(13,17,23,0.85);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(4px);';
+    overlay.innerHTML = '<div style="background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px 32px;text-align:center;box-shadow:0 12px 32px rgba(0,0,0,0.5);max-width:380px;">' +
+      '<div style="font-size:32px;margin-bottom:12px;">⚡</div>' +
+      '<div style="font-weight:600;font-size:16px;color:var(--heading);margin-bottom:6px;">Restartowanie Agent-LB...</div>' +
+      '<div style="font-size:13px;color:var(--dim);margin-bottom:14px;" id="rebootCountdown">Zatrzymywanie i ponowne uruchamianie procesów...</div>' +
+      '<div class="mono" style="font-size:11px;color:var(--accent);">status: oczekiwanie na serwer...</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    setTimeout(function () {
+      var checkTimer = setInterval(function () {
+        attempts++;
+        var elCd = document.getElementById('rebootCountdown');
+        if (elCd) elCd.textContent = 'Próba ponownego połączenia (' + attempts + '/' + maxAttempts + ')...';
+
+        fetch('/ready?t=' + Date.now(), { method: 'GET', cache: 'no-cache' })
+          .then(function (r) {
+            if (r.ok || r.status === 200 || r.status === 401 || r.status === 403) {
+              clearInterval(checkTimer);
+              if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+              note('ok', (I18N[currentLang] && I18N[currentLang].rebootSuccess) || 'Serwer Agent-LB został pomyślnie zrestartowany.');
+              var btn = document.getElementById('btnRebootServer');
+              if (btn) btn.disabled = false;
+              poll();
+            }
+          })
+          .catch(function () {
+            if (attempts >= maxAttempts) {
+              clearInterval(checkTimer);
+              if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+              note('warn', 'Restart trwa dłużej niż zwykle. Odśwież stronę, aby sprawdzić stan.');
+              var btn = document.getElementById('btnRebootServer');
+              if (btn) btn.disabled = false;
+            }
+          });
+      }, 1000);
+    }, 1500);
+  }
+
   function doProbeQuota(btn) {
     if (btn) btn.disabled = true;
     note('ok', 'Sprawdzanie sald i limitów kont w Anthropic...');
@@ -4654,6 +4725,12 @@ ${SHARED_HELPERS}
   var btnReloadFleet = document.getElementById('btnReloadFleet');
   if (btnReloadFleet) {
     btnReloadFleet.addEventListener('click', function () { doReloadFleet(this); });
+  }
+
+  // Header button: Reboot server
+  var btnReboot = document.getElementById('btnRebootServer');
+  if (btnReboot) {
+    btnReboot.addEventListener('click', function () { doRebootServer(this); });
   }
 
   // Header button: Probe quota & balances

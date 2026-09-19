@@ -2,7 +2,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { timingSafeEqual, randomBytes, createHash } from 'node:crypto';
 import { createWriteStream, mkdirSync, writeSync, existsSync, readFileSync } from 'node:fs';
-import { readdir, stat, unlink, readFile } from 'node:fs/promises';
+import { readdir, stat, unlink } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -76,7 +76,7 @@ const PIN_PREFIX = '/tc-acct/';
  */
 export function hasDotSegment(url) {
   const path = String(url || '').split('?')[0].split('#')[0];
-  for (const seg of path.split(/[\/\\]/)) {
+  for (const seg of path.split(/[/\\]/)) {
     let s = seg;
     // An undecodable segment (`%`) is compared as sent: the URL parser leaves
     // it alone too, so it cannot become a dot-segment upstream.
@@ -1571,6 +1571,41 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       if (req.method === 'GET' && (normApiPath === '/api/drain/status' || normApiPath === '/drain/status')) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, draining: drainState.isDraining, activeRequests: drainState.activeRequests, startedAt: drainState.drainStartedAt }));
+        return;
+      }
+
+      // System Reboot / Restart endpoint (POST /api/system/reboot, POST /api/system/restart, POST /api/reboot)
+      if (req.method === 'POST' && (
+        normApiPath === '/api/system/reboot' ||
+        normApiPath === '/api/system/restart' ||
+        normApiPath === '/api/reboot' ||
+        normApiPath === '/api/restart' ||
+        normApiPath === '/reboot' ||
+        normApiPath === '/restart'
+      )) {
+        console.log('[AgentLB] Server reboot requested by authorized client');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, message: 'Server reboot initiated. Restarting process...' }));
+
+        if (hooks.reboot) {
+          try { hooks.reboot(); } catch (err) { console.error('[AgentLB] hooks.reboot failed:', err.message); }
+          return;
+        }
+
+        setTimeout(async () => {
+          try {
+            const { exec } = await import('node:child_process');
+            exec('systemctl --user restart agentlb.service', (err) => {
+              if (err) {
+                console.log('[AgentLB] systemctl restart error or not running under systemd, exiting process directly:', err.message);
+                process.exit(0);
+              }
+            });
+            setTimeout(() => { process.exit(0); }, 2500);
+          } catch {
+            process.exit(0);
+          }
+        }, 400);
         return;
       }
 

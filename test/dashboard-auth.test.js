@@ -368,4 +368,48 @@ describe('Dashboard Authentication and Layout', () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('renders Reboot button and handles POST /api/system/reboot', async () => {
+    const html = renderDashboardHtml();
+    assert.ok(html.includes('id="btnRebootServer"'), 'contains reboot button element');
+    assert.ok(html.includes('data-i18n="btnReboot"'), 'contains i18n attribute for reboot');
+
+    let rebootCalled = false;
+    const testConfig = { proxy: { apiKey: 'admin-secret' } };
+    const fakeAccountManager = { accounts: [], distributionMode: 'adaptive' };
+    const hooks = {
+      reboot: () => { rebootCalled = true; },
+    };
+
+    const server = createProxyServer(fakeAccountManager, testConfig, hooks);
+    await new Promise(res => server.listen(0, '127.0.0.1', res));
+    const port = server.address().port;
+
+    try {
+      // Unauthenticated request should fail with 401
+      const unauthRes = await fetch(`http://127.0.0.1:${port}/api/system/reboot`, {
+        method: 'POST',
+        headers: {
+          'x-forwarded-for': '203.0.113.195',
+        },
+      });
+      assert.equal(unauthRes.status, 401);
+      assert.equal(rebootCalled, false);
+
+      // Authenticated with admin key should succeed
+      const authRes = await fetch(`http://127.0.0.1:${port}/api/system/reboot`, {
+        method: 'POST',
+        headers: {
+          'x-forwarded-for': '203.0.113.195',
+          'x-api-key': 'admin-secret',
+        },
+      });
+      assert.equal(authRes.status, 200);
+      const data = await authRes.json();
+      assert.equal(data.ok, true);
+      assert.equal(rebootCalled, true);
+    } finally {
+      await new Promise(res => server.close(res));
+    }
+  });
 });
