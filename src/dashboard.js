@@ -1066,6 +1066,7 @@ const PAGE = `<!doctype html>
             <button class="btn btn-xs" id="btnQuickToolHermes" type="button" style="padding:1px 6px; font-size:10px;" title="Hermes Agent (dodaje providera agentlb ze wszystkimi modelami)">Hermes</button>
             <button class="btn btn-xs" id="btnQuickToolOpenCode" type="button" style="padding:1px 6px; font-size:10px;" title="OpenCode (dodaje providera agentlb do opencode.json)">OpenCode</button>
             <button class="btn btn-xs" id="btnQuickToolClaw" type="button" style="padding:1px 6px; font-size:10px;" title="Claw / OpenClaw (dodaje providera agentlb do openclaw.json)">Claw</button>
+            <button class="btn btn-xs" id="btnQuickToolOrca" type="button" style="padding:1px 6px; font-size:10px;" title="Orca (ADE stablyai/orca — dodaje providera i środowisko)">Orca</button>
             <button class="btn btn-xs" id="btnQuickToolAgent" type="button" style="padding:1px 6px; font-size:10px;" title="Zmienne środowiskowe OpenAI / Anthropic">ENV</button>
           </div>
           <div class="quick-cmd-wrap" style="display:flex; align-items:center; gap:6px; background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:4px; padding:4px 7px;">
@@ -1482,7 +1483,7 @@ const PAGE = `<!doctype html>
         <div class="tabs-bar" style="margin-bottom:12px;">
           <button class="tab-btn active" id="tabSetupBash" type="button">🐧 Linux / macOS / WSL</button>
           <button class="tab-btn" id="tabSetupPowershell" type="button">🪟 Windows (PowerShell)</button>
-          <button class="tab-btn" id="tabSetupAgents" type="button">🤖 Agenty AI (Hermes / OpenCode / Claw)</button>
+          <button class="tab-btn" id="tabSetupAgents" type="button">🤖 Agenty AI (Hermes / OpenCode / Claw / Orca)</button>
           <button class="tab-btn" id="tabSetupNode" type="button">⚡ Node.js</button>
           <button class="tab-btn" id="tabSetupGit" type="button">📦 Git Clone</button>
           <button class="tab-btn" id="tabSetupManual" type="button">⚙️ Ręcznie</button>
@@ -1579,10 +1580,22 @@ const PAGE = `<!doctype html>
             <div style="font-size:11px; color:var(--dim);">Rejestruje providera <code>agentlb</code> w <code>openclaw.json</code>. Uruchomienie: <code>openclaw</code></div>
           </div>
 
+          <!-- Orca -->
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:10px 12px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+              <span style="font-size:13px; font-weight:600; color:var(--heading);">4. 🐋 Orca ADE (stablyai/orca):</span>
+              <button class="btn btn-xs btn-accent" id="btnCopySetupOrcaCmd">📋 Kopiuj polecenie Orca</button>
+            </div>
+            <div style="background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px; margin-bottom:6px;">
+              <code class="mono" id="cmdSetupOrca" style="display:block; word-break:break-all; font-size:12px; color:#58a6ff;"></code>
+            </div>
+            <div style="font-size:11px; color:var(--dim);">Konfiguruje providera AgentLB i środowisko dla agentów (Claude/Codex/OpenCode) w ADE Orca. Uruchomienie: <code>orca</code></div>
+          </div>
+
           <!-- Aider -->
           <div style="background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:10px 12px; margin-bottom:6px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-              <span style="font-size:13px; font-weight:600; color:var(--heading);">4. 🛠️ Aider (~/.aider.conf.yml):</span>
+              <span style="font-size:13px; font-weight:600; color:var(--heading);">5. 🛠️ Aider (~/.aider.conf.yml):</span>
               <button class="btn btn-xs btn-accent" id="btnCopySetupAiderCmd">📋 Kopiuj polecenie Aider</button>
             </div>
             <div style="background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px; margin-bottom:6px;">
@@ -4003,6 +4016,7 @@ ${SHARED_HELPERS}
     var cmdHermes = 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash -s -- --key ' + realKey;
     var cmdOpenCode = 'curl -fsSL ' + hostUrl + '/opencode-setup.sh | bash -s -- --key ' + realKey;
     var cmdClaw = 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash -s -- --key ' + realKey;
+    var cmdOrca = 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash -s -- --key ' + realKey;
     var cmdAider = 'mkdir -p ~/.aider && printf "openai-api-base: ' + hostUrl + '/v1\\nopenai-api-key: ' + realKey + '\\nmodel: openai/gpt-5.6-sol\\n" > ~/.aider.conf.yml';
 
     var elHermes = document.getElementById('cmdSetupHermes');
@@ -4011,6 +4025,8 @@ ${SHARED_HELPERS}
     if (elOpenCode) elOpenCode.textContent = cmdOpenCode;
     var elClaw = document.getElementById('cmdSetupClaw');
     if (elClaw) elClaw.textContent = cmdClaw;
+    var elOrca = document.getElementById('cmdSetupOrca');
+    if (elOrca) elOrca.textContent = cmdOrca;
     var elAider = document.getElementById('cmdSetupAider');
     if (elAider) elAider.textContent = cmdAider;
 
@@ -4188,6 +4204,10 @@ ${SHARED_HELPERS}
       cmd = withKey
         ? 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash -s -- --key ' + key
         : 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash';
+    } else if (currentQuickTool === 'orca') {
+      cmd = withKey
+        ? 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash -s -- --key ' + key
+        : 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash';
     } else if (currentQuickTool === 'agent') {
       if (currentQuickTab === 'ps') {
         cmd = '$env:OPENAI_BASE_URL="' + hostUrl + '/v1"; $env:OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"; $env:ANTHROPIC_BASE_URL="' + hostUrl + '"; $env:ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
@@ -4247,6 +4267,7 @@ ${SHARED_HELPERS}
       { id: 'btnQuickToolHermes', name: 'hermes' },
       { id: 'btnQuickToolOpenCode', name: 'opencode' },
       { id: 'btnQuickToolClaw', name: 'claw' },
+      { id: 'btnQuickToolOrca', name: 'orca' },
       { id: 'btnQuickToolAgent', name: 'agent' }
     ];
     tools.forEach(function (t) {
@@ -4984,6 +5005,7 @@ ${SHARED_HELPERS}
   bindCopy('btnCopySetupHermesCmd', 'cmdSetupHermes', 'Polecenie Hermes Agent');
   bindCopy('btnCopySetupOpenCodeCmd', 'cmdSetupOpenCode', 'Polecenie OpenCode');
   bindCopy('btnCopySetupClawCmd', 'cmdSetupClaw', 'Polecenie Claw / OpenClaw');
+  bindCopy('btnCopySetupOrcaCmd', 'cmdSetupOrca', 'Polecenie Orca');
   bindCopy('btnCopySetupAiderCmd', 'cmdSetupAider', 'Konfiguracja Aider');
   bindCopy('btnCopySetupNode', 'cmdSetupNode', 'Polecenie Claude (Node.js)');
   bindCopy('btnCopySetupCodexNode', 'cmdSetupCodexNode', 'Polecenie Codex (Node.js)');
@@ -5046,7 +5068,7 @@ ${SHARED_HELPERS}
       b.addEventListener('click', function () { setQuickTab(t.toLowerCase()); });
     }
   });
-  ['Claude', 'Codex', 'Hermes', 'OpenCode', 'Claw', 'Agent'].forEach(function (tool) {
+  ['Claude', 'Codex', 'Hermes', 'OpenCode', 'Claw', 'Orca', 'Agent'].forEach(function (tool) {
     var b = document.getElementById('btnQuickTool' + tool);
     if (b) {
       b.addEventListener('click', function () { setQuickTool(tool.toLowerCase()); });
