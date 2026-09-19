@@ -16,6 +16,8 @@ describe('Test Chat & Playground Support', () => {
     assert.ok(html.includes('id="testChatHistory"'), 'contains chat history box');
     assert.ok(html.includes('id="testChatMessage"'), 'contains message textarea');
     assert.ok(html.includes('id="btnTestChatSend"'), 'contains send button');
+    assert.ok(html.includes('id="btnTestChatCopy"'), 'contains copy chat button in footer');
+    assert.ok(html.includes('id="btnTestChatHeaderCopy"'), 'contains copy chat button in header');
   });
 
   it('handles POST /api/test/chat for Anthropic and Codex accounts', async () => {

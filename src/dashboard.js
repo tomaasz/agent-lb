@@ -756,7 +756,10 @@ const PAGE = `<!doctype html>
           <span style="font-weight:700; font-size:16px;">💬 Test Chat — Claude & Codex Playground</span>
           <span class="badge" style="background:rgba(88,166,255,0.15); color:var(--accent); font-size:10.5px;">Live Upstream Test</span>
         </div>
-        <button class="btn btn-sm" id="btnCloseTestChat">✕ Zamknij</button>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <button class="btn btn-sm" id="btnTestChatHeaderCopy" title="Skopiuj całą historię rozmowy do schowka">📋 Kopiuj czat</button>
+          <button class="btn btn-sm" id="btnCloseTestChat">✕ Zamknij</button>
+        </div>
       </div>
 
       <!-- Controls row -->
@@ -804,8 +807,11 @@ const PAGE = `<!doctype html>
       <!-- Chat Input and Actions -->
       <div style="display:flex; flex-direction:column; gap:8px;">
         <textarea id="testChatMessage" rows="2" placeholder="Wpisz treść wiadomości testowej (Enter wysyła, Shift+Enter nowa linia)..." style="width:100%; box-sizing:border-box; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-family:inherit; font-size:12.5px; resize:vertical;"></textarea>
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <button class="btn btn-sm" id="btnTestChatClear" type="button" style="font-size:11px; padding:4px 10px;">🗑️ Wyczyść historię</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn btn-sm" id="btnTestChatCopy" type="button" style="font-size:11px; padding:4px 10px;" title="Skopiuj całą historię rozmowy do schowka">📋 Kopiuj czat</button>
+            <button class="btn btn-sm" id="btnTestChatClear" type="button" style="font-size:11px; padding:4px 10px;" title="Wyczyść historię czatu">🗑️ Wyczyść historię</button>
+          </div>
           <div style="display:flex; gap:8px; align-items:center;">
             <span id="testChatStatus" style="font-size:11.5px; color:var(--dim);"></span>
             <button class="btn btn-sm btn-accent" id="btnTestChatSend" type="button" style="font-weight:600; padding:5px 16px;">Wyślij zapytanie 🚀</button>
@@ -3942,7 +3948,84 @@ ${SHARED_HELPERS}
     });
   }
 
+  var testChatLog = [];
+
+  function copyTextToClipboard(text, cb) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        if (cb) cb(true);
+      }).catch(function () {
+        fallbackCopy(text, cb);
+      });
+    } else {
+      fallbackCopy(text, cb);
+    }
+  }
+
+  function fallbackCopy(text, cb) {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.top = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (cb) cb(ok);
+    } catch (e) {
+      if (cb) cb(false);
+    }
+  }
+
+  function copyFullTestChat(btn) {
+    if (!testChatLog || testChatLog.length === 0) {
+      var statusEl = document.getElementById('testChatStatus');
+      if (statusEl) {
+        statusEl.textContent = 'Brak wiadomości do skopiowania.';
+        setTimeout(function () { statusEl.textContent = ''; }, 2000);
+      }
+      return;
+    }
+
+    var lines = [];
+    testChatLog.forEach(function (m) {
+      var timeStr = m.time ? ('[' + m.time.toLocaleTimeString() + '] ') : '';
+      if (m.role === 'user') {
+        lines.push(timeStr + 'Użytkownik:\\n' + m.text);
+      } else {
+        var details = [];
+        if (m.meta) {
+          if (m.meta.account) details.push('Konto: ' + m.meta.account);
+          if (m.meta.model) details.push('Model: ' + m.meta.model);
+          if (m.meta.durationMs != null) details.push('Czas: ' + m.meta.durationMs + ' ms');
+          if (m.meta.error) details.push('Status: Błąd upstreamu');
+        }
+        var detStr = details.length > 0 ? (' (' + details.join(', ') + ')') : '';
+        lines.push(timeStr + 'Asystent' + detStr + ':\\n' + m.text);
+      }
+      lines.push('');
+    });
+
+    var fullText = lines.join('\\n').trim();
+    copyTextToClipboard(fullText, function (ok) {
+      if (btn) {
+        var orig = btn.textContent;
+        btn.textContent = ok ? '✓ Skopiowano!' : '⚠️ Błąd';
+        setTimeout(function () { btn.textContent = orig; }, 2000);
+      }
+      var statusEl = document.getElementById('testChatStatus');
+      if (statusEl) {
+        statusEl.textContent = ok ? '✓ Skopiowano historię do schowka' : 'Błąd dostępu do schowka';
+        setTimeout(function () { statusEl.textContent = ''; }, 2500);
+      }
+    });
+  }
+
   function addTestChatBubble(role, text, meta) {
+    testChatLog.push({ role: role, text: text, meta: meta, time: new Date() });
     var history = document.getElementById('testChatHistory');
     var placeholder = document.getElementById('testChatPlaceholder');
     if (placeholder) placeholder.style.display = 'none';
@@ -4025,7 +4108,49 @@ ${SHARED_HELPERS}
         tokBadge.textContent = '⚡ In: ' + inTok + ' | Out: ' + outTok;
         metaRow.appendChild(tokBadge);
       }
+
+      var copySingleBtn = document.createElement('button');
+      copySingleBtn.type = 'button';
+      copySingleBtn.className = 'btn btn-xs';
+      copySingleBtn.style.padding = '1px 7px';
+      copySingleBtn.style.fontSize = '9.5px';
+      copySingleBtn.style.marginLeft = 'auto';
+      copySingleBtn.textContent = '📋 Kopiuj';
+      copySingleBtn.title = 'Skopiuj tę odpowiedź do schowka';
+      copySingleBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        copyTextToClipboard(text, function (ok) {
+          copySingleBtn.textContent = ok ? '✓ Skopiowano' : 'Błąd';
+          setTimeout(function () { copySingleBtn.textContent = '📋 Kopiuj'; }, 1500);
+        });
+      });
+      metaRow.appendChild(copySingleBtn);
       wrap.appendChild(metaRow);
+    } else if (role === 'user') {
+      var userMetaRow = document.createElement('div');
+      userMetaRow.style.display = 'flex';
+      userMetaRow.style.gap = '6px';
+      userMetaRow.style.fontSize = '10px';
+      userMetaRow.style.color = 'var(--dim)';
+      userMetaRow.style.marginTop = '2px';
+      userMetaRow.style.alignItems = 'center';
+
+      var copyUserBtn = document.createElement('button');
+      copyUserBtn.type = 'button';
+      copyUserBtn.className = 'btn btn-xs';
+      copyUserBtn.style.padding = '1px 7px';
+      copyUserBtn.style.fontSize = '9.5px';
+      copyUserBtn.textContent = '📋 Kopiuj';
+      copyUserBtn.title = 'Skopiuj treść zapytania';
+      copyUserBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        copyTextToClipboard(text, function (ok) {
+          copyUserBtn.textContent = ok ? '✓ Skopiowano' : 'Błąd';
+          setTimeout(function () { copyUserBtn.textContent = '📋 Kopiuj'; }, 1500);
+        });
+      });
+      userMetaRow.appendChild(copyUserBtn);
+      wrap.appendChild(userMetaRow);
     }
 
     history.appendChild(wrap);
@@ -4131,12 +4256,27 @@ ${SHARED_HELPERS}
   var btnTestClear = document.getElementById('btnTestChatClear');
   if (btnTestClear) {
     btnTestClear.addEventListener('click', function () {
+      testChatLog = [];
       var history = document.getElementById('testChatHistory');
       if (history) {
         history.innerHTML = '<div id="testChatPlaceholder" style="margin:auto; text-align:center; color:var(--dim); font-size:12px;"><div style="font-size:26px; margin-bottom:6px;">💬</div>Wybierz dostawcę i model, a następnie wpisz wiadomość lub kliknij szybki test.<br>Żądanie zostanie wysłane przez silnik Agent-LB bezpośrednio do wybranego upstreamu.</div>';
       }
       var statusEl = document.getElementById('testChatStatus');
       if (statusEl) statusEl.textContent = '';
+    });
+  }
+
+  var btnTestCopy = document.getElementById('btnTestChatCopy');
+  if (btnTestCopy) {
+    btnTestCopy.addEventListener('click', function () {
+      copyFullTestChat(btnTestCopy);
+    });
+  }
+
+  var btnTestHeaderCopy = document.getElementById('btnTestChatHeaderCopy');
+  if (btnTestHeaderCopy) {
+    btnTestHeaderCopy.addEventListener('click', function () {
+      copyFullTestChat(btnTestHeaderCopy);
     });
   }
 
