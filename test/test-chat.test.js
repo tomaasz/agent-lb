@@ -501,6 +501,10 @@ describe('Test Chat & Playground Support', () => {
     const norm1 = normalizeCodexModelForOAuth(body1);
     assert.equal(JSON.parse(norm1.toString()).model, 'gpt-5.6-sol');
 
+    const bodyGpt6 = Buffer.from(JSON.stringify({ model: 'gpt-6', messages: [] }));
+    const normGpt6 = normalizeCodexModelForOAuth(bodyGpt6);
+    assert.equal(JSON.parse(normGpt6.toString()).model, 'gpt-6-astra');
+
     const body2 = Buffer.from(JSON.stringify({ model: 'gpt-5', messages: [] }));
     const norm2 = normalizeCodexModelForOAuth(body2);
     assert.equal(JSON.parse(norm2.toString()).model, 'gpt-5.6-sol');
@@ -587,7 +591,35 @@ describe('Test Chat & Playground Support', () => {
       const modelsJson = await resModels.json();
       assert.ok(Array.isArray(modelsJson.data));
       assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.6-sol'));
+      assert.ok(modelsJson.data.some(m => m.id === 'gpt-6-astra'));
+      assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.6-terra'));
+      assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.6-luna'));
+      assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.5'));
+      assert.ok(modelsJson.data.some(m => m.id === 'gpt-6'));
       assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.6'));
+
+      // Test gpt-6 alias and reasoning effort forwarding
+      const resGpt6 = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': 'tc-test-admin',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          provider: 'codex',
+          model: 'gpt-6',
+          effort: 'medium',
+          message: 'Hello GPT-6'
+        })
+      });
+
+      assert.equal(resGpt6.status, 200);
+      const jsonGpt6 = await resGpt6.json();
+      assert.equal(jsonGpt6.ok, true);
+      assert.equal(jsonGpt6.model, 'gpt-6-astra');
+      assert.equal(jsonGpt6.effort, 'medium');
+      assert.equal(capturedPayload.model, 'gpt-6-astra');
+      assert.deepEqual(capturedPayload.reasoning, { effort: 'medium' });
     } finally {
       server.close();
       mockUpstream.close();

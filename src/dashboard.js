@@ -1073,6 +1073,17 @@ const PAGE = `<!doctype html>
             <!-- populated dynamically according to provider -->
           </select>
         </div>
+        <div id="colTestEffort" style="display:none;">
+          <label for="selTestEffort" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;">Rozumowanie (Effort):</label>
+          <select id="selTestEffort" class="btn btn-sm" style="width:100%; text-align:left; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:4px 8px;">
+            <option value="">⚡ Domyślne (Default)</option>
+            <option value="minimal">🟢 Minimalne (Minimal)</option>
+            <option value="low">🟢 Niskie (Low)</option>
+            <option value="medium" selected>🟡 Średnie (Medium)</option>
+            <option value="high">🔴 Wysokie (High)</option>
+            <option value="max">🔥 Maksymalne (Max)</option>
+          </select>
+        </div>
         <div>
           <label for="selTestAccount" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;">Konto (Routing):</label>
           <select id="selTestAccount" class="btn btn-sm" style="width:100%; text-align:left; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:4px 8px;">
@@ -4610,8 +4621,13 @@ ${SHARED_HELPERS}
   function getCodexModels() {
     var isEn = currentLang === 'en';
     return [
-      { id: 'gpt-5.6-sol', name: isEn ? 'GPT 5.6 Sol (Default ChatGPT Codex / OAuth)' : 'GPT 5.6 Sol (Domyślny ChatGPT Codex / OAuth)' },
-      { id: 'gpt-5.6', name: isEn ? 'GPT 5.6 (alias → gpt-5.6-sol)' : 'GPT 5.6 (alias → gpt-5.6-sol)' },
+      { id: 'gpt-5.6-sol', name: isEn ? 'GPT-5.6 Sol (Default / Recommended)' : 'GPT-5.6 Sol (Domyślny / Polecany)' },
+      { id: 'gpt-6-astra', name: 'GPT-6 Astra' },
+      { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra' },
+      { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna' },
+      { id: 'gpt-5.5', name: 'GPT-5.5' },
+      { id: 'gpt-6', name: isEn ? 'GPT-6 (alias → gpt-6-astra)' : 'GPT-6 (alias → gpt-6-astra)' },
+      { id: 'gpt-5.6', name: isEn ? 'GPT-5.6 (alias → gpt-5.6-sol)' : 'GPT-5.6 (alias → gpt-5.6-sol)' },
       { id: 'o3-mini', name: isEn ? 'o3-mini (OpenAI API key)' : 'o3-mini (Tylko klucz OpenAI API)' },
       { id: 'o1', name: isEn ? 'o1 (OpenAI API key)' : 'o1 (Tylko klucz OpenAI API)' },
       { id: 'gpt-4o', name: isEn ? 'GPT-4o (OpenAI API key)' : 'GPT-4o (Tylko klucz OpenAI API)' },
@@ -4627,6 +4643,11 @@ ${SHARED_HELPERS}
     var prov = provEl.value;
     var prevModel = selModel.value;
     var prevAccount = selAccount.value;
+
+    var colEffort = document.getElementById('colTestEffort');
+    if (colEffort) {
+      colEffort.style.display = prov === 'codex' ? 'block' : 'none';
+    }
 
     selModel.innerHTML = '';
     selAccount.innerHTML = '<option value="">' + (currentLang === 'pl' ? '⚡ Auto (Polityka Agent-LB)' : '⚡ Auto (Agent-LB Policy)') + '</option>';
@@ -4829,6 +4850,13 @@ ${SHARED_HELPERS}
         modBadge.textContent = '🤖 ' + meta.model;
         metaRow.appendChild(modBadge);
       }
+      if (meta.effort) {
+        var effBadge = document.createElement('span');
+        effBadge.className = 'badge';
+        effBadge.style.fontSize = '10px';
+        effBadge.textContent = '🧠 Effort: ' + meta.effort;
+        metaRow.appendChild(effBadge);
+      }
       if (meta.durationMs != null) {
         var timeBadge = document.createElement('span');
         timeBadge.className = 'badge';
@@ -4902,6 +4930,8 @@ ${SHARED_HELPERS}
     var prov = document.getElementById('selTestProvider').value;
     var model = document.getElementById('selTestModel').value;
     var account = document.getElementById('selTestAccount').value;
+    var effortEl = document.getElementById('selTestEffort');
+    var effort = (prov === 'codex' && effortEl && effortEl.value) ? effortEl.value : undefined;
     var btnSend = document.getElementById('btnTestChatSend');
     var statusEl = document.getElementById('testChatStatus');
 
@@ -4914,6 +4944,7 @@ ${SHARED_HELPERS}
     apiCall('/api/test/chat', 'POST', {
       provider: prov,
       model: model,
+      effort: effort,
       message: msg,
       account: account || undefined,
     }).then(function (res) {
@@ -4931,6 +4962,7 @@ ${SHARED_HELPERS}
         addTestChatBubble('assistant', res.reply || '(Pusta odpowiedź)', {
           account: res.account,
           model: res.model,
+          effort: res.effort || effort,
           isFallback: res.isFallback,
           durationMs: res.durationMs,
           usage: res.usage,

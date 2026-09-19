@@ -590,8 +590,13 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         res.end(JSON.stringify({
           object: 'list',
           data: [
-            { id: 'gpt-5.6-sol', object: 'model', name: 'GPT 5.6 Sol' },
-            { id: 'gpt-5.6', object: 'model', name: 'GPT 5.6 (alias → gpt-5.6-sol)' },
+            { id: 'gpt-5.6-sol', object: 'model', name: 'GPT-5.6 Sol' },
+            { id: 'gpt-6-astra', object: 'model', name: 'GPT-6 Astra' },
+            { id: 'gpt-5.6-terra', object: 'model', name: 'GPT-5.6 Terra' },
+            { id: 'gpt-5.6-luna', object: 'model', name: 'GPT-5.6 Luna' },
+            { id: 'gpt-5.5', object: 'model', name: 'GPT-5.5' },
+            { id: 'gpt-6', object: 'model', name: 'GPT-6 (alias → gpt-6-astra)' },
+            { id: 'gpt-5.6', object: 'model', name: 'GPT-5.6 (alias → gpt-5.6-sol)' },
             { id: 'o3-mini', object: 'model', name: 'o3-mini' },
             { id: 'o1', object: 'model', name: 'o1' },
             { id: 'gpt-4o', object: 'model', name: 'GPT-4o' }
@@ -1838,16 +1843,25 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
               applyAuthHeaders(reqHeaders, account);
 
               let effectiveModel = model;
-              if (isOauth && (effectiveModel === 'gpt-5.6' || effectiveModel === 'gpt-5' || effectiveModel === 'codex')) {
-                effectiveModel = 'gpt-5.6-sol';
+              if (isOauth) {
+                if (effectiveModel === 'gpt-6') {
+                  effectiveModel = 'gpt-6-astra';
+                } else if (effectiveModel === 'gpt-5.6' || effectiveModel === 'gpt-5' || effectiveModel === 'codex') {
+                  effectiveModel = 'gpt-5.6-sol';
+                }
               }
               responseModel = effectiveModel;
+
+              const reasoningEffort = typeof body?.effort === 'string' && body.effort.trim()
+                ? body.effort.trim().toLowerCase()
+                : (typeof body?.reasoningEffort === 'string' && body.reasoningEffort.trim() ? body.reasoningEffort.trim().toLowerCase() : null);
 
               const payload = isOauth
                 ? {
                     model: effectiveModel,
                     store: false,
                     stream: true,
+                    ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
                     input: [{ role: 'user', content: [{ type: 'input_text', text: message }] }]
                   }
                 : {
@@ -1955,6 +1969,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   isFallback,
                   account: account.name,
                   model: responseModel,
+                  effort: reasoningEffort || undefined,
                   reply: replyText,
                   usage,
                   durationMs,
@@ -5302,6 +5317,10 @@ export function normalizeCodexModelForOAuth(body) {
     const obj = JSON.parse(body.toString('utf8'));
     if (typeof obj.model === 'string') {
       const trimmed = obj.model.trim();
+      if (trimmed === 'gpt-6') {
+        obj.model = 'gpt-6-astra';
+        return Buffer.from(JSON.stringify(obj), 'utf8');
+      }
       if (trimmed === 'gpt-5.6' || trimmed === 'gpt-5' || trimmed === 'codex') {
         obj.model = 'gpt-5.6-sol';
         return Buffer.from(JSON.stringify(obj), 'utf8');
