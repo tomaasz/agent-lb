@@ -2766,7 +2766,7 @@ ${SHARED_HELPERS}
   function renderFleetPolicy(s) {
     var sel = document.getElementById('selDistributeSessions');
     if (sel && document.activeElement !== sel) {
-      sel.value = (s.sessions && s.sessions.distribute) || 'adaptive';
+      sel.value = (s.sessions && (s.sessions.mode || (s.sessions.distribute ? 'even' : 'off'))) || 'adaptive';
     }
     var chkExp = document.getElementById('chkExpiryRouting');
     if (chkExp && document.activeElement !== chkExp) {
