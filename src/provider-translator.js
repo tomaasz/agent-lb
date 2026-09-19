@@ -41,6 +41,8 @@ export const MODEL_FALLBACK_MAP = {
   'o3-mini': 'claude-3-5-sonnet-20241022',
   'agy': 'claude-sonnet-5',
   'agy-fast': 'claude-haiku-4-5-20251001',
+  'gemini-3.8-flash-high': 'claude-sonnet-5',
+  'gemini-3.8-flash-low': 'claude-haiku-4-5-20251001',
 };
 
 /**
@@ -52,10 +54,10 @@ export function resolveTargetModel(sourceModel, targetProvider) {
   if (targetProvider === 'codex' && (sourceModel.startsWith('gpt-') || sourceModel.startsWith('o1') || sourceModel.startsWith('o3'))) return sourceModel;
   if (targetProvider === 'codex' && (sourceModel === 'codex' || sourceModel === 'gpt-5.6' || sourceModel === 'gpt-5')) return 'gpt-5.6-sol';
   if (targetProvider === 'codex' && sourceModel === 'codex-mini') return 'gpt-5.6-terra';
-  if (targetProvider === 'codex' && sourceModel === 'agy') return 'gpt-5.6-sol';
-  if (targetProvider === 'codex' && sourceModel === 'agy-fast') return 'gpt-5.6-terra';
-  if (targetProvider === 'anthropic' && sourceModel === 'agy') return 'claude-sonnet-5';
-  if (targetProvider === 'anthropic' && sourceModel === 'agy-fast') return 'claude-haiku-4-5-20251001';
+  if (targetProvider === 'codex' && (sourceModel === 'agy' || (sourceModel.startsWith('gemini-') && !sourceModel.includes('low')))) return 'gpt-5.6-sol';
+  if (targetProvider === 'codex' && (sourceModel === 'agy-fast' || (sourceModel.startsWith('gemini-') && sourceModel.includes('low')))) return 'gpt-5.6-terra';
+  if (targetProvider === 'anthropic' && (sourceModel === 'agy' || (sourceModel.startsWith('gemini-') && !sourceModel.includes('low')))) return 'claude-sonnet-5';
+  if (targetProvider === 'anthropic' && (sourceModel === 'agy-fast' || (sourceModel.startsWith('gemini-') && sourceModel.includes('low')))) return 'claude-haiku-4-5-20251001';
   if (MODEL_FALLBACK_MAP[sourceModel]) return MODEL_FALLBACK_MAP[sourceModel];
   if (targetProvider === 'codex') {
     if (sourceModel.includes('haiku')) return 'gpt-4o-mini';

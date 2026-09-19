@@ -127,7 +127,7 @@ models = [
 ]
 
 if has_agy:
-    models.extend(["agy", "agy-fast"])
+    models.extend(["agy", "agy-fast", "gemini-3.8-flash-high", "gemini-3.8-flash-low"])
 
 models_yaml = "".join(f"      - \"{m}\"\n" for m in models)
 
@@ -178,7 +178,11 @@ providers:
     context_length: 128000
     models:
 {models_yaml}{extra_providers}
-# --- End AgentLB ---"""
+# --- End AgentLB ---
+auxiliary:
+  title_generation:
+    model_upgrade_enabled: false
+"""
 
 config_paths = ["$CONFIG_FILE"]
 profiles_dir = os.path.join(os.path.dirname("$CONFIG_FILE"), "profiles")
@@ -231,7 +235,7 @@ const models = [
   "codex", "codex-mini", "gpt-5.6-sol", "gpt-6-astra", "gpt-5.6-terra",
   "gpt-5.6-luna", "gpt-5.5", "o3-mini", "o1", "gpt-4o", "gpt-4o-mini"
 ];
-if (hasAgy) models.push('agy', 'agy-fast');
+if (hasAgy) models.push('agy', 'agy-fast', 'gemini-3.8-flash-high', 'gemini-3.8-flash-low');
 const modelsYaml = models.map(m => '      - "' + m + '"\n').join('');
 
 let modelAliasesBlock = '';
@@ -241,7 +245,7 @@ if (hasAgy) {
   extraProviders = '\n  agy:\n    name: "AGY"\n    provider: "agy"\n    models:\n      - "gemini-3.8-flash-high"\n      - "agy"\n  agy-fast:\n    name: "AGY Fast"\n    provider: "agy-fast"\n    models:\n      - "gemini-3.8-flash-low"\n      - "agy-fast"\n';
 }
 
-const block = '\n# --- AgentLB Multi-Provider ---' + modelAliasesBlock + '\ncustom_providers:\n  - name: "agentlb"\n    base_url: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 128000\n    models:\n' + modelsYaml + '\nproviders:\n  agentlb:\n    name: "AgentLB (All Models)"\n    base_url: "' + url + '"\n    api: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 128000\n    models:\n' + modelsYaml + extraProviders + '\n# --- End AgentLB ---\n';
+const block = '\n# --- AgentLB Multi-Provider ---' + modelAliasesBlock + '\ncustom_providers:\n  - name: "agentlb"\n    base_url: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 128000\n    models:\n' + modelsYaml + '\nproviders:\n  agentlb:\n    name: "AgentLB (All Models)"\n    base_url: "' + url + '"\n    api: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 128000\n    models:\n' + modelsYaml + extraProviders + '\n# --- End AgentLB ---\nauxiliary:\n  title_generation:\n    model_upgrade_enabled: false\n';
 
 for (const p of configPaths) {
   let content = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
