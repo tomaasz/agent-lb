@@ -332,7 +332,7 @@ function uninstallClientSettings() {
   for (const rc of ['.bashrc', '.zshrc', '.profile']) removeMarkedSource(path.join(home, rc));
   if (isWin) {
     try {
-      execFileSync('powershell.exe', ['-NoProfile', '-Command', "'ANTHROPIC_BASE_URL','ANTHROPIC_API_KEY','ANTHROPIC_CUSTOM_HEADERS','CODEX_LB_API_KEY','CODEX_BASE_URL','OPENAI_BASE_URL' | ForEach-Object { [Environment]::SetEnvironmentVariable($_, $null, 'User') }"]);
+      execFileSync('powershell.exe', ['-NoProfile', '-Command', "'ANTHROPIC_BASE_URL','ANTHROPIC_API_KEY','ANTHROPIC_CUSTOM_HEADERS','CODEX_LB_API_KEY','CODEX_BASE_URL','OPENAI_BASE_URL','OPENAI_API_KEY','AGENT_LB_API_KEY' | ForEach-Object { [Environment]::SetEnvironmentVariable($_, $null, 'User') }"]);
     } catch (err) { console.warn(`[Ostrzeżenie] Nie udało się usunąć zmiennych Windows: ${err.message}`); }
   }
   console.log('Usunięto ustawienia Agent-LB. Plik .credentials.json pozostawiono bez zmian.');
@@ -555,9 +555,11 @@ async function main() {
               + `if ($currentHdr) { $hdrLines = $currentHdr -split '\\r?\\n' | Where-Object { $_ -and -not $_.ToLower().StartsWith('x-api-key:') }; `
               + `if ($hdrLines.Count -gt 0) { [Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', ($hdrLines -join [char]10), 'User') } `
               + `else { [Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $null, 'User') } }`);
-        if (setupCodex || fs.existsSync(codexDir)) {
-          winCmd += `; [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', '${targetUrl}/backend-api/codex', 'User'); [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', '${targetUrl}/v1', 'User')`;
-        }
+        winCmd += `; [Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', '${psQuote(apiKey)}', 'User')`;
+        winCmd += `; [Environment]::SetEnvironmentVariable('OPENAI_API_KEY', '${psQuote(apiKey)}', 'User')`;
+        winCmd += `; [Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', '${psQuote(apiKey)}', 'User')`;
+        winCmd += `; [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', '${targetUrl}/backend-api/codex', 'User')`;
+        winCmd += `; [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', '${targetUrl}/v1', 'User')`;
         execFileSync('powershell.exe', ['-NoProfile', '-Command', winCmd]);
         console.log(`[OK] Zapisano zmienne środowiskowe w profilu użytkownika Windows.`);
       } catch (err) {
@@ -581,9 +583,10 @@ async function main() {
           else envContent += 'unset ANTHROPIC_CUSTOM_HEADERS\n';
         }
         envContent += `export CODEX_LB_API_KEY=${shQuote(apiKey)}\n`;
-        if (setupCodex || fs.existsSync(codexDir)) {
-          envContent += `export CODEX_BASE_URL=${shQuote(`${targetUrl}/backend-api/codex`)}\nexport OPENAI_BASE_URL=${shQuote(`${targetUrl}/v1`)}\n`;
-        }
+        envContent += `export OPENAI_API_KEY=${shQuote(apiKey)}\n`;
+        envContent += `export AGENT_LB_API_KEY=${shQuote(apiKey)}\n`;
+        envContent += `export CODEX_BASE_URL=${shQuote(`${targetUrl}/backend-api/codex`)}\n`;
+        envContent += `export OPENAI_BASE_URL=${shQuote(`${targetUrl}/v1`)}\n`;
         backupPath(envFile);
         writeTextAtomic(envFile, envContent, 0o600);
         console.log(`[OK] Zapisano plik środowiskowy ${envFile}.`);

@@ -396,8 +396,8 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Serve client setup scripts without auth (Claude Code & OpenAI Codex)
-      const setupScriptMatch = normPath.match(/^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|codexlb-setup|codex-setup|setup-codex)(?:\.(sh|ps1|js))?$/);
+      // Serve client setup scripts without auth (Claude Code, OpenAI Codex, OpenCode, Hermes)
+      const setupScriptMatch = normPath.match(/^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|claude-setup|setup-claude|codexlb-setup|codex-setup|setup-codex|agent-setup|opencode-setup|hermes-setup)(?:\.(sh|ps1|js))?$/);
       if ((req.method === 'GET' || req.method === 'HEAD') && setupScriptMatch) {
         const scriptBase = setupScriptMatch[1];
         let ext = setupScriptMatch[2];
@@ -407,8 +407,8 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
         const isCodex = scriptBase.includes('codex');
         const possibleNames = isCodex
-          ? [`codexlb-setup.${ext}`, `codex-setup.${ext}`]
-          : [`setup.${ext}`, `agent-lb-setup.${ext}`];
+          ? [`codex-setup.${ext}`, `codexlb-setup.${ext}`]
+          : [`claude-setup.${ext}`, `setup.${ext}`, `agent-setup.${ext}`, `agent-lb-setup.${ext}`];
         const scriptDirs = [
           join(__dirname, '..', 'setup'),
           join(homedir(), 'agent-lb-setup'),

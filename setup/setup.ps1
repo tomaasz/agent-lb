@@ -119,6 +119,8 @@ if ($Uninstall) {
 		[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $null, 'User')
 		[Environment]::SetEnvironmentVariable('CODEX_BASE_URL', $null, 'User')
 		[Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', $null, 'User')
+		[Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $null, 'User')
+		[Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', $null, 'User')
 	} catch { Say '[Uwaga] Nie udało się usunąć zmiennych środowiskowych Windows.' }
 	Say 'Usunięto ustawienia Agent-LB. Plik .credentials.json pozostawiono bez zmian.'
 	exit 0
@@ -308,6 +310,8 @@ if ($oauthSession) {
 	[Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $remWin, 'User')
 }
 [Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $Key, 'User')
+[Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $Key, 'User')
+[Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', $Key, 'User')
 [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', "$Url/backend-api/codex", 'User')
 [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', "$Url/v1", 'User')
 $env:ANTHROPIC_BASE_URL = $Url
@@ -323,9 +327,11 @@ if ($oauthSession) {
 	else { Remove-Item Env:ANTHROPIC_CUSTOM_HEADERS -ErrorAction SilentlyContinue }
 }
 $env:CODEX_LB_API_KEY   = $Key
+$env:OPENAI_API_KEY     = $Key
+$env:AGENT_LB_API_KEY   = $Key
 $env:CODEX_BASE_URL     = "$Url/backend-api/codex"
 $env:OPENAI_BASE_URL    = "$Url/v1"
-Say "[OK] Zapisano zmienne ANTHROPIC_* oraz CODEX_* w profilu użytkownika."
+Say "[OK] Zapisano zmienne środowiskowe w profilu użytkownika."
 
 # ------------------------------------------------------------------- test
 if ($Test) {

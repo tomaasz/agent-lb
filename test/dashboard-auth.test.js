@@ -65,7 +65,12 @@ describe('Dashboard Authentication and Layout', () => {
     assert.ok(html.includes('id="cmdSetupCodexPowershell"'), 'contains Codex powershell command element');
     assert.ok(html.includes('btnCopySetupCodexBash'), 'contains copy button for Codex bash');
     assert.ok(html.includes('btnCopySetupCodexPowershell'), 'contains copy button for Codex powershell');
+    assert.ok(html.includes('id="cmdSetupAgentBash"'), 'contains Agent bash command element');
+    assert.ok(html.includes('btnCopySetupAgentBash'), 'contains copy button for Agent bash');
 
+    assert.ok(fs.existsSync('setup/claude-setup.sh'), 'setup/claude-setup.sh exists');
+    assert.ok(fs.existsSync('setup/codex-setup.sh'), 'setup/codex-setup.sh exists');
+    assert.ok(fs.existsSync('setup/agent-setup.sh'), 'setup/agent-setup.sh exists');
     assert.ok(fs.existsSync('setup/codexlb-setup.sh'), 'setup/codexlb-setup.sh exists');
     assert.ok(fs.existsSync('setup/codexlb-setup.ps1'), 'setup/codexlb-setup.ps1 exists');
     assert.ok(fs.existsSync('setup/codexlb-setup.js'), 'setup/codexlb-setup.js exists');

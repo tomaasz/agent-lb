@@ -227,7 +227,9 @@ shell_quote() {
 	fi
 	printf 'export CODEX_BASE_URL=%s\n' "$(shell_quote "$URL/backend-api/codex")"
 	printf 'export OPENAI_BASE_URL=%s\n' "$(shell_quote "$URL/v1")"
+	printf 'export OPENAI_API_KEY=%s\n' "$(shell_quote "$KEY")"
 	printf 'export CODEX_LB_API_KEY=%s\n' "$(shell_quote "$KEY")"
+	printf 'export AGENT_LB_API_KEY=%s\n' "$(shell_quote "$KEY")"
 } > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 say "Zapisano $ENV_FILE."

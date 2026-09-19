@@ -1058,6 +1058,12 @@ const PAGE = `<!doctype html>
               <button class="btn btn-xs" id="btnQuickTabPS" type="button" style="padding:1px 7px; font-size:10px;" title="Skrypt instalacyjny Windows (PowerShell)">Windows</button>
             </div>
           </div>
+          <div style="display:flex; align-items:center; gap:4px; margin-bottom:5px; flex-wrap:wrap;">
+            <span style="font-size:10px; color:var(--dim); font-weight:600;">Narzędzie:</span>
+            <button class="btn btn-xs active" id="btnQuickToolClaude" type="button" style="padding:1px 6px; font-size:10px;" title="Claude Code CLI & VS Code (claude-setup)">Claude</button>
+            <button class="btn btn-xs" id="btnQuickToolCodex" type="button" style="padding:1px 6px; font-size:10px;" title="OpenAI Codex CLI & VS Code (codex-setup)">Codex</button>
+            <button class="btn btn-xs" id="btnQuickToolAgent" type="button" style="padding:1px 6px; font-size:10px;" title="OpenCode, Hermes Agent, Aider (zmienne OpenAI / Anthropic)">OpenCode / Hermes</button>
+          </div>
           <div class="quick-cmd-wrap" style="display:flex; align-items:center; gap:6px; background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:4px; padding:4px 7px;">
             <code id="quickCmdText" class="mono" style="flex:1; font-size:10.5px; color:#58a6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" title="Kliknij, aby skopiować pełną komendę"></code>
             <button class="btn btn-xs btn-accent" id="btnQuickCopyCmd" type="button" style="flex-shrink:0; padding:1px 7px;" title="Kopiuj polecenie do schowka" data-i18n="copyCmd">📋 Kopiuj</button>
@@ -1478,47 +1484,81 @@ const PAGE = `<!doctype html>
         </div>
 
         <div id="contentSetupBash">
-          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">1. Claude Code CLI & VS Code:</div>
+          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">1. Claude Code CLI & VS Code:</div>
           <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
             <code class="mono" id="cmdSetupBash" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
           </div>
           <button class="btn btn-sm btn-accent" id="btnCopySetupBash" style="margin-bottom:14px;">📋 Kopiuj polecenie Claude</button>
 
-          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">2. OpenAI Codex CLI & VS Code (codexlb-setup):</div>
+          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">2. OpenAI Codex CLI & VS Code:</div>
           <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
             <code class="mono" id="cmdSetupCodexBash" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupCodexBash">📋 Kopiuj polecenie Codex</button>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupCodexBash" style="margin-bottom:14px;">📋 Kopiuj polecenie Codex</button>
+
+          <div style="background:rgba(88,166,255,0.06); border:1px solid rgba(88,166,255,0.25); border-radius:7px; padding:10px 12px; margin-bottom:6px;">
+            <div style="font-size:13px; font-weight:600; color:#58a6ff; margin-bottom:4px;">⚡ 3. OpenCode, Hermes Agent, Aider & Narzędzia OpenAI / Anthropic Compatible:</div>
+            <div style="font-size:12px; color:var(--dim); line-height:1.4; margin-bottom:8px;">
+              Skrypty instalacyjne powyżej zapisują konfigurację na stałe do <code class="mono" style="color:var(--text);">~/.config/agent-lb.env</code>. Możesz też wyeksportować zmienne bezpośrednio w bieżącej konsoli:
+            </div>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
+              <pre class="mono" id="cmdSetupAgentBash" style="margin:0; font-size:12px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
+            </div>
+            <button class="btn btn-sm btn-accent" id="btnCopySetupAgentBash">📋 Kopiuj zmienne OpenCode / Hermes</button>
+          </div>
         </div>
 
         <div id="contentSetupPowershell" style="display:none;">
-          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">1. Claude Code na Windows (PowerShell):</div>
+          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">1. Claude Code na Windows (PowerShell):</div>
           <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
             <code class="mono" id="cmdSetupPowershell" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
           </div>
           <button class="btn btn-sm btn-accent" id="btnCopySetupPowershell" style="margin-bottom:14px;">📋 Kopiuj polecenie Claude (PS)</button>
 
-          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">2. OpenAI Codex na Windows (PowerShell):</div>
+          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">2. OpenAI Codex na Windows (PowerShell):</div>
           <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
             <code class="mono" id="cmdSetupCodexPowershell" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupCodexPowershell">📋 Kopiuj polecenie Codex (PS)</button>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupCodexPowershell" style="margin-bottom:14px;">📋 Kopiuj polecenie Codex (PS)</button>
+
+          <div style="background:rgba(88,166,255,0.06); border:1px solid rgba(88,166,255,0.25); border-radius:7px; padding:10px 12px; margin-bottom:6px;">
+            <div style="font-size:13px; font-weight:600; color:#58a6ff; margin-bottom:4px;">⚡ 3. OpenCode, Hermes Agent & Narzędzia na Windows:</div>
+            <div style="font-size:12px; color:var(--dim); line-height:1.4; margin-bottom:8px;">
+              Ustawienie zmiennych środowiskowych użytkownika w PowerShell dla narzędzi OpenAI/Anthropic:
+            </div>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
+              <pre class="mono" id="cmdSetupAgentPowershell" style="margin:0; font-size:12px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
+            </div>
+            <button class="btn btn-sm btn-accent" id="btnCopySetupAgentPowershell">📋 Kopiuj polecenie PowerShell dla OpenCode / Hermes</button>
+          </div>
         </div>
 
         <div id="contentSetupNode" style="display:none;">
-          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">Uniwersalny skrypt Node.js dla każdego systemu:</div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">1. Claude Code CLI (Node.js):</div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
             <code class="mono" id="cmdSetupNode" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupNode">📋 Kopiuj komendę Node.js</button>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupNode" style="margin-bottom:14px;">📋 Kopiuj komendę Claude (Node.js)</button>
+
+          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">2. OpenAI Codex CLI & Agenty (Node.js):</div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
+            <code class="mono" id="cmdSetupCodexNode" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupCodexNode">📋 Kopiuj komendę Codex (Node.js)</button>
         </div>
 
         <div id="contentSetupGit" style="display:none;">
-          <div style="font-size:13px; color:var(--dim); margin-bottom:6px;">Klonowanie repozytorium GitHub (<a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/agent-lb</a>):</div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">1. Claude Code & Agenty przez Git:</div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
             <code class="mono" id="cmdSetupGit" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupGit">📋 Kopiuj komendę Git</button>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupGit" style="margin-bottom:14px;">📋 Kopiuj komendę Git (Claude)</button>
+
+          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">2. OpenAI Codex przez Git:</div>
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
+            <code class="mono" id="cmdSetupCodexGit" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnCopySetupCodexGit">📋 Kopiuj komendę Git (Codex)</button>
         </div>
 
         <div id="contentSetupManual" style="display:none;">
@@ -3752,36 +3792,84 @@ ${SHARED_HELPERS}
     document.getElementById('createdClientKey').textContent = realKey;
     var hostUrl = window.location.origin;
 
-    var cmdBash = 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + realKey;
-    var cmdCodexBash = 'curl -fsSL ' + hostUrl + '/codexlb-setup.sh | bash -s -- --key ' + realKey;
-    var cmdPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + realKey + '"';
-    var cmdCodexPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/codexlb-setup.ps1))) -Key "' + realKey + '"';
-    var cmdNode = 'curl -fsSL ' + hostUrl + '/setup.js | node - --key ' + realKey;
-    var cmdGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/setup.sh --key ' + realKey;
-    var manualText = [
-      '# Claude Code CLI (OAuth / subscription — zalecane):',
+    var cmdBash = 'curl -fsSL ' + hostUrl + '/claude-setup.sh | bash -s -- --key ' + realKey;
+    var cmdCodexBash = 'curl -fsSL ' + hostUrl + '/codex-setup.sh | bash -s -- --key ' + realKey;
+    var cmdAgentBash = [
+      '# OpenCode, Hermes Agent, Aider (zmienne OpenAI / Anthropic):',
+      'export OPENAI_BASE_URL="' + hostUrl + '/v1"',
+      'export OPENAI_API_KEY="' + realKey + '"',
       'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
-      'unset ANTHROPIC_API_KEY  # zachowaj sesje OAuth Claude Code',
+      'export ANTHROPIC_API_KEY="' + realKey + '"',
+      'export AGENT_LB_API_KEY="' + realKey + '"'
+    ].join('\\n');
+
+    var cmdPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/claude-setup.ps1))) -Key "' + realKey + '"';
+    var cmdCodexPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/codex-setup.ps1))) -Key "' + realKey + '"';
+    var cmdAgentPs = [
+      '[Environment]::SetEnvironmentVariable("OPENAI_BASE_URL", "' + hostUrl + '/v1", "User")',
+      '[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "' + realKey + '", "User")',
+      '[Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "' + hostUrl + '", "User")',
+      '[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "' + realKey + '", "User")',
+      '$env:OPENAI_BASE_URL = "' + hostUrl + '/v1"',
+      '$env:OPENAI_API_KEY = "' + realKey + '"'
+    ].join('\\n');
+
+    var cmdNode = 'curl -fsSL ' + hostUrl + '/claude-setup.js | node - --key ' + realKey;
+    var cmdCodexNode = 'curl -fsSL ' + hostUrl + '/codex-setup.js | node - --key ' + realKey;
+    var cmdGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/claude-setup.sh --key ' + realKey;
+    var cmdCodexGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/codex-setup.sh --key ' + realKey;
+    var manualText = [
+      '# --- 1. Claude Code CLI (OAuth / subscription — zalecane) ---',
+      'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
+      'unset ANTHROPIC_API_KEY  # zachowaj sesję OAuth Claude Code',
       'export ANTHROPIC_CUSTOM_HEADERS="x-api-key: ' + realKey + '"',
       '',
-      '# Claude Code CLI (tryb API key — gdy nie korzystasz z logowania Claude.ai):',
+      '# --- 1b. Claude Code CLI (tryb direct API Key) ---',
       'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
       'export ANTHROPIC_API_KEY="' + realKey + '"',
       'unset ANTHROPIC_CUSTOM_HEADERS',
       '',
-      '# OpenAI Codex CLI:',
+      '# --- 2. OpenAI Codex CLI ---',
       'export CODEX_BASE_URL="' + hostUrl + '/backend-api/codex"',
       'export CODEX_LB_API_KEY="' + realKey + '"',
-      'export OPENAI_BASE_URL="' + hostUrl + '/v1"'
+      '',
+      '# --- 3. OpenCode, Hermes Agent, Aider & OpenAI Compatible ---',
+      'export OPENAI_BASE_URL="' + hostUrl + '/v1"',
+      'export OPENAI_API_KEY="' + realKey + '"',
+      'export AGENT_LB_API_KEY="' + realKey + '"',
+      '',
+      '# Przykłady uruchomienia narzędzi:',
+      '# opencode                        -> OpenCode CLI (model z proxy)',
+      '# aider --model openai/gpt-5.6-sol -> Aider CLI z routingiem agent-lb',
+      '# hermes                          -> Hermes Agent z modelem na proxy'
     ].join('\\n');
 
-    document.getElementById('cmdSetupBash').textContent = cmdBash;
-    document.getElementById('cmdSetupCodexBash').textContent = cmdCodexBash;
-    document.getElementById('cmdSetupPowershell').textContent = cmdPs;
-    document.getElementById('cmdSetupCodexPowershell').textContent = cmdCodexPs;
-    document.getElementById('cmdSetupNode').textContent = cmdNode;
-    document.getElementById('cmdSetupGit').textContent = cmdGit;
-    document.getElementById('boxManualConfig').textContent = manualText;
+    var elBash = document.getElementById('cmdSetupBash');
+    if (elBash) elBash.textContent = cmdBash;
+    var elCodexBash = document.getElementById('cmdSetupCodexBash');
+    if (elCodexBash) elCodexBash.textContent = cmdCodexBash;
+    var elAgentBash = document.getElementById('cmdSetupAgentBash');
+    if (elAgentBash) elAgentBash.textContent = cmdAgentBash;
+
+    var elPs = document.getElementById('cmdSetupPowershell');
+    if (elPs) elPs.textContent = cmdPs;
+    var elCodexPs = document.getElementById('cmdSetupCodexPowershell');
+    if (elCodexPs) elCodexPs.textContent = cmdCodexPs;
+    var elAgentPs = document.getElementById('cmdSetupAgentPowershell');
+    if (elAgentPs) elAgentPs.textContent = cmdAgentPs;
+
+    var elNode = document.getElementById('cmdSetupNode');
+    if (elNode) elNode.textContent = cmdNode;
+    var elCodexNode = document.getElementById('cmdSetupCodexNode');
+    if (elCodexNode) elCodexNode.textContent = cmdCodexNode;
+
+    var elGit = document.getElementById('cmdSetupGit');
+    if (elGit) elGit.textContent = cmdGit;
+    var elCodexGit = document.getElementById('cmdSetupCodexGit');
+    if (elCodexGit) elCodexGit.textContent = cmdCodexGit;
+
+    var elManual = document.getElementById('boxManualConfig');
+    if (elManual) elManual.textContent = manualText;
 
     selectSetupTab('Bash');
     openModal('modalKeyCreated');
@@ -3879,6 +3967,7 @@ ${SHARED_HELPERS}
   }
 
   var currentQuickTab = 'bash';
+  var currentQuickTool = 'claude';
   var currentQuickKey = '';
 
   function updateQuickCmd(keys) {
@@ -3944,14 +4033,32 @@ ${SHARED_HELPERS}
     var withKey = chk ? chk.checked : true;
 
     var cmd = '';
-    if (currentQuickTab === 'ps') {
-      cmd = withKey
-        ? '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"'
-        : 'irm ' + hostUrl + '/setup.ps1 | iex';
+    if (currentQuickTool === 'agent') {
+      if (currentQuickTab === 'ps') {
+        cmd = '$env:OPENAI_BASE_URL="' + hostUrl + '/v1"; $env:OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"; $env:ANTHROPIC_BASE_URL="' + hostUrl + '"; $env:ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
+      } else {
+        cmd = 'export OPENAI_BASE_URL="' + hostUrl + '/v1" OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '" ANTHROPIC_BASE_URL="' + hostUrl + '" ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
+      }
+    } else if (currentQuickTool === 'codex') {
+      if (currentQuickTab === 'ps') {
+        cmd = withKey
+          ? '& ([scriptblock]::Create((irm ' + hostUrl + '/codex-setup.ps1))) -Key "' + key + '"'
+          : 'irm ' + hostUrl + '/codex-setup.ps1 | iex';
+      } else {
+        cmd = withKey
+          ? 'curl -fsSL ' + hostUrl + '/codex-setup.sh | bash -s -- --key ' + key
+          : 'curl -fsSL ' + hostUrl + '/codex-setup.sh | bash';
+      }
     } else {
-      cmd = withKey
-        ? 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + key
-        : 'curl -fsSL ' + hostUrl + '/setup.sh | bash';
+      if (currentQuickTab === 'ps') {
+        cmd = withKey
+          ? '& ([scriptblock]::Create((irm ' + hostUrl + '/claude-setup.ps1))) -Key "' + key + '"'
+          : 'irm ' + hostUrl + '/claude-setup.ps1 | iex';
+      } else {
+        cmd = withKey
+          ? 'curl -fsSL ' + hostUrl + '/claude-setup.sh | bash -s -- --key ' + key
+          : 'curl -fsSL ' + hostUrl + '/claude-setup.sh | bash';
+      }
     }
 
     var codeEl = document.getElementById('quickCmdText');
@@ -3971,6 +4078,23 @@ ${SHARED_HELPERS}
       var btn = document.getElementById(t.id);
       if (btn) {
         if (t.name === tab) btn.classList.add('active');
+        else btn.classList.remove('active');
+      }
+    });
+    updateQuickCmd();
+  }
+
+  function setQuickTool(tool) {
+    currentQuickTool = tool;
+    var tools = [
+      { id: 'btnQuickToolClaude', name: 'claude' },
+      { id: 'btnQuickToolCodex', name: 'codex' },
+      { id: 'btnQuickToolAgent', name: 'agent' }
+    ];
+    tools.forEach(function (t) {
+      var btn = document.getElementById(t.id);
+      if (btn) {
+        if (t.name === tool) btn.classList.add('active');
         else btn.classList.remove('active');
       }
     });
@@ -4689,10 +4813,14 @@ ${SHARED_HELPERS}
   bindCopy('btnCopyCreatedKey', 'createdClientKey', 'Klucz klienta');
   bindCopy('btnCopySetupBash', 'cmdSetupBash', 'Polecenie Claude (Bash)');
   bindCopy('btnCopySetupCodexBash', 'cmdSetupCodexBash', 'Polecenie Codex (Bash)');
+  bindCopy('btnCopySetupAgentBash', 'cmdSetupAgentBash', 'Zmienne OpenCode / Hermes (Bash)');
   bindCopy('btnCopySetupPowershell', 'cmdSetupPowershell', 'Polecenie Claude (PowerShell)');
   bindCopy('btnCopySetupCodexPowershell', 'cmdSetupCodexPowershell', 'Polecenie Codex (PowerShell)');
-  bindCopy('btnCopySetupNode', 'cmdSetupNode', 'Polecenie Node.js');
-  bindCopy('btnCopySetupGit', 'cmdSetupGit', 'Polecenie Git');
+  bindCopy('btnCopySetupAgentPowershell', 'cmdSetupAgentPowershell', 'Zmienne OpenCode / Hermes (PowerShell)');
+  bindCopy('btnCopySetupNode', 'cmdSetupNode', 'Polecenie Claude (Node.js)');
+  bindCopy('btnCopySetupCodexNode', 'cmdSetupCodexNode', 'Polecenie Codex (Node.js)');
+  bindCopy('btnCopySetupGit', 'cmdSetupGit', 'Polecenie Git (Claude)');
+  bindCopy('btnCopySetupCodexGit', 'cmdSetupCodexGit', 'Polecenie Git (Codex)');
 
   var btnCopyShellEnv = document.getElementById('btnCopyShellEnv');
   if (btnCopyShellEnv) {
@@ -4708,7 +4836,11 @@ ${SHARED_HELPERS}
         '# OpenAI Codex CLI:',
         'export CODEX_BASE_URL="' + hostUrl + '/backend-api/codex"',
         'export CODEX_LB_API_KEY="' + k + '"',
-        'export OPENAI_BASE_URL="' + hostUrl + '/v1"'
+        '',
+        '# OpenAI Compatible (OpenCode, Hermes Agent, Aider):',
+        'export OPENAI_BASE_URL="' + hostUrl + '/v1"',
+        'export OPENAI_API_KEY="' + k + '"',
+        'export AGENT_LB_API_KEY="' + k + '"'
       ].join('\\n');
       copyToClipboard(shellText, 'Shell env');
     });
@@ -4744,6 +4876,12 @@ ${SHARED_HELPERS}
     var b = document.getElementById('btnQuickTab' + t);
     if (b) {
       b.addEventListener('click', function () { setQuickTab(t.toLowerCase()); });
+    }
+  });
+  ['Claude', 'Codex', 'Agent'].forEach(function (tool) {
+    var b = document.getElementById('btnQuickTool' + tool);
+    if (b) {
+      b.addEventListener('click', function () { setQuickTool(tool.toLowerCase()); });
     }
   });
   var chkKey = document.getElementById('chkIncludeKeyInCmd');

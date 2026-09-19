@@ -250,10 +250,16 @@ rm -f "$resp_file"
 
 # --------------------------------------------------------- klucz w powloce
 mkdir -p "$(dirname "$ENV_FILE")"
-umask 077
-printf 'export CODEX_LB_API_KEY=%s\n' "$KEY" > "$ENV_FILE"
+{
+	printf '%s\n' '# Agent LB / Codex environment configuration'
+	printf 'export CODEX_LB_API_KEY=%s\n' "$KEY"
+	printf 'export AGENT_LB_API_KEY=%s\n' "$KEY"
+	printf 'export OPENAI_BASE_URL=%s\n' "$URL/v1"
+	printf 'export OPENAI_API_KEY=%s\n' "$KEY"
+	printf 'export CODEX_BASE_URL=%s\n' "$URL/backend-api/codex"
+} > "$ENV_FILE"
 chmod 600 "$ENV_FILE"
-say "Klucz zapisany w $ENV_FILE (tylko dla Ciebie, chmod 600)."
+say "Klucz i konfiguracja zapisane w $ENV_FILE (chmod 600)."
 
 src_line=". \"$ENV_FILE\"  # codexlb"
 for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do

@@ -170,10 +170,16 @@ if ($Status) {
 # ------------------------------------------------------------- czyszczenie
 if ($Clean) {
 	Say '=== Czyszczenie konfiguracji i kluczy CodexLB ==='
-	Say 'Usuwam CODEX_LB_API_KEY ze srodowiska uzytkownika...'
+	Say 'Usuwam zmienne Agent-LB / Codex ze srodowiska uzytkownika...'
 	[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $null, 'User')
+	[Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $null, 'User')
+	[Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', $null, 'User')
+	[Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', $null, 'User')
+	[Environment]::SetEnvironmentVariable('CODEX_BASE_URL', $null, 'User')
 	$env:CODEX_LB_API_KEY = $null
-	Say '[OK] Usunieto zmienna CODEX_LB_API_KEY z rejestru Windows.'
+	$env:OPENAI_API_KEY = $null
+	$env:AGENT_LB_API_KEY = $null
+	Say '[OK] Usunieto zmienne ze srodowiska Windows.'
 
 	if (Test-Path $config) {
 		$backup = "$config.bak-" + (Get-Date -Format 'yyyyMMdd-HHmmss')
@@ -251,9 +257,17 @@ try {
 }
 
 # --------------------------------------------------------- klucz w rejestrze
-Say 'Zapisuje klucz w srodowisku uzytkownika (rejestr)...'
+Say 'Zapisuje klucz i zmienne w srodowisku uzytkownika (rejestr)...'
 [Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $Key, 'User')
+[Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $Key, 'User')
+[Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', $Key, 'User')
+[Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', "$Url/v1", 'User')
+[Environment]::SetEnvironmentVariable('CODEX_BASE_URL', "$Url/backend-api/codex", 'User')
 $env:CODEX_LB_API_KEY = $Key
+$env:OPENAI_API_KEY   = $Key
+$env:AGENT_LB_API_KEY = $Key
+$env:OPENAI_BASE_URL  = "$Url/v1"
+$env:CODEX_BASE_URL   = "$Url/backend-api/codex"
 
 # ------------------------------------------------------------ config.toml
 if (-not (Test-Path $codexHome)) { New-Item -ItemType Directory -Path $codexHome -Force | Out-Null }

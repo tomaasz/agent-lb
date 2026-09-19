@@ -351,10 +351,10 @@ async function handleClean(envFile, codexHome) {
   // 1. Usunięcie zmiennej środowiskowej
   if (isWin) {
     try {
-      execSync(`powershell.exe -NoProfile -Command "[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $null, 'User')"`);
-      console.log('[OK] Usunięto zmienną CODEX_LB_API_KEY z profilu użytkownika Windows.');
+      execSync(`powershell.exe -NoProfile -Command "'CODEX_LB_API_KEY','OPENAI_API_KEY','AGENT_LB_API_KEY','OPENAI_BASE_URL','CODEX_BASE_URL' | ForEach-Object { [Environment]::SetEnvironmentVariable($_, $null, 'User') }"`);
+      console.log('[OK] Usunięto zmienne Agent-LB / Codex z profilu użytkownika Windows.');
     } catch (err) {
-      console.warn(`[Ostrzeżenie] Nie udało się usunąć zmiennej z rejestru Windows: ${err.message}`);
+      console.warn(`[Ostrzeżenie] Nie udało się usunąć zmiennych z rejestru Windows: ${err.message}`);
     }
   } else {
     if (fs.existsSync(envFile)) {
@@ -510,10 +510,10 @@ async function main() {
   if (isWin) {
     try {
       // Bezpieczne przekazanie wartości przez zmienną środowiskową procesu potomnego
-      execSync(`powershell.exe -NoProfile -Command "[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $env:TMP_KEY, 'User')"`, {
+      execSync(`powershell.exe -NoProfile -Command "[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', '${targetUrl}/v1', 'User'); [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', '${targetUrl}/backend-api/codex', 'User')"`, {
         env: { ...process.env, TMP_KEY: apiKey },
       });
-      console.log('[OK] Zapisano CODEX_LB_API_KEY w profilu użytkownika Windows.');
+      console.log('[OK] Zapisano zmienne CODEX_LB_API_KEY, OPENAI_API_KEY i OPENAI_BASE_URL w profilu Windows.');
     } catch (err) {
       console.warn(`[Ostrzeżenie] Nie udało się zapisać zmiennej w rejestrze Windows: ${err.message}`);
     }
@@ -522,8 +522,16 @@ async function main() {
     try {
       const configDir = path.dirname(envFile);
       if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
-      fs.writeFileSync(envFile, `export CODEX_LB_API_KEY="${apiKey}"\n`, { mode: 0o600 });
-      console.log(`[OK] Klucz zapisany w ${envFile} (chmod 600).`);
+      const envLines = [
+        '# Agent LB / Codex environment configuration',
+        `export CODEX_LB_API_KEY="${apiKey}"`,
+        `export AGENT_LB_API_KEY="${apiKey}"`,
+        `export OPENAI_BASE_URL="${targetUrl}/v1"`,
+        `export OPENAI_API_KEY="${apiKey}"`,
+        `export CODEX_BASE_URL="${targetUrl}/backend-api/codex"`,
+      ].join('\n') + '\n';
+      fs.writeFileSync(envFile, envLines, { mode: 0o600 });
+      console.log(`[OK] Klucz i zmienne środowiskowe zapisane w ${envFile} (chmod 600).`);
 
       const srcLine = `. "${envFile}"  # codexlb`;
       for (const rcName of ['.bashrc', '.zshrc']) {
