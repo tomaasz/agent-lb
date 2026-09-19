@@ -389,7 +389,6 @@ async function serverCommand() {
     // way routes, sx, probe and warmup are picked up below.
     // Not coerced to a boolean: 'adaptive' is a third mode, and !! would flatten
     // it to plain even distribution on every config reload.
-    config.distributeSessions = diskConfig.distributeSessions ?? false;
     config.distributeSessions = diskConfig.distributeSessions ?? 'adaptive';
     accountManager.setDistributeSessions(config.distributeSessions);
     // Pick up a switchThreshold change the same way (agentlb threshold, the
@@ -401,10 +400,9 @@ async function serverCommand() {
       accountManager.switchThreshold = diskConfig.switchThreshold;
     }
     // Pick up expiry-routing edits the same way, so the knob hot-applies.
-    config.expiryRouting = diskConfig.expiryRouting;
     config.expiryRouting = diskConfig.expiryRouting ?? { enabled: true, tolerance: 1.5, preempt: true };
     accountManager.setExpiryRouting(config.expiryRouting);
-    config.crossProviderFallback = diskConfig.crossProviderFallback ?? false;
+    config.crossProviderFallback = diskConfig.crossProviderFallback ?? true;
     accountManager.setCrossProviderFallback(config.crossProviderFallback);
     config.sessionTitles = diskConfig.sessionTitles;
     sessionTitles.configure(config.sessionTitles);

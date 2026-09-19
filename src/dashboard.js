@@ -868,6 +868,7 @@ const PAGE = `<!doctype html>
         </div>
         <div class="policy-head-right">
           <span id="drainStatusBadge" class="badge error" style="display:none; font-size:11px;"></span>
+          <button id="btnSetDefaults" class="btn btn-sm" data-i18n="btnSetDefaults" data-i18n-title="btnSetDefaultsTitle" title="Przywróć optymalne ustawienia domyślne floty (Adaptive, Earliest-Reset, Fallback, Auto-Health)">✨ Ustaw domyślne</button>
           <button id="btnDrainToggle" class="btn btn-sm" data-i18n="btnDrainMode" data-i18n-title="btnDrainModeTitle" title="Przełącz tryb drain — dokończ aktywne żądania bez przyjmowania nowych">🛑 Drain Mode</button>
         </div>
       </div>
@@ -1533,6 +1534,9 @@ const PAGE = `<!doctype html>
       policySubtitle: 'Inteligentny podział obciążenia, pamięć podręczna promptów i odporność na limity API.',
       btnPolicyHelp: 'ℹ️ Wyjaśnienia',
       btnPolicyHelpCompact: '⚡ Zwiń opisy',
+      btnSetDefaults: '✨ Ustaw domyślne',
+      btnSetDefaultsTitle: 'Przywróć optymalne ustawienia domyślne floty (Adaptive, Earliest-Reset, Fallback, Auto-Health)',
+      msgFleetDefaultsRestored: 'Przywrócono optymalne ustawienia domyślne floty',
       btnDrainMode: '🛑 Drain Mode',
       btnDrainModeTitle: 'Przełącz tryb drain — dokończ aktywne żądania bez przyjmowania nowych',
       btnDrainCancel: '▶️ Anuluj Drain',
@@ -1625,6 +1629,9 @@ const PAGE = `<!doctype html>
       policySubtitle: 'Smart load balancing, prompt cache reuse, and upstream quota resilience.',
       btnPolicyHelp: 'ℹ️ Explanations',
       btnPolicyHelpCompact: '⚡ Collapse descriptions',
+      btnSetDefaults: '✨ Set Defaults',
+      btnSetDefaultsTitle: 'Restore optimal fleet routing defaults (Adaptive, Earliest-Reset, Fallback, Auto-Health)',
+      msgFleetDefaultsRestored: 'Restored optimal fleet routing defaults',
       btnDrainMode: '🛑 Drain Mode',
       btnDrainModeTitle: 'Toggle drain mode — finish in-flight requests without taking new ones',
       btnDrainCancel: '▶️ Cancel Drain',
@@ -2838,6 +2845,29 @@ ${SHARED_HELPERS}
       })
       .catch(function (e) {
         note('error', 'Błąd zapisu polityki: ' + e.message);
+      });
+  }
+
+  function resetFleetRoutingDefaults() {
+    apiCall('/agent-lb/api/routing', 'POST', { resetDefaults: true })
+      .then(function (res) {
+        if (res && res.ok) {
+          var sel = document.getElementById('selDistributeSessions');
+          var chkExp = document.getElementById('chkExpiryRouting');
+          var chkFb = document.getElementById('chkCrossProviderFallback');
+          var chkHealth = document.getElementById('chkAutoHealthCheck');
+          if (sel) sel.value = 'adaptive';
+          if (chkExp) chkExp.checked = true;
+          if (chkFb) chkFb.checked = true;
+          if (chkHealth) chkHealth.checked = true;
+          note('ok', t('msgFleetDefaultsRestored'));
+          poll();
+        } else {
+          note('error', 'Błąd przywracania ustawień domyślnych: ' + ((res && res.error) || 'Nieznany błąd'));
+        }
+      })
+      .catch(function (e) {
+        note('error', 'Błąd komunikacji z serwerem: ' + e.message);
       });
   }
 
@@ -4601,6 +4631,8 @@ ${SHARED_HELPERS}
   }
   var btnDrain = document.getElementById('btnDrainToggle');
   if (btnDrain) btnDrain.addEventListener('click', toggleDrain);
+  var btnSetDefaults = document.getElementById('btnSetDefaults');
+  if (btnSetDefaults) btnSetDefaults.addEventListener('click', resetFleetRoutingDefaults);
 
   // --- Test Chat (Playground) ---
   function getClaudeModels() {

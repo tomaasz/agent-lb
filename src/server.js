@@ -1502,6 +1502,16 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           return;
         }
 
+        if (body?.resetDefaults) {
+          body.distributeSessions = 'adaptive';
+          body.expiryRouting = { enabled: true, tolerance: 1.5, preempt: true };
+          body.crossProviderFallback = true;
+          if (healthChecker) {
+            healthChecker.reschedule({ enabled: true, intervalMs: 900000, trafficGracePeriodMs: 900000, errorBackoffMs: 3600000 });
+            config.autoHealthCheck = { enabled: true, intervalSeconds: 900, trafficGracePeriodSeconds: 900, errorBackoffSeconds: 3600 };
+          }
+        }
+
         if (body?.distributeSessions !== undefined) {
           accountManager.setDistributeSessions(body.distributeSessions);
           config.distributeSessions = body.distributeSessions;
@@ -1519,6 +1529,9 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           if (body?.distributeSessions !== undefined) disk.distributeSessions = body.distributeSessions;
           if (body?.expiryRouting !== undefined) disk.expiryRouting = body.expiryRouting;
           if (body?.crossProviderFallback !== undefined) disk.crossProviderFallback = body.crossProviderFallback;
+          if (body?.resetDefaults) {
+            disk.autoHealthCheck = { enabled: true, intervalSeconds: 900, trafficGracePeriodSeconds: 900, errorBackoffSeconds: 3600 };
+          }
         });
 
         console.log(`[Agent-LB] Fleet routing policy updated: distributeSessions=${accountManager.distributionMode}, expiryRouting=${accountManager.expiryRouting?.enabled}, fallback=${accountManager.crossProviderFallback}`);
@@ -1529,6 +1542,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           distributeSessionsEnabled: accountManager.distributeSessions,
           expiryRouting: accountManager.expiryRouting,
           crossProviderFallback: accountManager.crossProviderFallback,
+          autoHealthCheck: healthChecker ? healthChecker.getStatus() : undefined,
         }));
         return;
       }

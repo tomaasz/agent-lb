@@ -65,6 +65,21 @@ test('Faza 1: Session Affinity and Routing Policy Endpoint', async () => {
     assert.equal(am.distributionMode, 'even');
     assert.equal(am.expiryRouting.enabled, false);
     assert.equal(am.crossProviderFallback, true);
+
+    // POST /api/routing with resetDefaults: true
+    const resetRes = await fetch(`http://127.0.0.1:${proxyPort}/api/routing`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': 'admin-secret' },
+      body: JSON.stringify({ resetDefaults: true }),
+    });
+    assert.equal(resetRes.status, 200);
+    const resetJson = await resetRes.json();
+    assert.equal(resetJson.distributeSessions, 'adaptive');
+    assert.equal(resetJson.expiryRouting.enabled, true);
+    assert.equal(resetJson.crossProviderFallback, true);
+    assert.equal(am.distributionMode, 'adaptive');
+    assert.equal(am.expiryRouting.enabled, true);
+    assert.equal(am.crossProviderFallback, true);
   } finally {
     await new Promise(resolve => proxyServer.close(resolve));
   }
