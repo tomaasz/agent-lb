@@ -2006,6 +2006,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                     errorReason = 'quota';
                     account.status = 'exhausted';
                     const resetSec = errData?.error?.resets_in_seconds || parseInt(codexRateLimitHeaders['x-codex-primary-reset-after-seconds'], 10) || 3600;
+                    account.exhaustedUntil = Date.now() + resetSec * 1000;
                     const resetMin = Math.ceil(resetSec / 60);
                     errorMsg = `Limit zapytań ChatGPT Plus wyczerpany (100% quota / reset za ok. ${resetMin} min) dla konta "${account.name}".`;
                     account.lastError = {

@@ -1666,7 +1666,16 @@ export class AccountManager {
       return 'throttled';
     }
 
-    if (account.status === 'exhausted') return 'exhausted';
+    if (account.status === 'exhausted') {
+      if (account.exhaustedUntil && Date.now() >= account.exhaustedUntil) {
+        account.status = 'active';
+        account.exhaustedUntil = null;
+        if (account.lastError?.reason === 'quota') account.lastError = null;
+        console.log(`[AgentLB] Account "${account.name}" exhausted hold expired, marking active`);
+      } else {
+        return 'exhausted';
+      }
+    }
     if (account.status === 'error') return 'error';
     // Model-scoped: _isNearQuota checks the shared 5h bucket plus only the weekly
     // bucket that governs this model, so a spent Fable/Sonnet bucket bars just
@@ -1771,8 +1780,9 @@ export class AccountManager {
     account.identityVerificationUntil = null;
     account.lastSuccess = Date.now();
     account.rateLimitedUntil = null;
+    account.exhaustedUntil = null;
     account.throttledAt = null;
-    if (account.status === 'error' || account.status === 'throttled') account.status = 'active';
+    if (account.status === 'error' || account.status === 'throttled' || account.status === 'exhausted') account.status = 'active';
   }
 
   /** Session-distribution toggle (issue #109), applied live on config reload.
@@ -3051,6 +3061,7 @@ export class AccountManager {
       if (model && !this._routeAllows(account, model)) continue;
       if (advisorModel && !this._routeAllows(account, advisorModel)) continue;
       const resetTime = account.rateLimitedUntil
+        || account.exhaustedUntil
         || account.quota.unified5hReset
         || account.quota.unified7dReset
         || (account.quota.resetsAt ? new Date(account.quota.resetsAt).getTime() : null);
@@ -3064,6 +3075,7 @@ export class AccountManager {
     if (soonestAccount && soonestTime <= Date.now()) {
       soonestAccount.status = 'active';
       soonestAccount.rateLimitedUntil = null;
+      soonestAccount.exhaustedUntil = null;
       this._setCurrent(soonestAccount);
       this._beginRamp(soonestAccount);
       console.log(`[AgentLB] Account "${soonestAccount.name}" reset, switching to it`);
@@ -3379,6 +3391,13 @@ export class AccountManager {
       account.probing = false;
       account.requalify = true;
     }
+    // Auto-recover from exhausted status if probe reveals headroom available
+    if (account.status === 'exhausted' && (q.unified5h == null || q.unified5h < this.switchThreshold)) {
+      account.status = 'active';
+      account.exhaustedUntil = null;
+      if (account.lastError?.reason === 'quota') account.lastError = null;
+      console.log(`[AgentLB] Account "${account.name}" recovered from exhausted state (utilization: ${q.unified5h != null ? Math.round(q.unified5h * 100) + '%' : 'headroom available'})`);
+    }
   }
 
   /**
@@ -3558,10 +3577,11 @@ export class AccountManager {
   clearRateLimited(accountIndex) {
     const account = this.accounts[accountIndex];
     if (!account) return;
-    if (account.lastError?.reason === 'rate-limit') account.lastError = null;
-    if (account.status !== 'throttled' && !account.rateLimitedUntil) return;
+    if (account.lastError?.reason === 'rate-limit' || account.lastError?.reason === 'quota') account.lastError = null;
+    if (account.status !== 'throttled' && account.status !== 'exhausted' && !account.rateLimitedUntil && !account.exhaustedUntil) return;
     account.status = 'active';
     account.rateLimitedUntil = null;
+    account.exhaustedUntil = null;
     account.throttledAt = null;
     console.log(`[AgentLB] Account "${account.name}" revalidated — rate limit no longer applies, back in rotation`);
   }

@@ -625,4 +625,118 @@ describe('Test Chat & Playground Support', () => {
       mockUpstream.close();
     }
   });
+
+  it('correctly handles Codex 429 quota exhaustion and recovers on subsequent success, probe headroom, and hold expiry', async () => {
+    let return429Quota = true;
+
+    const mockUpstream = http.createServer((req, res) => {
+      if (req.url.endsWith('/backend-api/codex/responses')) {
+        if (return429Quota) {
+          res.writeHead(429, {
+            'Content-Type': 'application/json',
+            'x-codex-primary-used-percent': '100',
+            'x-codex-primary-reset-after-seconds': '60'
+          });
+          res.end(JSON.stringify({
+            error: { type: 'usage_limit_reached', resets_in_seconds: 60 }
+          }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          model: 'gpt-5.6-sol',
+          output: [{ content: [{ type: 'text', text: 'OK' }] }],
+          usage: { prompt_tokens: 5, completion_tokens: 5 }
+        }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await new Promise(resolve => mockUpstream.listen(0, '127.0.0.1', resolve));
+    const upstreamUrl = `http://127.0.0.1:${mockUpstream.address().port}`;
+
+    const accounts = [
+      { name: 'codex-exhaust-test', provider: 'codex', type: 'oauth', accessToken: 'token-cx', upstream: upstreamUrl }
+    ];
+    const am = new AccountManager(accounts, 0.98);
+    const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {}, null, null, null);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const proxyPort = server.address().port;
+
+    try {
+      // 1. Send test chat that returns 429 quota exhaustion
+      const res = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: { 'x-api-key': 'tc-test-admin', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'codex',
+          account: 'codex-exhaust-test',
+          model: 'gpt-5.6',
+          message: 'ping'
+        })
+      });
+
+      const json = await res.json();
+      assert.equal(json.ok, false);
+      assert.equal(json.status, 429);
+      assert.match(json.error, /Limit zapytań ChatGPT Plus wyczerpany/);
+
+      const acc = am.accounts[0];
+      assert.equal(acc.status, 'exhausted');
+      assert.equal(acc.lastError?.reason, 'quota');
+      assert.equal(acc.lastError?.status, 429);
+      assert.equal(acc.lastTest?.ok, false);
+      assert.equal(acc.lastTest?.reason, 'quota');
+      assert.ok(acc.exhaustedUntil > Date.now(), 'exhaustedUntil should be set');
+      assert.equal(am.unavailableReason(acc), 'exhausted');
+
+      // 2. Recovery on subsequent successful request
+      return429Quota = false;
+      const res2 = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: { 'x-api-key': 'tc-test-admin', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'codex',
+          account: 'codex-exhaust-test',
+          model: 'gpt-5.6',
+          message: 'ping'
+        })
+      });
+
+      const json2 = await res2.json();
+      assert.equal(json2.ok, true);
+      assert.equal(acc.status, 'active');
+      assert.equal(acc.lastError, null);
+      assert.equal(acc.lastTest?.ok, true);
+      assert.equal(acc.exhaustedUntil, null);
+      assert.equal(am.unavailableReason(acc), null, 'unavailableReason is null after successful request');
+
+      // 3. Re-exhaust and test probe headroom recovery
+      acc.status = 'exhausted';
+      acc.lastError = { reason: 'quota', status: 429, error: 'exhausted' };
+      acc.exhaustedUntil = Date.now() + 3600_000;
+      assert.equal(am.unavailableReason(acc), 'exhausted');
+
+      am.applyCodexUsageData(0, {
+        fiveHour: { utilization: 0, resetAt: Date.now() + 18000_000 },
+        sevenDay: { utilization: 0.16, resetAt: Date.now() + 600000_000 }
+      });
+      assert.equal(acc.status, 'active', 'applyCodexUsageData resets exhausted status when headroom is available');
+      assert.equal(acc.lastError, null);
+      assert.equal(acc.exhaustedUntil, null);
+      assert.equal(am.unavailableReason(acc), null);
+
+      // 4. Re-exhaust and test hold expiry recovery
+      acc.status = 'exhausted';
+      acc.exhaustedUntil = Date.now() - 1000; // already expired
+      assert.equal(am.unavailableReason(acc), null, 'unavailableReason automatically recovers when exhaustedUntil has passed');
+      assert.equal(acc.status, 'active');
+      assert.equal(acc.exhaustedUntil, null);
+    } finally {
+      server.close();
+      mockUpstream.close();
+    }
+  });
 });
