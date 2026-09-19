@@ -199,7 +199,7 @@ function makeAccount(acct, index) {
     // that reject e.g. `context_management`). See server.js stripBodyFields.
     stripRequestFields: acct.stripRequestFields || null,
     models: acct.models || null,
-    credential: acct.accessToken || acct.apiKey,
+    credential: acct.credential || acct.accessToken || acct.apiKey,
     refreshToken: acct.refreshToken || null,
     expiresAt: acct.expiresAt || null,
     status: 'active',

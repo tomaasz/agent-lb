@@ -49,6 +49,8 @@ export function resolveTargetModel(sourceModel, targetProvider) {
   if (!sourceModel) return targetProvider === 'codex' ? DEFAULT_FALLBACK_OPENAI_MODEL : DEFAULT_FALLBACK_ANTHROPIC_MODEL;
   if (targetProvider === 'anthropic' && sourceModel.startsWith('claude-')) return sourceModel;
   if (targetProvider === 'codex' && (sourceModel.startsWith('gpt-') || sourceModel.startsWith('o1') || sourceModel.startsWith('o3'))) return sourceModel;
+  if (targetProvider === 'codex' && (sourceModel === 'codex' || sourceModel === 'gpt-5.6' || sourceModel === 'gpt-5')) return 'gpt-5.6-sol';
+  if (targetProvider === 'codex' && sourceModel === 'codex-mini') return 'gpt-5.6-terra';
   if (targetProvider === 'codex' && sourceModel === 'agy') return 'gpt-5.6-sol';
   if (targetProvider === 'codex' && sourceModel === 'agy-fast') return 'gpt-5.6-terra';
   if (targetProvider === 'anthropic' && sourceModel === 'agy') return 'claude-sonnet-5';
@@ -583,5 +585,314 @@ export function createAnthropicToOpenAITransformStream(requestedModel = 'gpt-4o'
     },
   });
 }
+
+/**
+ * Translate OpenAI Chat Completions request body to Codex Responses API format.
+ */
+export function translateChatCompletionsToCodexResponses(body, targetModel = 'gpt-5.6-sol') {
+  const json = typeof body === 'string' ? JSON.parse(body) : (Buffer.isBuffer(body) ? JSON.parse(body.toString('utf8')) : body);
+  let effectiveModel = targetModel || json.model || 'gpt-5.6-sol';
+  if (effectiveModel === 'codex' || effectiveModel === 'gpt-5.6' || effectiveModel === 'gpt-5' || effectiveModel === 'agy') {
+    effectiveModel = 'gpt-5.6-sol';
+  } else if (effectiveModel === 'codex-mini' || effectiveModel === 'agy-fast') {
+    effectiveModel = 'gpt-5.6-terra';
+  } else if (effectiveModel === 'gpt-6') {
+    effectiveModel = 'gpt-6-astra';
+  }
+
+  const input = [];
+  if (Array.isArray(json.messages)) {
+    for (const msg of json.messages) {
+      if (!msg) continue;
+
+      // Tool response message
+      if (msg.role === 'tool') {
+        input.push({
+          type: 'function_call_output',
+          call_id: msg.tool_call_id || '',
+          output: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || '')
+        });
+        continue;
+      }
+
+      const role = msg.role === 'assistant' ? 'assistant' : (msg.role === 'system' ? 'system' : 'user');
+
+      let text = '';
+      if (typeof msg.content === 'string') {
+        text = msg.content;
+      } else if (Array.isArray(msg.content)) {
+        text = msg.content
+          .map(b => (b && typeof b.text === 'string' ? b.text : ''))
+          .filter(Boolean)
+          .join('\n');
+      }
+
+      if (text) {
+        input.push({
+          role,
+          content: [{ type: role === 'assistant' ? 'output_text' : 'input_text', text }]
+        });
+      }
+
+      // Tool calls made by assistant
+      if (Array.isArray(msg.tool_calls)) {
+        for (const tc of msg.tool_calls) {
+          if (!tc) continue;
+          input.push({
+            type: 'function_call',
+            call_id: tc.id || `call_${randomUUID().slice(0, 8)}`,
+            name: tc.function?.name || '',
+            arguments: typeof tc.function?.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function?.arguments || {})
+          });
+        }
+      }
+    }
+  }
+
+  const out = {
+    model: effectiveModel,
+    store: false,
+    stream: true,
+    input
+  };
+
+  // Tools
+  if (Array.isArray(json.tools) && json.tools.length > 0) {
+    out.tools = json.tools.map(t => {
+      if (t.type === 'function' && t.function) {
+        return {
+          type: 'function',
+          name: t.function.name,
+          description: t.function.description || undefined,
+          parameters: t.function.parameters || { type: 'object', properties: {} }
+        };
+      }
+      return t;
+    });
+  }
+
+  // Reasoning effort
+  const effort = json.reasoning_effort || json.reasoningEffort || json.reasoning?.effort;
+  if (typeof effort === 'string' && effort.trim()) {
+    out.reasoning = { effort: effort.trim().toLowerCase() };
+  }
+
+  return Buffer.from(JSON.stringify(out), 'utf8');
+}
+
+/**
+ * Creates a Transform stream converting Codex Responses SSE events into OpenAI Chat Completion chunks.
+ */
+export function createCodexResponsesToOpenAITransformStream(requestedModel = 'gpt-5.6-sol', onUsage = null) {
+  let buffer = '';
+  let chunkId = null;
+  let created = Math.floor(Date.now() / 1000);
+  let firstChunk = true;
+  let doneSent = false;
+  let hasToolCalls = false;
+  let activeToolIndex = 0;
+
+  return new Transform({
+    transform(chunk, encoding, callback) {
+      buffer += chunk.toString('utf8');
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data:')) continue;
+        const dataStr = trimmed.slice(5).trim();
+        if (dataStr === '[DONE]') continue;
+
+        try {
+          const payload = JSON.parse(dataStr);
+          if (payload.type === 'response.created' && payload.response) {
+            if (payload.response.id) {
+              chunkId = `chatcmpl-${payload.response.id.replace(/^resp_/, '')}`;
+            }
+            if (payload.response.created_at) {
+              created = payload.response.created_at;
+            }
+          } else if (payload.type === 'response.output_text.delta' && payload.delta != null) {
+            chunkId ??= `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+            const deltaObj = firstChunk
+              ? { role: 'assistant', content: payload.delta }
+              : { content: payload.delta };
+            firstChunk = false;
+            const sseChunk = {
+              id: chunkId,
+              object: 'chat.completion.chunk',
+              created,
+              model: requestedModel,
+              choices: [{ index: 0, delta: deltaObj, finish_reason: null }]
+            };
+            this.push(`data: ${JSON.stringify(sseChunk)}\n\n`);
+          } else if (payload.type === 'response.output_item.added' && payload.item?.type === 'function_call') {
+            hasToolCalls = true;
+            chunkId ??= `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+            const idx = payload.output_index ?? activeToolIndex++;
+            const deltaObj = {
+              tool_calls: [{
+                index: idx,
+                id: payload.item.call_id || payload.item.id || `call_${randomUUID().slice(0, 8)}`,
+                type: 'function',
+                function: { name: payload.item.name || '', arguments: '' }
+              }]
+            };
+            if (firstChunk) {
+              deltaObj.role = 'assistant';
+              firstChunk = false;
+            }
+            const sseChunk = {
+              id: chunkId,
+              object: 'chat.completion.chunk',
+              created,
+              model: requestedModel,
+              choices: [{
+                index: 0,
+                delta: deltaObj,
+                finish_reason: null
+              }]
+            };
+            this.push(`data: ${JSON.stringify(sseChunk)}\n\n`);
+          } else if (payload.type === 'response.function_call_arguments.delta' && payload.delta != null) {
+            hasToolCalls = true;
+            chunkId ??= `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+            const idx = payload.output_index ?? Math.max(0, activeToolIndex - 1);
+            const sseChunk = {
+              id: chunkId,
+              object: 'chat.completion.chunk',
+              created,
+              model: requestedModel,
+              choices: [{
+                index: 0,
+                delta: {
+                  tool_calls: [{
+                    index: idx,
+                    function: { arguments: payload.delta }
+                  }]
+                },
+                finish_reason: null
+              }]
+            };
+            this.push(`data: ${JSON.stringify(sseChunk)}\n\n`);
+          } else if (payload.type === 'response.completed') {
+            if (payload.response?.id) {
+              chunkId = `chatcmpl-${payload.response.id.replace(/^resp_/, '')}`;
+            }
+            chunkId ??= `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+            const finishReason = hasToolCalls ? 'tool_calls' : 'stop';
+            const sseChunk = {
+              id: chunkId,
+              object: 'chat.completion.chunk',
+              created,
+              model: requestedModel,
+              choices: [{ index: 0, delta: {}, finish_reason: finishReason }]
+            };
+            if (payload.response?.usage) {
+              const u = payload.response.usage;
+              const inTok = u.input_tokens || 0;
+              const outTok = u.output_tokens || 0;
+              sseChunk.usage = {
+                prompt_tokens: inTok,
+                completion_tokens: outTok,
+                total_tokens: inTok + outTok
+              };
+              if (onUsage) {
+                try { onUsage(u); } catch {}
+              }
+            }
+            this.push(`data: ${JSON.stringify(sseChunk)}\n\n`);
+            this.push('data: [DONE]\n\n');
+            doneSent = true;
+          }
+        } catch {
+          // pass through non-JSON
+        }
+      }
+      callback();
+    },
+    flush(callback) {
+      if (!doneSent) {
+        this.push('data: [DONE]\n\n');
+      }
+      callback();
+    }
+  });
+}
+
+/**
+ * Translates Codex Responses API buffered stream or JSON into an OpenAI Chat Completion response object.
+ */
+export function translateCodexResponsesToOpenAIResponse(buffer, requestedModel = 'gpt-5.6-sol') {
+  const text = typeof buffer === 'string' ? buffer : (Buffer.isBuffer(buffer) ? buffer.toString('utf8') : JSON.stringify(buffer));
+  let id = `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  let created = Math.floor(Date.now() / 1000);
+  let content = '';
+  const toolCallsMap = new Map();
+  let usage = null;
+  let hasTools = false;
+
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) continue;
+    const dataStr = trimmed.slice(5).trim();
+    if (dataStr === '[DONE]') continue;
+    try {
+      const payload = JSON.parse(dataStr);
+      if (payload.type === 'response.created' && payload.response) {
+        if (payload.response.id) id = `chatcmpl-${payload.response.id.replace(/^resp_/, '')}`;
+        if (payload.response.created_at) created = payload.response.created_at;
+      } else if (payload.type === 'response.output_text.delta' && payload.delta) {
+        content += payload.delta;
+      } else if (payload.type === 'response.output_item.added' && payload.item?.type === 'function_call') {
+        hasTools = true;
+        const idx = payload.output_index ?? toolCallsMap.size;
+        toolCallsMap.set(idx, {
+          id: payload.item.call_id || payload.item.id || `call_${randomUUID().slice(0, 8)}`,
+          type: 'function',
+          function: { name: payload.item.name || '', arguments: '' }
+        });
+      } else if (payload.type === 'response.function_call_arguments.delta' && payload.delta) {
+        hasTools = true;
+        const idx = payload.output_index ?? Math.max(0, toolCallsMap.size - 1);
+        const existing = toolCallsMap.get(idx);
+        if (existing) existing.function.arguments += payload.delta;
+      } else if (payload.type === 'response.completed' && payload.response?.usage) {
+        usage = payload.response.usage;
+      }
+    } catch {}
+  }
+
+  const toolCalls = Array.from(toolCallsMap.values());
+  const inTokens = usage?.input_tokens || 0;
+  const outTokens = usage?.output_tokens || 0;
+
+  return {
+    id,
+    object: 'chat.completion',
+    created,
+    model: requestedModel,
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: 'assistant',
+          content: content || null,
+          ...(toolCalls.length ? { tool_calls: toolCalls } : {})
+        },
+        finish_reason: hasTools ? 'tool_calls' : 'stop'
+      }
+    ],
+    usage: {
+      prompt_tokens: inTokens,
+      completion_tokens: outTokens,
+      total_tokens: inTokens + outTokens,
+      input_tokens: inTokens,
+      output_tokens: outTokens
+    }
+  };
+}
+
 
 

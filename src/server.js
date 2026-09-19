@@ -38,6 +38,9 @@ import {
   translateOpenAIToAnthropic,
   translateAnthropicToOpenAIResponse,
   createAnthropicToOpenAITransformStream,
+  translateChatCompletionsToCodexResponses,
+  createCodexResponsesToOpenAITransformStream,
+  translateCodexResponsesToOpenAIResponse,
   resolveTargetModel,
 } from './provider-translator.js';
 import { FairShareController } from './fair-share.js';
@@ -4531,11 +4534,43 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
   const method = req.method;
 
   let sendBody = body;
-  if (isCrossProvider) {
+  const isChatCompletions = (req.url || '').startsWith('/v1/chat/completions');
+  if (isChatCompletions && servingProvider === 'codex' && (account.type === 'oauth' || (upstreamFor(account, upstream) || '').includes('chatgpt.com'))) {
+    ctx.originalModel = ctx.model;
+    upstreamUrl = `${upstreamFor(account, upstream)}/backend-api/codex/responses`;
+    sendBody = translateChatCompletionsToCodexResponses(sendBody, resolveTargetModel(ctx.model, 'codex'));
+    headers['content-type'] = 'application/json';
+    headers['accept'] = 'text/event-stream';
+    headers['user-agent'] = 'codex-cli/0.1.0';
+    ctx.isCodexResponsesToOpenAI = true;
+    let isClientStreaming = false;
+    try {
+      const parsed = JSON.parse(body.toString('utf8'));
+      if (parsed.stream === true) isClientStreaming = true;
+    } catch {}
+    ctx.isClientStreaming = isClientStreaming;
+  } else if (isCrossProvider) {
     if (requestProvider === 'anthropic' && servingProvider === 'codex') {
-      upstreamUrl = `${upstreamFor(account, upstream)}/v1/chat/completions`;
-      sendBody = translateAnthropicToOpenAI(sendBody, resolveTargetModel(ctx.model, 'codex'));
-      headers['content-type'] = 'application/json';
+      if (account.type === 'oauth' || (upstreamFor(account, upstream) || '').includes('chatgpt.com')) {
+        ctx.originalModel = ctx.model;
+        upstreamUrl = `${upstreamFor(account, upstream)}/backend-api/codex/responses`;
+        const openAIBody = translateAnthropicToOpenAI(sendBody, resolveTargetModel(ctx.model, 'codex'));
+        sendBody = translateChatCompletionsToCodexResponses(openAIBody, resolveTargetModel(ctx.model, 'codex'));
+        headers['content-type'] = 'application/json';
+        headers['accept'] = 'text/event-stream';
+        headers['user-agent'] = 'codex-cli/0.1.0';
+        ctx.isCodexResponsesToAnthropic = true;
+        let isClientStreaming = false;
+        try {
+          const parsed = JSON.parse(body.toString('utf8'));
+          if (parsed.stream === true) isClientStreaming = true;
+        } catch {}
+        ctx.isClientStreaming = isClientStreaming;
+      } else {
+        upstreamUrl = `${upstreamFor(account, upstream)}/v1/chat/completions`;
+        sendBody = translateAnthropicToOpenAI(sendBody, resolveTargetModel(ctx.model, 'codex'));
+        headers['content-type'] = 'application/json';
+      }
     } else if (requestProvider === 'codex' && servingProvider === 'anthropic') {
       upstreamUrl = `${upstreamFor(account, upstream)}/v1/messages`;
       sendBody = translateOpenAIToAnthropic(sendBody, resolveTargetModel(ctx.model, 'anthropic'));
@@ -4982,8 +5017,13 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     const contentType = upstreamRes.headers.get('content-type') || '';
     const isStreaming = contentType.includes('text/event-stream');
 
-    if (isCrossProvider) {
-      responseHeaders['content-type'] = isStreaming ? 'text/event-stream; charset=utf-8' : 'application/json; charset=utf-8';
+    if (upstreamRes.status < 400) {
+      if (ctx.isCodexResponsesToOpenAI || ctx.isCodexResponsesToAnthropic) {
+        const clientStreaming = ctx.isClientStreaming !== false;
+        responseHeaders['content-type'] = clientStreaming ? 'text/event-stream; charset=utf-8' : 'application/json; charset=utf-8';
+      } else if (isCrossProvider) {
+        responseHeaders['content-type'] = isStreaming ? 'text/event-stream; charset=utf-8' : 'application/json; charset=utf-8';
+      }
     }
 
     res.writeHead(upstreamRes.status, responseHeaders);
@@ -5000,6 +5040,115 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       res.end();
       ctx.delivered = answeredStatus(upstreamRes.status);
       return;
+    }
+
+    if (upstreamRes.status >= 400) {
+      const buf = bufferedResponseBody ?? Buffer.from(await upstreamRes.arrayBuffer());
+      const l = getLog();
+      if (l) { l.body('RESPONSE BODY', buf, contentType); l.end(); }
+      res.end(buf);
+      ctx.delivered = answeredStatus(upstreamRes.status);
+      return;
+    }
+
+    if (ctx.isCodexResponsesToOpenAI) {
+      const isClientStreaming = ctx.isClientStreaming !== false;
+      if (isClientStreaming) {
+        const l = getLog();
+        const transform = createCodexResponsesToOpenAITransformStream(ctx.originalModel || ctx.model, (usage) => {
+          const inTok = usage.input_tokens || 0;
+          const outTok = usage.output_tokens || 0;
+          accountManager.updateUsage(account.index, inTok, outTok);
+          ctx.onUsage?.(inTok, outTok);
+          accountManager.recordTokenUsage(account.index, ctx.sessionId, ctx.model, usage);
+        });
+        const stream = Readable.fromWeb(upstreamRes.body);
+        const onClose = () => {
+          stream.destroy();
+          transform.destroy();
+        };
+        res.once('close', onClose);
+        stream.pipe(transform).pipe(res);
+        await new Promise((resolve, reject) => {
+          transform.on('end', resolve);
+          transform.on('error', reject);
+          stream.on('error', reject);
+        }).catch(err => {
+          console.error('[Agent-LB] Stream translation error:', err.message);
+        }).finally(() => {
+          res.off('close', onClose);
+        });
+        l?.end();
+        ctx.delivered = answeredStatus(upstreamRes.status);
+        return;
+      } else {
+        const buf = bufferedResponseBody ?? Buffer.from(await upstreamRes.arrayBuffer());
+        let finalBuf = buf;
+        try {
+          const translated = translateCodexResponsesToOpenAIResponse(buf, ctx.originalModel || ctx.model);
+          finalBuf = Buffer.from(JSON.stringify(translated), 'utf8');
+          extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
+        } catch (e) {
+          console.warn('[Agent-LB] JSON response translation warning:', e.message);
+        }
+        const l = getLog();
+        if (l) { l.body('RESPONSE BODY', finalBuf, 'application/json'); l.end(); }
+        res.end(finalBuf);
+        ctx.delivered = answeredStatus(upstreamRes.status);
+        return;
+      }
+    }
+
+    if (ctx.isCodexResponsesToAnthropic) {
+      const isClientStreaming = ctx.isClientStreaming !== false;
+      if (isClientStreaming) {
+        const l = getLog();
+        const codexToOpenAI = createCodexResponsesToOpenAITransformStream(ctx.originalModel || ctx.model, (usage) => {
+          const inTok = usage.input_tokens || 0;
+          const outTok = usage.output_tokens || 0;
+          accountManager.updateUsage(account.index, inTok, outTok);
+          ctx.onUsage?.(inTok, outTok);
+          accountManager.recordTokenUsage(account.index, ctx.sessionId, ctx.model, usage);
+        });
+        const openAIToAnthropic = createOpenAIToAnthropicTransformStream(ctx.model);
+        const stream = Readable.fromWeb(upstreamRes.body);
+        const onClose = () => {
+          stream.destroy();
+          codexToOpenAI.destroy();
+          openAIToAnthropic.destroy();
+        };
+        res.once('close', onClose);
+        stream.pipe(codexToOpenAI).pipe(openAIToAnthropic).pipe(res);
+        await new Promise((resolve, reject) => {
+          openAIToAnthropic.on('end', resolve);
+          openAIToAnthropic.on('error', reject);
+          codexToOpenAI.on('error', reject);
+          stream.on('error', reject);
+        }).catch(err => {
+          console.error('[Agent-LB] Stream translation error:', err.message);
+        }).finally(() => {
+          res.off('close', onClose);
+        });
+        l?.end();
+        ctx.delivered = answeredStatus(upstreamRes.status);
+        return;
+      } else {
+        const buf = bufferedResponseBody ?? Buffer.from(await upstreamRes.arrayBuffer());
+        let finalBuf = buf;
+        try {
+          const openAIObj = translateCodexResponsesToOpenAIResponse(buf, ctx.originalModel || ctx.model);
+          const translated = translateOpenAIToAnthropicResponse(openAIObj, ctx.model);
+          finalBuf = Buffer.from(JSON.stringify(translated), 'utf8');
+          extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
+        } catch (e) {
+          console.warn('[Agent-LB] JSON response translation warning:', e.message);
+        }
+        const l = getLog();
+        if (l) { l.body('RESPONSE BODY', finalBuf, 'application/json'); l.end(); }
+        res.end(finalBuf);
+        ctx.delivered = answeredStatus(upstreamRes.status);
+        return;
+      }
     }
 
     if (isCrossProvider && requestProvider === 'anthropic' && servingProvider === 'codex') {
@@ -5380,6 +5529,21 @@ export function parseSSEUsage(event, accountIndex, accountManager, onUsage = nul
       accountManager.updateUsage(accountIndex, 0, data.usage.output_tokens);
       onUsage?.(0, data.usage.output_tokens || 0);
       if (merged) Object.assign(merged, data.usage);
+    } else if (data.type === 'response.completed' && data.response?.usage) {
+      const u = data.response.usage;
+      const inTok = u.input_tokens || 0;
+      const outTok = u.output_tokens || 0;
+      accountManager.updateUsage(accountIndex, inTok, outTok);
+      onUsage?.(inTok, outTok);
+      if (merged) Object.assign(merged, u);
+    } else if (data.usage) {
+      const inTok = data.usage.prompt_tokens ?? data.usage.input_tokens ?? 0;
+      const outTok = data.usage.completion_tokens ?? data.usage.output_tokens ?? 0;
+      if (inTok || outTok) {
+        accountManager.updateUsage(accountIndex, inTok, outTok);
+        onUsage?.(inTok, outTok);
+        if (merged) Object.assign(merged, data.usage);
+      }
     }
   } catch {
     // not valid JSON, skip
