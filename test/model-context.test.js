@@ -30,6 +30,7 @@ test('proxy body cap is a byte safety limit, not a token or max_tokens limit', (
   const body = Buffer.from(JSON.stringify({
     model: 'claude-opus-5',
     max_tokens: 32768,
+    system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.251.76b; cc_entrypoint=sdk-cli;' }],
     messages: [{ role: 'user', content: 'keep the complete context' }],
   }));
   const rewritten = rewriteRequestBody(body, { type: 'oauth', provider: 'anthropic' }, '/v1/messages', 'application/json');
@@ -118,6 +119,7 @@ test('proxy retries compaction on a healthy OAuth account after identity-verific
     const requestBody = JSON.stringify({
       model: 'claude-opus-5',
       max_tokens: 32768,
+      system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.251.76b; cc_entrypoint=sdk-cli;' }],
       messages: [{ role: 'user', content: 'compact the complete conversation' }],
     });
     const response = await fetch(`http://127.0.0.1:${proxyServer.address().port}/v1/messages`, {

@@ -45,12 +45,14 @@ export const MODEL_FALLBACK_MAP = {
  */
 export function resolveTargetModel(sourceModel, targetProvider) {
   if (!sourceModel) return targetProvider === 'codex' ? DEFAULT_FALLBACK_OPENAI_MODEL : DEFAULT_FALLBACK_ANTHROPIC_MODEL;
+  if (targetProvider === 'anthropic' && sourceModel.startsWith('claude-')) return sourceModel;
+  if (targetProvider === 'codex' && (sourceModel.startsWith('gpt-') || sourceModel.startsWith('o1') || sourceModel.startsWith('o3'))) return sourceModel;
   if (MODEL_FALLBACK_MAP[sourceModel]) return MODEL_FALLBACK_MAP[sourceModel];
   if (targetProvider === 'codex') {
     if (sourceModel.includes('haiku')) return 'gpt-4o-mini';
     return DEFAULT_FALLBACK_OPENAI_MODEL;
   }
-  if (sourceModel.includes('mini')) return 'claude-3-5-haiku-20241022';
+  if (sourceModel.includes('mini')) return 'claude-haiku-4-5-20251001';
   return DEFAULT_FALLBACK_ANTHROPIC_MODEL;
 }
 
@@ -345,4 +347,235 @@ export function createOpenAIToAnthropicTransformStream(requestedModel = 'claude-
     },
   });
 }
+
+/**
+ * Translate OpenAI /v1/chat/completions request body to Anthropic /v1/messages format.
+ */
+export function translateOpenAIToAnthropic(body, targetModel = null) {
+  const json = typeof body === 'string' ? JSON.parse(body) : (Buffer.isBuffer(body) ? JSON.parse(body.toString('utf8')) : body);
+  const out = {
+    model: targetModel || resolveTargetModel(json.model, 'anthropic'),
+    messages: [],
+    max_tokens: json.max_tokens || json.max_completion_tokens || 4096,
+  };
+
+  if (json.stream != null) out.stream = !!json.stream;
+  if (json.temperature != null) out.temperature = json.temperature;
+
+  const systemTexts = [];
+  if (Array.isArray(json.messages)) {
+    for (const msg of json.messages) {
+      if (!msg) continue;
+      if (msg.role === 'system') {
+        if (typeof msg.content === 'string') {
+          systemTexts.push(msg.content);
+        } else if (Array.isArray(msg.content)) {
+          for (const part of msg.content) {
+            if (part && typeof part.text === 'string') systemTexts.push(part.text);
+          }
+        }
+      } else if (msg.role === 'user' || msg.role === 'assistant') {
+        out.messages.push({
+          role: msg.role,
+          content: msg.content,
+        });
+      } else if (msg.role === 'tool') {
+        out.messages.push({
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: msg.tool_call_id,
+              content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
+            },
+          ],
+        });
+      }
+    }
+  }
+
+  if (systemTexts.length > 0) {
+    out.system = systemTexts.join('\n\n');
+  }
+
+  // Tools
+  if (Array.isArray(json.tools) && json.tools.length > 0) {
+    out.tools = json.tools.map(t => {
+      const fn = t.function || t;
+      return {
+        name: fn.name,
+        description: fn.description || undefined,
+        input_schema: fn.parameters || { type: 'object', properties: {} },
+      };
+    });
+  }
+
+  return Buffer.from(JSON.stringify(out), 'utf8');
+}
+
+/**
+ * Translate Anthropic /v1/messages JSON response to OpenAI /v1/chat/completions format.
+ */
+export function translateAnthropicToOpenAIResponse(anthropicJson, requestedModel = 'gpt-4o') {
+  const json = typeof anthropicJson === 'string' ? JSON.parse(anthropicJson) : (Buffer.isBuffer(anthropicJson) ? JSON.parse(anthropicJson.toString('utf8')) : anthropicJson);
+
+  let content = '';
+  const toolCalls = [];
+
+  if (Array.isArray(json.content)) {
+    for (const block of json.content) {
+      if (!block) continue;
+      if (block.type === 'text') {
+        content += block.text || '';
+      } else if (block.type === 'tool_use') {
+        toolCalls.push({
+          id: block.id || `call_${randomUUID().slice(0, 8)}`,
+          type: 'function',
+          function: {
+            name: block.name || 'unknown_tool',
+            arguments: typeof block.input === 'string' ? block.input : JSON.stringify(block.input || {}),
+          },
+        });
+      }
+    }
+  }
+
+  let finishReason = 'stop';
+  if (json.stop_reason === 'tool_use') finishReason = 'tool_calls';
+  else if (json.stop_reason === 'max_tokens') finishReason = 'length';
+  else if (json.stop_reason === 'end_turn') finishReason = 'stop';
+
+  const message = {
+    role: 'assistant',
+    content: content || null,
+  };
+  if (toolCalls.length > 0) {
+    message.tool_calls = toolCalls;
+  }
+
+  return {
+    id: `chatcmpl-${(json.id || randomUUID()).replace(/^msg_/, '')}`,
+    object: 'chat.completion',
+    created: Math.floor(Date.now() / 1000),
+    model: requestedModel,
+    choices: [
+      {
+        index: 0,
+        message,
+        finish_reason: finishReason,
+      },
+    ],
+    usage: {
+      prompt_tokens: json.usage?.input_tokens || 0,
+      completion_tokens: json.usage?.output_tokens || 0,
+      total_tokens: (json.usage?.input_tokens || 0) + (json.usage?.output_tokens || 0),
+    },
+  };
+}
+
+/**
+ * Creates a Transform stream converting Anthropic SSE chunks into OpenAI SSE events.
+ */
+export function createAnthropicToOpenAITransformStream(requestedModel = 'gpt-4o') {
+  let buffer = '';
+  const chunkId = `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  const created = Math.floor(Date.now() / 1000);
+  let firstChunk = true;
+
+  return new Transform({
+    transform(chunk, encoding, callback) {
+      buffer += chunk.toString('utf8');
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data:')) continue;
+        const dataStr = trimmed.slice(5).trim();
+        if (dataStr === '[DONE]') continue;
+
+        try {
+          const payload = JSON.parse(dataStr);
+          if (payload.type === 'content_block_delta' && payload.delta) {
+            if (payload.delta.type === 'text_delta' && payload.delta.text) {
+              const deltaObj = { content: payload.delta.text };
+              if (firstChunk) {
+                deltaObj.role = 'assistant';
+                firstChunk = false;
+              }
+              const sseChunk = {
+                id: chunkId,
+                object: 'chat.completion.chunk',
+                created,
+                model: requestedModel,
+                choices: [{ index: 0, delta: deltaObj, finish_reason: null }],
+              };
+              this.push(`data: ${JSON.stringify(sseChunk)}\n\n`);
+            } else if (payload.delta.type === 'input_json_delta' && payload.delta.partial_json) {
+              const sseChunk = {
+                id: chunkId,
+                object: 'chat.completion.chunk',
+                created,
+                model: requestedModel,
+                choices: [{
+                  index: 0,
+                  delta: {
+                    tool_calls: [{
+                      index: payload.index || 0,
+                      function: { arguments: payload.delta.partial_json },
+                    }],
+                  },
+                  finish_reason: null,
+                }],
+              };
+              this.push(`data: ${JSON.stringify(sseChunk)}\n\n`);
+            }
+          } else if (payload.type === 'content_block_start' && payload.content_block?.type === 'tool_use') {
+            const sseChunk = {
+              id: chunkId,
+              object: 'chat.completion.chunk',
+              created,
+              model: requestedModel,
+              choices: [{
+                index: 0,
+                delta: {
+                  tool_calls: [{
+                    index: payload.index || 0,
+                    id: payload.content_block.id,
+                    type: 'function',
+                    function: { name: payload.content_block.name, arguments: '' },
+                  }],
+                },
+                finish_reason: null,
+              }],
+            };
+            this.push(`data: ${JSON.stringify(sseChunk)}\n\n`);
+          } else if (payload.type === 'message_delta') {
+            let finishReason = 'stop';
+            if (payload.delta?.stop_reason === 'tool_use') finishReason = 'tool_calls';
+            else if (payload.delta?.stop_reason === 'max_tokens') finishReason = 'length';
+            const sseChunk = {
+              id: chunkId,
+              object: 'chat.completion.chunk',
+              created,
+              model: requestedModel,
+              choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
+            };
+            this.push(`data: ${JSON.stringify(sseChunk)}\n\n`);
+          } else if (payload.type === 'message_stop') {
+            this.push('data: [DONE]\n\n');
+          }
+        } catch {
+          // pass through non-JSON
+        }
+      }
+      callback();
+    },
+    flush(callback) {
+      this.push('data: [DONE]\n\n');
+      callback();
+    },
+  });
+}
+
 

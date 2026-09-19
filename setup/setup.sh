@@ -14,10 +14,10 @@
 set -eu
 
 # Jeśli dostępny jest Node.js, przekaż wykonanie do pełnego instalatora setup.js
-if [ -z "${SETUP_FORCE_BASH:-}" ]; then
-	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-	if command -v node >/dev/null 2>&1; then
-		if [ -f "$SCRIPT_DIR/setup.js" ]; then
+if [ -z "${SETUP_FORCE_BASH:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+	if [ -f "${BASH_SOURCE[0]:-}" ]; then
+		SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+		if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/setup.js" ]; then
 			exec node "$SCRIPT_DIR/setup.js" "$@"
 		fi
 	fi

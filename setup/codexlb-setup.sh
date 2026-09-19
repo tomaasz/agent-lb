@@ -19,8 +19,8 @@
 
 set -euo pipefail
 
-if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
-	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]:-}" ]; then
+	SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" >/dev/null 2>&1 && pwd)"
 	if command -v node >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/codexlb-setup.js" ]; then
 		exec node "$SCRIPT_DIR/codexlb-setup.js" "$@"
 	fi

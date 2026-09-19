@@ -35,6 +35,9 @@ import {
   translateAnthropicToOpenAI,
   translateOpenAIToAnthropicResponse,
   createOpenAIToAnthropicTransformStream,
+  translateOpenAIToAnthropic,
+  translateAnthropicToOpenAIResponse,
+  createAnthropicToOpenAITransformStream,
   resolveTargetModel,
 } from './provider-translator.js';
 import { FairShareController } from './fair-share.js';
@@ -590,15 +593,26 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         res.end(JSON.stringify({
           object: 'list',
           data: [
-            { id: 'gpt-5.6-sol', object: 'model', name: 'GPT-5.6 Sol' },
-            { id: 'gpt-6-astra', object: 'model', name: 'GPT-6 Astra' },
-            { id: 'gpt-5.6-terra', object: 'model', name: 'GPT-5.6 Terra' },
-            { id: 'gpt-5.6-luna', object: 'model', name: 'GPT-5.6 Luna' },
-            { id: 'gpt-5.5', object: 'model', name: 'GPT-5.5' },
-            { id: 'o3-mini', object: 'model', name: 'o3-mini' },
-            { id: 'o1', object: 'model', name: 'o1' },
-            { id: 'gpt-4o', object: 'model', name: 'GPT-4o' }
-          ]
+            { id: 'claude-sonnet-5', object: 'model', type: 'model', name: 'Claude Sonnet 5', display_name: 'Claude Sonnet 5' },
+            { id: 'claude-sonnet-4-6', object: 'model', type: 'model', name: 'Claude Sonnet 4.6', display_name: 'Claude Sonnet 4.6' },
+            { id: 'claude-haiku-4-5-20251001', object: 'model', type: 'model', name: 'Claude Haiku 4.5', display_name: 'Claude Haiku 4.5' },
+            { id: 'claude-opus-4-6', object: 'model', type: 'model', name: 'Claude Opus 4.6', display_name: 'Claude Opus 4.6' },
+            { id: 'claude-opus-5', object: 'model', type: 'model', name: 'Claude Opus 5', display_name: 'Claude Opus 5' },
+            { id: 'claude-3-7-sonnet-20250219', object: 'model', type: 'model', name: 'Claude 3.7 Sonnet', display_name: 'Claude 3.7 Sonnet' },
+            { id: 'claude-3-5-sonnet-20241022', object: 'model', type: 'model', name: 'Claude 3.5 Sonnet', display_name: 'Claude 3.5 Sonnet' },
+            { id: 'claude-3-5-haiku-20241022', object: 'model', type: 'model', name: 'Claude 3.5 Haiku', display_name: 'Claude 3.5 Haiku' },
+            { id: 'claude-3-opus-20240229', object: 'model', type: 'model', name: 'Claude 3 Opus', display_name: 'Claude 3 Opus' },
+            { id: 'gpt-5.6-sol', object: 'model', type: 'model', name: 'GPT-5.6 Sol', display_name: 'GPT-5.6 Sol' },
+            { id: 'gpt-6-astra', object: 'model', type: 'model', name: 'GPT-6 Astra', display_name: 'GPT-6 Astra' },
+            { id: 'gpt-5.6-terra', object: 'model', type: 'model', name: 'GPT-5.6 Terra', display_name: 'GPT-5.6 Terra' },
+            { id: 'gpt-5.6-luna', object: 'model', type: 'model', name: 'GPT-5.6 Luna', display_name: 'GPT-5.6 Luna' },
+            { id: 'gpt-5.5', object: 'model', type: 'model', name: 'GPT-5.5', display_name: 'GPT-5.5' },
+            { id: 'o3-mini', object: 'model', type: 'model', name: 'o3-mini', display_name: 'o3-mini' },
+            { id: 'o1', object: 'model', type: 'model', name: 'o1', display_name: 'o1' },
+            { id: 'gpt-4o', object: 'model', type: 'model', name: 'GPT-4o', display_name: 'GPT-4o' },
+            { id: 'gpt-4o-mini', object: 'model', type: 'model', name: 'GPT-4o mini', display_name: 'GPT-4o mini' }
+          ],
+          has_more: false
         }));
         return;
       }
@@ -3301,7 +3315,12 @@ export function createProxyRequestListener({
       // are dropped with the other proxy-control headers.
       const stripHeaders = usageDimensionHeaderNames(config.proxy);
 
-      const ctx = { account: null, status: null, tried: new Set(), reauthed: new Set(), model, advisorModel, pinnedIndex, provider: providerForPath(req.url), holdBudgetMs: holdMs, sessionId, client, delivered: false, abandoned: false, onUsage: usageRecorder.onUsage, stripHeaders, logLevel: resolveLogLevel(config), logMaxBodyBytes: resolveLogMaxBodyBytes(config) };
+      const requestProvider = providerForPath(req.url);
+      const isClaudeModel = typeof model === 'string' && (model.startsWith('claude-') || model.startsWith('claude/'));
+      const isOpenAIModel = typeof model === 'string' && (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('codex'));
+      const targetProvider = isClaudeModel ? 'anthropic' : (isOpenAIModel ? 'codex' : requestProvider);
+
+      const ctx = { account: null, status: null, tried: new Set(), reauthed: new Set(), model, advisorModel, pinnedIndex, provider: targetProvider, requestProvider, holdBudgetMs: holdMs, sessionId, client, delivered: false, abandoned: false, onUsage: usageRecorder.onUsage, stripHeaders, logLevel: resolveLogLevel(config), logMaxBodyBytes: resolveLogMaxBodyBytes(config) };
       // Hold the session "in flight" across the WHOLE request (incl. retries and
       // a multi-minute streaming completion) so it stays counted as active and
       // never expires mid-request.
@@ -4475,23 +4494,47 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
   // needs ChatGPT-Account-Id to scope the token to one account.
   applyAuthHeaders(headers, account);
 
-  const requestProvider = ctx.provider || DEFAULT_PROVIDER;
+  const requestProvider = ctx.requestProvider || ctx.provider || DEFAULT_PROVIDER;
   const servingProvider = providerOf(account);
   const isCrossProvider = servingProvider !== requestProvider;
+
+  // For Anthropic OAuth accounts, ensure Claude Code headers are set so Anthropic accepts the request
+  if (servingProvider === 'anthropic' && account.type === 'oauth') {
+    if (!headers['anthropic-beta']) {
+      headers['anthropic-beta'] = 'claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,effort-2025-11-24,afk-mode-2026-01-31';
+    } else if (!headers['anthropic-beta'].includes('claude-code-20250219')) {
+      headers['anthropic-beta'] = `${headers['anthropic-beta']},claude-code-20250219`;
+    }
+    if (!headers['user-agent'] || !headers['user-agent'].includes('claude-cli')) {
+      headers['user-agent'] = 'claude-cli/2.1.251 (external, sdk-cli)';
+    }
+    headers['x-app'] ??= 'cli';
+    headers['anthropic-version'] ??= '2023-06-01';
+  }
 
   let upstreamUrl = `${upstreamFor(account, upstream)}${req.url}`;
   const method = req.method;
 
-  // Every rewrite below runs inside rewriteRequestBody (exported for tests);
-  // Content-Length is refreshed below because the body can shrink.
-  let sendBody = rewriteRequestBody(body, account, req.url, req.headers['content-type']);
-
+  let sendBody = body;
   if (isCrossProvider) {
     if (requestProvider === 'anthropic' && servingProvider === 'codex') {
       upstreamUrl = `${upstreamFor(account, upstream)}/v1/chat/completions`;
       sendBody = translateAnthropicToOpenAI(sendBody, resolveTargetModel(ctx.model, 'codex'));
       headers['content-type'] = 'application/json';
+    } else if (requestProvider === 'codex' && servingProvider === 'anthropic') {
+      upstreamUrl = `${upstreamFor(account, upstream)}/v1/messages`;
+      sendBody = translateOpenAIToAnthropic(sendBody, resolveTargetModel(ctx.model, 'anthropic'));
+      headers['content-type'] = 'application/json';
     }
+  }
+
+  // Every rewrite below runs inside rewriteRequestBody (exported for tests);
+  // Content-Length is refreshed below because the body can shrink.
+  sendBody = rewriteRequestBody(sendBody, account, req.url, req.headers['content-type']);
+
+  const rewrittenModel = parseRequestModel(sendBody);
+  if (rewrittenModel) {
+    ctx.model = rewrittenModel;
   }
 
   // If the body changed length (sanitize, model rewrite, or field strip), update
@@ -4924,7 +4967,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     const contentType = upstreamRes.headers.get('content-type') || '';
     const isStreaming = contentType.includes('text/event-stream');
 
-    if (isCrossProvider && requestProvider === 'anthropic' && servingProvider === 'codex') {
+    if (isCrossProvider) {
       responseHeaders['content-type'] = isStreaming ? 'text/event-stream; charset=utf-8' : 'application/json; charset=utf-8';
     }
 
@@ -4967,6 +5010,40 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
           const translated = translateOpenAIToAnthropicResponse(buf, ctx.model);
           finalBuf = Buffer.from(JSON.stringify(translated), 'utf8');
           extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
+        } catch (e) {
+          console.warn('[Agent-LB] JSON response translation warning:', e.message);
+        }
+        const l = getLog();
+        if (l) { l.body('RESPONSE BODY', finalBuf, 'application/json'); l.end(); }
+        res.end(finalBuf);
+        ctx.delivered = answeredStatus(upstreamRes.status);
+        return;
+      }
+    }
+
+    if (isCrossProvider && requestProvider === 'codex' && servingProvider === 'anthropic') {
+      if (isStreaming) {
+        const l = getLog();
+        const transform = createAnthropicToOpenAITransformStream(ctx.model);
+        const stream = Readable.fromWeb(upstreamRes.body);
+        stream.pipe(transform).pipe(res);
+        await new Promise((resolve, reject) => {
+          transform.on('end', resolve);
+          transform.on('error', reject);
+          stream.on('error', reject);
+        }).catch(err => {
+          console.error('[Agent-LB] Stream translation error:', err.message);
+        });
+        l?.end();
+        ctx.delivered = answeredStatus(upstreamRes.status);
+        return;
+      } else {
+        const buf = bufferedResponseBody ?? Buffer.from(await upstreamRes.arrayBuffer());
+        let finalBuf = buf;
+        try {
+          const translated = translateAnthropicToOpenAIResponse(buf, ctx.model);
+          finalBuf = Buffer.from(JSON.stringify(translated), 'utf8');
+          extractUsageFromBody(buf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
         } catch (e) {
           console.warn('[Agent-LB] JSON response translation warning:', e.message);
         }
@@ -5307,6 +5384,73 @@ function extractUsageFromBody(buffer, accountIndex, accountManager, onUsage = nu
   }
 }
 
+
+// Automatically normalize model aliases for Anthropic Claude Code OAuth accounts.
+// Claude Code OAuth tokens are restricted to specific model IDs in Anthropic's gateway.
+export function normalizeAnthropicModelForOAuth(body) {
+  try {
+    const obj = JSON.parse(body.toString('utf8'));
+    if (typeof obj.model === 'string') {
+      const trimmed = obj.model.trim();
+      let target = null;
+      if (trimmed.startsWith('claude-3-7-sonnet') || trimmed === 'claude-3-7') {
+        target = 'claude-sonnet-5';
+      } else if (trimmed.startsWith('claude-3-5-sonnet') || trimmed === 'claude-3-sonnet-20240229' || trimmed === 'claude-sonnet') {
+        target = 'claude-sonnet-4-6';
+      } else if (trimmed.startsWith('claude-3-5-haiku') || trimmed.startsWith('claude-3-haiku') || trimmed === 'claude-haiku') {
+        target = 'claude-haiku-4-5-20251001';
+      } else if (trimmed.startsWith('claude-3-opus') || trimmed === 'claude-opus') {
+        target = 'claude-opus-4-6';
+      }
+      if (target && target !== obj.model) {
+        obj.model = target;
+        return Buffer.from(JSON.stringify(obj), 'utf8');
+      }
+    }
+  } catch { /* not JSON — pass through unchanged */ }
+  return body;
+}
+
+// Ensure the required Claude Code billing header is present in the system prompt for Anthropic OAuth accounts.
+// Without this header, Anthropic returns HTTP 429 ("rate_limit_error": "Error") on Claude Code OAuth tokens.
+export function ensureAnthropicBillingHeader(body) {
+  try {
+    const obj = JSON.parse(body.toString('utf8'));
+    if (!Array.isArray(obj.messages)) return body;
+
+    const billingText = 'x-anthropic-billing-header: cc_version=2.1.251.76b; cc_entrypoint=sdk-cli;';
+
+    if (typeof obj.system === 'string') {
+      if (!obj.system.includes('x-anthropic-billing-header')) {
+        obj.system = [
+          { type: 'text', text: billingText },
+          { type: 'text', text: obj.system },
+        ];
+        return Buffer.from(JSON.stringify(obj), 'utf8');
+      }
+      return body;
+    }
+
+    if (Array.isArray(obj.system)) {
+      const hasBilling = obj.system.some(b => b && typeof b.text === 'string' && b.text.includes('x-anthropic-billing-header'));
+      if (!hasBilling) {
+        obj.system = [
+          { type: 'text', text: billingText },
+          ...obj.system,
+        ];
+        return Buffer.from(JSON.stringify(obj), 'utf8');
+      }
+      return body;
+    }
+
+    if (obj.system === undefined || obj.system === null) {
+      obj.system = [{ type: 'text', text: billingText }];
+      return Buffer.from(JSON.stringify(obj), 'utf8');
+    }
+  } catch { /* not JSON — pass through unchanged */ }
+  return body;
+}
+
 // Apply every request-body rewrite for the account about to serve it, in
 // forward order. Pure (buffer in, buffer out) and exported for tests —
 // forwardRequest only threads the result into Content-Length and the log.
@@ -5341,6 +5485,11 @@ export function rewriteRequestBody(body, account, url, contentType) {
   // ChatGPT Codex backend requires 'gpt-5.6-sol' and rejects generic 'gpt-5.6' / 'gpt-5'.
   if (providerOf(account) === 'codex' && account.type === 'oauth') {
     sendBody = normalizeCodexModelForOAuth(sendBody);
+  }
+  // Anthropic OAuth backend requires Claude Code billing header and specific model identifiers.
+  if (providerOf(account) === 'anthropic' && account.type === 'oauth') {
+    sendBody = normalizeAnthropicModelForOAuth(sendBody);
+    sendBody = ensureAnthropicBillingHeader(sendBody);
   }
   // Third-party upstreams (e.g. OpenCode Zen, GLM) implement the Anthropic
   // message API but reject fields Claude Code legitimately sends — observed:
