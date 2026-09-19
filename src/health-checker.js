@@ -112,7 +112,18 @@ export class FleetHealthChecker {
     }
 
     // 3. Known quota hold / rate limit active in future -> Skip until reset time (0 tokens)
-    if (account.quota?.unified5hReset && now < account.quota.unified5hReset) {
+    const hasHeadroom = account.status !== 'exhausted'
+      && account.quota?.unified5h != null
+      && account.quota.unified5h < (this.am?.switchThreshold || 0.98);
+
+    if (account.exhaustedUntil && now < account.exhaustedUntil) {
+      return {
+        shouldProbe: false,
+        reason: 'quota_hold_active',
+        resetAt: account.exhaustedUntil
+      };
+    }
+    if (!hasHeadroom && account.quota?.unified5hReset && now < account.quota.unified5hReset) {
       return {
         shouldProbe: false,
         reason: 'quota_hold_active',
@@ -332,17 +343,27 @@ export class FleetHealthChecker {
         }
       } else {
         // Codex / OpenAI
-        const upstreamUrl = `${account.upstream || 'https://chatgpt.com'}/backend-api/codex/responses`;
+        const isOauth = account.type === 'oauth';
+        const upstreamUrl = isOauth
+          ? `${upstreamFor(account)}/backend-api/codex/responses`
+          : `${upstreamFor(account)}/v1/chat/completions`;
         const model = 'gpt-5.6-sol';
-        const payload = {
-          model,
-          messages: [{ role: 'user', content: '1' }],
-          stream: false
-        };
+        const payload = isOauth
+          ? {
+              model,
+              store: false,
+              stream: true,
+              input: [{ role: 'user', content: [{ type: 'input_text', text: '1' }] }]
+            }
+          : {
+              model,
+              messages: [{ role: 'user', content: '1' }],
+              max_tokens: 1
+            };
         const reqHeaders = {
           'content-type': 'application/json',
           'user-agent': 'codex-cli/0.1.0',
-          'accept': 'application/json'
+          'accept': isOauth ? 'text/event-stream, application/json;q=0.9, */*;q=0.8' : 'application/json'
         };
         applyAuthHeaders(reqHeaders, account);
 
@@ -354,8 +375,26 @@ export class FleetHealthChecker {
 
         const durationMs = Date.now() - startTime;
         if (res.ok) {
-          const data = await res.json().catch(() => ({}));
-          tokensUsed = (data.usage?.prompt_tokens || 1) + (data.usage?.completion_tokens || 1);
+          if (isOauth) {
+            const rawText = await res.text().catch(() => '');
+            for (const line of rawText.split('\n')) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith('data:')) continue;
+              const dataStr = trimmed.slice(5).trim();
+              if (dataStr === '[DONE]') continue;
+              try {
+                const item = JSON.parse(dataStr);
+                const u = item.usage || item.response?.usage;
+                if (u) {
+                  tokensUsed = (u.input_tokens || u.prompt_tokens || 1) + (u.output_tokens || u.completion_tokens || 1);
+                }
+              } catch { /* skip non-JSON */ }
+            }
+            if (tokensUsed <= 0) tokensUsed = 2;
+          } else {
+            const data = await res.json().catch(() => ({}));
+            tokensUsed = (data.usage?.prompt_tokens || 1) + (data.usage?.completion_tokens || 1);
+          }
           this.am.clearRateLimited(account.index);
           this.am.recordAccountSuccess(account);
           account.lastTest = {
@@ -370,8 +409,9 @@ export class FleetHealthChecker {
         } else {
           let errorMsg = `HTTP ${res.status}`;
           let errorReason = 'http_' + res.status;
+          let errData = null;
           try {
-            const errData = await res.json();
+            errData = await res.json();
             errorMsg = errData.error?.message || errData.detail || errData.message || JSON.stringify(errData);
           } catch {
             errorMsg = await res.text().catch(() => errorMsg);
@@ -389,19 +429,35 @@ export class FleetHealthChecker {
           this.am.updateQuota(account.index, codexRateLimitHeaders);
 
           if (res.status === 429) {
-            errorReason = 'rate-limit';
-            const retryAfterHeader = res.headers?.get ? res.headers.get('retry-after') : null;
-            let retryAfter = parseInt(retryAfterHeader, 10);
-            if (Number.isNaN(retryAfter) || retryAfter <= 0) retryAfter = 60;
-            retryAfter = Math.min(Math.max(retryAfter, 1), 300);
-            this.am.markRateLimited(account.index, retryAfter);
-            errorMsg = `Limit zapytań (429 Rate Limit / cooldown ${retryAfter}s) w ChatGPT/Codex dla konta "${account.name}".`;
-            account.lastError = {
-              reason: 'rate-limit',
-              status: 429,
-              error: errorMsg,
-              timestamp: Date.now()
-            };
+            const isUsageLimit = isOauth && (errData?.error?.type === 'usage_limit_reached' || codexRateLimitHeaders['x-codex-primary-used-percent'] === '100');
+            if (isUsageLimit) {
+              errorReason = 'quota';
+              account.status = 'exhausted';
+              const resetSec = errData?.error?.resets_in_seconds || parseInt(codexRateLimitHeaders['x-codex-primary-reset-after-seconds'], 10) || 3600;
+              account.exhaustedUntil = Date.now() + resetSec * 1000;
+              const resetMin = Math.ceil(resetSec / 60);
+              errorMsg = `Limit zapytań ChatGPT Plus wyczerpany (100% quota / reset za ok. ${resetMin} min) dla konta "${account.name}".`;
+              account.lastError = {
+                reason: 'quota',
+                status: 429,
+                error: errorMsg,
+                timestamp: Date.now()
+              };
+            } else {
+              errorReason = 'rate-limit';
+              const retryAfterHeader = res.headers?.get ? res.headers.get('retry-after') : null;
+              let retryAfter = parseInt(retryAfterHeader, 10);
+              if (Number.isNaN(retryAfter) || retryAfter <= 0) retryAfter = 60;
+              retryAfter = Math.min(Math.max(retryAfter, 1), 300);
+              this.am.markRateLimited(account.index, retryAfter);
+              errorMsg = `Limit zapytań (429 Rate Limit / cooldown ${retryAfter}s) w ChatGPT/Codex dla konta "${account.name}".`;
+              account.lastError = {
+                reason: 'rate-limit',
+                status: 429,
+                error: errorMsg,
+                timestamp: Date.now()
+              };
+            }
           } else if (res.status === 401 || res.status === 403) {
             errorReason = 'auth';
             account.lastError = {

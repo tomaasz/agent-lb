@@ -227,5 +227,55 @@ describe('FleetHealthChecker Intelligent Auto Diagnostics', () => {
       server.close();
     }
   });
+
+  it('correctly executes health check for Codex OAuth accounts with store: false and stream: true', async () => {
+    let capturedBody = null;
+    const mockUpstream = http.createServer((req, res) => {
+      if (req.url.endsWith('/backend-api/codex/responses')) {
+        let buf = '';
+        req.on('data', c => { buf += c; });
+        req.on('end', () => {
+          capturedBody = JSON.parse(buf);
+          res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+          res.write('event: response.completed\ndata: {"type":"response.completed","response":{"usage":{"prompt_tokens":1,"completion_tokens":1}}}\n\n');
+          res.end('data: [DONE]\n\n');
+        });
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    await new Promise(resolve => mockUpstream.listen(0, '127.0.0.1', resolve));
+    const upstreamUrl = `http://127.0.0.1:${mockUpstream.address().port}`;
+
+    const accounts = [
+      { name: 'codex-hc-test', provider: 'codex', type: 'oauth', accessToken: 'token-hc', upstream: upstreamUrl }
+    ];
+    const am = new AccountManager(accounts, 0.98);
+    const hc = new FleetHealthChecker(am, { enabled: false, staggerMs: 0 });
+
+    try {
+      const summary = await hc.runCheckCycle();
+      assert.equal(summary.totalAccounts, 1);
+      assert.equal(summary.probed, 1);
+      assert.equal(summary.ok, 1);
+      assert.equal(summary.errors, 0);
+
+      assert.equal(capturedBody.model, 'gpt-5.6-sol');
+      assert.equal(capturedBody.store, false, 'store must be false for Codex OAuth');
+      assert.equal(capturedBody.stream, true, 'stream must be true for Codex OAuth');
+      assert.deepEqual(capturedBody.input, [{ role: 'user', content: [{ type: 'input_text', text: '1' }] }]);
+
+      const acc = am.accounts[0];
+      assert.equal(acc.lastTest?.ok, true);
+      assert.equal(acc.lastTest?.source, 'auto-health-check');
+      assert.equal(acc.lastError, null);
+      assert.equal(acc.status, 'active');
+    } finally {
+      mockUpstream.close();
+      hc.stop();
+    }
+  });
 });
 

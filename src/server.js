@@ -2139,7 +2139,9 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           const raw = await readControlBody(req);
           if (raw) bodyObj = JSON.parse(raw);
         } catch {}
-        const summary = await healthChecker.runCheckCycle({ force: !!bodyObj.force });
+        const urlObj = new URL(req.url, 'http://127.0.0.1');
+        const force = bodyObj.force != null ? !!bodyObj.force : (urlObj.searchParams.get('force') === 'true');
+        const summary = await healthChecker.runCheckCycle({ force });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, summary }));
         return;
