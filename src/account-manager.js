@@ -3371,7 +3371,10 @@ export class AccountManager {
     if (usage.resetCredits) {
       q.resetCredits = usage.resetCredits;
     }
-    this._recomputeAccount(account);
+    if (account.probing && q.unified7dReset != null) {
+      account.probing = false;
+      account.requalify = true;
+    }
   }
 
   /**

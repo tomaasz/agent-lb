@@ -340,8 +340,8 @@ async function serverCommand() {
   // Bind loopback by default so the proxy isn't reachable off-box (it injects
   // account tokens and — via CONNECT — can relay arbitrarily). Opt into a wider
   // bind explicitly with AGENT_LB_HOST or config.proxy.host (e.g. '0.0.0.0'),
-  // in which case set proxy.apiKey so the auth gate protects remote clients.
-  const bindHost = process.env.AGENT_LB_HOST || config.proxy.host || '127.0.0.1';
+  const bindCandidate = process.env.AGENT_LB_BIND || (process.env.AGENT_LB_HOST && !process.env.AGENT_LB_HOST.includes(',') ? process.env.AGENT_LB_HOST : null);
+  const bindHost = bindCandidate || config.proxy?.host || '127.0.0.1';
   const headless = args.includes('--headless') || args.includes('--no-tui') || command === 'headless';
   const useTUI = !headless && process.stdout.isTTY && process.stdin.isTTY;
 
