@@ -2,6 +2,7 @@
 # opencode-setup.sh — Konfigurator providera AgentLB w OpenCode
 #
 # Dodaje providera 'agentlb' do ~/.config/opencode/opencode.json
+# oraz kopiuje go do kontenerów Docker (jeśli działają).
 #
 # Użycie:
 #   curl -fsSL https://agentlb.gotova.pl/opencode-setup.sh | bash -s -- --key <KLUCZ_STACJI>
@@ -40,6 +41,10 @@ OPENCODE_DIR="$HOME/.config/opencode"
 mkdir -p "$OPENCODE_DIR"
 CONFIG_FILE="$OPENCODE_DIR/opencode.json"
 
+AUTH_DIR="$HOME/.local/share/opencode"
+mkdir -p "$AUTH_DIR"
+AUTH_FILE="$AUTH_DIR/auth.json"
+
 TIMESTAMP=$(date +%s)
 if [ -f "$CONFIG_FILE" ]; then
   cp "$CONFIG_FILE" "$CONFIG_FILE.bak-$TIMESTAMP"
@@ -55,27 +60,62 @@ let cfg = {};
 if (fs.existsSync(path)) {
   try { cfg = JSON.parse(fs.readFileSync(path, 'utf8')); } catch (e) {}
 }
+
+const models = {
+  "claude-sonnet-5": { name: "Claude Sonnet 5" },
+  "claude-opus-5": { name: "Claude Opus 5" },
+  "claude-sonnet-4-6": { name: "Claude Sonnet 4.6" },
+  "claude-haiku-4-5-20251001": { name: "Claude Haiku 4.5" },
+  "codex": { name: "OpenAI Codex (GPT-5.6 Sol)" },
+  "gpt-5.6-sol": { name: "GPT-5.6 Sol" },
+  "gpt-6-astra": { name: "GPT-6 Astra" },
+  "gpt-5.6-terra": { name: "GPT-5.6 Terra" },
+  "agy": { name: "AGY (Gemini 3.8 Flash High)" },
+  "agy-fast": { name: "AGY Fast (Gemini 3.8 Flash Low)" },
+  "gpt-4o": { name: "GPT-4o" },
+  "o3-mini": { name: "o3-mini" }
+};
+
+// OpenCode official standard schema: "provider"
+cfg.provider = cfg.provider || {};
+cfg.provider.agentlb = {
+  npm: "@ai-sdk/openai-compatible",
+  name: "AgentLB (All Models)",
+  options: {
+    baseURL: "$URL/v1",
+    apiKey: "$KEY"
+  },
+  models: models
+};
+
+// Backward compatibility alias for "providers"
 cfg.providers = cfg.providers || {};
 cfg.providers.agentlb = {
+  npm: "@ai-sdk/openai-compatible",
   name: "AgentLB (All Models)",
   package: "@opencode/ai/providers/openai-compatible",
   settings: {
     baseURL: "$URL/v1"
   },
+  options: {
+    baseURL: "$URL/v1",
+    apiKey: "$KEY"
+  },
   apiKey: "$KEY",
-  models: {
-    "claude-sonnet-5": { name: "Claude Sonnet 5", modelID: "claude-sonnet-5" },
-    "claude-opus-5": { name: "Claude Opus 5", modelID: "claude-opus-5" },
-    "claude-3-7-sonnet": { name: "Claude 3.7 Sonnet", modelID: "claude-3-7-sonnet-20250219" },
-    "claude-3-5-sonnet": { name: "Claude 3.5 Sonnet", modelID: "claude-3-5-sonnet-20241022" },
-    "codex": { name: "OpenAI Codex (GPT-5.6 Sol)", modelID: "codex" },
-    "gpt-5.6-sol": { name: "GPT-5.6 Sol", modelID: "gpt-5.6-sol" },
-    "gpt-6-astra": { name: "GPT-6 Astra", modelID: "gpt-6-astra" },
-    "gpt-4o": { name: "GPT-4o", modelID: "gpt-4o" },
-    "o3-mini": { name: "o3-mini", modelID: "o3-mini" }
-  }
+  models: models
 };
+
 fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
+
+// Update auth.json
+try {
+  let auth = {};
+  if (fs.existsSync("$AUTH_FILE")) {
+    auth = JSON.parse(fs.readFileSync("$AUTH_FILE", 'utf8'));
+  }
+  auth.agentlb = { type: "api", key: "$KEY" };
+  fs.writeFileSync("$AUTH_FILE", JSON.stringify(auth, null, 2) + '\n');
+} catch (e) {}
 EOF
 elif command -v python3 >/dev/null 2>&1; then
   python3 - << EOF
@@ -87,32 +127,99 @@ if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
     except: pass
+
+models = {
+    "claude-sonnet-5": { "name": "Claude Sonnet 5" },
+    "claude-opus-5": { "name": "Claude Opus 5" },
+    "claude-sonnet-4-6": { "name": "Claude Sonnet 4.6" },
+    "claude-haiku-4-5-20251001": { "name": "Claude Haiku 4.5" },
+    "codex": { "name": "OpenAI Codex (GPT-5.6 Sol)" },
+    "gpt-5.6-sol": { "name": "GPT-5.6 Sol" },
+    "gpt-6-astra": { "name": "GPT-6 Astra" },
+    "gpt-5.6-terra": { "name": "GPT-5.6 Terra" },
+    "agy": { "name": "AGY (Gemini 3.8 Flash High)" },
+    "agy-fast": { "name": "AGY Fast (Gemini 3.8 Flash Low)" },
+    "gpt-4o": { "name": "GPT-4o" },
+    "o3-mini": { "name": "o3-mini" }
+}
+
+if "provider" not in cfg:
+    cfg["provider"] = {}
+cfg["provider"]["agentlb"] = {
+    "npm": "@ai-sdk/openai-compatible",
+    "name": "AgentLB (All Models)",
+    "options": {
+        "baseURL": "$URL/v1",
+        "apiKey": "$KEY"
+    },
+    "models": models
+}
+
 if "providers" not in cfg:
     cfg["providers"] = {}
 cfg["providers"]["agentlb"] = {
+    "npm": "@ai-sdk/openai-compatible",
     "name": "AgentLB (All Models)",
     "package": "@opencode/ai/providers/openai-compatible",
     "settings": {
         "baseURL": "$URL/v1"
     },
+    "options": {
+        "baseURL": "$URL/v1",
+        "apiKey": "$KEY"
+    },
     "apiKey": "$KEY",
-    "models": {
-        "claude-sonnet-5": { "name": "Claude Sonnet 5", "modelID": "claude-sonnet-5" },
-        "claude-opus-5": { "name": "Claude Opus 5", "modelID": "claude-opus-5" },
-        "claude-3-7-sonnet": { "name": "Claude 3.7 Sonnet", "modelID": "claude-3-7-sonnet-20250219" },
-        "claude-3-5-sonnet": { "name": "Claude 3.5 Sonnet", "modelID": "claude-3-5-sonnet-20241022" },
-        "codex": { "name": "OpenAI Codex (GPT-5.6 Sol)", "modelID": "codex" },
-        "gpt-5.6-sol": { "name": "GPT-5.6 Sol", "modelID": "gpt-5.6-sol" },
-        "gpt-6-astra": { "name": "GPT-6 Astra", "modelID": "gpt-6-astra" },
-        "gpt-4o": { "name": "GPT-4o", "modelID": "gpt-4o" },
-        "o3-mini": { "name": "o3-mini", "modelID": "o3-mini" }
-    }
+    "models": models
 }
+
 with open(path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
+
+auth_path = "$AUTH_FILE"
+try:
+    auth = {}
+    if os.path.exists(auth_path):
+        with open(auth_path, "r", encoding="utf-8") as f:
+            auth = json.load(f)
+    auth["agentlb"] = { "type": "api", "key": "$KEY" }
+    with open(auth_path, "w", encoding="utf-8") as f:
+        json.dump(auth, f, indent=2)
+        f.write("\n")
+except: pass
 EOF
 fi
 
-echo "Zaktualizowano konfigurację OpenCode: $CONFIG_FILE"
-echo "Gotowe! Uruchom: opencode lub opencode models"
+echo "✓ Zaktualizowano konfigurację OpenCode: $CONFIG_FILE"
+
+# Jeśli OpenCode działa w Dockerze, skopiuj plik do kontenera
+if command -v docker >/dev/null 2>&1; then
+  CONTAINERS=$(docker ps -q --filter "name=opencode" 2>/dev/null || true)
+  if [ -z "$CONTAINERS" ]; then
+    CONTAINERS=$(docker ps --format '{{.ID}} {{.Image}}' 2>/dev/null | grep -i 'opencode' | awk '{print $1}' || true)
+  fi
+  if [ -n "$CONTAINERS" ]; then
+    for CID in $CONTAINERS; do
+      echo "Wykryto kontener Docker OpenCode ($CID) — kopiuję konfigurację..."
+      docker exec "$CID" mkdir -p /root/.config/opencode /home/opencode/.config/opencode /root/.local/share/opencode /home/opencode/.local/share/opencode 2>/dev/null || true
+      docker cp "$CONFIG_FILE" "$CID:/root/.config/opencode/opencode.json" 2>/dev/null || true
+      docker cp "$CONFIG_FILE" "$CID:/home/opencode/.config/opencode/opencode.json" 2>/dev/null || true
+      if [ -f "$AUTH_FILE" ]; then
+        docker cp "$AUTH_FILE" "$CID:/root/.local/share/opencode/auth.json" 2>/dev/null || true
+        docker cp "$AUTH_FILE" "$CID:/home/opencode/.local/share/opencode/auth.json" 2>/dev/null || true
+      fi
+      echo "✓ Skopiowano konfigurację do kontenera $CID."
+      echo "Wskazówka: Zrestartuj kontener OpenCode (docker restart $CID) jeśli interfejs nie odświeżył listy."
+    done
+  fi
+fi
+
+echo ""
+echo "Gotowe!"
+echo "W OpenCode Web UI:"
+echo "1. Jeśli lista dostawców nie odświeżyła się automatycznie, w oknie 'Połącz dostawcę' kliknij:"
+echo "   -> 'Niestandardowy dostawca zgodny z OpenAI' (sekcja Inne)"
+echo "   i podaj:"
+echo "     Base URL: $URL/v1"
+echo "     Klucz API: $KEY"
+echo "2. W terminalu / CLI możesz sprawdzić: opencode models"
