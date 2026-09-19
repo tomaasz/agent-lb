@@ -62,9 +62,15 @@ if (fs.existsSync(path)) {
 }
 
 const models = {
-  "claude-sonnet-5": { name: "Claude Sonnet 5" },
+  "claude-fable-5-1": { name: "Claude Fable 5.1" },
+  "claude-fable-5": { name: "Claude Fable 5" },
   "claude-opus-5": { name: "Claude Opus 5" },
+  "claude-opus-4-8": { name: "Claude Opus 4.8" },
+  "claude-opus-4-7": { name: "Claude Opus 4.7" },
+  "claude-opus-4-6": { name: "Claude Opus 4.6" },
+  "claude-sonnet-5": { name: "Claude Sonnet 5" },
   "claude-sonnet-4-6": { name: "Claude Sonnet 4.6" },
+  "claude-mythos-5-1": { name: "Claude Mythos 5.1" },
   "claude-haiku-4-5-20251001": { name: "Claude Haiku 4.5" },
   "codex": { name: "OpenAI Codex (GPT-5.6 Sol)" },
   "gpt-5.6-sol": { name: "GPT-5.6 Sol" },
@@ -129,9 +135,15 @@ if os.path.exists(path):
     except: pass
 
 models = {
-    "claude-sonnet-5": { "name": "Claude Sonnet 5" },
+    "claude-fable-5-1": { "name": "Claude Fable 5.1" },
+    "claude-fable-5": { "name": "Claude Fable 5" },
     "claude-opus-5": { "name": "Claude Opus 5" },
+    "claude-opus-4-8": { "name": "Claude Opus 4.8" },
+    "claude-opus-4-7": { "name": "Claude Opus 4.7" },
+    "claude-opus-4-6": { "name": "Claude Opus 4.6" },
+    "claude-sonnet-5": { "name": "Claude Sonnet 5" },
     "claude-sonnet-4-6": { "name": "Claude Sonnet 4.6" },
+    "claude-mythos-5-1": { "name": "Claude Mythos 5.1" },
     "claude-haiku-4-5-20251001": { "name": "Claude Haiku 4.5" },
     "codex": { "name": "OpenAI Codex (GPT-5.6 Sol)" },
     "gpt-5.6-sol": { "name": "GPT-5.6 Sol" },

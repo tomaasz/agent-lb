@@ -5166,11 +5166,16 @@ ${SHARED_HELPERS}
   function getClaudeModels() {
     var isEn = currentLang === 'en';
     return [
-      { id: 'claude-sonnet-5', name: isEn ? 'Claude Sonnet 5 (Default Claude Code)' : 'Claude Sonnet 5 (Domyślny Claude Code)' },
-      { id: 'claude-haiku-4-5-20251001', name: isEn ? 'Claude Haiku 4.5 (Fast / Light ping)' : 'Claude Haiku 4.5 (Szybki / Lekki ping)' },
-      { id: 'claude-opus-5', name: isEn ? 'Claude Opus 5 (Flagship / Primary)' : 'Claude Opus 5 (Flagowy / Główny)' },
+      { id: 'claude-fable-5-1', name: isEn ? 'Claude Fable 5.1 (Advanced Reasoning & Agents)' : 'Claude Fable 5.1 (Najbardziej zaawansowany / Agenty)' },
+      { id: 'claude-fable-5', name: isEn ? 'Claude Fable 5 (Complex Reasoning)' : 'Claude Fable 5 (Złożone rozumowanie)' },
+      { id: 'claude-opus-5', name: isEn ? 'Claude Opus 5 (Flagship / Agentic Coding)' : 'Claude Opus 5 (Flagowy / Kodowanie agentowe)' },
+      { id: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
+      { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },
       { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
+      { id: 'claude-sonnet-5', name: isEn ? 'Claude Sonnet 5 (Default Claude Code)' : 'Claude Sonnet 5 (Domyślny Claude Code)' },
       { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
+      { id: 'claude-mythos-5-1', name: isEn ? 'Claude Mythos 5.1 (Specialized / Research)' : 'Claude Mythos 5.1 (Specjalistyczny / Eksperymentalny)' },
+      { id: 'claude-haiku-4-5-20251001', name: isEn ? 'Claude Haiku 4.5 (Fast / Light tasks)' : 'Claude Haiku 4.5 (Szybki / Lekkie zadania)' },
     ];
   }
 

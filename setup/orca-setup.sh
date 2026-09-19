@@ -267,25 +267,45 @@ let cfg = {};
 if (fs.existsSync(p)) {
   try { cfg = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) {}
 }
+const models = {
+  "claude-fable-5-1": { name: "Claude Fable 5.1", modelID: "claude-fable-5-1" },
+  "claude-fable-5": { name: "Claude Fable 5", modelID: "claude-fable-5" },
+  "claude-opus-5": { name: "Claude Opus 5", modelID: "claude-opus-5" },
+  "claude-opus-4-8": { name: "Claude Opus 4.8", modelID: "claude-opus-4-8" },
+  "claude-opus-4-7": { name: "Claude Opus 4.7", modelID: "claude-opus-4-7" },
+  "claude-opus-4-6": { name: "Claude Opus 4.6", modelID: "claude-opus-4-6" },
+  "claude-sonnet-5": { name: "Claude Sonnet 5", modelID: "claude-sonnet-5" },
+  "claude-sonnet-4-6": { name: "Claude Sonnet 4.6", modelID: "claude-sonnet-4-6" },
+  "claude-mythos-5-1": { name: "Claude Mythos 5.1", modelID: "claude-mythos-5-1" },
+  "claude-haiku-4-5-20251001": { name: "Claude Haiku 4.5", modelID: "claude-haiku-4-5-20251001" },
+  "claude-3-7-sonnet": { name: "Claude 3.7 Sonnet", modelID: "claude-3-7-sonnet-20250219" },
+  "claude-3-5-sonnet": { name: "Claude 3.5 Sonnet", modelID: "claude-3-5-sonnet-20241022" },
+  "codex": { name: "OpenAI Codex (GPT-5.6 Sol)", modelID: "codex" },
+  "gpt-5.6-sol": { name: "GPT-5.6 Sol", modelID: "gpt-5.6-sol" },
+  "gpt-6-astra": { name: "GPT-6 Astra", modelID: "gpt-6-astra" },
+  "gpt-4o": { name: "GPT-4o", modelID: "gpt-4o" },
+  "o3-mini": { name: "o3-mini", modelID: "o3-mini" }
+};
+cfg.provider = cfg.provider || {};
+cfg.provider.agentlb = {
+  npm: "@ai-sdk/openai-compatible",
+  name: "AgentLB (All Models)",
+  options: {
+    baseURL: "$URL/v1",
+    apiKey: "$KEY"
+  },
+  models: models
+};
 cfg.providers = cfg.providers || {};
 cfg.providers.agentlb = {
+  npm: "@ai-sdk/openai-compatible",
   name: "AgentLB (All Models)",
   package: "@opencode/ai/providers/openai-compatible",
   settings: {
     baseURL: "$URL/v1"
   },
   apiKey: "$KEY",
-  models: {
-    "claude-sonnet-5": { name: "Claude Sonnet 5", modelID: "claude-sonnet-5" },
-    "claude-opus-5": { name: "Claude Opus 5", modelID: "claude-opus-5" },
-    "claude-3-7-sonnet": { name: "Claude 3.7 Sonnet", modelID: "claude-3-7-sonnet-20250219" },
-    "claude-3-5-sonnet": { name: "Claude 3.5 Sonnet", modelID: "claude-3-5-sonnet-20241022" },
-    "codex": { name: "OpenAI Codex (GPT-5.6 Sol)", modelID: "codex" },
-    "gpt-5.6-sol": { name: "GPT-5.6 Sol", modelID: "gpt-5.6-sol" },
-    "gpt-6-astra": { name: "GPT-6 Astra", modelID: "gpt-6-astra" },
-    "gpt-4o": { name: "GPT-4o", modelID: "gpt-4o" },
-    "o3-mini": { name: "o3-mini", modelID: "o3-mini" }
-  }
+  models: models
 };
 fs.writeFileSync(p, JSON.stringify(cfg, null, 2) + '\n');
 EOF
