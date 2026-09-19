@@ -165,7 +165,7 @@ custom_providers:
     base_url: "{url}"
     api_key: "{key}"
     api_mode: "chat_completions"
-    context_length: 1050000
+    context_length: 128000
     models:
 {models_yaml}
 providers:
@@ -175,7 +175,7 @@ providers:
     api: "{url}"
     api_key: "{key}"
     api_mode: "chat_completions"
-    context_length: 1050000
+    context_length: 128000
     models:
 {models_yaml}{extra_providers}
 # --- End AgentLB ---"""
@@ -197,6 +197,11 @@ for p in config_paths:
         except Exception:
             content = ""
         content = re.sub(r"# --- AgentLB Multi-Provider ---[\s\S]*?(?:# --- End AgentLB ---|(?=\n[a-zA-Z0-9_]+:)|\Z)", "", content)
+    # Apply token-safe optimizations
+    content = re.sub(r"(max_turns:\s*)\d+", r"\g<1>25", content)
+    content = re.sub(r"(threshold:\s*)[0-9.]+", r"\g<1>0.25", content)
+    content = re.sub(r"(protect_last_n:\s*)\d+", r"\g<1>10", content)
+    content = re.sub(r"(context_length:\s*)\d+", r"\g<1>128000", content)
     with open(p, "w", encoding="utf-8") as f:
         f.write(content.strip() + "\n" + block + "\n")
     print(f"✓ Zaktualizowano konfigurację: {p}")
@@ -236,11 +241,15 @@ if (hasAgy) {
   extraProviders = '\n  agy:\n    name: "AGY"\n    provider: "agy"\n    models:\n      - "gemini-3.8-flash-high"\n      - "agy"\n  agy-fast:\n    name: "AGY Fast"\n    provider: "agy-fast"\n    models:\n      - "gemini-3.8-flash-low"\n      - "agy-fast"\n';
 }
 
-const block = '\n# --- AgentLB Multi-Provider ---' + modelAliasesBlock + '\ncustom_providers:\n  - name: "agentlb"\n    base_url: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 1050000\n    models:\n' + modelsYaml + '\nproviders:\n  agentlb:\n    name: "AgentLB (All Models)"\n    base_url: "' + url + '"\n    api: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 1050000\n    models:\n' + modelsYaml + extraProviders + '\n# --- End AgentLB ---\n';
+const block = '\n# --- AgentLB Multi-Provider ---' + modelAliasesBlock + '\ncustom_providers:\n  - name: "agentlb"\n    base_url: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 128000\n    models:\n' + modelsYaml + '\nproviders:\n  agentlb:\n    name: "AgentLB (All Models)"\n    base_url: "' + url + '"\n    api: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 128000\n    models:\n' + modelsYaml + extraProviders + '\n# --- End AgentLB ---\n';
 
 for (const p of configPaths) {
   let content = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
   content = content.replace(/# --- AgentLB Multi-Provider ---[\s\S]*?(?:# --- End AgentLB ---|(?=\n[a-zA-Z0-9_]+:)|\$)/, '').trim();
+  content = content.replace(/(max_turns:\s*)\d+/g, '$125');
+  content = content.replace(/(threshold:\s*)[0-9.]+/g, '$10.25');
+  content = content.replace(/(protect_last_n:\s*)\d+/g, '$110');
+  content = content.replace(/(context_length:\s*)\d+/g, '$1128000');
   fs.writeFileSync(p, (content ? content + '\n' : '') + block);
   console.log('✓ Zaktualizowano konfigurację:', p);
 }
