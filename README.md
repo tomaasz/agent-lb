@@ -39,7 +39,7 @@ flowchart TD
         C4["Batch / Background Agents (Hermes)"]
     end
 
-    subgraph Proxy["claude-lb Proxy & Dashboard (Port 3456)"]
+    subgraph Proxy["AgentLB Proxy & Dashboard (Port 3456)"]
         Gate["API Key & Tailscale Gate"]
         FairShare["Max-Min Fair Share Admission"]
         Dedupe["Tool Call Dedupe & Replay Guard"]
@@ -106,7 +106,7 @@ cd agent-lb/docker
 docker compose up -d
 ```
 
-Your configuration and accounts will persist in `docker/data/claude-lb.json`.
+Your configuration and accounts will persist in `docker/data/agent-lb.json`.
 
 ### Option 3: Systemd Service (Linux)
 
@@ -114,15 +114,16 @@ Install as a background systemd user service:
 
 ```bash
 mkdir -p ~/.config/systemd/user
-cat << 'EOF' > ~/.config/systemd/user/claude-lb.service
+cat << 'EOF' > ~/.config/systemd/user/agentlb.service
 [Unit]
-Description=Claude-LB Proxy Service
+Description=AgentLB Multi-Account Proxy Service
+Documentation=https://github.com/tomaasz/agent-lb
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/claude-lb
-ExecStart=/usr/bin/node %h/claude-lb/src/index.js headless
+WorkingDirectory=%h/agent-lb
+ExecStart=/usr/bin/node %h/agent-lb/src/index.js headless
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
@@ -132,7 +133,7 @@ WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable --now claude-lb
+systemctl --user enable --now agentlb
 ```
 
 ---
@@ -200,13 +201,13 @@ http://your-server:3456/dashboard
 
 ## 🛡️ Reverse Proxy & Tailscale
 
-`claude-lb` works seamlessly behind reverse proxies and VPNs like **Tailscale**.
+`AgentLB` works seamlessly behind reverse proxies and VPNs like **Tailscale**.
 
 ### Tailscale Tailnet Authentication
-When accessed from your Tailscale network (e.g., `*.ts.net`), `claude-lb` can automatically trust connections from authenticated Tailnet peers. Configure allowed hostnames via environment variable:
+When accessed from your Tailscale network (e.g., `*.ts.net`), `AgentLB` can automatically trust connections from authenticated Tailnet peers. Configure allowed hostnames via environment variable:
 
 ```bash
-export CLAUDE_LB_HOST="claude-lb.your-tailnet.ts.net"
+export AGENT_LB_HOST="agentlb.your-tailnet.ts.net"
 ```
 
 ### Caddy Configuration Example
@@ -324,14 +325,27 @@ Configuration is stored in `~/.config/agent-lb.json` (or `~/.config/claude-lb.js
 
 | Variable | Description | Default |
 | --- | --- | --- |
-| `CLAUDE_LB_PORT` | Port to bind proxy server | `3456` |
-| `CLAUDE_LB_HOST` | Host address or domain allowed | `0.0.0.0` |
-| `CLAUDE_LB_CONFIG` | Custom path to config file | `~/.config/claude-lb.json` |
-| `CLAUDE_LB_URL` | Base URL used by installer scripts | Dynamic detection |
+| `AGENT_LB_PORT` (or `CLAUDE_LB_PORT`) | Port to bind proxy server | `3456` |
+| `AGENT_LB_HOST` (or `CLAUDE_LB_HOST`) | Host address or domain allowed | `0.0.0.0` |
+| `AGENT_LB_CONFIG` (or `CLAUDE_LB_CONFIG`) | Custom path to config file | `~/.config/agent-lb.json` |
+| `AGENT_LB_URL` (or `CLAUDE_LB_URL`) | Base URL used by installer scripts | Dynamic detection |
+
+---
+
+## 💡 Inspiration & Origins (Geneza Projektu)
+
+Projekt **AgentLB** powstał jako zaawansowana ewolucja i rozbudowa koncepcji projektu `claude-lb` autorstwa [KarpelesLab](https://github.com/KarpelesLab/agentlb) (stworzonego pierwotnie do pulowania kont wyłącznie dla narzędzia Claude Code).
+
+Z biegiem rozwoju projekt został przekształcony w uniwersalną bramę **AgentLB** (`agentlb` / `agent-lb`) obsługującą pełne środowisko programistów i autonomicznych agentów kodujących:
+- **Wielomodelowość i wielu dostawców**: Równorzędna obsługa Anthropic Claude oraz OpenAI Codex CLI / ChatGPT (OAuth PKCE i klucze API).
+- **Sprawiedliwy podział strumieni (Max-Min Fair Share)**: Ochrona interaktywnych sesji programistów przed zagłodzeniem przez intensywne procesy autonomiczne w tle (np. Hermes, AutoGPT).
+- **Inteligentny harmonogram Keep-Warm**: Podtrzymywanie gotowości sesji w godzinach pracy i automatyczne oszczędzanie limitów nocami oraz w weekendy.
+- **Bezpieczeństwo i deduplikacja narzędzi**: Zabezpieczenie przed wielokrotnym wykonaniem nieidempotentnych operacji basha i edycji plików przy zerwaniu połączenia.
+- **Nowoczesny Dashboard WWW**: Dwukolumnowy interfejs z intuicyjnym przeciąganiem (drag & drop), natychmiastową edycją nazw kont (*inline rename*), testami łączności (*quick test*) oraz zarządzaniem kluczami klienckimi bez konieczności restartu serwera.
 
 ---
 
 ## 📄 License
 
-MIT © [Tomasz](https://github.com/tomaasz)
-Based on upstream work by [KarpelesLab](https://github.com/KarpelesLab/agentlb).
+MIT © [Tomasz](https://github.com/tomaasz)  
+Inspirowane pracami [KarpelesLab](https://github.com/KarpelesLab/agentlb).

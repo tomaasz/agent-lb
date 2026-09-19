@@ -618,7 +618,7 @@ async function serverCommand() {
       const sep = '='.repeat(60);
       console.log('');
       console.log(sep);
-      console.log('  Claude-LB Proxy');
+      console.log('  AgentLB Proxy');
       console.log(sep);
       console.log(`  Bind:          ${bindHost}:${port}${bindHost === '127.0.0.1' ? ' (localhost only)' : ' (reachable off-box — ensure proxy.apiKey is set)'}`);
       console.log(`  Accounts:      ${accounts.length}`);
@@ -632,9 +632,9 @@ async function serverCommand() {
       if (accounts.length === 0) {
         console.log('  ⚠️  No accounts configured yet.');
         console.log('  Open the Web Dashboard above to add accounts, or run:');
-        console.log('    claude-lb import           Import from Claude Code');
-        console.log('    claude-lb login            OAuth login via browser');
-        console.log('    claude-lb login --api      Add an API key');
+        console.log('    agentlb import           Import from Claude Code');
+        console.log('    agentlb login            OAuth login via browser');
+        console.log('    agentlb login --api      Add an API key');
       } else {
         accounts.forEach((a, i) => {
           console.log(`  [${i + 1}] ${a.name} (${a.type})`);

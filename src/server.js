@@ -684,7 +684,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Pull latest claude-lb code and scripts from GitHub repo
+      // Pull latest agent-lb code and scripts from GitHub repo
       if (req.method === 'POST' && (req.url === '/agent-lb/api/setup/pull' || req.url === '/claude-lb/api/setup/pull' || req.url === '/api/setup/pull')) {
         const { exec } = await import('node:child_process');
         const repoDir = join(__dirname, '..');
@@ -2767,6 +2767,7 @@ export function isLocalHostHeader(host, bindHost = null, allowedHosts = []) {
   if (isTailnetAddr(name)) return true;
   const rawEnvHosts = [
     process.env.AGENT_LB_HOST,
+    process.env.AGENTLB_HOST,
     process.env.CLAUDE_LB_HOST,
     'agentlb.gotova.pl',
     'agent-lb.gotova.pl',
@@ -4079,14 +4080,14 @@ export function isTransientUpstreamError(err, { otherHostAvailable = false } = {
 export function exhaustedMessage(accountManager, model, retryAfter, provider = null) {
   const allAccounts = accountManager.accounts || [];
   if (allAccounts.length === 0) {
-    return 'No accounts configured in Claude-LB. Please add an account via the Web Dashboard or CLI.';
+    return 'No accounts configured in AgentLB. Please add an account via the Web Dashboard or CLI.';
   }
   const accounts = provider
     ? allAccounts.filter(a => providerOf(a) === provider)
     : allAccounts;
 
   if (accounts.length === 0) {
-    return `No ${provider} accounts configured in Claude-LB. Please add a ${provider} account via the Web Dashboard or CLI.`;
+    return `No ${provider} accounts configured in AgentLB. Please add a ${provider} account via the Web Dashboard or CLI.`;
   }
 
   const eligible = accounts.filter(a => !a.disabled);

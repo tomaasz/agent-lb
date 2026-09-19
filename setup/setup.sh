@@ -123,7 +123,7 @@ if isinstance(data, dict):
         json.dump(data, f, indent=2); f.write('\n')
 PY
 	fi
-	say "Usunięto ustawienia Claude-LB. Plik .credentials.json pozostawiono bez zmian."
+	say "Usunięto ustawienia Agent-LB. Plik .credentials.json pozostawiono bez zmian."
 	exit 0
 fi
 

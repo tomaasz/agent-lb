@@ -1,4 +1,4 @@
-# Project Context: claude-lb
+# Project Context: agent-lb (AgentLB)
 
 ## Cel projektu
 Uniwersalny load balancer, rotator kont, zarządca limitów (quota rotator) oraz panel webowy (dashboard) i interfejs TUI dla narzędzi Claude Code oraz OpenAI / Codex. Projekt umożliwia transparentne przekierowywanie ruchu przez lokalny serwer proxy, rotację wielu kont po wyczerpaniu limitów zapytań, sprawiedliwe kolejkowanie (fair-share), deduplikację wywołań narzędzi (tool-call deduplication), śledzenie sesji i planowanie podtrzymywania gotowości (warmup schedule).

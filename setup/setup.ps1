@@ -120,7 +120,7 @@ if ($Uninstall) {
 		[Environment]::SetEnvironmentVariable('CODEX_BASE_URL', $null, 'User')
 		[Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', $null, 'User')
 	} catch { Say '[Uwaga] Nie udało się usunąć zmiennych środowiskowych Windows.' }
-	Say 'Usunięto ustawienia Claude-LB. Plik .credentials.json pozostawiono bez zmian.'
+	Say 'Usunięto ustawienia Agent-LB. Plik .credentials.json pozostawiono bez zmian.'
 	exit 0
 }
 
@@ -162,13 +162,13 @@ try {
 		}
 	}
 	if ($resp.StatusCode -ne 200) { throw "nieoczekiwana odpowiedz $($resp.StatusCode)" }
-	Say 'OK — klucz działa, proxy Claude-LB odpowiada.'
+	Say 'OK — klucz działa, proxy Agent-LB odpowiada.'
 } catch {
 	$code = $null
 	if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
 	switch ($code) {
-		401 { throw 'Serwer odrzucił klucz (401). Sprawdź klucz w Claude-LB.' }
-		403 { throw 'Serwer odrzucił klucz (403). Sprawdź klucz w Claude-LB.' }
+		401 { throw 'Serwer odrzucił klucz (401). Sprawdź klucz w Agent-LB.' }
+		403 { throw 'Serwer odrzucił klucz (403). Sprawdź klucz w Agent-LB.' }
 		default {
 			throw "Brak połączenia z $Url ($($_.Exception.Message)). Sprawdź połączenie sieciowe."
 		}

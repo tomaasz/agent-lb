@@ -157,7 +157,7 @@ export function renderSystemdUnit({ node, entry, path, configPath = null }) {
   if (configPath) environment.push(`Environment=${systemdQuote(`AGENT_LB_CONFIG=${configPath}`)}`);
   return `[Unit]
 Description=AgentLB multi-account proxy
-Documentation=https://github.com/tomaasz/claude-lb
+Documentation=https://github.com/tomaasz/agent-lb
 After=network-online.target
 
 [Service]

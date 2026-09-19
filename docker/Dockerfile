@@ -1,7 +1,7 @@
 FROM node:20-alpine
 LABEL maintainer="Tomasz"
-LABEL org.opencontainers.image.source="https://github.com/tomaasz/claude-lb"
-LABEL org.opencontainers.image.description="Universal Multi-Account Load Balancer, Quota Rotator & Web Dashboard for Claude Code"
+LABEL org.opencontainers.image.source="https://github.com/tomaasz/agent-lb"
+LABEL org.opencontainers.image.description="Universal Multi-Account Load Balancer, Quota Rotator & Web Dashboard for Claude Code & OpenAI Codex"
 
 WORKDIR /app
 
@@ -21,9 +21,12 @@ COPY LICENSE README.md ./
 
 # Set environment defaults
 ENV NODE_ENV=production
+ENV AGENT_LB_PORT=3456
+ENV AGENT_LB_HOST=0.0.0.0
+ENV AGENT_LB_CONFIG=/data/agent-lb.json
 ENV CLAUDE_LB_PORT=3456
 ENV CLAUDE_LB_HOST=0.0.0.0
-ENV CLAUDE_LB_CONFIG=/data/claude-lb.json
+ENV CLAUDE_LB_CONFIG=/data/agent-lb.json
 ENV HOME=/data
 
 # Create data directory for config and persistent state

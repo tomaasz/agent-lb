@@ -63,7 +63,7 @@ for (let i = 0; i < args.length; i++) {
     uninstall = true;
   } else if (arg === '-h' || arg === '--help') {
     console.log(`
-Agent-LB / Claude-LB Client Setup (Universal: Windows / Linux / macOS)
+Agent-LB Client Setup (Universal: Windows / Linux / macOS)
 
 Użycie:
   node setup.js [opcje]
@@ -75,7 +75,7 @@ Opcje:
   --test           Wykonaj próbne uruchomienie claude po konfiguracji
   --skip-vscode    Pomiń konfigurację oficjalnego rozszerzenia VS Code
   --skip-env       Pomiń konfigurację zmiennych powłoki / systemu
-  --uninstall      Usuń ustawienia Claude-LB z profilu klienta (bez kasowania sesji OAuth)
+  --uninstall      Usuń ustawienia Agent-LB z profilu klienta (bez kasowania sesji OAuth)
   -h, --help       Pokaż ten ekran pomocy
 `);
     process.exit(0);
@@ -131,7 +131,7 @@ function checkUrlOnce(urlPath, urlStr, key) {
         method: 'GET',
         headers: {
           'x-api-key': key,
-          'User-Agent': 'claude-lb-setup/2.0',
+          'User-Agent': 'agentlb-setup/2.1',
         },
         timeout: 15000,
       },
@@ -335,7 +335,7 @@ function uninstallClientSettings() {
       execFileSync('powershell.exe', ['-NoProfile', '-Command', "'ANTHROPIC_BASE_URL','ANTHROPIC_API_KEY','ANTHROPIC_CUSTOM_HEADERS','CODEX_LB_API_KEY','CODEX_BASE_URL','OPENAI_BASE_URL' | ForEach-Object { [Environment]::SetEnvironmentVariable($_, $null, 'User') }"]);
     } catch (err) { console.warn(`[Ostrzeżenie] Nie udało się usunąć zmiennych Windows: ${err.message}`); }
   }
-  console.log('Usunięto ustawienia Claude-LB. Plik .credentials.json pozostawiono bez zmian.');
+  console.log('Usunięto ustawienia Agent-LB. Plik .credentials.json pozostawiono bez zmian.');
 }
 
 function safeReadJson(filePath) {
@@ -532,7 +532,7 @@ async function main() {
       let codexConfig = safeReadJson(codexConfigFile) || {};
       codexConfig.base_url = `${targetUrl}/backend-api/codex`;
       writeJsonSafe(codexConfigFile, codexConfig, 0o600);
-      console.log(`[OK] Skonfigurowano ${codexConfigFile} (Codex CLI przekierowane na Claude-LB).`);
+      console.log(`[OK] Skonfigurowano ${codexConfigFile} (Codex CLI przekierowane na AgentLB).`);
     } catch (err) {
       console.warn(`[Ostrzeżenie] Nie udało się zaktualizować konfiguracji Codex CLI: ${err.message}`);
     }
@@ -633,7 +633,7 @@ async function main() {
   }
 
   console.log('\n=== Konfiguracja zakończona sukcesem! ===');
-  console.log('1. Claude Code CLI: będzie automatycznie łączyć się przez Claude-LB w każdym terminalu.');
+  console.log('1. Claude Code CLI: będzie automatycznie łączyć się przez AgentLB w każdym terminalu.');
   console.log('2. Rozszerzenie VS Code: po zrestartowaniu okna VS Code będzie używać Twojego proxy i klucza.');
   console.log('3. Inne narzędzia (Cursor, Cline, Continue, Roo Code): jako Base URL ustaw ' + targetUrl + ', a jako klucz swój tc-...');
   if (setupCodex || fs.existsSync(codexDir)) {

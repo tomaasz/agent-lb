@@ -1188,7 +1188,7 @@ const PAGE = `<!doctype html>
       </div>
 
       <div class="row" style="justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--line); padding-top:12px;">
-        <span style="font-size:12px; color:var(--dim);">Repozytorium: <a href="https://github.com/tomaasz/claude-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/claude-lb ↗</a></span>
+        <span style="font-size:12px; color:var(--dim);">Repozytorium: <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/agent-lb ↗</a></span>
         <button class="btn" id="btnDoneKeyModal">Zamknij</button>
       </div>
     </div>
@@ -3516,13 +3516,13 @@ ${SHARED_HELPERS}
 
   function doPullSetup(btn) {
     if (btn) btn.disabled = true;
-    note('ok', 'Pobieranie aktualizacji repozytorium claude-lb z GitHub...');
+    note('ok', 'Pobieranie aktualizacji repozytorium agent-lb z GitHub...');
     apiCall('/agent-lb/api/setup/pull', 'POST')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Zaktualizowano repozytorium claude-lb: ' + (res.output || 'Już aktualne.'));
+          note('ok', 'Zaktualizowano repozytorium agent-lb: ' + (res.output || 'Już aktualne.'));
         } else {
           note('error', 'Błąd git pull: ' + (res.error || 'nieznany błąd'));
         }

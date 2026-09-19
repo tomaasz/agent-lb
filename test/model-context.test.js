@@ -301,7 +301,7 @@ test('successful response clears identityVerification cooldown', async () => {
 test('exhaustedMessage formats clear errors for disabled, partitioned and identity-blocked fleets', () => {
   // 1. Empty fleet
   const emptyAm = new AccountManager([]);
-  assert.match(exhaustedMessage(emptyAm, null, 0), /No accounts configured in Claude-LB/);
+  assert.match(exhaustedMessage(emptyAm, null, 0), /No accounts configured in (?:AgentLB|Agent-LB)/);
 
   // 2. All disabled accounts
   const disabled1 = new AccountManager([{ name: 'a', disabled: true }]);
@@ -329,7 +329,7 @@ test('exhaustedMessage formats clear errors for disabled, partitioned and identi
   assert.equal(exhaustedMessage(mixedAm, null, 30, 'codex'), 'No account can serve this request: 1 account is at its quota or rate limit. Quota resets in 30s.');
 
   const onlyClaude = new AccountManager([{ name: 'claude-1', provider: 'anthropic' }]);
-  assert.equal(exhaustedMessage(onlyClaude, null, 30, 'codex'), 'No codex accounts configured in Claude-LB. Please add a codex account via the Web Dashboard or CLI.');
+  assert.equal(exhaustedMessage(onlyClaude, null, 30, 'codex'), 'No codex accounts configured in AgentLB. Please add a codex account via the Web Dashboard or CLI.');
 
   // 5. Identity verification note
   const idAm = new AccountManager([
