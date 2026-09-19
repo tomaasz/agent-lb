@@ -6,6 +6,7 @@
 
 import { Transform } from 'node:stream';
 import { randomUUID } from 'node:crypto';
+import { sanitizeToolPairs } from './tool-pair-sanitize.js';
 
 export const DEFAULT_FALLBACK_OPENAI_MODEL = 'gpt-4o';
 export const DEFAULT_FALLBACK_ANTHROPIC_MODEL = 'claude-3-5-sonnet-20241022';
@@ -374,7 +375,7 @@ export function translateOpenAIToAnthropic(body, targetModel = null) {
   if (Array.isArray(json.messages)) {
     for (const msg of json.messages) {
       if (!msg) continue;
-      if (msg.role === 'system') {
+      if (msg.role === 'system' || msg.role === 'developer') {
         if (typeof msg.content === 'string') {
           systemTexts.push(msg.content);
         } else if (Array.isArray(msg.content)) {
@@ -382,24 +383,148 @@ export function translateOpenAIToAnthropic(body, targetModel = null) {
             if (part && typeof part.text === 'string') systemTexts.push(part.text);
           }
         }
-      } else if (msg.role === 'user' || msg.role === 'assistant') {
-        out.messages.push({
-          role: msg.role,
-          content: msg.content,
-        });
-      } else if (msg.role === 'tool') {
-        out.messages.push({
-          role: 'user',
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: msg.tool_call_id,
-              content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content || ''),
-            },
-          ],
-        });
+      } else if (msg.role === 'user') {
+        const userBlocks = [];
+        if (typeof msg.content === 'string' && msg.content.length > 0) {
+          userBlocks.push({ type: 'text', text: msg.content });
+        } else if (Array.isArray(msg.content)) {
+          for (const part of msg.content) {
+            if (!part) continue;
+            if (typeof part === 'string' && part.length > 0) {
+              userBlocks.push({ type: 'text', text: part });
+            } else if (part.type === 'text' && typeof part.text === 'string' && part.text.length > 0) {
+              userBlocks.push({ type: 'text', text: part.text });
+            } else if (part.type === 'image_url' && part.image_url?.url) {
+              const url = part.image_url.url;
+              const m = url.match(/^data:([^;]+);base64,(.+)$/);
+              if (m) {
+                userBlocks.push({
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: m[1],
+                    data: m[2],
+                  },
+                });
+              }
+            } else if (part.type === 'tool_result') {
+              userBlocks.push(part);
+            }
+          }
+        }
+        const lastMsg = out.messages[out.messages.length - 1];
+        if (lastMsg && lastMsg.role === 'user') {
+          if (typeof lastMsg.content === 'string') {
+            lastMsg.content = lastMsg.content.length > 0 ? [{ type: 'text', text: lastMsg.content }] : [];
+          } else if (!Array.isArray(lastMsg.content)) {
+            lastMsg.content = [];
+          }
+          if (userBlocks.length > 0) {
+            lastMsg.content.push(...userBlocks);
+          }
+        } else {
+          out.messages.push({
+            role: 'user',
+            content: userBlocks.length > 0 ? userBlocks : (typeof msg.content === 'string' ? msg.content : ''),
+          });
+        }
+      } else if (msg.role === 'assistant') {
+        const contentBlocks = [];
+        if (typeof msg.content === 'string' && msg.content.length > 0) {
+          contentBlocks.push({ type: 'text', text: msg.content });
+        } else if (Array.isArray(msg.content)) {
+          for (const part of msg.content) {
+            if (!part) continue;
+            if (typeof part === 'string' && part.length > 0) {
+              contentBlocks.push({ type: 'text', text: part });
+            } else if (part.type === 'text' && typeof part.text === 'string' && part.text.length > 0) {
+              contentBlocks.push({ type: 'text', text: part.text });
+            }
+          }
+        }
+
+        const toolCalls = Array.isArray(msg.tool_calls) ? [...msg.tool_calls] : [];
+        if (msg.function_call && typeof msg.function_call === 'object') {
+          toolCalls.push({
+            id: msg.function_call.id || `call_${randomUUID().replace(/-/g, '').slice(0, 16)}`,
+            type: 'function',
+            function: msg.function_call,
+          });
+        }
+
+        for (const tc of toolCalls) {
+          if (!tc) continue;
+          const fn = tc.function || tc;
+          let input = {};
+          const rawArgs = fn.arguments;
+          if (typeof rawArgs === 'string' && rawArgs.trim().length > 0) {
+            try {
+              input = JSON.parse(rawArgs);
+            } catch {
+              input = { raw: rawArgs };
+            }
+          } else if (rawArgs && typeof rawArgs === 'object') {
+            input = rawArgs;
+          }
+          contentBlocks.push({
+            type: 'tool_use',
+            id: tc.id || `toolu_${randomUUID().replace(/-/g, '').slice(0, 24)}`,
+            name: fn.name || 'unknown_tool',
+            input: (input && typeof input === 'object' && !Array.isArray(input)) ? input : {},
+          });
+        }
+
+        const lastMsg = out.messages[out.messages.length - 1];
+        if (lastMsg && lastMsg.role === 'assistant') {
+          const prevBlocks = Array.isArray(lastMsg.content)
+            ? lastMsg.content
+            : (typeof lastMsg.content === 'string' && lastMsg.content.length > 0 ? [{ type: 'text', text: lastMsg.content }] : []);
+          lastMsg.content = [...prevBlocks, ...contentBlocks];
+        } else {
+          out.messages.push({
+            role: 'assistant',
+            content: contentBlocks.length > 0 ? contentBlocks : (typeof msg.content === 'string' ? msg.content : ''),
+          });
+        }
+      } else if (msg.role === 'tool' || msg.role === 'function') {
+        let resultContent = '';
+        if (typeof msg.content === 'string') {
+          resultContent = msg.content;
+        } else if (msg.content != null) {
+          resultContent = JSON.stringify(msg.content);
+        }
+        const toolResultBlock = {
+          type: 'tool_result',
+          tool_use_id: msg.tool_call_id || msg.id || '',
+          content: resultContent,
+        };
+        if (msg.is_error) {
+          toolResultBlock.is_error = true;
+        }
+        const lastMsg = out.messages[out.messages.length - 1];
+        if (lastMsg && lastMsg.role === 'user') {
+          if (typeof lastMsg.content === 'string') {
+            lastMsg.content = lastMsg.content.length > 0 ? [{ type: 'text', text: lastMsg.content }] : [];
+          } else if (!Array.isArray(lastMsg.content)) {
+            lastMsg.content = [];
+          }
+          lastMsg.content.push(toolResultBlock);
+        } else {
+          out.messages.push({
+            role: 'user',
+            content: [toolResultBlock],
+          });
+        }
       }
     }
+  }
+
+  // Anthropic requires the first message to have role 'user'
+  if (out.messages.length > 0 && out.messages[0].role !== 'user') {
+    out.messages.unshift({
+      role: 'user',
+      content: 'Hello',
+    });
   }
 
   if (systemTexts.length > 0) {
@@ -418,7 +543,24 @@ export function translateOpenAIToAnthropic(body, targetModel = null) {
     });
   }
 
-  return Buffer.from(JSON.stringify(out), 'utf8');
+  // Tool choice
+  if (json.tool_choice) {
+    if (json.tool_choice === 'auto') {
+      out.tool_choice = { type: 'auto' };
+    } else if (json.tool_choice === 'none') {
+      delete out.tools;
+    } else if (json.tool_choice === 'required') {
+      out.tool_choice = { type: 'any' };
+    } else if (typeof json.tool_choice === 'object') {
+      const fnName = json.tool_choice.function?.name || json.tool_choice.name;
+      if (fnName) {
+        out.tool_choice = { type: 'tool', name: fnName };
+      }
+    }
+  }
+
+  const rawBuf = Buffer.from(JSON.stringify(out), 'utf8');
+  return sanitizeToolPairs(rawBuf, '/v1/messages', 'application/json');
 }
 
 /**

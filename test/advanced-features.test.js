@@ -1,14 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import http from 'node:http';
 import { AccountManager } from '../src/account-manager.js';
 import { createProxyServer } from '../src/server.js';
 import { ClientUsageTracker } from '../src/client-usage.js';
 import {
   translateAnthropicToOpenAI,
+  translateOpenAIToAnthropic,
   translateOpenAIToAnthropicResponse,
   createOpenAIToAnthropicTransformStream,
-  resolveTargetModel,
 } from '../src/provider-translator.js';
 import { Readable } from 'node:stream';
 
@@ -298,4 +297,97 @@ test('Faza 4: Cross-Provider Fallback & Protocol Translator', async () => {
   assert.match(fullOutput, /event: content_block_stop/);
   assert.match(fullOutput, /event: message_delta/);
   assert.match(fullOutput, /event: message_stop/);
+});
+
+test('OpenAI -> Anthropic request translation with tool_calls, results and coalescence', () => {
+  const openAIReq = {
+    model: 'claude-opus-5',
+    messages: [
+      { role: 'user', content: 'Execute some code' },
+      {
+        role: 'assistant',
+        content: 'I will run the code now.',
+        tool_calls: [
+          {
+            id: 'toolu_01RoTGPsyqJ5TgRqjsuFQdFj',
+            type: 'function',
+            function: {
+              name: 'execute_code',
+              arguments: JSON.stringify({ code: 'print("hello")' }),
+            },
+          },
+          {
+            id: 'toolu_02SecondCall',
+            type: 'function',
+            function: {
+              name: 'read_file',
+              arguments: '{"path":"main.py"}',
+            },
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'toolu_01RoTGPsyqJ5TgRqjsuFQdFj',
+        content: 'hello\n',
+      },
+      {
+        role: 'tool',
+        tool_call_id: 'toolu_02SecondCall',
+        content: 'def main(): pass',
+      },
+    ],
+    tools: [
+      {
+        type: 'function',
+        function: {
+          name: 'execute_code',
+          description: 'Runs code in python',
+          parameters: { type: 'object', properties: { code: { type: 'string' } } },
+        },
+      },
+    ],
+    tool_choice: 'auto',
+  };
+
+  const anthropicBuf = translateOpenAIToAnthropic(openAIReq, 'claude-opus-5');
+  const anthropicJson = JSON.parse(anthropicBuf.toString('utf8'));
+
+  assert.equal(anthropicJson.model, 'claude-opus-5');
+  assert.equal(anthropicJson.messages.length, 3); // user, assistant, user (coalesced 2 tool results)
+
+  // Message 0: user
+  assert.equal(anthropicJson.messages[0].role, 'user');
+
+  // Message 1: assistant with text and tool_use blocks
+  assert.equal(anthropicJson.messages[1].role, 'assistant');
+  assert.equal(Array.isArray(anthropicJson.messages[1].content), true);
+  assert.equal(anthropicJson.messages[1].content[0].type, 'text');
+  assert.equal(anthropicJson.messages[1].content[0].text, 'I will run the code now.');
+  assert.equal(anthropicJson.messages[1].content[1].type, 'tool_use');
+  assert.equal(anthropicJson.messages[1].content[1].id, 'toolu_01RoTGPsyqJ5TgRqjsuFQdFj');
+  assert.equal(anthropicJson.messages[1].content[1].name, 'execute_code');
+  assert.deepEqual(anthropicJson.messages[1].content[1].input, { code: 'print("hello")' });
+
+  assert.equal(anthropicJson.messages[1].content[2].type, 'tool_use');
+  assert.equal(anthropicJson.messages[1].content[2].id, 'toolu_02SecondCall');
+  assert.equal(anthropicJson.messages[1].content[2].name, 'read_file');
+  assert.deepEqual(anthropicJson.messages[1].content[2].input, { path: 'main.py' });
+
+  // Message 2: user with both tool_result blocks coalesced
+  assert.equal(anthropicJson.messages[2].role, 'user');
+  assert.equal(Array.isArray(anthropicJson.messages[2].content), true);
+  assert.equal(anthropicJson.messages[2].content.length, 2);
+  assert.equal(anthropicJson.messages[2].content[0].type, 'tool_result');
+  assert.equal(anthropicJson.messages[2].content[0].tool_use_id, 'toolu_01RoTGPsyqJ5TgRqjsuFQdFj');
+  assert.equal(anthropicJson.messages[2].content[0].content, 'hello\n');
+
+  assert.equal(anthropicJson.messages[2].content[1].type, 'tool_result');
+  assert.equal(anthropicJson.messages[2].content[1].tool_use_id, 'toolu_02SecondCall');
+  assert.equal(anthropicJson.messages[2].content[1].content, 'def main(): pass');
+
+  // Tools definition and tool_choice
+  assert.equal(anthropicJson.tools.length, 1);
+  assert.equal(anthropicJson.tools[0].name, 'execute_code');
+  assert.deepEqual(anthropicJson.tool_choice, { type: 'auto' });
 });

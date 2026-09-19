@@ -4585,7 +4585,8 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
 
   // Every rewrite below runs inside rewriteRequestBody (exported for tests);
   // Content-Length is refreshed below because the body can shrink.
-  sendBody = rewriteRequestBody(sendBody, account, req.url, req.headers['content-type']);
+  const effectiveUrl = (upstreamUrl && upstreamUrl.includes('/v1/messages')) ? '/v1/messages' : req.url;
+  sendBody = rewriteRequestBody(sendBody, account, effectiveUrl, headers['content-type'] || req.headers['content-type']);
 
   const rewrittenModel = parseRequestModel(sendBody);
   if (rewrittenModel) {
