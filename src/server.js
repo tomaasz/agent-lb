@@ -603,8 +603,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             { id: 'claude-3-5-haiku-20241022', object: 'model', type: 'model', name: 'Claude 3.5 Haiku', display_name: 'Claude 3.5 Haiku' },
             { id: 'claude-3-opus-20240229', object: 'model', type: 'model', name: 'Claude 3 Opus', display_name: 'Claude 3 Opus' },
             { id: 'gpt-5.6-sol', object: 'model', type: 'model', name: 'GPT-5.6 Sol', display_name: 'GPT-5.6 Sol' },
+            { id: 'codex', object: 'model', type: 'model', name: 'Codex (GPT-5.6 Sol)', display_name: 'Codex (GPT-5.6 Sol)' },
             { id: 'gpt-6-astra', object: 'model', type: 'model', name: 'GPT-6 Astra', display_name: 'GPT-6 Astra' },
             { id: 'gpt-5.6-terra', object: 'model', type: 'model', name: 'GPT-5.6 Terra', display_name: 'GPT-5.6 Terra' },
+            { id: 'codex-mini', object: 'model', type: 'model', name: 'Codex Mini (GPT-5.6 Terra)', display_name: 'Codex Mini (GPT-5.6 Terra)' },
             { id: 'gpt-5.6-luna', object: 'model', type: 'model', name: 'GPT-5.6 Luna', display_name: 'GPT-5.6 Luna' },
             { id: 'gpt-5.5', object: 'model', type: 'model', name: 'GPT-5.5', display_name: 'GPT-5.5' },
             { id: 'o3-mini', object: 'model', type: 'model', name: 'o3-mini', display_name: 'o3-mini' },
@@ -5551,6 +5553,10 @@ export function normalizeCodexModelForOAuth(body) {
       }
       if (trimmed === 'gpt-5.6' || trimmed === 'gpt-5' || trimmed === 'codex') {
         obj.model = 'gpt-5.6-sol';
+        return Buffer.from(JSON.stringify(obj), 'utf8');
+      }
+      if (trimmed === 'codex-mini') {
+        obj.model = 'gpt-5.6-terra';
         return Buffer.from(JSON.stringify(obj), 'utf8');
       }
     }
