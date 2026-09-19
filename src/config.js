@@ -105,7 +105,7 @@ export function createDefaultConfig() {
     holdSeconds: 0,
     distributeSessions: 'adaptive',
     expiryRouting: { enabled: true, tolerance: 1.5, preempt: true },
-    crossProviderFallback: false,
+    crossProviderFallback: true,
     autoHealthCheck: {
       enabled: true,
       intervalSeconds: 900,
@@ -131,7 +131,7 @@ export async function loadConfig() {
     if (!Array.isArray(config.accounts)) config.accounts = [];
     if (config.distributeSessions == null) config.distributeSessions = 'adaptive';
     if (config.expiryRouting == null) config.expiryRouting = { enabled: true, tolerance: 1.5, preempt: true };
-    if (config.crossProviderFallback == null) config.crossProviderFallback = false;
+    if (config.crossProviderFallback == null) config.crossProviderFallback = true;
     if (config.autoHealthCheck == null) {
       config.autoHealthCheck = {
         enabled: true,
