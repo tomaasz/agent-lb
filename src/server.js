@@ -399,8 +399,8 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      // Serve client setup scripts without auth (Claude Code, OpenAI Codex, OpenCode, Hermes)
-      const setupScriptMatch = normPath.match(/^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|claude-setup|setup-claude|codexlb-setup|codex-setup|setup-codex|agent-setup|opencode-setup|hermes-setup)(?:\.(sh|ps1|js))?$/);
+      // Serve client setup scripts without auth (Claude Code, OpenAI Codex, OpenCode, Hermes, Claw)
+      const setupScriptMatch = normPath.match(/^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|claude-setup|setup-claude|codexlb-setup|codex-setup|setup-codex|agent-setup|opencode-setup|hermes-setup|claw-setup|openclaw-setup|aider-setup)(?:\.(sh|ps1|js))?$/);
       if ((req.method === 'GET' || req.method === 'HEAD') && setupScriptMatch) {
         const scriptBase = setupScriptMatch[1];
         let ext = setupScriptMatch[2];
@@ -408,10 +408,18 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           const ua = (req.headers['user-agent'] || '').toLowerCase();
           ext = (ua.includes('powershell') || ua.includes('pwsh')) ? 'ps1' : 'sh';
         }
-        const isCodex = scriptBase.includes('codex');
-        const possibleNames = isCodex
-          ? [`codex-setup.${ext}`, `codexlb-setup.${ext}`]
-          : [`claude-setup.${ext}`, `setup.${ext}`, `agent-setup.${ext}`, `agent-lb-setup.${ext}`];
+        let possibleNames = [];
+        if (scriptBase.includes('hermes')) {
+          possibleNames = [`hermes-setup.${ext}`, `setup.${ext}`];
+        } else if (scriptBase.includes('opencode')) {
+          possibleNames = [`opencode-setup.${ext}`, `setup.${ext}`];
+        } else if (scriptBase.includes('claw')) {
+          possibleNames = [`claw-setup.${ext}`, `openclaw-setup.${ext}`, `setup.${ext}`];
+        } else if (scriptBase.includes('codex')) {
+          possibleNames = [`codex-setup.${ext}`, `codexlb-setup.${ext}`];
+        } else {
+          possibleNames = [`claude-setup.${ext}`, `setup.${ext}`, `agent-setup.${ext}`, `agent-lb-setup.${ext}`];
+        }
         const scriptDirs = [
           join(__dirname, '..', 'setup'),
           join(homedir(), 'agent-lb-setup'),

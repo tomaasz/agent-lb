@@ -1063,7 +1063,10 @@ const PAGE = `<!doctype html>
             <span style="font-size:10px; color:var(--dim); font-weight:600;">Narzędzie:</span>
             <button class="btn btn-xs active" id="btnQuickToolClaude" type="button" style="padding:1px 6px; font-size:10px;" title="Claude Code CLI & VS Code (claude-setup)">Claude</button>
             <button class="btn btn-xs" id="btnQuickToolCodex" type="button" style="padding:1px 6px; font-size:10px;" title="OpenAI Codex CLI & VS Code (codex-setup)">Codex</button>
-            <button class="btn btn-xs" id="btnQuickToolAgent" type="button" style="padding:1px 6px; font-size:10px;" title="OpenCode, Hermes Agent, Aider (zmienne OpenAI / Anthropic)">OpenCode / Hermes</button>
+            <button class="btn btn-xs" id="btnQuickToolHermes" type="button" style="padding:1px 6px; font-size:10px;" title="Hermes Agent (dodaje providera agentlb ze wszystkimi modelami)">Hermes</button>
+            <button class="btn btn-xs" id="btnQuickToolOpenCode" type="button" style="padding:1px 6px; font-size:10px;" title="OpenCode (dodaje providera agentlb do opencode.json)">OpenCode</button>
+            <button class="btn btn-xs" id="btnQuickToolClaw" type="button" style="padding:1px 6px; font-size:10px;" title="Claw / OpenClaw (dodaje providera agentlb do openclaw.json)">Claw</button>
+            <button class="btn btn-xs" id="btnQuickToolAgent" type="button" style="padding:1px 6px; font-size:10px;" title="Zmienne środowiskowe OpenAI / Anthropic">ENV</button>
           </div>
           <div class="quick-cmd-wrap" style="display:flex; align-items:center; gap:6px; background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:4px; padding:4px 7px;">
             <code id="quickCmdText" class="mono" style="flex:1; font-size:10.5px; color:#58a6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" title="Kliknij, aby skopiować pełną komendę"></code>
@@ -1479,6 +1482,7 @@ const PAGE = `<!doctype html>
         <div class="tabs-bar" style="margin-bottom:12px;">
           <button class="tab-btn active" id="tabSetupBash" type="button">🐧 Linux / macOS / WSL</button>
           <button class="tab-btn" id="tabSetupPowershell" type="button">🪟 Windows (PowerShell)</button>
+          <button class="tab-btn" id="tabSetupAgents" type="button">🤖 Agenty AI (Hermes / OpenCode / Claw)</button>
           <button class="tab-btn" id="tabSetupNode" type="button">⚡ Node.js</button>
           <button class="tab-btn" id="tabSetupGit" type="button">📦 Git Clone</button>
           <button class="tab-btn" id="tabSetupManual" type="button">⚙️ Ręcznie</button>
@@ -1531,6 +1535,60 @@ const PAGE = `<!doctype html>
               <pre class="mono" id="cmdSetupAgentPowershell" style="margin:0; font-size:12px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
             </div>
             <button class="btn btn-sm btn-accent" id="btnCopySetupAgentPowershell">📋 Kopiuj polecenie PowerShell dla OpenCode / Hermes</button>
+          </div>
+        </div>
+
+        <div id="contentSetupAgents" style="display:none;">
+          <div style="font-size:12.5px; color:var(--dim); margin-bottom:12px; line-height:1.4;">
+            Poniższe polecenia konfigurują providera <b>AgentLB</b> z dostępem do wszystkich modeli Claude oraz Codex naraz w Twoich narzędziach:
+          </div>
+
+          <!-- Hermes Agent -->
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:10px 12px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+              <span style="font-size:13px; font-weight:600; color:var(--heading);">1. ☤ Hermes Agent (~/.hermes/config.yaml):</span>
+              <button class="btn btn-xs btn-accent" id="btnCopySetupHermesCmd">📋 Kopiuj polecenie Hermes</button>
+            </div>
+            <div style="background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px; margin-bottom:6px;">
+              <code class="mono" id="cmdSetupHermes" style="display:block; word-break:break-all; font-size:12px; color:#58a6ff;"></code>
+            </div>
+            <div style="font-size:11px; color:var(--dim);">Dodaje providera <code>agentlb</code> do <code>~/.hermes/config.yaml</code> ze wszystkimi modelami. Uruchomienie: <code>hermes --provider agentlb --model codex</code> lub <code>claude-sonnet-5</code></div>
+          </div>
+
+          <!-- OpenCode -->
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:10px 12px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+              <span style="font-size:13px; font-weight:600; color:var(--heading);">2. 💻 OpenCode (~/.config/opencode/opencode.json):</span>
+              <button class="btn btn-xs btn-accent" id="btnCopySetupOpenCodeCmd">📋 Kopiuj polecenie OpenCode</button>
+            </div>
+            <div style="background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px; margin-bottom:6px;">
+              <code class="mono" id="cmdSetupOpenCode" style="display:block; word-break:break-all; font-size:12px; color:#58a6ff;"></code>
+            </div>
+            <div style="font-size:11px; color:var(--dim);">Rejestruje providera <code>agentlb</code> w <code>opencode.json</code>. Uruchomienie: <code>opencode models</code></div>
+          </div>
+
+          <!-- Claw / OpenClaw -->
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:10px 12px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+              <span style="font-size:13px; font-weight:600; color:var(--heading);">3. 🦅 Claw / OpenClaw (~/.openclaw/openclaw.json):</span>
+              <button class="btn btn-xs btn-accent" id="btnCopySetupClawCmd">📋 Kopiuj polecenie Claw</button>
+            </div>
+            <div style="background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px; margin-bottom:6px;">
+              <code class="mono" id="cmdSetupClaw" style="display:block; word-break:break-all; font-size:12px; color:#58a6ff;"></code>
+            </div>
+            <div style="font-size:11px; color:var(--dim);">Rejestruje providera <code>agentlb</code> w <code>openclaw.json</code>. Uruchomienie: <code>openclaw</code></div>
+          </div>
+
+          <!-- Aider -->
+          <div style="background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:10px 12px; margin-bottom:6px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+              <span style="font-size:13px; font-weight:600; color:var(--heading);">4. 🛠️ Aider (~/.aider.conf.yml):</span>
+              <button class="btn btn-xs btn-accent" id="btnCopySetupAiderCmd">📋 Kopiuj polecenie Aider</button>
+            </div>
+            <div style="background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px; margin-bottom:6px;">
+              <code class="mono" id="cmdSetupAider" style="display:block; word-break:break-all; font-size:12px; color:#58a6ff;"></code>
+            </div>
+            <div style="font-size:11px; color:var(--dim);">Zapisuje konfigurację w <code>~/.aider.conf.yml</code>. Uruchomienie: <code>aider</code></div>
           </div>
         </div>
 
@@ -3942,12 +4000,26 @@ ${SHARED_HELPERS}
     var elManual = document.getElementById('boxManualConfig');
     if (elManual) elManual.textContent = manualText;
 
+    var cmdHermes = 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash -s -- --key ' + realKey;
+    var cmdOpenCode = 'curl -fsSL ' + hostUrl + '/opencode-setup.sh | bash -s -- --key ' + realKey;
+    var cmdClaw = 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash -s -- --key ' + realKey;
+    var cmdAider = 'mkdir -p ~/.aider && printf "openai-api-base: ' + hostUrl + '/v1\\nopenai-api-key: ' + realKey + '\\nmodel: openai/gpt-5.6-sol\\n" > ~/.aider.conf.yml';
+
+    var elHermes = document.getElementById('cmdSetupHermes');
+    if (elHermes) elHermes.textContent = cmdHermes;
+    var elOpenCode = document.getElementById('cmdSetupOpenCode');
+    if (elOpenCode) elOpenCode.textContent = cmdOpenCode;
+    var elClaw = document.getElementById('cmdSetupClaw');
+    if (elClaw) elClaw.textContent = cmdClaw;
+    var elAider = document.getElementById('cmdSetupAider');
+    if (elAider) elAider.textContent = cmdAider;
+
     selectSetupTab('Bash');
     openModal('modalKeyCreated');
   }
 
   function selectSetupTab(tab) {
-    var tabs = ['Bash', 'Powershell', 'Node', 'Git', 'Manual'];
+    var tabs = ['Bash', 'Powershell', 'Agents', 'Node', 'Git', 'Manual'];
     tabs.forEach(function (t) {
       var btn = document.getElementById('tabSetup' + t);
       var content = document.getElementById('contentSetup' + t);
@@ -4104,7 +4176,19 @@ ${SHARED_HELPERS}
     var withKey = chk ? chk.checked : true;
 
     var cmd = '';
-    if (currentQuickTool === 'agent') {
+    if (currentQuickTool === 'hermes') {
+      cmd = withKey
+        ? 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash -s -- --key ' + key
+        : 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash';
+    } else if (currentQuickTool === 'opencode') {
+      cmd = withKey
+        ? 'curl -fsSL ' + hostUrl + '/opencode-setup.sh | bash -s -- --key ' + key
+        : 'curl -fsSL ' + hostUrl + '/opencode-setup.sh | bash';
+    } else if (currentQuickTool === 'claw') {
+      cmd = withKey
+        ? 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash -s -- --key ' + key
+        : 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash';
+    } else if (currentQuickTool === 'agent') {
       if (currentQuickTab === 'ps') {
         cmd = '$env:OPENAI_BASE_URL="' + hostUrl + '/v1"; $env:OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"; $env:ANTHROPIC_BASE_URL="' + hostUrl + '"; $env:ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
       } else {
@@ -4160,6 +4244,9 @@ ${SHARED_HELPERS}
     var tools = [
       { id: 'btnQuickToolClaude', name: 'claude' },
       { id: 'btnQuickToolCodex', name: 'codex' },
+      { id: 'btnQuickToolHermes', name: 'hermes' },
+      { id: 'btnQuickToolOpenCode', name: 'opencode' },
+      { id: 'btnQuickToolClaw', name: 'claw' },
       { id: 'btnQuickToolAgent', name: 'agent' }
     ];
     tools.forEach(function (t) {
@@ -4867,7 +4954,7 @@ ${SHARED_HELPERS}
   document.getElementById('btnSubmitClientKey').addEventListener('click', function () { doAddClientKey(this); });
 
   // Setup tabs switching
-  ['Bash', 'Powershell', 'Node', 'Git', 'Manual'].forEach(function (t) {
+  ['Bash', 'Powershell', 'Agents', 'Node', 'Git', 'Manual'].forEach(function (t) {
     var b = document.getElementById('tabSetup' + t);
     if (b) {
       b.addEventListener('click', function () {
@@ -4894,6 +4981,10 @@ ${SHARED_HELPERS}
   bindCopy('btnCopySetupPowershell', 'cmdSetupPowershell', 'Polecenie Claude (PowerShell)');
   bindCopy('btnCopySetupCodexPowershell', 'cmdSetupCodexPowershell', 'Polecenie Codex (PowerShell)');
   bindCopy('btnCopySetupAgentPowershell', 'cmdSetupAgentPowershell', 'Zmienne OpenCode / Hermes (PowerShell)');
+  bindCopy('btnCopySetupHermesCmd', 'cmdSetupHermes', 'Polecenie Hermes Agent');
+  bindCopy('btnCopySetupOpenCodeCmd', 'cmdSetupOpenCode', 'Polecenie OpenCode');
+  bindCopy('btnCopySetupClawCmd', 'cmdSetupClaw', 'Polecenie Claw / OpenClaw');
+  bindCopy('btnCopySetupAiderCmd', 'cmdSetupAider', 'Konfiguracja Aider');
   bindCopy('btnCopySetupNode', 'cmdSetupNode', 'Polecenie Claude (Node.js)');
   bindCopy('btnCopySetupCodexNode', 'cmdSetupCodexNode', 'Polecenie Codex (Node.js)');
   bindCopy('btnCopySetupGit', 'cmdSetupGit', 'Polecenie Git (Claude)');
@@ -4955,7 +5046,7 @@ ${SHARED_HELPERS}
       b.addEventListener('click', function () { setQuickTab(t.toLowerCase()); });
     }
   });
-  ['Claude', 'Codex', 'Agent'].forEach(function (tool) {
+  ['Claude', 'Codex', 'Hermes', 'OpenCode', 'Claw', 'Agent'].forEach(function (tool) {
     var b = document.getElementById('btnQuickTool' + tool);
     if (b) {
       b.addEventListener('click', function () { setQuickTool(tool.toLowerCase()); });
