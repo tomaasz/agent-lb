@@ -4361,7 +4361,6 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       type: 'error',
       error: {
         type: 'rate_limit_error',
-        message: exhaustedMessage(accountManager, ctx.model, retryAfter),
         message: exhaustedMessage(accountManager, ctx.model, retryAfter, requestProvider),
       },
     }));

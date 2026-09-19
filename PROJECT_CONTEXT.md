@@ -16,7 +16,7 @@ Uniwersalny load balancer, rotator kont, zarządca limitów (quota rotator) oraz
 - install: `npm install` (cwd: `.`, wymagania: Node.js >=20, źródło: `package.json`, status: nieuruchomione w ramach audytu)
 - start: `npm start` / `node src/index.js` (cwd: `.`, wymagania: Node.js >=20, źródło: `package.json`, status: potwierdzona w konfiguracji)
 - test: `npm test` / `node --test --test-timeout=120000` (cwd: `.`, wymagania: Node.js >=20, źródło: `package.json`, status: potwierdzona i uruchomiona — 14 testów przechodzi pomyślnie)
-- lint: `npm run lint` / `eslint .` (cwd: `.`, wymagania: eslint, status: niezweryfikowana / błąd braku pliku konfiguracyjnego ESLint w repozytorium)
+- lint: `npm run lint` / `eslint .` (cwd: `.`, wymagania: eslint, status: zweryfikowana i pomyślna — ESLint v9 flat config `eslint.config.js`)
 - typecheck: brak w repozytorium (projekt nie używa TypeScript)
 - build: brak (projekt to czysty kod JavaScript ESM wykonywany bezpośrednio przez środowisko Node.js)
 

@@ -103,7 +103,6 @@ export function createDefaultConfig() {
     upstream: 'https://api.anthropic.com',
     switchThreshold: 0.98,
     holdSeconds: 0,
-    distributeSessions: false,
     distributeSessions: 'adaptive',
     expiryRouting: { enabled: true, tolerance: 1.5, preempt: true },
     crossProviderFallback: false,

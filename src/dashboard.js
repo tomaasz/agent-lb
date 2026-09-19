@@ -282,10 +282,6 @@ export function problems(status) {
   }
 
   // Only the two states that do not clear themselves. `entitlement` is a
-  // five-minute cooldown and `upstream-rejected` is upstream's way of saying a
-  // shared bucket is spent — both expire on their own, like `quota` and
-  // `throttled`, and none of them wants a person.
-  var ATTENTION = { error: 'needs a re-login', disabled: 'is disabled' };
   // Only the states that do not clear themselves or require human attention.
   // `entitlement` is a short cooldown and `upstream-rejected` indicates a spent
   // shared bucket — both expire on their own. `identity-verification` requires
