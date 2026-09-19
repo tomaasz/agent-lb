@@ -572,6 +572,54 @@ const PAGE = `<!doctype html>
   .col-hint { font-size: 10.5px; color: var(--dim); font-weight: normal; }
   .account-list { display: flex; flex-direction: column; gap: 8px; }
   .client-keys-list { display: flex; flex-direction: column; gap: 8px; }
+
+  /* Master Key Banner */
+  .master-key-banner {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.09) 0%, rgba(37, 99, 235, 0.03) 100%);
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    border-left: 3px solid #3b82f6;
+    border-radius: 7px;
+    padding: 9px 12px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    box-sizing: border-box;
+  }
+  .master-key-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .master-key-title { font-size: 12px; font-weight: 700; color: var(--heading); letter-spacing: -0.01em; }
+  .master-key-sub { font-size: 10.5px; color: var(--dim); line-height: 1.35; }
+  .master-key-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
+  .master-key-val { font-size: 11px; color: #93c5fd; font-weight: 500; }
+
+  /* Workstation Card */
+  .workstation-card {
+    background: var(--card-bg);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    box-sizing: border-box;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .workstation-card:hover { border-color: var(--card-hover-border); }
+  .workstation-card.active-workstation { border-left: 3px solid #10b981; }
+  .workstation-card.idle-workstation { border-left: 3px solid var(--line); }
+  .workstation-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .workstation-identity { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+  .workstation-name { font-size: 13px; font-weight: 700; color: var(--heading); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .workstation-badge-live { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.28); font-weight: 500; white-space: nowrap; }
+  .workstation-badge-idle { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.05); color: var(--dim); border: 1px solid var(--line-subtle); font-weight: 400; white-space: nowrap; }
+  .workstation-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--line-subtle); border-radius: 5px; padding: 6px 8px; }
+  .ws-metric-item { display: flex; flex-direction: column; gap: 1px; }
+  .ws-metric-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); }
+  .ws-metric-val { font-size: 12px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+  .workstation-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line-subtle); font-size: 11px; }
+  .workstation-key-box { display: flex; align-items: center; gap: 5px; }
+
+  /* Back-compat client-key classes */
   .client-key-card { background: var(--card-bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; box-sizing: border-box; transition: border-color .15s ease; }
   .client-key-card:hover { border-color: var(--card-hover-border); }
   .client-key-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -985,22 +1033,26 @@ const PAGE = `<!doctype html>
         <div class="account-list" id="listCodex" data-provider="codex"></div>
       </div>
 
-      <!-- Column 3: Klucze klientów & Narzędzia -->
+      <!-- Column 3: Stacje robocze & Narzędzia -->
       <div class="account-col dash-col-side" id="colClients">
         <div class="col-head">
           <div class="row" style="gap:6px; align-items:center;">
-            <span class="col-title" style="color:#58a6ff;" data-i18n="colClientsTitle">🔑 Klucze klientów</span>
-            <span class="col-hint" id="countClientKeys">0 kluczy</span>
+            <span class="col-title" style="color:#58a6ff;" data-i18n="colClientsTitle">💻 Stacje robocze</span>
+            <span class="col-hint" id="countClientKeys">0 stacji</span>
           </div>
           <div class="row" style="gap:4px;">
-            <button class="btn btn-sm" id="btnPullSetupRepo" style="padding:2px 7px; font-size:11px;" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)" data-i18n="btnUpdate" data-i18n-title="btnUpdateTitle">🔄 Aktualizuj</button>
-            <button class="btn btn-sm btn-accent" id="btnShowAddClientKey" style="padding:2px 7px; font-size:11px;" title="Utwórz nowy klucz klienta" data-i18n="btnNewKey">➕ Nowy klucz</button>
+            <button class="btn btn-sm btn-accent" id="btnShowAddClientKey" style="padding:2px 8px; font-size:11px;" title="Podłącz nową stację roboczą lub agenta CLI" data-i18n="btnNewKey">➕ Podłącz stację</button>
+            <button class="btn btn-sm" id="btnShowWorkstationGuide" style="padding:2px 7px; font-size:11px;" title="Przewodnik konfiguracji stacji (Linux, macOS, Windows)" data-i18n="btnWorkstationGuide">📖 Instrukcja</button>
+            <button class="btn btn-sm" id="btnPullSetupRepo" style="padding:2px 6px; font-size:11px;" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)" data-i18n-title="btnUpdateTitle">🔄</button>
           </div>
         </div>
 
-        <div class="card quick-station-box" style="margin-bottom:8px; background:rgba(83,177,253,0.06); border-color:rgba(83,177,253,0.2); padding:8px 10px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
-            <span style="font-weight:600; font-size:11.5px; color:var(--heading);" data-i18n="quickConnectTitle">⚡ Szybkie podłączenie stacji:</span>
+        <div class="card quick-station-box" style="margin-bottom:10px; background:rgba(83,177,253,0.05); border-color:rgba(83,177,253,0.22); padding:8px 10px; border-radius:7px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:4px;">
+            <div style="display:flex; align-items:center; gap:5px;">
+              <span style="font-weight:600; font-size:11px; color:var(--heading);" data-i18n="quickConnectTitle">⚡ Szybkie podłączenie:</span>
+              <select id="selQuickStation" style="font-size:10px; padding:1px 5px; background:var(--input-bg); border:1px solid var(--line); color:var(--heading); border-radius:4px; max-width:130px; cursor:pointer;" title="Wybierz stację roboczą dla tego polecenia"></select>
+            </div>
             <div style="display:flex; gap:3px;">
               <button class="btn btn-xs active" id="btnQuickTabBash" type="button" style="padding:1px 7px; font-size:10px;" title="Skrypt instalacyjny Linux, macOS, WSL (Bash)">Linux / macOS</button>
               <button class="btn btn-xs" id="btnQuickTabPS" type="button" style="padding:1px 7px; font-size:10px;" title="Skrypt instalacyjny Windows (PowerShell)">Windows</button>
@@ -1010,9 +1062,9 @@ const PAGE = `<!doctype html>
             <code id="quickCmdText" class="mono" style="flex:1; font-size:10.5px; color:#58a6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" title="Kliknij, aby skopiować pełną komendę"></code>
             <button class="btn btn-xs btn-accent" id="btnQuickCopyCmd" type="button" style="flex-shrink:0; padding:1px 7px;" title="Kopiuj polecenie do schowka" data-i18n="copyCmd">📋 Kopiuj</button>
           </div>
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:4px; font-size:10.5px; color:var(--dim);">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:5px; font-size:10.5px; color:var(--dim);">
             <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none; color:var(--text);" title="Odznacz, jeśli chcesz uruchomić czystą komendę — instalator sam zapyta o wklejenie klucza">
-              <input type="checkbox" id="chkIncludeKeyInCmd" checked style="margin:0; cursor:pointer;"> <span data-i18n="includeKey">Dołącz klucz</span>
+              <input type="checkbox" id="chkIncludeKeyInCmd" checked style="margin:0; cursor:pointer;"> <span data-i18n="includeKey">Dołącz klucz stacji</span>
             </label>
             <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-size:10.5px;" data-i18n="githubGuide">instrukcja GitHub ↗</a>
           </div>
@@ -1356,16 +1408,16 @@ const PAGE = `<!doctype html>
   <div id="modalAddClientKey" class="modal-backdrop" style="display:none;">
     <div class="modal-box">
       <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:600; font-size:15px;">➕ Utwórz klucz klienta</span>
+        <span style="font-weight:600; font-size:15px;">➕ Podłącz nową stację roboczą</span>
         <button class="btn btn-sm" id="btnCloseAddClientKey">✕ Zamknij</button>
       </div>
       <div class="form-grid">
         <p style="color:var(--dim); font-size:12px;">
-          Wygeneruj dedykowany klucz dostępu dla maszyny, developera lub agenta. Statystyki zapytań i tokenów będą zliczane dla tej nazwy.
+          Wygeneruj dedykowany klucz dostępu dla komputera, laptopa lub agenta CLI. Po utworzeniu od razu otrzymasz gotową komendę do wklejenia w terminalu.
         </p>
         <div>
-          <label>Nazwa użytkownika / urządzenia *</label>
-          <input id="inClientName" type="text" placeholder="np. Laptop Tomasz, Jan Kowalski, CI Worker" required>
+          <label>Nazwa stacji roboczej / urządzenia *</label>
+          <input id="inClientName" type="text" placeholder="np. Laptop Tomek, PC Biuro, CI Worker" required>
         </div>
         <div>
           <label>Własny klucz (opcjonalnie)</label>
@@ -1402,14 +1454,14 @@ const PAGE = `<!doctype html>
   <div id="modalKeyCreated" class="modal-backdrop" style="display:none;">
     <div class="modal-box" style="max-width:700px;">
       <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:600; color:var(--ok); font-size:16px;">🚀 Podłączanie klienta Claude</span>
+        <span style="font-weight:600; color:var(--ok); font-size:16px;">💻 Konfiguracja stacji roboczej</span>
         <button class="btn btn-sm" id="btnCloseKeyModal">✕ Zamknij</button>
       </div>
 
       <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px;">
         <div class="row" style="justify-content:space-between; align-items:center;">
           <div>
-            <div style="color:var(--dim); font-size:12px;">Urządzenie / Klient: <b id="createdClientName" style="color:var(--text); font-size:13.5px;"></b></div>
+            <div style="color:var(--dim); font-size:12px;">Stacja robocza: <b id="createdClientName" style="color:var(--text); font-size:13.5px;"></b></div>
             <div class="mono" id="createdClientKey" style="font-size:13.5px; word-break:break-all; color:var(--accent); font-weight:600; margin-top:3px;"></div>
           </div>
           <button class="btn btn-sm btn-accent" id="btnCopyCreatedKey">📋 Kopiuj klucz</button>
@@ -1556,22 +1608,25 @@ const PAGE = `<!doctype html>
       autoHealthDisabled: 'Wyłączony',
       accountsHeading: 'Konta Claude & Codex',
       accountsHint: '💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet',
-      clientsHeading: 'Stacje robocze & Klucze',
+      clientsHeading: 'Stacje robocze & Narzędzia',
       colClaudeTitle: '🟣 Claude (Anthropic)',
       colCodexTitle: '🟢 OpenAI Codex',
-      colClientsTitle: '🔑 Klucze klientów',
+      colClientsTitle: '💻 Stacje robocze',
       btnAddAccount: '➕ Dodaj konto',
-      btnNewKey: '➕ Nowy klucz',
-      btnUpdate: '🔄 Aktualizuj',
+      btnNewKey: '➕ Podłącz stację',
+      btnNewKeyTitle: 'Podłącz nową stację roboczą lub agenta CLI',
+      btnWorkstationGuide: '📖 Instrukcja',
+      btnWorkstationGuideTitle: 'Przewodnik konfiguracji terminala (Linux, macOS, Windows)',
+      btnUpdate: '🔄 Aktualizuj skrypty',
       btnUpdateTitle: 'Pobierz najnowsze skrypty instalatora z GitHub (git pull)',
-      quickConnectTitle: '⚡ Szybkie podłączenie stacji:',
+      quickConnectTitle: '⚡ Szybkie podłączenie:',
       copyCmd: '📋 Kopiuj',
-      includeKey: 'Dołącz klucz',
+      includeKey: 'Dołącz klucz stacji',
       githubGuide: 'instrukcja GitHub ↗',
       countAccounts: '{n} kont',
       countAccountsSingle: '1 konto',
-      countKeys: '{n} kluczy',
-      countKeysSingle: '1 klucz',
+      countKeys: '{n} stacji',
+      countKeysSingle: '1 stacja',
       badgeActive: '● Aktywne',
       badgeActiveRotation: '● Aktywne (rotacja)',
       badgeHealthy: '🟢 SPRAWNE',
@@ -1597,9 +1652,9 @@ const PAGE = `<!doctype html>
       summaryRefreshes: 'odświeżanie co {sec}s · {time}',
       emptyNoAccountsClaude: 'Brak kont Claude. Kliknij „➕ Dodaj konto” u góry.',
       emptyNoAccountsCodex: 'Brak kont OpenAI Codex. Kliknij „➕ Dodaj konto” u góry.',
-      emptyNoKeys: 'Brak kluczy klientów. Kliknij „➕ Nowy klucz”, aby podłączyć stację roboczą.',
-      primaryAdminKeyName: 'Główny klucz administratora (proxy.apiKey)',
-      btnKeyConnect: '🚀 Podłącz',
+      emptyNoKeys: 'Brak skonfigurowanych stacji roboczych. Kliknij „➕ Podłącz stację”, aby dodać swój komputer.',
+      primaryAdminKeyName: 'Klucz Master Administratora',
+      btnKeyConnect: '💻 Setup',
       keyShow: 'Pokaż',
       keyHide: 'Ukryj'
     },
@@ -1651,22 +1706,25 @@ const PAGE = `<!doctype html>
       autoHealthDisabled: 'Disabled',
       accountsHeading: 'Claude & Codex Accounts',
       accountsHint: '💡 Drag card ⠿ in column to adjust queue priority',
-      clientsHeading: 'Workstations & Keys',
+      clientsHeading: 'Workstations & Tools',
       colClaudeTitle: '🟣 Claude (Anthropic)',
       colCodexTitle: '🟢 OpenAI Codex',
-      colClientsTitle: '🔑 Client Keys',
+      colClientsTitle: '💻 Workstations',
       btnAddAccount: '➕ Add Account',
-      btnNewKey: '➕ New Key',
-      btnUpdate: '🔄 Update',
+      btnNewKey: '➕ Connect Workstation',
+      btnNewKeyTitle: 'Connect a new workstation or CLI agent',
+      btnWorkstationGuide: '📖 Guide',
+      btnWorkstationGuideTitle: 'Workstation configuration guide (Linux, macOS, Windows)',
+      btnUpdate: '🔄 Update Scripts',
       btnUpdateTitle: 'Pull latest installer scripts from GitHub (git pull)',
-      quickConnectTitle: '⚡ Quick Workstation Connect:',
+      quickConnectTitle: '⚡ Quick Connect:',
       copyCmd: '📋 Copy',
-      includeKey: 'Include key',
+      includeKey: 'Include workstation key',
       githubGuide: 'GitHub guide ↗',
       countAccounts: '{n} accounts',
       countAccountsSingle: '1 account',
-      countKeys: '{n} keys',
-      countKeysSingle: '1 key',
+      countKeys: '{n} workstations',
+      countKeysSingle: '1 workstation',
       badgeActive: '● Active',
       badgeActiveRotation: '● Active (rotation)',
       badgeHealthy: '🟢 HEALTHY',
@@ -1692,9 +1750,9 @@ const PAGE = `<!doctype html>
       summaryRefreshes: 'refreshes every {sec}s · {time}',
       emptyNoAccountsClaude: 'No Claude accounts. Click “➕ Add Account” above.',
       emptyNoAccountsCodex: 'No OpenAI Codex accounts. Click “➕ Add Account” above.',
-      emptyNoKeys: 'No client keys configured. Click “➕ New Key” to connect a workstation.',
-      primaryAdminKeyName: 'Primary administrator key (proxy.apiKey)',
-      btnKeyConnect: '🚀 Connect',
+      emptyNoKeys: 'No workstations configured. Click “➕ Connect Workstation” to add your computer.',
+      primaryAdminKeyName: 'Master Administrator Key',
+      btnKeyConnect: '💻 Setup',
       keyShow: 'Show',
       keyHide: 'Hide'
     }
@@ -2449,9 +2507,8 @@ ${SHARED_HELPERS}
 
   function renderClients(clients) {
     var wrap = document.getElementById('clientsWrap');
-    var names = Object.keys(clients || {});
-    if (!names.length) { wrap.style.display = 'none'; return; }
-    wrap.style.display = '';
+    if (wrap) wrap.style.display = 'none';
+    return;
     names.sort(function (a, b) {
       var ca = clients[a], cb = clients[b];
       return ((cb.inputTokens || 0) + (cb.outputTokens || 0)) - ((ca.inputTokens || 0) + (ca.outputTokens || 0));
@@ -3774,7 +3831,6 @@ ${SHARED_HELPERS}
     }
 
     btn.disabled = true;
-    apiCall('/agent-lb/api/keys/create', 'POST', { name: name, key: customKey })
     apiCall('/agent-lb/api/keys/create', 'POST', payload)
       .then(function (res) {
         btn.disabled = false;
@@ -3828,24 +3884,61 @@ ${SHARED_HELPERS}
   function updateQuickCmd(keys) {
     var hostUrl = window.location.origin;
     var list = keys || (lastStatus && lastStatus.clientKeys) || [];
-    var key = currentQuickKey;
-    if ((!key || key.includes('...')) && primaryAdminKey && !primaryAdminKey.includes('...')) {
+
+    // Populate selQuickStation dropdown if available
+    var sel = document.getElementById('selQuickStation');
+    if (sel) {
+      var prevVal = sel.value;
+      sel.textContent = '';
+      if (list.length) {
+        list.forEach(function (k) {
+          var opt = el('option', '', k.name);
+          opt.value = k.name;
+          sel.appendChild(opt);
+        });
+        if (primaryAdminKey) {
+          var optAdmin = el('option', '', '👑 Admin (Master)');
+          optAdmin.value = '__primary__';
+          sel.appendChild(optAdmin);
+        }
+        if (prevVal && (cachedClientKeys[prevVal] || prevVal === '__primary__')) {
+          sel.value = prevVal;
+        }
+      } else if (primaryAdminKey) {
+        var optAdminOnly = el('option', '', '👑 Admin (Master)');
+        optAdminOnly.value = '__primary__';
+        sel.appendChild(optAdminOnly);
+      } else {
+        var optNone = el('option', '', currentLang === 'pl' ? '(brak stacji)' : '(no stations)');
+        optNone.value = '';
+        sel.appendChild(optNone);
+      }
+    }
+
+    var selectedStationName = sel ? sel.value : '';
+    var key = '';
+
+    if (selectedStationName === '__primary__') {
       key = primaryAdminKey;
-    }
-    if ((!key || key.includes('...')) && list.length) {
-      var first = list[0];
-      key = (first.rawKey && !first.rawKey.includes('...')) ? first.rawKey : ((first.key && !first.key.includes('...')) ? first.key : (cachedClientKeys[first.name] || first.rawKey || first.key || ''));
-    }
-    if ((!key || key.includes('...')) && list.length) {
+    } else if (selectedStationName && cachedClientKeys[selectedStationName]) {
+      key = cachedClientKeys[selectedStationName];
+    } else if (currentQuickKey && !currentQuickKey.includes('...')) {
+      key = currentQuickKey;
+    } else if (list.length) {
       for (var i = 0; i < list.length; i++) {
-        var cand = cachedClientKeys[list[i].name];
-        if (cand && !cand.includes('...')) {
+        var cand = cachedClientKeys[list[i].name] || ((list[i].rawKey && !list[i].rawKey.includes('...')) ? list[i].rawKey : '');
+        if (cand) {
           key = cand;
+          if (sel) sel.value = list[i].name;
           break;
         }
       }
     }
-    if (!key) key = '<KLUCZ_KLIENTA>';
+
+    if (!key && primaryAdminKey && !primaryAdminKey.includes('...')) {
+      key = primaryAdminKey;
+    }
+    if (!key) key = '<KLUCZ_STACJI>';
 
     var chk = document.getElementById('chkIncludeKeyInCmd');
     var withKey = chk ? chk.checked : true;
@@ -3905,55 +3998,58 @@ ${SHARED_HELPERS}
         cachedClientKeys[k.name] = unmasked;
       }
     });
-    updateQuickCmd(keys);
+
     var container = document.getElementById('clientKeysTable');
     if (!container) return;
     container.textContent = '';
 
-    var totalCount = list.length + (primaryAdminKey ? 1 : 0);
+    // Update workstation counter
     var countEl = document.getElementById('countClientKeys');
     if (countEl) {
-      countEl.textContent = totalCount + (totalCount === 1 ? (currentLang === 'pl' ? ' klucz' : ' key') : (currentLang === 'pl' ? ' kluczy' : ' keys'));
+      var wsCount = list.length;
+      countEl.textContent = wsCount === 1
+        ? (currentLang === 'pl' ? '1 stacja' : '1 workstation')
+        : (wsCount + (currentLang === 'pl' ? ' stacji' : ' workstations'));
     }
 
-    // Pinned primary admin key card at top
+    // 1. Dedicated Master Admin Key banner at top
     if (primaryAdminKey) {
-      var pCard = el('div', 'client-key-card primary-key-card');
-      pCard.style.cssText = 'border-left: 3px solid #3b82f6; background: rgba(59, 130, 246, 0.04);';
+      var pBanner = el('div', 'master-key-banner');
       var isPRevealed = !!revealedKeys['__primary__'];
 
-      var pTopRow = el('div', 'client-key-top');
-      var pNameWrap = el('div', 'row');
-      pNameWrap.style.gap = '6px';
-      var pIcon = el('span', '', '👑');
-      pIcon.style.fontSize = '13px';
-      pNameWrap.appendChild(pIcon);
-      var pName = el('span', 'name', t('primaryAdminKeyName'));
-      pName.style.fontWeight = '600';
-      pNameWrap.appendChild(pName);
-      var pBadge = el('span', 'badge', 'Admin & CLI');
-      pBadge.style.cssText = 'font-size:10px; padding:1px 6px; background:rgba(59, 130, 246, 0.15); color:#60a5fa; border-radius:4px; border:1px solid rgba(59, 130, 246, 0.3);';
-      pNameWrap.appendChild(pBadge);
-      pTopRow.appendChild(pNameWrap);
+      var pTop = el('div', 'master-key-top');
+      var pTitleWrap = el('div', 'row');
+      pTitleWrap.style.gap = '6px';
+      pTitleWrap.style.alignItems = 'center';
+      pTitleWrap.appendChild(el('span', '', '👑'));
+      var pTitle = el('span', 'master-key-title', t('primaryAdminKeyName'));
+      pTitleWrap.appendChild(pTitle);
+      var pBadge = el('span', 'badge', 'Master / proxy.apiKey');
+      pBadge.style.cssText = 'font-size:10px; padding:1px 6px; background:rgba(59, 130, 246, 0.18); color:#60a5fa; border-radius:4px; border:1px solid rgba(59, 130, 246, 0.35); font-weight:600;';
+      pTitleWrap.appendChild(pBadge);
+      pTop.appendChild(pTitleWrap);
 
-      var pActs = el('div', 'card-actions');
-      var btnPSetup = el('button', 'btn btn-xs btn-accent', t('btnKeyConnect'));
-      btnPSetup.title = currentLang === 'pl' ? 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tego klucza' : 'Show installer commands (Linux, Windows, VS Code) for this key';
+      var pTopActs = el('div', 'card-actions');
+      var btnPSetup = el('button', 'btn btn-xs', currentLang === 'pl' ? 'Terminal CLI ↗' : 'CLI Setup ↗');
+      btnPSetup.title = currentLang === 'pl' ? 'Pokaż komendy instalatora z kluczem administratora' : 'Show installer commands with administrator key';
       btnPSetup.addEventListener('click', function () {
         currentQuickKey = primaryAdminKey;
         updateQuickCmd();
         showKeyModal('Główny klucz (proxy.apiKey)', primaryAdminKey);
       });
-      pActs.appendChild(btnPSetup);
-      pTopRow.appendChild(pActs);
-      pCard.appendChild(pTopRow);
+      pTopActs.appendChild(btnPSetup);
+      pTop.appendChild(pTopActs);
+      pBanner.appendChild(pTop);
 
-      var pBottomRow = el('div', 'client-key-bottom');
+      var pSub = el('div', 'master-key-sub', currentLang === 'pl' ? 'Dostęp administracyjny do panelu zarządzania i konfiguracji serwera' : 'Full administrative access to the dashboard and proxy server');
+      pBanner.appendChild(pSub);
+
+      var pBottom = el('div', 'master-key-bottom');
       var pKeyWrap = el('div', 'row');
       pKeyWrap.style.gap = '5px';
+      pKeyWrap.style.alignItems = 'center';
       var pMasked = isPRevealed ? primaryAdminKey : (primaryAdminKey.length > 8 ? primaryAdminKey.slice(0, 5) + '••••••••' + primaryAdminKey.slice(-4) : '••••••••');
-      var pKeySpan = el('span', 'mono', pMasked);
-      pKeySpan.style.fontSize = '11px';
+      var pKeySpan = el('span', 'mono master-key-val', pMasked);
       pKeyWrap.appendChild(pKeySpan);
 
       if (primaryAdminKey && primaryAdminKey !== pMasked) {
@@ -3970,43 +4066,64 @@ ${SHARED_HELPERS}
         copyToClipboard(primaryAdminKey, 'Główny klucz administratora');
       });
       pKeyWrap.appendChild(btnPCopy);
-      pBottomRow.appendChild(pKeyWrap);
+      pBottom.appendChild(pKeyWrap);
+      pBanner.appendChild(pBottom);
 
-      var pDesc = el('span', 'client-key-stats', currentLang === 'pl' ? 'Logowanie do panelu + pełny dostęp CLI' : 'Dashboard login + full CLI access');
-      pBottomRow.appendChild(pDesc);
-      pCard.appendChild(pBottomRow);
-
-      container.appendChild(pCard);
+      container.appendChild(pBanner);
     }
 
-    if (!list.length && !primaryAdminKey) {
+    // Update Quick Command box and selector
+    updateQuickCmd(keys);
+
+    // Empty state if no workstations configured
+    if (!list.length) {
       var empty = el('div', '', t('emptyNoKeys'));
-      empty.style.cssText = 'padding:14px; text-align:center; color:var(--dim); font-size:12px; border:1px dashed var(--line); border-radius:6px;';
+      empty.style.cssText = 'padding:16px; text-align:center; color:var(--dim); font-size:12px; border:1px dashed var(--line); border-radius:7px; margin-top:4px;';
       container.appendChild(empty);
       return;
     }
 
+    // 2. Render each workstation card
     list.forEach(function (k) {
-      var card = el('div', 'client-key-card');
+      var card = el('div', 'workstation-card client-key-card');
       var raw = (k.rawKey && !k.rawKey.includes('...')) ? k.rawKey : ((k.key && !k.key.includes('...')) ? k.key : (cachedClientKeys[k.name] || k.rawKey || k.key || ''));
       if (raw && !raw.includes('...')) {
         cachedClientKeys[k.name] = raw;
       }
       var isRevealed = !!revealedKeys[k.name];
+      var stat = (k.stats) || (clients && clients[k.name]) || {};
+      var inT = stat.inputTokens || 0;
+      var outT = stat.outputTokens || 0;
+      var reqCount = stat.requests || 0;
+      var lastUsedTs = stat.lastUsed ? parseTs(stat.lastUsed) : 0;
+      var isRecentlyActive = lastUsedTs > 0 && (Date.now() - lastUsedTs < 24 * 3600 * 1000);
 
-      // Top row: Name on left, Action buttons on right
-      var topRow = el('div', 'client-key-top');
+      if (isRecentlyActive) {
+        card.classList.add('active-workstation');
+      } else {
+        card.classList.add('idle-workstation');
+      }
 
-      var nameWrap = el('div', 'row');
-      nameWrap.style.gap = '5px';
-      var keyIcon = el('span', '', '🔑');
-      keyIcon.style.fontSize = '12px';
-      nameWrap.appendChild(keyIcon);
-      var nameEl = el('span', 'name', k.name);
+      // Workstation Header
+      var topRow = el('div', 'workstation-header');
+
+      var nameWrap = el('div', 'workstation-identity');
+      nameWrap.appendChild(el('span', '', '💻'));
+      var nameEl = el('span', 'workstation-name', k.name);
       nameWrap.appendChild(nameEl);
-      var cBadge = el('span', 'badge', 'Panel & CLI');
-      cBadge.style.cssText = 'font-size:10px; padding:1px 5px; background:rgba(16, 185, 129, 0.12); color:#34d399; border-radius:4px; border:1px solid rgba(16, 185, 129, 0.25);';
-      nameWrap.appendChild(cBadge);
+
+      // Activity badge
+      if (stat.lastUsed) {
+        var actBadge = el('span', 'workstation-badge-live', '🟢 ' + fmtAgo(stat.lastUsed));
+        actBadge.title = (currentLang === 'pl' ? 'Ostatnia aktywność: ' : 'Last activity: ') + new Date(stat.lastUsed).toLocaleString();
+        nameWrap.appendChild(actBadge);
+      } else if (reqCount > 0) {
+        var actBadgeOld = el('span', 'workstation-badge-live', '● Aktywna');
+        nameWrap.appendChild(actBadgeOld);
+      } else {
+        var idleBadge = el('span', 'workstation-badge-idle', currentLang === 'pl' ? '⚪ Oczekuje na ruch' : '⚪ Idle (no requests)');
+        nameWrap.appendChild(idleBadge);
+      }
 
       if (k.expiresAt) {
         var expMs = parseTs(k.expiresAt);
@@ -4018,16 +4135,17 @@ ${SHARED_HELPERS}
 
       if (Array.isArray(k.allowedModels) && k.allowedModels.length) {
         var mBadge = el('span', 'badge', '🎯 ' + k.allowedModels.join(', '));
-        mBadge.style.cssText = 'font-size:9.5px; padding:1px 4px; background:rgba(255,255,255,0.06); border-radius:3px;';
+        mBadge.style.cssText = 'font-size:9.5px; padding:1px 5px; background:rgba(255,255,255,0.06); border-radius:3px;';
         nameWrap.appendChild(mBadge);
       }
 
       topRow.appendChild(nameWrap);
 
+      // Actions: Setup and Revoke
       var acts = el('div', 'card-actions');
 
       var btnSetup = el('button', 'btn btn-xs btn-accent', t('btnKeyConnect'));
-      btnSetup.title = currentLang === 'pl' ? 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tego klienta' : 'Show installer commands (Linux, Windows, VS Code) for this client';
+      btnSetup.title = currentLang === 'pl' ? 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tej stacji' : 'Show installer commands (Linux, Windows, VS Code) for this workstation';
       btnSetup.addEventListener('click', function () {
         currentQuickKey = raw;
         updateQuickCmd();
@@ -4036,7 +4154,7 @@ ${SHARED_HELPERS}
       acts.appendChild(btnSetup);
 
       var btnDel = el('button', 'btn btn-xs btn-bad', currentLang === 'pl' ? 'Unieważnij' : 'Revoke');
-      btnDel.title = currentLang === 'pl' ? 'Unieważnij i usuń ten klucz' : 'Revoke and delete this key';
+      btnDel.title = currentLang === 'pl' ? 'Unieważnij i usuń tę stację' : 'Revoke and delete this workstation key';
       btnDel.addEventListener('click', function () {
         doRemoveClientKey(k.name, btnDel);
       });
@@ -4045,11 +4163,57 @@ ${SHARED_HELPERS}
       topRow.appendChild(acts);
       card.appendChild(topRow);
 
-      // Bottom row: Key + Show + Copy on left, Usage metrics on right
-      var bottomRow = el('div', 'client-key-bottom');
+      // Workstation Metrics Box (integrated stats)
+      var metricsBox = el('div', 'workstation-metrics');
 
-      var keyWrap = el('div', 'row');
-      keyWrap.style.gap = '5px';
+      var mReq = el('div', 'ws-metric-item');
+      mReq.appendChild(el('span', 'ws-metric-label', currentLang === 'pl' ? 'Zapytania' : 'Requests'));
+      mReq.appendChild(el('span', 'ws-metric-val', fmtNum(reqCount)));
+      metricsBox.appendChild(mReq);
+
+      var mIn = el('div', 'ws-metric-item');
+      mIn.appendChild(el('span', 'ws-metric-label', currentLang === 'pl' ? 'Wejście (in)' : 'Input tok'));
+      mIn.appendChild(el('span', 'ws-metric-val', inT ? fmtNum(inT) : '0'));
+      metricsBox.appendChild(mIn);
+
+      var mOut = el('div', 'ws-metric-item');
+      mOut.appendChild(el('span', 'ws-metric-label', currentLang === 'pl' ? 'Wyjście (out)' : 'Output tok'));
+      mOut.appendChild(el('span', 'ws-metric-val', outT ? fmtNum(outT) : '0'));
+      metricsBox.appendChild(mOut);
+
+      card.appendChild(metricsBox);
+
+      // Optional Daily / Monthly token limit progress bars
+      if (k.maxDailyTokens || k.maxMonthlyTokens) {
+        var limitWrap = el('div', 'workstation-limits');
+        limitWrap.style.cssText = 'font-size:10.5px; color:var(--dim); margin-top:2px; display:flex; gap:12px; flex-wrap:wrap;';
+        if (k.maxDailyTokens) {
+          var dUsed = k.dailyTokens || 0;
+          var dPct = Math.min(100, Math.round((dUsed / k.maxDailyTokens) * 100));
+          var dColor = dPct >= 90 ? '#f85149' : (dPct >= 70 ? '#d29922' : 'var(--text)');
+          var dEl = el('span', '', (currentLang === 'pl' ? 'Dziś: ' : 'Today: '));
+          var dVal = el('b', '', fmtNum(dUsed) + ' / ' + fmtNum(k.maxDailyTokens) + ' (' + dPct + '%)');
+          dVal.style.color = dColor;
+          dEl.appendChild(dVal);
+          limitWrap.appendChild(dEl);
+        }
+        if (k.maxMonthlyTokens) {
+          var mUsed = k.monthlyTokens || 0;
+          var mPct = Math.min(100, Math.round((mUsed / k.maxMonthlyTokens) * 100));
+          var mColor = mPct >= 90 ? '#f85149' : (mPct >= 70 ? '#d29922' : 'var(--text)');
+          var mEl = el('span', '', (currentLang === 'pl' ? 'Miesiąc: ' : 'Month: '));
+          var mVal = el('b', '', fmtNum(mUsed) + ' / ' + fmtNum(k.maxMonthlyTokens) + ' (' + mPct + '%)');
+          mVal.style.color = mColor;
+          mEl.appendChild(mVal);
+          limitWrap.appendChild(mEl);
+        }
+        card.appendChild(limitWrap);
+      }
+
+      // Workstation Footer (Key + Show + Copy)
+      var bottomRow = el('div', 'workstation-footer');
+      var keyWrap = el('div', 'workstation-key-box');
+      keyWrap.appendChild(el('span', '', '🔑'));
       var masked = isRevealed ? raw : (raw.length > 8 ? raw.slice(0, 5) + '••••••••' + raw.slice(-4) : '••••••••');
       var keySpan = el('span', 'mono', masked);
       keySpan.style.fontSize = '11px';
@@ -4066,45 +4230,59 @@ ${SHARED_HELPERS}
 
       var btnCopy = el('button', 'btn btn-xs', t('copyCmd'));
       btnCopy.addEventListener('click', function () {
-        copyToClipboard(raw, 'Klucz klienta ' + k.name);
+        copyToClipboard(raw, 'Klucz stacji ' + k.name);
       });
       keyWrap.appendChild(btnCopy);
       bottomRow.appendChild(keyWrap);
 
-      var stat = (k.stats) || (clients && clients[k.name]) || {};
-      var inT = stat.inputTokens || 0;
-      var outT = stat.outputTokens || 0;
-      var tokText = (inT || outT) ? (fmtNum(inT) + ' / ' + fmtNum(outT)) : '0 tok';
-      var statSpan = el('span', 'client-key-stats', (stat.requests || 0) + ' req · ' + tokText);
-      bottomRow.appendChild(statSpan);
-      card.appendChild(bottomRow);
+      // Active websocket badge if any
+      if (stat.connections > 0) {
+        var wsBadge = el('span', 'badge', '🔌 ' + stat.connections + ' WS');
+        wsBadge.style.cssText = 'font-size:9.5px; padding:1px 5px; color:#58a6ff;';
+        bottomRow.appendChild(wsBadge);
+      }
 
       card.appendChild(bottomRow);
-      if (k.maxDailyTokens || k.maxMonthlyTokens) {
-        var limitWrap = el('div', 'client-key-limits');
-        limitWrap.style.cssText = 'font-size:10.5px; color:var(--dim); margin-top:5px; padding-top:4px; border-top:1px dashed rgba(255,255,255,0.07); display:flex; gap:12px; flex-wrap:wrap;';
-        if (k.maxDailyTokens) {
-          var dUsed = k.dailyTokens || 0;
-          var dPct = Math.min(100, Math.round((dUsed / k.maxDailyTokens) * 100));
-          var dColor = dPct >= 90 ? '#f85149' : (dPct >= 70 ? '#d29922' : 'var(--text)');
-          var dEl = el('span', '', 'Dziś: ');
-          var dVal = el('b', '', fmtNum(dUsed) + ' / ' + fmtNum(k.maxDailyTokens) + ' (' + dPct + '%)');
-          dVal.style.color = dColor;
-          dEl.appendChild(dVal);
-          limitWrap.appendChild(dEl);
-        }
-        if (k.maxMonthlyTokens) {
-          var mUsed = k.monthlyTokens || 0;
-          var mPct = Math.min(100, Math.round((mUsed / k.maxMonthlyTokens) * 100));
-          var mColor = mPct >= 90 ? '#f85149' : (mPct >= 70 ? '#d29922' : 'var(--text)');
-          var mEl = el('span', '', 'Miesiąc: ');
-          var mVal = el('b', '', fmtNum(mUsed) + ' / ' + fmtNum(k.maxMonthlyTokens) + ' (' + mPct + '%)');
-          mVal.style.color = mColor;
-          mEl.appendChild(mVal);
-          limitWrap.appendChild(mEl);
-        }
-        card.appendChild(limitWrap);
+      container.appendChild(card);
+    });
+
+    // Also render any unmapped active clients (direct traffic)
+    var knownNames = {};
+    list.forEach(function (k) { knownNames[k.name] = true; });
+    Object.keys(clients || {}).forEach(function (clientName) {
+      if (knownNames[clientName]) return;
+      var stat = clients[clientName] || {};
+      var card = el('div', 'workstation-card idle-workstation');
+      var topRow = el('div', 'workstation-header');
+      var nameWrap = el('div', 'workstation-identity');
+      nameWrap.appendChild(el('span', '', '💻'));
+      nameWrap.appendChild(el('span', 'workstation-name', clientName));
+      if (stat.lastUsed) {
+        var b = el('span', 'workstation-badge-live', '🟢 ' + fmtAgo(stat.lastUsed));
+        nameWrap.appendChild(b);
       }
+      var unmappedBadge = el('span', 'badge', currentLang === 'pl' ? 'Ruch bezpośredni' : 'Direct traffic');
+      unmappedBadge.style.cssText = 'font-size:9.5px; padding:1px 5px; background:rgba(255,255,255,0.06); border-radius:3px;';
+      nameWrap.appendChild(unmappedBadge);
+      topRow.appendChild(nameWrap);
+      card.appendChild(topRow);
+
+      var metricsBox = el('div', 'workstation-metrics');
+      var mReq = el('div', 'ws-metric-item');
+      mReq.appendChild(el('span', 'ws-metric-label', currentLang === 'pl' ? 'Zapytania' : 'Requests'));
+      mReq.appendChild(el('span', 'ws-metric-val', fmtNum(stat.requests || 0)));
+      metricsBox.appendChild(mReq);
+
+      var mIn = el('div', 'ws-metric-item');
+      mIn.appendChild(el('span', 'ws-metric-label', currentLang === 'pl' ? 'Wejście (in)' : 'Input tok'));
+      mIn.appendChild(el('span', 'ws-metric-val', stat.inputTokens ? fmtNum(stat.inputTokens) : '0'));
+      metricsBox.appendChild(mIn);
+
+      var mOut = el('div', 'ws-metric-item');
+      mOut.appendChild(el('span', 'ws-metric-label', currentLang === 'pl' ? 'Wyjście (out)' : 'Output tok'));
+      mOut.appendChild(el('span', 'ws-metric-val', stat.outputTokens ? fmtNum(stat.outputTokens) : '0'));
+      metricsBox.appendChild(mOut);
+      card.appendChild(metricsBox);
 
       container.appendChild(card);
     });
@@ -4286,8 +4464,8 @@ ${SHARED_HELPERS}
   document.getElementById('go').addEventListener('click', function () {
     var btn = document.getElementById('go');
     var v = document.getElementById('key').value.trim();
-    v = v.replace(/^export\s+ANTHROPIC_API_KEY\s*=\s*/i, '')
-         .replace(/^ANTHROPIC_API_KEY\s*=\s*/i, '')
+    v = v.replace(/^export\\s+ANTHROPIC_API_KEY\\s*=\\s*/i, '')
+         .replace(/^ANTHROPIC_API_KEY\\s*=\\s*/i, '')
          .replace(/^["']|["']$/g, '')
          .trim();
     if (!v) {
@@ -4427,6 +4605,28 @@ ${SHARED_HELPERS}
   document.getElementById('btnDoneKeyModal').addEventListener('click', function () {
     closeModal('modalKeyCreated');
   });
+
+  var btnWorkstationGuide = document.getElementById('btnShowWorkstationGuide');
+  if (btnWorkstationGuide) {
+    btnWorkstationGuide.addEventListener('click', function () {
+      var list = (lastStatus && lastStatus.clientKeys) || [];
+      var firstName = list.length ? list[0].name : (primaryAdminKey ? 'Główny klucz' : 'Stacja');
+      var firstKey = (list.length && cachedClientKeys[list[0].name]) || primaryAdminKey || '<KLUCZ_STACJI>';
+      showKeyModal(firstName, firstKey);
+    });
+  }
+
+  var selQuick = document.getElementById('selQuickStation');
+  if (selQuick) {
+    selQuick.addEventListener('change', function () {
+      if (this.value === '__primary__') {
+        currentQuickKey = primaryAdminKey;
+      } else if (cachedClientKeys[this.value]) {
+        currentQuickKey = cachedClientKeys[this.value];
+      }
+      updateQuickCmd();
+    });
+  }
 
   // Tab switching in modalAddAccount
   function selectTab(tab) {

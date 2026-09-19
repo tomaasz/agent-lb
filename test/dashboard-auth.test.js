@@ -170,6 +170,20 @@ describe('Dashboard Authentication and Layout', () => {
     assert.ok(html.includes('function setTheme('), 'script defines setTheme()');
   });
 
+  it('renders redesigned workstations section with dedicated master banner and integrated cards', () => {
+    const html = renderDashboardHtml();
+    assert.ok(html.includes('id="selQuickStation"'), 'contains workstation quick selector #selQuickStation');
+    assert.ok(html.includes('id="btnShowWorkstationGuide"'), 'contains guide button #btnShowWorkstationGuide');
+    assert.ok(html.includes('master-key-banner'), 'styles define .master-key-banner');
+    assert.ok(html.includes('workstation-card'), 'styles define .workstation-card');
+    assert.ok(html.includes('workstation-metrics'), 'styles define .workstation-metrics');
+    assert.ok(html.includes('id="clientsWrap" style="display:none;'), 'clientsWrap table is hidden by default');
+    assert.ok(html.includes('Podłącz nową stację roboczą'), 'modalAddClientKey contains updated workstation header');
+    assert.ok(html.includes('Konfiguracja stacji roboczej'), 'modalKeyCreated contains updated workstation setup header');
+    assert.ok(html.includes('Klucz Master Administratora'), 'translations include Master Administrator Key');
+    assert.ok(html.includes('💻 Stacje robocze'), 'translations include Workstations title');
+  });
+
   it('updates account priority and persists order on POST /api/accounts/reorder', async () => {
     const fs = await import('node:fs/promises');
     const os = await import('node:os');
