@@ -1710,7 +1710,8 @@ export class AccountManager {
   _preemptedBy(account, model = null, advisorModel = null, exclude = null) {
     return this.accounts.find(a => this._isAvailable(a, model, advisorModel)
       && !exclude?.has(a.index)
-      && (a.priority || 0) < (account.priority || 0)) || null;
+      && ((a.priority || 0) < (account.priority || 0)
+          || ((a.priority || 0) === (account.priority || 0) && a.index < account.index))) || null;
   }
 
   /**
@@ -2155,9 +2156,13 @@ export class AccountManager {
    */
   _bandedCandidates(exclude = null, model = null, advisorModel = null) {
     let available = this.accounts.filter(a => !exclude?.has(a.index) && this._isAvailable(a, model, advisorModel));
-    const burnFirst = available.filter(a => a.routingPolicy === 'burn-first' || a.routingPolicy === 'burn_first');
-    if (burnFirst.length > 0) {
-      available = burnFirst;
+    if (available.length > 1) {
+      const minPrio = Math.min(...available.map(a => a.priority || 0));
+      const topTier = available.filter(a => (a.priority || 0) === minPrio);
+      const burnFirst = topTier.filter(a => a.routingPolicy === 'burn-first' || a.routingPolicy === 'burn_first');
+      if (burnFirst.length > 0) {
+        available = burnFirst.concat(available.filter(a => (a.priority || 0) > minPrio));
+      }
     }
     return this._topPressureBand(available, model);
   }
@@ -2968,8 +2973,7 @@ export class AccountManager {
       // Opus/Sonnet. Unknown reset sorts first so we probe and fill it in.
       const weeklyReset = this._rankedReset(account, model);
       if (priority < bestPriority
-          || (priority === bestPriority && pressure < bestPressure)
-          || (priority === bestPriority && pressure === bestPressure && weeklyReset < bestReset)) {
+          || (priority === bestPriority && account.index < (best?.index ?? Infinity))) {
         bestPriority = priority;
         bestPressure = pressure;
         bestReset = weeklyReset;

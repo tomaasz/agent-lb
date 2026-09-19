@@ -111,6 +111,9 @@ describe('Dashboard Authentication and Layout', () => {
     assert.ok(html.includes('data-provider="codex"'), 'listCodex has data-provider codex');
     assert.ok(html.includes('renderAccountsGrid'), 'script defines renderAccountsGrid');
     assert.ok(html.includes('/api/accounts/reorder'), 'script targets accounts reorder endpoint');
+    assert.ok(html.includes('function moveToTop'), 'script defines moveToTop for 1-click priority promotion');
+    assert.ok(!html.includes('⚡ Aktywuj'), 'removed confusing Aktywuj button');
+    assert.ok(!html.includes('Polityka Burn-first'), 'removed confusing Burn-first button');
     assert.ok(html.includes('function doStartOAuth'), 'script defines doStartOAuth');
     assert.ok(html.includes('function doCompleteOAuth'), 'script defines doCompleteOAuth');
     assert.ok(html.includes('function updateAddAccountProviderUI'), 'script defines updateAddAccountProviderUI');

@@ -389,6 +389,7 @@ const PAGE = `<!doctype html>
   .drag-handle:hover { opacity: 1; color: var(--text); }
   .drag-handle:active { cursor: grabbing; }
   .prio-badge { font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; background: rgba(88,166,255,0.1); border: 1px solid rgba(88,166,255,0.3); color: var(--accent); line-height: 1.2; }
+  .prio-badge.prio-badge-top { font-weight: 700; background: rgba(56, 189, 248, 0.2); border-color: var(--accent); color: var(--accent); box-shadow: 0 0 6px rgba(56, 189, 248, 0.25); }
 
   .card { background: rgba(22, 27, 34, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 6px; padding: 8px 12px; margin-bottom: 0; box-sizing: border-box; transition: border-color .15s ease; }
   .account-list .card { display: flex; flex-direction: column; justify-content: space-between; min-height: 114px; }
@@ -1393,7 +1394,16 @@ ${SHARED_HELPERS}
     // Optimistically update badges in the DOM
     cards.forEach(function (c, idx) {
       var pb = c.querySelector('.prio-badge');
-      if (pb) pb.textContent = '#' + (idx + 1);
+      if (pb) {
+        pb.textContent = idx === 0 ? '#1 Główny' : '#' + (idx + 1);
+        if (idx === 0) {
+          pb.classList.add('prio-badge-top');
+          pb.title = 'Pozycja #1 — główne konto obsługujące zapytania w pierwszej kolejności';
+        } else {
+          pb.classList.remove('prio-badge-top');
+          pb.title = 'Pozycja #' + (idx + 1) + ' — konto zapasowe w kolejce';
+        }
+      }
       var prioTag = c.querySelector('.card-prio-tag');
       if (prioTag) {
         var typeStr = c.dataset.accountType || '';
@@ -1420,6 +1430,13 @@ ${SHARED_HELPERS}
       });
   }
 
+  function moveToTop(name, card) {
+    var parent = card.parentNode;
+    if (!parent) return;
+    parent.insertBefore(card, parent.firstChild);
+    saveReorderedList(parent);
+  }
+
   function renderAccount(a, current, rankIndex) {
     var prov = (a.provider || 'anthropic').toLowerCase();
     var card = el('div', 'card draggable');
@@ -1436,15 +1453,20 @@ ${SHARED_HELPERS}
     dragHandle.title = 'Przeciągnij myszką, aby zmienić priorytet w kolumnie';
     titleGroup.appendChild(dragHandle);
 
-    // Rank badge (#1, #2...)
+    // Rank badge (#1 Główny, #2, #3...)
     if (rankIndex != null) {
-      var prioBadge = el('span', 'prio-badge', '#' + (rankIndex + 1));
-      prioBadge.title = 'Pozycja #' + (rankIndex + 1) + ' w kolejności (przeciągnij kartę lub kliknij, aby zmienić priorytet)';
-      prioBadge.style.cursor = 'pointer';
-      prioBadge.addEventListener('click', function (e) {
-        e.stopPropagation();
-        doSetPriority(a.name, a.priority || 0);
-      });
+      var isTop = rankIndex === 0;
+      var prioBadge = el('span', 'prio-badge' + (isTop ? ' prio-badge-top' : ''), isTop ? '#1 Główny' : '#' + (rankIndex + 1));
+      prioBadge.title = isTop
+        ? 'Pozycja #1 — główne konto obsługujące zapytania w pierwszej kolejności'
+        : 'Pozycja #' + (rankIndex + 1) + ' — konto zapasowe w kolejce (kliknij „▲ Na górę” lub przeciągnij ⠿, aby zmienić)';
+      if (!isTop) {
+        prioBadge.style.cursor = 'pointer';
+        prioBadge.addEventListener('click', function (e) {
+          e.stopPropagation();
+          moveToTop(a.name, card);
+        });
+      }
       titleGroup.appendChild(prioBadge);
     }
 
@@ -1456,8 +1478,10 @@ ${SHARED_HELPERS}
       titleGroup.appendChild(el('span', 'badge badge-plan', planName));
     }
 
-    if (a.routingPolicy === 'burn-first') titleGroup.appendChild(el('span', 'badge badge-burn', '🔥 Burn'));
-    if (a.name === current) titleGroup.appendChild(el('span', 'badge current', 'current'));
+    if (a.name === current) {
+      var isTopActive = rankIndex === 0;
+      titleGroup.appendChild(el('span', 'badge current', isTopActive ? '● Aktywne' : '● Aktywne (rotacja)'));
+    }
     var hasFailedTest = Boolean(a.lastTest && !a.lastTest.ok);
     var hasActiveError = Boolean(a.lastError && a.lastError.reason);
     var isUnavail = Boolean(a.unavailable || hasActiveError || hasFailedTest);
@@ -1548,11 +1572,14 @@ ${SHARED_HELPERS}
     });
     acts.appendChild(btnQuickTest);
 
-    if (a.name !== current && !a.disabled) {
-      var btnSwitch = el('button', 'btn btn-xs btn-accent', '⚡ Aktywuj');
-      btnSwitch.title = 'Ustaw jako preferowane konto w rotacji';
-      btnSwitch.addEventListener('click', function () { doSwitch(a.name, btnSwitch); });
-      acts.appendChild(btnSwitch);
+    if (rankIndex > 0 && !a.disabled) {
+      var btnMoveTop = el('button', 'btn btn-xs btn-accent', '▲ Na górę');
+      btnMoveTop.title = 'Przenieś to konto na 1. miejsce (ustaw jako główne konto w kolejce)';
+      btnMoveTop.addEventListener('click', function (e) {
+        e.stopPropagation();
+        moveToTop(a.name, card);
+      });
+      acts.appendChild(btnMoveTop);
     }
 
     if (a.type === 'oauth') {
@@ -1574,12 +1601,6 @@ ${SHARED_HELPERS}
     btnProbe.title = 'Odśwież salda i limity (Probe)';
     btnProbe.addEventListener('click', function () { doProbeSingle(a.name, btnProbe); });
     acts.appendChild(btnProbe);
-
-    var isBurn = a.routingPolicy === 'burn-first';
-    var btnPolicy = el('button', 'btn-icon' + (isBurn ? ' active' : ''), '🔥');
-    btnPolicy.title = isBurn ? 'Polityka Burn-first: aktywna (kliknij, aby wyłączyć)' : 'Włącz politykę Burn-first (wyczerpuj to konto w pierwszej kolejności)';
-    btnPolicy.addEventListener('click', function () { doSetPolicy(a.name, isBurn ? 'normal' : 'burn-first', btnPolicy); });
-    acts.appendChild(btnPolicy);
 
     var btnToggle = el('button', 'btn-icon', a.disabled ? '▶️' : '⏸️');
     btnToggle.title = a.disabled ? 'Włącz konto do rotacji' : 'Wyłącz konto z rotacji';

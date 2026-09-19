@@ -734,20 +734,54 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           res.end(JSON.stringify({ ok: false, error: `no such account "${target}"`, accounts: names() }));
           return;
         }
-        accountManager.setCurrentAccount(index);
-        const name = accountManager.accounts[index].name;
-        // Recording the choice and the choice taking effect are two different
-        // things: selection skips an account it cannot use on the very next
-        // request, so a bare "ok" would be a lie for a disabled or spent target.
-        // The switch still happens (that is the TUI's behaviour) and the answer
-        // says whether traffic will follow it.
-        const { eligible, reason } = accountManager.eligibility(index);
-        // Leave a trace where every other account change already leaves one: the
-        // TUI swaps console.log for its activity pane and headless mode tees it
-        // to the activity log, so this one line covers both. Without it a manual
-        // switch is the only account change that happens invisibly — on exactly
-        // the background-service deployment this endpoint exists for.
-        console.log(`[AgentLB] Switched to account "${name}" (manual)`
+
+        const targetAcct = accountManager.accounts[index];
+        const targetProv = providerOf(targetAcct);
+
+        // Under list-order primacy, switching to an account sets it as #1 in its provider
+        if (Array.isArray(accountManager.accounts)) {
+          const siblings = accountManager.accounts.filter(a => providerOf(a) === targetProv);
+          siblings.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+          const newOrder = [targetAcct.name, ...siblings.filter(a => a.name !== targetAcct.name).map(a => a.name)];
+          newOrder.forEach((n, prio) => {
+            const acc = accountManager.accounts.find(a => a.name === n);
+            if (acc) acc.priority = prio;
+          });
+
+          await atomicConfigUpdate(disk => {
+            if (!disk.accounts) return;
+            for (const dAcct of disk.accounts) {
+              const idx = newOrder.indexOf(dAcct.name);
+              if (idx !== -1) dAcct.priority = idx;
+            }
+            disk.accounts.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+          }).catch(() => {});
+
+          if (config.accounts) {
+            for (const cAcct of config.accounts) {
+              const idx = newOrder.indexOf(cAcct.name);
+              if (idx !== -1) cAcct.priority = idx;
+            }
+            config.accounts.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+          }
+
+          accountManager.accounts.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+          accountManager.accounts.forEach((a, i) => { a.index = i; });
+        }
+
+        if (typeof accountManager.selectActiveAccount === 'function') {
+          accountManager.routeCursors?.clear();
+          accountManager.providerCursors?.clear();
+          accountManager.selectActiveAccount();
+        } else {
+          accountManager.setCurrentAccount(0);
+        }
+
+        const newIdx = accountManager.accounts.findIndex(a => a.name === targetAcct.name);
+        const effectiveIdx = newIdx !== -1 ? newIdx : index;
+        const name = accountManager.accounts[effectiveIdx].name;
+        const { eligible, reason } = accountManager.eligibility(effectiveIdx);
+        console.log(`[AgentLB] Switched to account "${name}" (promoted to #1 in list)`
           + (eligible ? '' : ` — ${reason}, so rotation will not use it`));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, account: name, eligible, ...(reason ? { reason } : {}) }));
@@ -1184,6 +1218,16 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             }
           }
           config.accounts.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+        }
+
+        if (Array.isArray(accountManager.accounts)) {
+          accountManager.accounts.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+          accountManager.accounts.forEach((a, i) => { a.index = i; });
+        }
+        if (typeof accountManager.selectActiveAccount === 'function') {
+          accountManager.routeCursors?.clear();
+          accountManager.providerCursors?.clear();
+          accountManager.selectActiveAccount();
         }
 
         console.log(`[Agent-LB] Reordered ${nameToPrio.size} accounts (web control)`);
