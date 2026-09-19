@@ -645,8 +645,8 @@ describe('Test Chat & Playground Support', () => {
       assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.6-terra'));
       assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.6-luna'));
       assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.5'));
-      assert.ok(modelsJson.data.some(m => m.id === 'gpt-6'));
-      assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.6'));
+      assert.ok(!modelsJson.data.some(m => m.id === 'gpt-6'), 'gpt-6 alias omitted from models list');
+      assert.ok(!modelsJson.data.some(m => m.id === 'gpt-5.6'), 'gpt-5.6 alias omitted from models list');
 
       // Test gpt-6 alias and reasoning effort forwarding
       const resGpt6 = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {

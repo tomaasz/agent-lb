@@ -595,8 +595,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             { id: 'gpt-5.6-terra', object: 'model', name: 'GPT-5.6 Terra' },
             { id: 'gpt-5.6-luna', object: 'model', name: 'GPT-5.6 Luna' },
             { id: 'gpt-5.5', object: 'model', name: 'GPT-5.5' },
-            { id: 'gpt-6', object: 'model', name: 'GPT-6 (alias → gpt-6-astra)' },
-            { id: 'gpt-5.6', object: 'model', name: 'GPT-5.6 (alias → gpt-5.6-sol)' },
             { id: 'o3-mini', object: 'model', name: 'o3-mini' },
             { id: 'o1', object: 'model', name: 'o1' },
             { id: 'gpt-4o', object: 'model', name: 'GPT-4o' }

@@ -4622,8 +4622,6 @@ ${SHARED_HELPERS}
       { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra' },
       { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna' },
       { id: 'gpt-5.5', name: 'GPT-5.5' },
-      { id: 'gpt-6', name: isEn ? 'GPT-6 (alias → gpt-6-astra)' : 'GPT-6 (alias → gpt-6-astra)' },
-      { id: 'gpt-5.6', name: isEn ? 'GPT-5.6 (alias → gpt-5.6-sol)' : 'GPT-5.6 (alias → gpt-5.6-sol)' },
       { id: 'o3-mini', name: isEn ? 'o3-mini (OpenAI API key)' : 'o3-mini (Tylko klucz OpenAI API)' },
       { id: 'o1', name: isEn ? 'o1 (OpenAI API key)' : 'o1 (Tylko klucz OpenAI API)' },
       { id: 'gpt-4o', name: isEn ? 'GPT-4o (OpenAI API key)' : 'GPT-4o (Tylko klucz OpenAI API)' },
