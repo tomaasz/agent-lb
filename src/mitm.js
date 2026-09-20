@@ -20,10 +20,11 @@ import tls from 'node:tls';
 import http2 from 'node:http2';
 import { getConfigPath } from './config.js';
 import { generateCertChain } from './x509.js';
-import { createProxyRequestListener, resolveClientAuth, loopbackExempt, tailnetExempt, relayUpgrade, resolveAccountPin, describeConnectError } from './server.js';
+import { createProxyRequestListener, resolveClientAuth, loopbackExempt, tailnetExempt, relayUpgrade, resolveAccountPin, describeConnectError, relayPolicyAllowed } from './server.js';
 import { interceptHostsFor, isNeverIntercepted } from './provider.js';
 import { forwardRefusal, guardedLookup, FORBIDDEN_FORWARD } from './forward-target.js';
 import { safeLine } from './safe-text.js';
+import { ClientUsageTracker } from './client-usage.js';
 
 const CA_CERT = 'agentlb-ca.pem';
 const LEAF_CERT = 'agentlb-leaf.pem';
@@ -194,6 +195,7 @@ export function upgradeUpstreamFor(hostHeader, config, upstream) {
  * @param ensureLeaf async () => { key, cert }   // current leaf PEMs
  */
 export function createConnectHandler({ config, accountManager, ensureLeaf, logDir = null, hooks = {}, log = () => {}, sx = null, egress = null, clientUsage = null, dimensionUsage = null }) {
+  clientUsage ||= new ClientUsageTracker();
   const upstream = config.upstream || 'https://api.anthropic.com';
   const holdMs = (config.holdSeconds || 0) * 1000;
 
@@ -214,8 +216,8 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
   // client), for the same reason. The map is bounded by accounts × client keys,
   // both operator-controlled.
   const serverPromises = new Map();
-  const getServer = (pin = '', client = null) => {
-    const mapKey = `${pin}\u0000${client || ''}`;
+  const getServer = (pin = '', client = null, credential = null) => {
+    const mapKey = `${pin}\u0000${client || ''}\u0000${credential || ''}`;
     let p = serverPromises.get(mapKey);
     if (p) return p;
     p = (async () => {
@@ -236,12 +238,14 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
       key, cert, allowHTTP1: true,
       ...(http1Only ? { ALPNProtocols: ['http/1.1'] } : {}),
     });
-    srv.on('request', createProxyRequestListener({ accountManager, upstream, logDir, hooks, sx, holdMs, config, forcedPin: pin || null, egress, clientUsage, forcedClient: client, dimensionUsage }));
+    srv.on('request', createProxyRequestListener({ accountManager, upstream, logDir, hooks, sx, holdMs, config, forcedPin: pin || null, egress, clientUsage, forcedClient: client, forcedCredential: credential, dimensionUsage }));
     // Remote Control's real-time channel is a WebSocket (Upgrade handshake),
     // which never fires 'request' — only 'upgrade', with a raw socket instead
     // of a response object (h1-only; falls back to blind h2 passthrough is not
     // needed since WS clients negotiate h1 for the handshake).
     srv.on('upgrade', (req, socket, head) => {
+      const currentAuth = credential == null ? { ok: true, client: null } : resolveClientAuth(config.proxy, credential);
+      if (!relayPolicyAllowed(currentAuth, clientUsage)) { refuseRaw(socket, '403 Forbidden'); return; }
       const target = upgradeUpstreamFor(req.headers.host, config, upstream);
       if (!target) {
         log(`[AgentLB] MITM: refusing a WebSocket Upgrade for host ${JSON.stringify(safeLine(req.headers.host, 64))}, which this proxy does not intercept`);
@@ -305,6 +309,9 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
     }
     const { host, port } = authority;
     const mode = hostMode(host, config);
+    if (auth.entry && (!clientUsage.checkQuota(auth.client, auth.entry).allowed || (mode === 'tunnel' && !relayPolicyAllowed(auth, clientUsage)))) {
+      refuseRaw(clientSocket, '403 Forbidden'); return;
+    }
 
     if (mode === 'tunnel') {
       // Destination policy (see forward-target.js): a tunnel may not reach
@@ -407,7 +414,7 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
       return;
     }
 
-    getServer(pin || '', auth.client).then((srv) => {
+    getServer(pin || '', auth.client, auth.credential).then((srv) => {
       reply200Raw(clientSocket);
       if (head && head.length) clientSocket.unshift(head);
       srv.emit('connection', clientSocket);
@@ -501,8 +508,8 @@ export function resolveConnectAuth(req, socket, proxyConfig) {
   // still names it (matching the HTTP gate, where a local caller with a client
   // key is attributed like any other). Same exemption as the other two gates,
   // so a forwarded request or `trustLoopback: false` closes it here too.
-  if (!auth.ok && (loopbackExempt(req?.headers, socket?.remoteAddress, proxyConfig) || tailnetExempt(req?.headers, socket?.remoteAddress, proxyConfig))) return { ok: true, client: null };
-  return auth;
+  if (!auth.ok && !req?.headers?.['proxy-authorization'] && (loopbackExempt(req?.headers, socket?.remoteAddress, proxyConfig) || tailnetExempt(req?.headers, socket?.remoteAddress, proxyConfig))) return { ok: true, client: null };
+  return { ...auth, credential: auth.ok ? (auth.entry?.key || proxyConfig?.apiKey) : null };
 }
 
 // Boolean back-compat wrapper (pre-clientKeys signature). Exported for tests.

@@ -7,7 +7,7 @@ services:
     container_name: agent-lb
     restart: unless-stopped
     ports:
-      - "3456:3456"
+      - "127.0.0.1:3456:3456"
     volumes:
       # Mount persistent directory containing agent-lb.json config and state
       - ./data:/data

@@ -696,6 +696,10 @@ export class AccountManager {
    * satisfies both, selection degrades to executor-only routing so the main
    * request keeps flowing (upstream then fails just the advisor call).
    */
+  getActiveCount(provider = null) {
+    return this.accounts.filter(a => (!provider || providerOf(a) === provider) && this._isAvailable(a)).length;
+  }
+
   getActiveAccount(exclude = null, model = null, advisorModel = null, sessionId = null, provider = DEFAULT_PROVIDER, decision = null) {
     // Selection reads this.currentIndex as "where the fleet is". With more than
     // one provider that is a single slot for several fleets, so a request whose

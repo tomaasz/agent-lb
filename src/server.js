@@ -31,6 +31,10 @@ import {
   buildCodexAuthUrl, exchangeCodexCode, importCodexCredentials,
 } from './codex-auth.js';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { ClientUsageTracker } from './client-usage.js';
+import { metricsFor } from './metrics.js';
+import { requestBudgetFor } from './request-budget.js';
 import {
   translateAnthropicToOpenAI,
   translateOpenAIToAnthropicResponse,
@@ -144,7 +148,7 @@ async function readBodyBuffer(body, limit = Infinity) {
   let length = 0;
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readWithIdleTimeout(reader, resolveBodyIdleTimeout());
       if (done) return Buffer.concat(chunks, length);
       length += value.byteLength;
       if (length > limit) {
@@ -236,7 +240,7 @@ export function isForwardedRequest(headers) {
  *     working with it; documented as required behind a reverse proxy.
  */
 export function loopbackExempt(headers, remoteAddress, proxyConfig) {
-  if (proxyConfig?.trustLoopback === false) return false;
+  if (proxyConfig?.trustLoopback !== true) return false;
   if (!isLoopbackAddr(remoteAddress)) return false;
   return !isForwardedRequest(headers);
 }
@@ -264,22 +268,11 @@ export function isTailnetAddr(addr) {
  *    - have a Tailnet address in the client position of 'x-forwarded-for'.
  */
 export function tailnetExempt(headers, remoteAddress, proxyConfig) {
-  if (proxyConfig?.trustTailnet === false) return false;
-  if (!isLoopbackAddr(remoteAddress) && !isTailnetAddr(remoteAddress)) return false;
-
-  if (!isForwardedRequest(headers)) {
-    return isTailnetAddr(remoteAddress);
-  }
-
-  if (headers?.['x-from-tailnet'] === '1') return true;
-
-  const fwd = headers?.['x-forwarded-for'] || headers?.['x-real-ip'];
-  if (typeof fwd === 'string') {
-    const clientIp = fwd.split(',')[0].trim();
-    if (isTailnetAddr(clientIp)) return true;
-  }
-
-  return false;
+  // Forwarded headers are client-controlled unless a separately configured
+  // trusted proxy verifies them. Address-only trust is direct and opt-in.
+  if (proxyConfig?.trustTailnet !== true) return false;
+  if (isLoopbackAddr(remoteAddress) || isForwardedRequest(headers)) return false;
+  return isTailnetAddr(remoteAddress);
 }
 
 
@@ -332,6 +325,7 @@ export function resolveClientAuth(proxyConfig, presented) {
 }
 
 export function createProxyServer(accountManager, config, hooks = {}, sx = null, clientUsage = null, dimensionUsage = null) {
+  clientUsage ||= new ClientUsageTracker();
   const upstream = config.upstream || 'https://api.anthropic.com';
   const holdMs = (config.holdSeconds || 0) * 1000;
   const fairShare = new FairShareController({
@@ -344,12 +338,18 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
     drainStartedAt: null,
     activeRequests: 0,
   };
+  const egress = createEgressGuard(config, console.error);
   const healthChecker = new FleetHealthChecker(accountManager, {
     enabled: config.autoHealthCheck?.enabled ?? true,
     intervalMs: (config.autoHealthCheck?.intervalSeconds ?? 900) * 1000,
     trafficGracePeriodMs: (config.autoHealthCheck?.trafficGracePeriodSeconds ?? 900) * 1000,
     errorBackoffMs: (config.autoHealthCheck?.errorBackoffSeconds ?? 3600) * 1000,
     configuredUpstream: upstream,
+    fetchFn: async (url, opts) => {
+      if (egress && !(await egress.check()).ok) throw new Error('health check refused: egress does not match pin');
+      opts.signal?.throwIfAborted();
+      return upstreamFetch(url, opts, sx, !!sx?.useByDefault());
+    },
   });
   if (config.autoHealthCheck?.enabled !== false) {
     healthChecker.start();
@@ -485,7 +485,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       const isTailnet = tailnetExempt(req.headers, req.socket.remoteAddress, config.proxy);
       const isTrustedOrigin = isLocal || isTailnet;
       const auth = resolveClientAuth(config.proxy, clientKey);
-      if (!auth.ok && !isTrustedOrigin) {
+      if (!auth.ok && (clientKey || !isTrustedOrigin)) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           type: 'error',
@@ -497,38 +497,26 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       req.tcClient = auth.ok ? auth.client : null;
       req.tcClientEntry = auth.entry || null;
 
-      // Check allowedProviders for the client key
-      const reqProvider = providerForPath(req.url);
-      if (auth.entry?.allowedProviders && Array.isArray(auth.entry.allowedProviders)) {
-        if (!auth.entry.allowedProviders.includes(reqProvider)) {
-          res.writeHead(403, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            type: 'error',
-            error: {
-              type: 'permission_error',
-              message: `API key "${auth.client}" is not authorized for provider "${reqProvider}"`,
-            },
-          }));
-          return;
-        }
+      // Protect every management alias BEFORE dispatch (including reload,
+      // switch and setup/pull). Provider identity endpoints remain data-plane.
+      const managementPath = /^\/(?:api\/(?:auth|keys|accounts|routing|drain|ready|system|reboot|restart|test|chat|health-check|setup|reload|probe|switch)(?:\/|$)|accounts(?:\/|$)|client-keys(?:\/|$)|oauth(?:\/|$)|routing(?:\/|$)|drain(?:\/|$)|health-check(?:\/|$)|reload$|probe$|switch$|reboot$|restart$|metrics$)/.test(normApiPath);
+      const isAdmin = config.proxy?.apiKey
+        ? safeKeyEqual(clientKey, config.proxy.apiKey)
+        : (!config.proxy?.clientKeys?.length && isLoopbackAddr(req.socket.remoteAddress) && !isForwardedRequest(req.headers));
+      if (managementPath && !isAdmin) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'administrator key required' }));
+        return;
       }
-
-      // Check client key quotas (expiry, daily token limit, monthly limit)
-      if (clientUsage && auth.ok && auth.client && auth.entry) {
-        const quotaCheck = clientUsage.checkQuota(auth.client, auth.entry);
-        if (!quotaCheck.allowed) {
-          const headers = { 'Content-Type': 'application/json' };
-          if (quotaCheck.retryAfter) headers['Retry-After'] = String(quotaCheck.retryAfter);
-          res.writeHead(quotaCheck.status || 429, headers);
-          res.end(JSON.stringify({
-            type: 'error',
-            error: {
-              type: quotaCheck.status === 403 ? 'permission_error' : 'rate_limit_error',
-              message: quotaCheck.error,
-            },
-          }));
-          return;
-        }
+      if (managementPath && !isSameOriginControlRequest(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'cross-origin management request refused' }));
+        return;
+      }
+      if (managementPath) res.setHeader('Cache-Control', 'no-store');
+      if (auth.entry) {
+        const policy = clientUsage.checkQuota(auth.client, auth.entry);
+        if (!policy.allowed) { denyClientPolicy(res, policy); return; }
       }
 
       // Control-plane mutations are refused when the request was issued by a web
@@ -562,7 +550,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // Dispatched BEFORE the loopback-only checks below: a page cannot make a
       // browser emit an absolute-form request line, the relay injects no fleet
       // credential, and its Host header names the TARGET, not this proxy.
-      if (/^https?:\/\//i.test(req.url || '')) { relayHttpForward(req, res); return; }
+      if (/^https?:\/\//i.test(req.url || '')) {
+        if (!relayPolicyAllowed(auth, clientUsage)) { denyClientPolicy(res, { error: 'restricted keys cannot use a general-purpose relay' }); return; }
+        relayHttpForward(req, res); return;
+      }
 
       // A request admitted ONLY by the loopback exemption — no valid key — is
       // held to two more conditions. Both target the same actor: a web page in
@@ -641,6 +632,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
+      if (req.method === 'GET' && normApiPath === '/metrics') {
+        res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4' });
+        res.end(metricsFor(config).render()); return;
+      }
       // Ready endpoint (liveness & drain readiness probe)
       if (req.method === 'GET' && (normApiPath === '/ready' || normApiPath === '/api/ready' || req.url === '/ready')) {
         if (drainState.isDraining) {
@@ -840,7 +835,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
         const isMaster = clientKey && safeKeyEqual(clientKey, config.proxy.apiKey);
         const clientAuth = clientKey ? resolveClientAuth(config.proxy, clientKey) : null;
-        if (isMaster || clientAuth?.ok) {
+        if (isMaster) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             ok: true,
@@ -867,7 +862,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         const hasAdminKey = Boolean(config.proxy?.apiKey);
         const isMaster = candidate && hasAdminKey && safeKeyEqual(candidate, config.proxy.apiKey);
         const clientAuth = candidate ? resolveClientAuth(config.proxy, candidate) : null;
-        if (!hasAdminKey || isMaster || clientAuth?.ok) {
+        if (!hasAdminKey || isMaster) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             ok: true,
@@ -883,33 +878,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
-      const isControlEndpoint = normApiPath.startsWith('/api/') ||
-        normApiPath.startsWith('/accounts') ||
-        normApiPath.startsWith('/client-keys') ||
-        normApiPath.startsWith('/oauth');
-        normApiPath.startsWith('/oauth') ||
-        normApiPath.startsWith('/routing') ||
-        normApiPath.startsWith('/drain') ||
-        normApiPath.startsWith('/ready');
-
-      if (isControlEndpoint) {
-        if (!clientKey && config.proxy?.apiKey && !isTrustedOrigin) {
-          res.writeHead(401, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'authorization required: provide x-api-key header' }));
-          return;
-        }
-        const clientAuth = clientKey ? resolveClientAuth(config.proxy, clientKey) : null;
-        const isAdmin = config.proxy?.apiKey
-          ? (safeKeyEqual(clientKey, config.proxy.apiKey) || Boolean(clientAuth?.ok) || isTrustedOrigin)
-          : isTrustedOrigin;
-
-        if (!isAdmin) {
-          res.writeHead(403, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'admin authorization required: x-api-key must match proxy.apiKey or a valid clientKey' }));
-          return;
-        }
-      }
-
       // Client Keys: List (GET /agentlb/api/keys & GET /agentlb/client-keys)
       if (req.method === 'GET' && (normApiPath === '/api/keys' || normApiPath === '/client-keys')) {
         const clientsStats = clientUsage?.export() || hooks.getStatusExtra?.()?.clients || {};
@@ -919,8 +887,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           const stat = clientsStats[k.name] || { requests: 0, connections: 0, inputTokens: 0, outputTokens: 0, dailyTokens: 0, monthlyTokens: 0, lastUsed: null };
           return {
             name: k.name,
-            key: raw,
-            rawKey: raw,
+            key: masked,
             maskedKey: masked,
             created: k.created || null,
             maxDailyTokens: k.maxDailyTokens != null ? Number(k.maxDailyTokens) : null,
@@ -936,7 +903,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           ok: true,
-          primaryKey: primaryRaw,
           primaryKeyMasked: maskSecret(primaryRaw),
           keys,
           clientKeys: keys
@@ -2759,7 +2725,6 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
   // Opt-in egress pin: null unless config.egress.pin is set, and then shared by
   // the base listener and the MITM one so both honour the same hold.
-  const egress = createEgressGuard(config, console.error);
   const forward = createProxyRequestListener({ accountManager, upstream, logDir, hooks, sx, holdMs, config, egress, clientUsage, dimensionUsage, fairShare, toolDedupe, drainState });
   const server = http.createServer(requestHandler);
   server.healthChecker = healthChecker;
@@ -2819,7 +2784,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
     // but it is a way to reach the upstream on this host's address and
     // bandwidth. A deployment on a public hostname hands that to anyone.
     const auth = resolveUpgradeAuth(req, socket, config.proxy);
-    if (!auth.ok) {
+    if (!auth.ok || !relayPolicyAllowed(auth, clientUsage)) {
       // Logged as well as answered: a WebSocket client discards the status
       // line, so the 401 alone leaves an operator with a channel that is
       // silently dead — the same shape as the outage this gate could cause if
@@ -3049,7 +3014,7 @@ export function relayHttpForward(req, res) {
     // The proxy key authenticates this hop and must never be forwarded to an
     // arbitrary absolute-form target.  A caller's Authorization header is
     // target-facing and is intentionally preserved; x-api-key is ours.
-    if (lk === 'x-api-key') continue;
+    if (lk === 'x-api-key' || lk === 'proxy-authorization') continue;
     headers[key] = value;
   }
 
@@ -3116,13 +3081,15 @@ export function clientSessionId(headers) {
 export function createProxyRequestListener({
   accountManager, upstream, logDir = null, hooks = {}, sx = null, holdMs = 0,
   config = {}, forcedPin = null, egress = null, clientUsage = null,
-  forcedClient = null, dimensionUsage = null, fairShare: injectedFairShare = null,
+  forcedClient = null, forcedCredential = null, dimensionUsage = null, fairShare: injectedFairShare = null,
   toolDedupe: injectedToolDedupe = null, drainState = null,
 }) {
   const fairShare = injectedFairShare || new FairShareController({
     poolCapacity: config?.poolCapacity || 32,
     congestionThreshold: config?.congestionThreshold || 0.75,
   });
+  clientUsage ||= new ClientUsageTracker();
+  const requestBudget = requestBudgetFor(config);
   const toolDedupe = injectedToolDedupe || new ToolCallDedupeCache();
   const drainTracker = drainState || { activeRequests: 0, isDraining: false };
   let counter = 0;
@@ -3133,7 +3100,24 @@ export function createProxyRequestListener({
     // outer catch tells an entry it still has to account for from one that is
     // already closed.
     let openEntry = null;
+    let releaseBudget = null;
+    let uploadTimer = null;
+    let requestTimer = null;
+    metricsFor(config).start(res);
     try {
+      if (forcedCredential != null) {
+        const currentAuth = resolveClientAuth(config.proxy, forcedCredential);
+        if (!currentAuth.ok) { denyClientPolicy(res, { status: 401, error: 'proxy key revoked' }); return; }
+        req.tcClient = currentAuth.client;
+        req.tcClientEntry = currentAuth.entry;
+      }
+      const entry = req.tcClientEntry;
+      const clientName = req.tcClient ?? forcedClient;
+      if (entry) {
+        const policy = clientUsage.checkQuota(clientName, entry);
+        if (!policy.allowed) { denyClientPolicy(res, policy); return; }
+      }
+
       // Refused before any path-prefix classification below, so each of those
       // sees the path upstream will see (see hasDotSegment). Logged like the
       // unknown-pin 404: an operator should see a client probing the boundary.
@@ -3182,9 +3166,12 @@ export function createProxyRequestListener({
           return;
         }
       }
+      if (entry && CLIENT_CREDENTIAL_PATHS.some(p => (req.url || '').startsWith(p)) && !relayPolicyAllowed({ ok: true, entry, client: clientName }, clientUsage)) {
+        denyClientPolicy(res, { error: 'restricted keys cannot use an unmetered relay' }); return;
+      }
       // Client token refresh: pass through untouched (the proxy manages its own
       // tokens via ensureTokenFresh; rewriting client refreshes would conflict).
-      if (req.method === 'POST' && req.url === '/v1/oauth/token') { await relayRaw(req, res, upstream, sx, resolveMaxBodyBytes(config)); return; }
+      if (req.method === 'POST' && req.url === '/v1/oauth/token') { await relayRaw(req, res, upstream, sx, Math.min(resolveMaxBodyBytes(config), 1024 * 1024), requestBudget); return; }
       // Remote Control (/v1/code/*) is bound to the session's paired claude.ai
       // identity — forward with the client's OWN credential (streamed), never a
       // rotated account token, which would 403 the worker event stream.
@@ -3272,6 +3259,14 @@ export function createProxyRequestListener({
       // Peek the top-level `model` field incrementally as chunks arrive so the
       // TUI can show it the instant it appears in the stream — usually the first
       // frame — rather than waiting for the whole body and the request to finish.
+      releaseBudget = requestBudget.acquire();
+      if (!releaseBudget) {
+        res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '1' });
+        res.end(JSON.stringify({ error: { type: 'overloaded_error', message: 'Request buffer capacity exhausted' } }));
+        return;
+      }
+      uploadTimer = setTimeout(() => req.destroy(new Error('request body deadline exceeded')), 30_000);
+      uploadTimer.unref?.();
       const bodyChunks = [];
       const modelFinder = new TopLevelFieldFinder('model');
       const maxBodyBytes = resolveMaxBodyBytes(config);
@@ -3281,7 +3276,7 @@ export function createProxyRequestListener({
         // Buffering is what makes retry possible, and also what lets one client
         // hold as much memory as it cares to send. Past the cap, stop reading
         // and say so; the request is torn down once the answer is out.
-        if (bodyBytes > maxBodyBytes) {
+        if (bodyBytes > maxBodyBytes || !releaseBudget.reserve(chunk.length)) {
           await refuseOversizedBody(req, res);
           openEntry = null;   // this path owns the close below; the outer catch must not repeat it
           if (!hideActivity) hooks.onRequestEnd?.(reqId, { method: req.method, path: req.url, account: '(too large)', status: 413, model: modelFinder.done ? modelFinder.value : null, sessionId, pinned: pinnedIndex != null });
@@ -3293,13 +3288,23 @@ export function createProxyRequestListener({
           if (found && !hideActivity) hooks.onRequestModel?.(reqId, { model: found });
         }
       }
+      clearTimeout(uploadTimer);
       const body = Buffer.concat(bodyChunks);
 
       const model = modelFinder.done ? modelFinder.value : parseRequestModel(body);
+      if (entry?.allowedModels?.length && !model) {
+        denyClientPolicy(res, { error: 'model required for a model-restricted key' }); return;
+      }
+      const requestedPolicy = clientUsage.checkQuota(clientName, entry, model);
+      if (!requestedPolicy.allowed) { denyClientPolicy(res, requestedPolicy); return; }
       // An advisor request (Claude Code's advisor tool) carries a SECOND model
       // nested in tools[]; the advisor sub-inference runs on the selected
       // account, so selection must be eligible for it too (issue #98).
       const advisorModel = parseAdvisorModel(body);
+      if (advisorModel) {
+        const advisorPolicy = clientUsage.checkQuota(clientName, entry, advisorModel);
+        if (!advisorPolicy.allowed) { denyClientPolicy(res, advisorPolicy); return; }
+      }
 
       // Model blocklist (issue #116): reject a request for a blocked model right
       // here instead of forwarding it. A model no account can serve (e.g. Fable
@@ -3343,9 +3348,15 @@ export function createProxyRequestListener({
       const isClaudeModel = typeof model === 'string' && (model.startsWith('claude-') || model.startsWith('claude/'));
       const isOpenAIModel = typeof model === 'string' && (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('codex'));
       const isAgyModel = typeof model === 'string' && (model === 'agy' || model === 'agy-fast' || model.startsWith('gemini-'));
-      const targetProvider = isClaudeModel ? 'anthropic' : (isOpenAIModel ? 'codex' : (isAgyModel ? (accountManager.getActiveCount('codex') > 0 ? 'codex' : 'anthropic') : requestProvider));
+      const targetProvider = isClaudeModel
+        ? 'anthropic'
+        : (isOpenAIModel
+            ? 'codex'
+            : (isAgyModel
+                ? (accountManager.getActiveCount?.('codex') > 0 ? 'codex' : (accountManager.getActiveCount?.('anthropic') > 0 ? 'anthropic' : requestProvider))
+                : requestProvider));
 
-      const ctx = { account: null, status: null, tried: new Set(), reauthed: new Set(), model, advisorModel, pinnedIndex, provider: targetProvider, requestProvider, holdBudgetMs: holdMs, sessionId, client, delivered: false, abandoned: false, onUsage: usageRecorder.onUsage, stripHeaders, logLevel: resolveLogLevel(config), logMaxBodyBytes: resolveLogMaxBodyBytes(config) };
+      const ctx = { account: null, status: null, tried: new Set(), reauthed: new Set(), model, advisorModel, pinnedIndex, provider: targetProvider, requestProvider, clientEntry: req.tcClientEntry, clientUsage, metrics: metricsFor(config), holdBudgetMs: holdMs, sessionId, client, delivered: false, abandoned: false, onUsage: usageRecorder.onUsage, stripHeaders, logLevel: resolveLogLevel(config), logMaxBodyBytes: resolveLogMaxBodyBytes(config) };
       // Hold the session "in flight" across the WHOLE request (incl. retries and
       // a multi-minute streaming completion) so it stays counted as active and
       // never expires mid-request.
@@ -3364,6 +3375,13 @@ export function createProxyRequestListener({
       const requestAbort = new AbortController();
       const onRequestClose = () => { if (!res.writableEnded && !ctx.proxyClosed) requestAbort.abort(clientGoneError()); };
       ctx.signal = requestAbort.signal;
+      const requestSeconds = Number(config.proxy?.maxRequestSeconds) || 600;
+      requestTimer = setTimeout(() => {
+        ctx.proxyClosed = true;
+        requestAbort.abort(new Error('request deadline exceeded'));
+        res.destroy();
+      }, Math.max(1, requestSeconds) * 1000);
+      requestTimer.unref?.();
       res.once('close', onRequestClose);
       if (clientGone(res)) onRequestClose();
 
@@ -3404,6 +3422,10 @@ export function createProxyRequestListener({
           const modelCheck = clientUsage.checkQuota(client, clientEntry, parsedBody.model);
           if (!modelCheck.allowed) {
             fairShare.release(keyId);
+            res.off('close', onRequestClose);
+            accountManager.endSession(sessionId, true);
+            if (openEntry) hooks.onRequestEnd?.(reqId, { method: req.method, path: req.url, status: 403, model, sessionId, client });
+            openEntry = null;
             res.writeHead(modelCheck.status || 403, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
               type: 'error',
@@ -3501,6 +3523,10 @@ export function createProxyRequestListener({
       // forwardRequest, and the inner `finally` calls onRequestEnd after the
       // response has streamed.
       answerUnhandled(res);
+    } finally {
+      clearTimeout(uploadTimer);
+      clearTimeout(requestTimer);
+      releaseBudget?.();
     }
   };
 }
@@ -3602,6 +3628,8 @@ function clientGoneError() {
 // timer is cleared the moment the request's signal aborts, so the request (and
 // its buffered body) is not retained for a retry nobody is waiting for.
 function waitForRetry(ms, signal) {
+  // Positive jitter never retries before the upstream Retry-After deadline.
+  ms += Math.floor(Math.random() * Math.min(1000, ms * 0.1));
   return new Promise(resolve => {
     if (signal?.aborted) { resolve(); return; }
     const finish = () => { clearTimeout(timer); signal?.removeEventListener('abort', finish); resolve(); };
@@ -3666,7 +3694,7 @@ function relayStream(req, res, upstream, sx) {
     // The client's identity on this path is its bearer; x-api-key is how it
     // authenticated to THIS proxy, so relaying it would hand the operator's
     // proxy key to upstream.
-    if (lk === 'x-api-key') continue;
+    if (lk === 'x-api-key' || lk === 'proxy-authorization') continue;
     headers[key] = value;
   }
 
@@ -3733,7 +3761,7 @@ function relayStream(req, res, upstream, sx) {
  */
 export function resolveUpgradeAuth(req, socket, proxyConfig) {
   const auth = resolveClientAuth(proxyConfig, req?.headers?.['x-api-key']);
-  if (auth.ok) return auth;
+  if (auth.ok || req?.headers?.['x-api-key']) return auth;
   // Loopback is exempt from the key requirement, exactly as the HTTP and
   // CONNECT gates are — with the request path's two conditions on top, for
   // the same actor: a web page in the operator's browser. A page can open a
@@ -3779,7 +3807,7 @@ export function relayUpgrade(req, socket, head, upstream, sx, { client = null, c
     // the handshake. Only 'host' (the client transport reconstructs it from
     // `target`), h2 pseudo-headers and the proxy's own x-api-key (the client's
     // credential to us, not to upstream) are dropped.
-    if (lk.startsWith(':') || lk === 'host' || lk === 'x-api-key') continue;
+    if (lk.startsWith(':') || lk === 'host' || lk === 'x-api-key' || lk === 'proxy-authorization') continue;
     headers[key] = value;
   }
 
@@ -3871,20 +3899,28 @@ async function refuseOversizedBody(req, res) {
 /**
  * Relay a request to upstream with no header rewriting — pure passthrough.
  */
-async function relayRaw(req, res, upstream, sx, maxBodyBytes = DEFAULT_MAX_BODY_BYTES) {
+async function relayRaw(req, res, upstream, sx, maxBodyBytes, budget) {
+  const release = budget.acquire();
+  if (!release) { res.writeHead(503, { 'Retry-After': '1' }); res.end(); return; }
+  const ctrl = new AbortController();
+  const onClose = () => { if (!res.writableEnded) ctrl.abort(new Error('client disconnected')); };
+  const timer = setTimeout(() => { ctrl.abort(new Error('token relay deadline')); req.destroy(); res.destroy(); }, 30_000);
+  timer.unref?.(); res.once('close', onClose);
+  try {
   const bodyChunks = [];
   let bodyBytes = 0;
   for await (const chunk of req) {
     bodyBytes += chunk.length;
     // Same cap as the forward path: this buffers too, and a token exchange is
     // a few hundred bytes.
-    if (bodyBytes > maxBodyBytes) { await refuseOversizedBody(req, res); return; }
+    if (bodyBytes > maxBodyBytes || !release.reserve(chunk.length)) { await refuseOversizedBody(req, res); return; }
     bodyChunks.push(chunk);
   }
   const body = Buffer.concat(bodyChunks);
 
   try {
     const upstreamRes = await upstreamFetch(`${upstream}${req.url}`, {
+      signal: ctrl.signal,
       method: req.method,
       headers: {
         'content-type': req.headers['content-type'] || 'application/json',
@@ -3894,7 +3930,7 @@ async function relayRaw(req, res, upstream, sx, maxBodyBytes = DEFAULT_MAX_BODY_
       body: body.length > 0 ? body : undefined,
     }, sx, sx?.useByDefault());
 
-    const responseBody = await upstreamRes.text();
+    const responseBody = await collectIdleBody(upstreamRes.body);
     const responseHeaders = {};
     for (const [key, value] of upstreamRes.headers.entries()) {
       // `.text()` already decompressed the body, so drop content-encoding and
@@ -3913,6 +3949,8 @@ async function relayRaw(req, res, upstream, sx, maxBodyBytes = DEFAULT_MAX_BODY_
       res.end(JSON.stringify({ type: 'error', error: { type: 'proxy_error', message: 'Upstream unreachable' } }));
     }
   }
+  } finally { clearTimeout(timer); res.off('close', onClose); release(); }
+
 }
 
 
@@ -4517,6 +4555,11 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
   // Credential presentation is provider-specific: Anthropic OAuth and Codex
   // both use a bearer token, Anthropic API keys use x-api-key, and Codex also
   // needs ChatGPT-Account-Id to scope the token to one account.
+  if (ctx.clientEntry?.allowedProviders && !ctx.clientEntry.allowedProviders.includes(providerOf(account))) {
+    ctx.status = 403;
+    denyClientPolicy(res, { error: 'client key is not authorized for the selected provider' });
+    return;
+  }
   applyAuthHeaders(headers, account);
 
   const requestProvider = ctx.requestProvider || ctx.provider || DEFAULT_PROVIDER;
@@ -4593,6 +4636,10 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
   const rewrittenModel = parseRequestModel(sendBody);
   if (rewrittenModel) {
     ctx.model = rewrittenModel;
+    if (ctx.clientEntry && ctx.clientUsage) {
+      const policy = ctx.clientUsage.checkQuota(ctx.client, ctx.clientEntry, rewrittenModel);
+      if (!policy.allowed) { ctx.status = policy.status || 403; denyClientPolicy(res, policy); return; }
+    }
   }
 
   // If the body changed length (sanitize, model rewrite, or field strip), update
@@ -4621,6 +4668,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     if (sendBody.length > 0) l.body('REQUEST BODY', sendBody, req.headers['content-type']);
   };
 
+  let ownsRecoveryProbe = false;
   try {
     // Storm control: pace requests onto a freshly-switched account so a failover
     // burst doesn't slam it all at once and cascade (issue #84). The slot is held
@@ -4643,8 +4691,17 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       ctx.tried.add(account.index);
       return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
     }
+    const attemptStart = performance.now();
     let upstreamRes;
     let admittedLoad = 0;
+    const halfOpen = account.circuitBreakerUntil > 0 && account.circuitBreakerUntil <= Date.now();
+    if (halfOpen && account.halfOpenInFlight) {
+      accountManager.release(account.index, { successful: false });
+      ctx.status = 503;
+      res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '1' });
+      res.end(JSON.stringify({ error: { message: 'Backend recovery probe in progress' } })); return;
+    }
+    if (halfOpen) { account.halfOpenInFlight = true; ownsRecoveryProbe = true; }
     try {
       upstreamRes = await upstreamFetch(upstreamUrl, {
         method,
@@ -4656,6 +4713,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         redirect: 'manual',
       }, sx, route);
     } finally {
+      ctx.metrics?.observeHeaders((performance.now() - attemptStart) / 1000);
       admittedLoad = accountManager.release(account.index,
         { successful: !!upstreamRes && upstreamRes.status < 400 }) || 0;
     }
@@ -4673,12 +4731,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // this is what lets a revalidation probe (a throttled account selected by
     // _selectProbe) clear its own hold and return the fleet to service.
     if (upstreamRes.status !== 429) accountManager.clearRateLimited(account.index);
-    if (upstreamRes.status < 400) {
-      accountManager.clearIdentityVerification(account.index);
-      accountManager.recordAccountSuccess(account);
-      account.consecutiveErrors = 0;
-      account.circuitBreakerUntil = 0;
-    }
+
     if (upstreamRes.status >= 500) {
       account.consecutiveErrors = (account.consecutiveErrors || 0) + 1;
       if (account.consecutiveErrors >= 3) {
@@ -5051,7 +5104,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     }
 
     if (upstreamRes.status >= 400) {
-      const buf = bufferedResponseBody ?? Buffer.from(await upstreamRes.arrayBuffer());
+      const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
       const l = getLog();
       if (l) { l.body('RESPONSE BODY', buf, contentType); l.end(); }
       res.end(buf);
@@ -5070,27 +5123,12 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
           ctx.onUsage?.(inTok, outTok);
           accountManager.recordTokenUsage(account.index, ctx.sessionId, ctx.model, usage);
         });
-        const stream = Readable.fromWeb(upstreamRes.body);
-        const onClose = () => {
-          stream.destroy();
-          transform.destroy();
-        };
-        res.once('close', onClose);
-        stream.pipe(transform).pipe(res);
-        await new Promise((resolve, reject) => {
-          transform.on('end', resolve);
-          transform.on('error', reject);
-          stream.on('error', reject);
-        }).catch(err => {
-          console.error('[Agent-LB] Stream translation error:', err.message);
-        }).finally(() => {
-          res.off('close', onClose);
-        });
+        await pipeline(Readable.from(idleBody(upstreamRes.body)), transform, res);
         l?.end();
         ctx.delivered = answeredStatus(upstreamRes.status);
         return;
       } else {
-        const buf = bufferedResponseBody ?? Buffer.from(await upstreamRes.arrayBuffer());
+        const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
         let finalBuf = buf;
         try {
           const translated = translateCodexResponsesToOpenAIResponse(buf, ctx.originalModel || ctx.model);
@@ -5119,29 +5157,12 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
           accountManager.recordTokenUsage(account.index, ctx.sessionId, ctx.model, usage);
         });
         const openAIToAnthropic = createOpenAIToAnthropicTransformStream(ctx.model);
-        const stream = Readable.fromWeb(upstreamRes.body);
-        const onClose = () => {
-          stream.destroy();
-          codexToOpenAI.destroy();
-          openAIToAnthropic.destroy();
-        };
-        res.once('close', onClose);
-        stream.pipe(codexToOpenAI).pipe(openAIToAnthropic).pipe(res);
-        await new Promise((resolve, reject) => {
-          openAIToAnthropic.on('end', resolve);
-          openAIToAnthropic.on('error', reject);
-          codexToOpenAI.on('error', reject);
-          stream.on('error', reject);
-        }).catch(err => {
-          console.error('[Agent-LB] Stream translation error:', err.message);
-        }).finally(() => {
-          res.off('close', onClose);
-        });
+        await pipeline(Readable.from(idleBody(upstreamRes.body)), codexToOpenAI, openAIToAnthropic, res);
         l?.end();
         ctx.delivered = answeredStatus(upstreamRes.status);
         return;
       } else {
-        const buf = bufferedResponseBody ?? Buffer.from(await upstreamRes.arrayBuffer());
+        const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
         let finalBuf = buf;
         try {
           const openAIObj = translateCodexResponsesToOpenAIResponse(buf, ctx.originalModel || ctx.model);
@@ -5163,20 +5184,12 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       if (isStreaming) {
         const l = getLog();
         const transform = createOpenAIToAnthropicTransformStream(ctx.model);
-        const stream = Readable.fromWeb(upstreamRes.body);
-        stream.pipe(transform).pipe(res);
-        await new Promise((resolve, reject) => {
-          transform.on('end', resolve);
-          transform.on('error', reject);
-          stream.on('error', reject);
-        }).catch(err => {
-          console.error('[Agent-LB] Stream translation error:', err.message);
-        });
+        await pipeline(Readable.from(idleBody(upstreamRes.body)), transform, res);
         l?.end();
         ctx.delivered = answeredStatus(upstreamRes.status);
         return;
       } else {
-        const buf = bufferedResponseBody ?? Buffer.from(await upstreamRes.arrayBuffer());
+        const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
         let finalBuf = buf;
         try {
           const translated = translateOpenAIToAnthropicResponse(buf, ctx.model);
@@ -5197,20 +5210,12 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       if (isStreaming) {
         const l = getLog();
         const transform = createAnthropicToOpenAITransformStream(ctx.model);
-        const stream = Readable.fromWeb(upstreamRes.body);
-        stream.pipe(transform).pipe(res);
-        await new Promise((resolve, reject) => {
-          transform.on('end', resolve);
-          transform.on('error', reject);
-          stream.on('error', reject);
-        }).catch(err => {
-          console.error('[Agent-LB] Stream translation error:', err.message);
-        });
+        await pipeline(Readable.from(idleBody(upstreamRes.body)), transform, res);
         l?.end();
         ctx.delivered = answeredStatus(upstreamRes.status);
         return;
       } else {
-        const buf = bufferedResponseBody ?? Buffer.from(await upstreamRes.arrayBuffer());
+        const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
         let finalBuf = buf;
         try {
           const translated = translateAnthropicToOpenAIResponse(buf, ctx.model);
@@ -5247,7 +5252,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       }
       l?.end();
     } else {
-      const buf = bufferedResponseBody ?? Buffer.from(await upstreamRes.arrayBuffer());
+      const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
       extractUsageFromBody(buf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
       const l = getLog();
       if (l) { l.body('RESPONSE BODY', buf, contentType); l.end(); }
@@ -5371,6 +5376,12 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // sees a broken response and retries instead of hanging on an open socket.
       ctx.proxyClosed = true;
       res.destroy();
+    }
+  } finally {
+    if (ownsRecoveryProbe) account.halfOpenInFlight = false;
+    if (ctx.delivered && ctx.status < 400 && ctx.account === account.name) {
+      accountManager.clearIdentityVerification(account.index);
+      accountManager.recordAccountSuccess(account);
     }
   }
 }
@@ -5764,4 +5775,40 @@ function computeRetryAfter(accounts) {
     }
   }
   return soonest === Infinity ? 60 : Math.max(1, Math.ceil(soonest / 1000));
+}
+
+function denyClientPolicy(res, policy) {
+  res.writeHead(policy.status || 403, { 'Content-Type': 'application/json', ...(policy.retryAfter ? { 'Retry-After': String(policy.retryAfter) } : {}) });
+  res.end(JSON.stringify({ error: { type: 'permission_error', message: policy.error } }));
+}
+
+export async function* idleBody(body, timeoutMs = resolveBodyIdleTimeout()) {
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await readWithIdleTimeout(reader, timeoutMs);
+      if (done) return;
+      yield value;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+}
+
+async function collectIdleBody(body) {
+  const chunks = [];
+  for await (const chunk of idleBody(body)) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+// A restricted credential may only use metered inference requests: an opaque
+// relay cannot enforce provider/model/token policies on the tunneled traffic.
+export function relayPolicyAllowed(auth, tracker = new ClientUsageTracker()) {
+  if (!auth.ok) return false;
+  const entry = auth.entry;
+  if (!entry) return true;
+  if (!tracker.checkQuota(auth.client, entry).allowed) return false;
+  return !entry.allowedProviders?.length && !entry.allowedModels?.length &&
+    !entry.maxDailyTokens && !entry.maxMonthlyTokens;
 }
