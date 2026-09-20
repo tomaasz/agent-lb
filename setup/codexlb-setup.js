@@ -170,7 +170,7 @@ function checkConnectionNative(urlStr, key, insecure) {
     let parsed;
     try {
       parsed = new URL('/backend-api/codex/models', urlStr);
-    } catch (e) {
+    } catch (_e) {
       return reject(new Error(`Niepoprawny format URL: ${urlStr}`));
     }
 

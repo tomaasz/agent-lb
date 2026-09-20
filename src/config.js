@@ -1,3 +1,4 @@
+import { validateSubstitutionPolicy } from './model-substitution.js';
 import { readFile, open, mkdir, chmod, rename, unlink, realpath } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -108,6 +109,7 @@ export function createDefaultConfig() {
     distributeSessions: 'adaptive',
     expiryRouting: { enabled: true, tolerance: 1.5, preempt: true },
     crossProviderFallback: true,
+    fallbackPolicy: { mode: 'explicit', rules: [] },
     autoHealthCheck: {
       enabled: true,
       intervalSeconds: 900,
@@ -146,6 +148,7 @@ export async function loadConfig() {
     // so a config written before the field existed — or edited by hand — is given
     // ids here, before anything can read one. The next save persists them.
     ensureAccountIds(config.accounts);
+    validateSubstitutionPolicy(config.fallbackPolicy);
     applyUpstreamProxy(config);
     return config;
   } catch (err) {

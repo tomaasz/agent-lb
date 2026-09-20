@@ -52,3 +52,66 @@ Rollback: przywróć poprzednią wersję kodu i zrestartuj usługę; nie cofnij 
 rotacji poświadczeń. Po naprawie rozważ rotację wcześniej ujawnionych kluczy, ustalając
 sposób przekazania nowych kluczy klientom. Automatyczna rotacja wszystkich kluczy
 odłączyłaby istniejące stacje.
+
+## Uzupełnienie audytu: polityka, obserwowalność i podział kodu
+
+Nowe konfiguracje mają `fallbackPolicy.mode: "explicit"`. Każda zmiana nazwy
+modelu, również wskutek mapowania lub fallbacku, wymaga dokładnej reguły:
+
+```json
+{
+  "fallbackPolicy": {
+    "mode": "explicit",
+    "rules": [
+      { "fromModel": "claude-custom", "toProvider": "codex", "toModel": "gpt-target" }
+    ]
+  }
+}
+```
+
+Nazwy w przykładzie zastąp modelami obsługiwanymi przez własne backendy.
+Niedozwolona zamiana zwraca 403 przed wywołaniem upstream. Reguła nie omija
+`allowedModels` ani `allowedProviders` klucza. Istniejące konfiguracje bez polityki
+zachowują tryb `legacy`; migracja wymaga spisania używanych aliasów i zamian.
+Zmiana dostawcy bez zmiany nazwy modelu nadal podlega `allowedProviders`.
+
+`agentlb_time_to_first_token_seconds` mierzy czas od przyjęcia żądania do pierwszego
+rozpoznanego fragmentu treści, rozumowania lub narzędzia ze strumienia upstream.
+Pomija ramki metadanych. To pomiar otrzymania tokenu przez proxy, również jeśli
+proxy buforuje odpowiedź dla klienta niestrumieniowego; nie mierzy dostarczenia
+tokenu do klienta. Odpowiedzi bez rozpoznanych ramek SSE nie dodają obserwacji.
+
+Administracyjne `/alerts` oraz metryka `agentlb_alert` pokazują alarm, gdy ponad 10%
+z co najmniej 20 zakończonych żądań w ostatnich pięciu minutach ma status 5xx lub
+499. Historia jest ograniczona do 10 000 żądań na proces. Monitorowanie zewnętrzne:
+`monitoring/alerts.yml` zawiera reguły Prometheus dla niedostępności, błędów i TTFT.
+Operator musi załadować reguły, skonfigurować scrape z kluczem administratora oraz
+odbiorców Alertmanager; samo dodanie pliku nie włącza powiadomień.
+
+Warstwy wydzielone z serwera: `access-control.js` (uwierzytelnienie),
+`client-key-admin.js` (zarządzanie kluczami), `control-body.js` (limit body),
+`stream-lifecycle.js` (timeout i zakończenie streamu), `first-token.js`
+(odczyt ramek metryki), `model-substitution.js` (polityka zamian).
+Tworzenie klucza zapisuje jeden kompletny wpis; obsługuje limity tokenów, termin
+ważności, modele i dostawców. Pusta lista oznacza brak ograniczenia danego typu.
+Usuwanie nie zwraca ani nie loguje poświadczenia.
+
+Weryfikacja obejmuje 24 równoległe duże żądania przy limicie dwóch aktywnych,
+odmowę niejawnej zamiany modelu, rozdzielone ramki SSE, alarmy i cykl życia klucza.
+Nie jest to benchmark pojemności produkcyjnej. CI sprawdza Node 20/22/24/26,
+lint bez ostrzeżeń i budowę obrazu; `package-lock.json` jest wersjonowany.
+
+## Pozostałe zależności operacyjne
+
+- HA wymaga wskazania hostów i decyzji: jedna aktywna instancja z zapasową albo
+  współdzielony stan i koordynacja wielu aktywnych replik.
+- Rotacja istniejących kluczy wymaga listy klientów i sposobu dystrybucji;
+  endpoint rotacji jest dostępny, lecz nie zmienia automatycznie konfiguracji stacji.
+- Migracja istniejącej instalacji na jawną politykę zamian wymaga zatwierdzenia
+  obsługiwanych par modeli. Domyślna polityka nowych instalacji jest już jawna.
+
+Starsze wersje mogły zapisać dwa wpisy tego samego klienta: pierwszy bez polityk.
+Przed wdrożeniem sprawdź duplikaty nazw i kluczy bez wypisywania poświadczeń.
+Odtwórz taki wpis przez create/upsert z kompletem zamierzonych ograniczeń
+i zachowanym kluczem, jeśli nie planujesz jego rotacji. Sam restart lub rotacja
+nie naprawiają historycznego wpisu bez polityk.

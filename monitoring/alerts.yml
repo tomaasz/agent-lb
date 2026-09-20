@@ -1,0 +1,24 @@
+groups:
+  - name: agentlb
+    rules:
+      - alert: AgentLBUnavailable
+        expr: up{job="agent-lb"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: AgentLB cannot be scraped
+      - alert: AgentLBHighErrorRate
+        expr: agentlb_alert{name="high_error_rate"} == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: AgentLB error rate exceeds 10 percent with at least 20 recent requests
+      - alert: AgentLBSlowFirstToken
+        expr: histogram_quantile(0.95, sum by (le, instance) (rate(agentlb_time_to_first_token_seconds_bucket[5m]))) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: AgentLB p95 first token latency exceeds 30 seconds

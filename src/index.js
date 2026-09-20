@@ -384,6 +384,7 @@ async function serverCommand() {
     }
     // Pick up route table edits (agentlb route …, TUI editor, or a hand edit).
     config.routes = diskConfig.routes || [];
+    config.fallbackPolicy = diskConfig.fallbackPolicy;
     accountManager.setRoutes(config.routes);
     // Pick up a distributeSessions change (hand edit or another writer) the same
     // way routes, sx, probe and warmup are picked up below.
