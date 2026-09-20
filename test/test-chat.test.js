@@ -636,7 +636,7 @@ describe('Test Chat & Playground Support', () => {
       assert.equal(capturedPayload.model, 'gpt-5.6-sol');
 
       // Also test /backend-api/codex/models with query params (client_version)
-      const resModels = await fetch(`http://127.0.0.1:${proxyPort}/backend-api/codex/models?client_version=0.1.0`);
+      const resModels = await fetch(`http://127.0.0.1:${proxyPort}/backend-api/codex/models?client_version=0.1.0`, { headers: { 'x-api-key': 'tc-test-admin' } });
       assert.equal(resModels.status, 200);
       const modelsJson = await resModels.json();
       assert.ok(Array.isArray(modelsJson.data));

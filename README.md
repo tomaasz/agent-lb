@@ -201,10 +201,10 @@ http://your-server:3456/dashboard
 
 ## 🛡️ Reverse Proxy & Tailscale
 
-`AgentLB` works seamlessly behind reverse proxies and VPNs like **Tailscale**.
+`AgentLB` supports reverse proxies and **Tailscale**. Keep `proxy.trustLoopback` and `proxy.trustTailnet` false behind a reverse proxy. Every client must send its own key; management endpoints require the administrator key. See [security and deployment notes](docs/audit-hardening.md).
 
 ### Tailscale Tailnet Authentication
-When accessed from your Tailscale network (e.g., `*.ts.net`), `AgentLB` can automatically trust connections from authenticated Tailnet peers. Configure allowed hostnames via environment variable:
+Tailnet address exemptions are disabled by default. An explicit `proxy.trustTailnet: true` only admits direct Tailnet peers for inference; it never grants administrator access and never trusts forwarded identity headers. Configure allowed hostnames via environment variable:
 
 ```bash
 export AGENT_LB_HOST="agentlb.your-tailnet.ts.net"
@@ -215,6 +215,7 @@ export AGENT_LB_HOST="agentlb.your-tailnet.ts.net"
 ```caddy
 claude.your-domain.com {
     reverse_proxy localhost:3456 {
+        header_up -X-From-Tailnet
         header_up Host {host}
         header_up X-Real-IP {remote_host}
         header_up X-Forwarded-Proto {scheme}
@@ -236,7 +237,8 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-From-Tailnet "";
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }

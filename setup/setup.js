@@ -118,7 +118,7 @@ function checkUrlOnce(urlPath, urlStr, key) {
     let parsed;
     try {
       parsed = new URL(urlPath, urlStr);
-    } catch (e) {
+    } catch (_e) {
       return reject(new Error(`Niepoprawny format URL: ${urlStr}`));
     }
 
@@ -440,7 +440,7 @@ async function main() {
         fs.copyFileSync(credsPath, bakPath);
         console.log(`[OK] Wykryto sesję logowania OAuth w .credentials.json — utworzono kopię zapasową (${path.basename(bakPath)}).`);
       }
-    } catch (e) {
+    } catch (_e) {
       // Ignoruj jeśli nie udało się skopiować
     }
   }

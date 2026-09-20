@@ -5,14 +5,14 @@ LABEL org.opencontainers.image.description="Universal Multi-Account Load Balance
 
 WORKDIR /app
 
-# Install curl and git for health checks and setup sync
-RUN apk add --no-cache curl git
+# Install tools used by setup scripts and repository verification
+RUN apk add --no-cache bash curl git
 
 # Copy package descriptors first for caching
-COPY package.json ./
+COPY package.json package-lock.json ./
 
 # Install production dependencies (zero external runtime dependencies by default)
-RUN npm install --omit=dev
+RUN npm ci --omit=dev
 
 # Copy application files
 COPY src/ ./src/
@@ -39,7 +39,7 @@ EXPOSE 3456
 USER node
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3456/agent-lb/status || curl -f http://localhost:3456/status || exit 1
+  CMD node --input-type=module -e 'import {readFileSync} from "node:fs"; const c=JSON.parse(readFileSync(process.env.AGENT_LB_CONFIG)); const r=await fetch("http://127.0.0.1:"+(process.env.AGENT_LB_PORT||3456)+"/ready",{headers:{"x-api-key":c.proxy.apiKey},signal:AbortSignal.timeout(4000)}); process.exit(r.ok?0:1)'
 
 ENTRYPOINT ["node", "src/index.js"]
 CMD ["headless"]

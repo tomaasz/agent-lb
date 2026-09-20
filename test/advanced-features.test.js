@@ -165,7 +165,7 @@ test('Faza 3: Circuit Breaker & Graceful Drain Operations', async () => {
 
   try {
     // Initial /ready probe -> 200
-    let readyRes = await fetch(`http://127.0.0.1:${proxyPort}/ready`);
+    let readyRes = await fetch(`http://127.0.0.1:${proxyPort}/ready`, { headers: { 'x-api-key': 'admin-key' } });
     assert.equal(readyRes.status, 200);
     let readyJson = await readyRes.json();
     assert.equal(readyJson.ready, true);
@@ -181,7 +181,7 @@ test('Faza 3: Circuit Breaker & Graceful Drain Operations', async () => {
     assert.equal(drainJson.draining, true);
 
     // /ready probe now returns 503 during drain
-    readyRes = await fetch(`http://127.0.0.1:${proxyPort}/ready`);
+    readyRes = await fetch(`http://127.0.0.1:${proxyPort}/ready`, { headers: { 'x-api-key': 'admin-key' } });
     assert.equal(readyRes.status, 503);
     readyJson = await readyRes.json();
     assert.equal(readyJson.ready, false);
@@ -195,7 +195,7 @@ test('Faza 3: Circuit Breaker & Graceful Drain Operations', async () => {
     assert.equal(cancelRes.status, 200);
 
     // /ready probe returns 200 again
-    readyRes = await fetch(`http://127.0.0.1:${proxyPort}/ready`);
+    readyRes = await fetch(`http://127.0.0.1:${proxyPort}/ready`, { headers: { 'x-api-key': 'admin-key' } });
     assert.equal(readyRes.status, 200);
   } finally {
     await new Promise(resolve => proxyServer.close(resolve));

@@ -696,6 +696,10 @@ export class AccountManager {
    * satisfies both, selection degrades to executor-only routing so the main
    * request keeps flowing (upstream then fails just the advisor call).
    */
+  getActiveCount(provider = null) {
+    return this.accounts.filter(a => (!provider || providerOf(a) === provider) && this._isAvailable(a)).length;
+  }
+
   getActiveAccount(exclude = null, model = null, advisorModel = null, sessionId = null, provider = DEFAULT_PROVIDER, decision = null) {
     // Selection reads this.currentIndex as "where the fleet is". With more than
     // one provider that is a single slot for several fleets, so a request whose
@@ -2966,27 +2970,14 @@ export class AccountManager {
   _pickBestAvailable(exclude = null, model = null, advisorModel = null) {
     let best = null;
     let bestPriority = Infinity;
-    let bestPressure = Infinity;
-    let bestReset = Infinity;
 
     const candidates = this._bandedCandidates(exclude, model, advisorModel);
-    // One clock for every candidate, as in _pickLeastLoaded.
-    const now = Date.now();
-    const pressures = this._rankedPressures(candidates, model, now);
-    candidates.forEach((account, i) => {
+    candidates.forEach((account) => {
       const priority = account.priority || 0;
-      const pressure = pressures[i];
-      // Rank by the reset of the weekly window that governs THIS model (Fable and
-      // Sonnet have their own, and a family can be metered by a learned scoped
-      // bucket), so a Fable request spends the account whose Fable window
-      // refreshes soonest while preserving accounts that reset later for
-      // Opus/Sonnet. Unknown reset sorts first so we probe and fill it in.
-      const weeklyReset = this._rankedReset(account, model);
+      // Preserve explicit priority, then stable account order.
       if (priority < bestPriority
           || (priority === bestPriority && account.index < (best?.index ?? Infinity))) {
         bestPriority = priority;
-        bestPressure = pressure;
-        bestReset = weeklyReset;
         best = account;
       }
     });

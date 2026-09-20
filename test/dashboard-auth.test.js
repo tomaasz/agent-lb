@@ -305,30 +305,30 @@ describe('Dashboard Authentication and Layout', () => {
       });
       assert.equal(wrongKeysRes.status, 401);
 
-      // Client key on /api/keys succeeds under unified authentication
+      // A client key must never gain access to key administration
       const clientKeysRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/keys`, {
         headers: {
           'x-forwarded-for': '203.0.113.195',
           'x-api-key': 'worker-secret-1234'
         },
       });
-      assert.equal(clientKeysRes.status, 200);
+      assert.equal(clientKeysRes.status, 403);
       const clientKeysData = await clientKeysRes.json();
-      assert.equal(clientKeysData.ok, true);
-      assert.equal(clientKeysData.primaryKey, 'admin-secret');
+      assert.equal(clientKeysData.ok, false);
+      assert.equal(clientKeysData.primaryKey, undefined);
 
-      // Authenticated admin on /api/keys must receive full key, rawKey, and primaryKey
+      // Admin lists masked credentials; secrets are returned only on creation/rotation
       const adminKeysRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/keys`, {
         headers: { 'x-api-key': 'admin-secret' },
       });
       assert.equal(adminKeysRes.status, 200);
       const adminKeysData = await adminKeysRes.json();
       assert.equal(adminKeysData.ok, true);
-      assert.equal(adminKeysData.primaryKey, 'admin-secret');
+      assert.equal(adminKeysData.primaryKey, undefined);
       assert.equal(adminKeysData.keys.length, 1);
       assert.equal(adminKeysData.keys[0].name, 'worker');
-      assert.equal(adminKeysData.keys[0].key, 'worker-secret-1234');
-      assert.equal(adminKeysData.keys[0].rawKey, 'worker-secret-1234');
+      assert.equal(adminKeysData.keys[0].key, 'work...1234');
+      assert.equal(adminKeysData.keys[0].rawKey, undefined);
       assert.equal(adminKeysData.keys[0].maskedKey, 'work...1234');
 
       // /api/auth/verify: Admin key succeeds as primary admin
@@ -341,18 +341,18 @@ describe('Dashboard Authentication and Layout', () => {
       assert.equal(authAdminData.role, 'admin');
       assert.equal(authAdminData.isPrimary, true);
 
-      // /api/auth/verify: Client key also succeeds under unified authentication
+      // /api/auth/verify: Client key cannot open the administrative dashboard
       const authClientRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/auth/verify`, {
         headers: {
           'x-forwarded-for': '203.0.113.195',
           'x-api-key': 'worker-secret-1234'
         }
       });
-      assert.equal(authClientRes.status, 200);
+      assert.equal(authClientRes.status, 403);
       const authClientData = await authClientRes.json();
-      assert.equal(authClientData.ok, true);
-      assert.equal(authClientData.role, 'admin');
-      assert.equal(authClientData.clientName, 'worker');
+      assert.equal(authClientData.ok, false);
+      assert.equal(authClientData.role, undefined);
+      assert.equal(authClientData.clientName, undefined);
 
       // /api/auth/verify: Invalid key returns 401
       const authInvalidRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/auth/verify`, {

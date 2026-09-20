@@ -1,3 +1,4 @@
+import { modelGlobMatches } from './model.js';
 // Per-client usage accounting (proxy.clientKeys).
 //
 // One shared proxy.apiKey means every consumer of a team proxy looks the same:
@@ -154,8 +155,7 @@ export class ClientUsageTracker {
     if (Array.isArray(keyConfig.allowedModels) && keyConfig.allowedModels.length > 0 && requestedModel) {
       const allowed = keyConfig.allowedModels.some(m => {
         if (m === '*') return true;
-        const pat = m.replace(/\*+$/, '');
-        return m === requestedModel || requestedModel.startsWith(pat) || requestedModel.includes(pat);
+        return typeof m === 'string' && modelGlobMatches(m, requestedModel);
       });
       if (!allowed) {
         return {

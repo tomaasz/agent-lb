@@ -862,7 +862,7 @@ const PAGE = `<!doctype html>
         </svg>
       </div>
       <h1 data-i18n="loginTitle">Panel Zarządzania</h1>
-      <p data-i18n="loginSubtitle">Wprowadź hasło, klucz administracyjny lub dowolny klucz stacji roboczej, aby uzyskać dostęp.</p>
+      <p data-i18n="loginSubtitle">Wprowadź klucz administracyjny, aby zarządzać usługą.</p>
     </div>
     <div id="keyboxErr" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(239,68,68,0.12);border:1px solid var(--bad);color:var(--bad);font-size:13px;text-align:left"></div>
     <div id="keyboxInfo" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(63,185,80,0.12);border:1px solid var(--ok);color:var(--ok);font-size:13px;text-align:left"></div>
@@ -1678,7 +1678,7 @@ const PAGE = `<!doctype html>
       themeLight: '☀️ Jasny',
       langBtn: '🇬🇧 EN',
       loginTitle: 'Panel Zarządzania',
-      loginSubtitle: 'Wprowadź hasło, klucz administracyjny lub dowolny klucz stacji roboczej, aby uzyskać dostęp.',
+      loginSubtitle: 'Wprowadź klucz administracyjny, aby zarządzać usługą.',
       loginKeyLabel: 'Klucz dostępu (administracyjny lub stacji roboczej)',
       loginKeyPlaceholder: 'tc-...',
       loginButton: 'Zaloguj się',
@@ -4296,7 +4296,7 @@ ${SHARED_HELPERS}
   function renderClientKeys(keys, clients) {
     var list = keys || [];
     list.forEach(function (k) {
-      var unmasked = (k.rawKey && !k.rawKey.includes('...')) ? k.rawKey : ((k.key && !k.key.includes('...')) ? k.key : '');
+      var unmasked = cachedClientKeys[k.name] || '';
       if (unmasked) {
         cachedClientKeys[k.name] = unmasked;
       }
@@ -4389,7 +4389,7 @@ ${SHARED_HELPERS}
     // 2. Render each workstation card
     list.forEach(function (k) {
       var card = el('div', 'workstation-card client-key-card');
-      var raw = (k.rawKey && !k.rawKey.includes('...')) ? k.rawKey : ((k.key && !k.key.includes('...')) ? k.key : (cachedClientKeys[k.name] || k.rawKey || k.key || ''));
+      var raw = cachedClientKeys[k.name] || '';
       if (raw && !raw.includes('...')) {
         cachedClientKeys[k.name] = raw;
       }
@@ -4448,6 +4448,7 @@ ${SHARED_HELPERS}
       var acts = el('div', 'card-actions');
 
       var btnSetup = el('button', 'btn btn-xs btn-accent', t('btnKeyConnect'));
+      btnSetup.disabled = !raw;
       btnSetup.title = currentLang === 'pl' ? 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tej stacji' : 'Show installer commands (Linux, Windows, VS Code) for this workstation';
       btnSetup.addEventListener('click', function () {
         currentQuickKey = raw;
@@ -4517,7 +4518,7 @@ ${SHARED_HELPERS}
       var bottomRow = el('div', 'workstation-footer');
       var keyWrap = el('div', 'workstation-key-box');
       keyWrap.appendChild(el('span', '', '🔑'));
-      var masked = isRevealed ? raw : (raw.length > 8 ? raw.slice(0, 5) + '••••••••' + raw.slice(-4) : '••••••••');
+      var masked = !raw ? (k.maskedKey || k.key || '***') : isRevealed ? raw : (raw.length > 8 ? raw.slice(0, 5) + '••••••••' + raw.slice(-4) : '••••••••');
       var keySpan = el('span', 'mono', masked);
       keySpan.style.fontSize = '11px';
       keyWrap.appendChild(keySpan);
@@ -4532,6 +4533,7 @@ ${SHARED_HELPERS}
       }
 
       var btnCopy = el('button', 'btn btn-xs', t('copyCmd'));
+      btnCopy.disabled = !raw;
       btnCopy.addEventListener('click', function () {
         copyToClipboard(raw, 'Klucz stacji ' + k.name);
       });
@@ -4697,12 +4699,10 @@ ${SHARED_HELPERS}
           .then(function (kr) { return kr.ok ? kr.json() : null; })
           .then(function (kd) {
             if (kd) {
-              if (kd.primaryKey && !kd.primaryKey.includes('...')) {
-                primaryAdminKey = kd.primaryKey;
-              }
+              primaryAdminKey = ''; // Never distribute the administrator credential to workstations.
               if (Array.isArray(kd.keys)) {
                 kd.keys.forEach(function (k) {
-                  var r = (k.rawKey && !k.rawKey.includes('...')) ? k.rawKey : ((k.key && !k.key.includes('...')) ? k.key : '');
+                  var r = cachedClientKeys[k.name] || '';
                   if (r) cachedClientKeys[k.name] = r;
                 });
                 renderClientKeys(kd.keys, s.clients);

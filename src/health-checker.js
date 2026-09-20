@@ -6,8 +6,10 @@
 // 2. Cooldown-aware: Skips accounts currently in a 429 / 5h quota hold until reset.
 // 3. Error backoff: Avoids hammering accounts with 403 org block or 400 SMS gates.
 // 4. Micro-ping: When probing is needed, uses max_tokens: 1 and the cheapest model
-//    (Haiku for Anthropic, GPT-5 Sol for Codex) — exactly 1 input + 1 output token.
+//    (Haiku for Anthropic, GPT-5 Sol for Codex). OAuth Responses does not
+//    guarantee a one-token generation; its deadline bounds probe duration.
 
+import { upstreamFetch } from './upstream-fetch.js';
 import { providerOf, applyAuthHeaders, upstreamFor } from './provider.js';
 
 export const DEFAULT_HEALTH_CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
@@ -21,7 +23,8 @@ export class FleetHealthChecker {
     trafficGracePeriodMs = DEFAULT_TRAFFIC_GRACE_PERIOD_MS,
     errorBackoffMs = DEFAULT_ERROR_BACKOFF_MS,
     configuredUpstream = null,
-    fetchFn = fetch,
+    fetchFn = upstreamFetch,
+    timeoutMs = 30_000,
     log = console.log,
     staggerMs = 1500,
   } = {}) {
@@ -32,6 +35,9 @@ export class FleetHealthChecker {
     this.errorBackoffMs = errorBackoffMs;
     this.configuredUpstream = configuredUpstream;
     this.fetchFn = fetchFn;
+    this.timeoutMs = timeoutMs;
+    this.controllers = new Set();
+    this.generation = 0;
     this.log = log;
     this.staggerMs = staggerMs;
 
@@ -49,11 +55,12 @@ export class FleetHealthChecker {
   }
 
   stop() {
+    this.generation++;
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
     }
-    this._running = false;
+    for (const controller of this.controllers) controller.abort(new Error('health check stopped'));
     this.nextRunAt = null;
   }
 
@@ -170,6 +177,18 @@ export class FleetHealthChecker {
    * @returns {Promise<{ ok: boolean, status: number, durationMs: number, tokensUsed: number, error?: string }>}
    */
   async probeAccount(account) {
+    const controller = new AbortController();
+    this.controllers.add(controller);
+    const timer = setTimeout(() => controller.abort(new Error('health check deadline exceeded')), this.timeoutMs);
+    try {
+      return await this._probeAccount(account, controller.signal);
+    } finally {
+      clearTimeout(timer);
+      this.controllers.delete(controller);
+    }
+  }
+
+  async _probeAccount(account, signal) {
     const provider = providerOf(account);
     const startTime = Date.now();
     let tokensUsed = 0;
@@ -199,6 +218,7 @@ export class FleetHealthChecker {
     }
 
     try {
+      signal.throwIfAborted();
       if (provider === 'anthropic') {
         const upstreamUrl = `${upstreamFor(account, this.configuredUpstream)}/v1/messages`;
         const model = 'claude-haiku-4-5-20251001';
@@ -225,6 +245,7 @@ export class FleetHealthChecker {
 
         const res = await this.fetchFn(upstreamUrl, {
           method: 'POST',
+          signal,
           headers: reqHeaders,
           body: JSON.stringify(payload)
         });
@@ -233,6 +254,7 @@ export class FleetHealthChecker {
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
           tokensUsed = (data.usage?.input_tokens || 1) + (data.usage?.output_tokens || 1);
+          signal.throwIfAborted();
           this.am.clearRateLimited(account.index);
           this.am.recordAccountSuccess(account);
           account.lastTest = {
@@ -369,6 +391,7 @@ export class FleetHealthChecker {
 
         const res = await this.fetchFn(upstreamUrl, {
           method: 'POST',
+          signal,
           headers: reqHeaders,
           body: JSON.stringify(payload)
         });
@@ -376,7 +399,8 @@ export class FleetHealthChecker {
         const durationMs = Date.now() - startTime;
         if (res.ok) {
           if (isOauth) {
-            const rawText = await res.text().catch(() => '');
+            const rawText = await res.text();
+            let completed = false;
             for (const line of rawText.split('\n')) {
               const trimmed = line.trim();
               if (!trimmed.startsWith('data:')) continue;
@@ -384,17 +408,23 @@ export class FleetHealthChecker {
               if (dataStr === '[DONE]') continue;
               try {
                 const item = JSON.parse(dataStr);
+                if (item.type === 'response.failed' || item.type === 'error' || item.type === 'response.incomplete' || item.response?.error) {
+                  throw new Error('health check generation failed');
+                }
+                if (item.type === 'response.completed') completed = true;
                 const u = item.usage || item.response?.usage;
                 if (u) {
                   tokensUsed = (u.input_tokens || u.prompt_tokens || 1) + (u.output_tokens || u.completion_tokens || 1);
                 }
-              } catch { /* skip non-JSON */ }
+              } catch (err) { if (!(err instanceof SyntaxError)) throw err; }
             }
+            if (!completed) throw new Error('health check stream ended without response.completed');
             if (tokensUsed <= 0) tokensUsed = 2;
           } else {
             const data = await res.json().catch(() => ({}));
             tokensUsed = (data.usage?.prompt_tokens || 1) + (data.usage?.completion_tokens || 1);
           }
+          signal.throwIfAborted();
           this.am.clearRateLimited(account.index);
           this.am.recordAccountSuccess(account);
           account.lastTest = {
@@ -490,7 +520,8 @@ export class FleetHealthChecker {
       }
     } catch (netErr) {
       const durationMs = Date.now() - startTime;
-      const errorMsg = `Network error: ${netErr.message}`;
+      const errorMsg = `Probe failed: ${netErr.message}`;
+      if (!signal.aborted) this.am.recordAccountFailure?.(account);
       account.lastTest = {
         ok: false,
         status: 0,
@@ -513,6 +544,7 @@ export class FleetHealthChecker {
       return { skipped: true, reason: 'cycle_already_in_progress' };
     }
 
+    const generation = this.generation;
     this._running = true;
     this.lastRunStartedAt = Date.now();
     this.nextRunAt = this.intervalMs > 0 ? this.lastRunStartedAt + this.intervalMs : null;
@@ -527,6 +559,7 @@ export class FleetHealthChecker {
 
     try {
       for (const account of accounts) {
+        if (generation !== this.generation) break;
         const evalResult = options.force
           ? { shouldProbe: !account.disabled, reason: 'forced' }
           : this.evaluateAccount(account);

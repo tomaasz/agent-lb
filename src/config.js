@@ -1,4 +1,5 @@
-import { readFile, open, mkdir, chmod, rename, unlink, realpath, stat } from 'node:fs/promises';
+import { validateSubstitutionPolicy } from './model-substitution.js';
+import { readFile, open, mkdir, chmod, rename, unlink, realpath } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
@@ -98,6 +99,8 @@ export function createDefaultConfig() {
   return {
     proxy: {
       port: 3456,
+      trustLoopback: false,
+      trustTailnet: false,
       apiKey: 'tc-' + randomBytes(24).toString('base64url'),
     },
     upstream: 'https://api.anthropic.com',
@@ -106,6 +109,7 @@ export function createDefaultConfig() {
     distributeSessions: 'adaptive',
     expiryRouting: { enabled: true, tolerance: 1.5, preempt: true },
     crossProviderFallback: true,
+    fallbackPolicy: { mode: 'explicit', rules: [] },
     autoHealthCheck: {
       enabled: true,
       intervalSeconds: 900,
@@ -144,6 +148,7 @@ export async function loadConfig() {
     // so a config written before the field existed — or edited by hand — is given
     // ids here, before anything can read one. The next save persists them.
     ensureAccountIds(config.accounts);
+    validateSubstitutionPolicy(config.fallbackPolicy);
     applyUpstreamProxy(config);
     return config;
   } catch (err) {
@@ -222,17 +227,12 @@ export async function acquireConfigLock(timeoutMs = 5000) {
       };
     } catch (err) {
       if (err.code === 'EEXIST') {
-        try {
-          const st = await stat(lockPath);
-          if (Date.now() - st.mtimeMs > 30000) {
-            await unlink(lockPath).catch(() => {});
-            continue;
-          }
-        } catch { /* ignore */ }
-        if (Date.now() - start > timeoutMs) {
-          console.warn(`[AgentLB] Breaking stale lock on ${lockPath}`);
-          await unlink(lockPath).catch(() => {});
-          continue;
+        // Never delete a lock merely because its owner is slow. A crashed
+        // owner requires explicit operator recovery after checking the PID.
+        if (Date.now() - start >= timeoutMs) {
+          const timeout = new Error('configuration lock timed out; update refused');
+          timeout.code = 'AGENTLB_CONFIG_LOCK_TIMEOUT';
+          throw timeout;
         }
         await new Promise(r => setTimeout(r, 50));
       } else {
@@ -251,12 +251,8 @@ let configUpdateChain = Promise.resolve();
  */
 export function atomicConfigUpdate(updater) {
   const run = async () => {
-    let release = null;
-    try {
-      release = await acquireConfigLock();
-    } catch (e) {
-      console.warn('[AgentLB] Warning: could not acquire config lock:', e.message);
-    }
+    await mkdir(dirname(getLockPath()), { recursive: true });
+    const release = await acquireConfigLock();
     try {
       const config = await loadConfig() || createDefaultConfig();
       await updater(config);
