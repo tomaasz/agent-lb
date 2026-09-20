@@ -21,7 +21,7 @@ import {
   oauthIdentityFields,
 } from './identity.js';
 import { resolveAccounts } from './resolve-accounts.js';
-import { loginCodex } from './codex-auth.js';
+import { loginCodex, loginCodexDeviceCode } from './codex-auth.js';
 import { syncAccountsFromDisk } from './sync-accounts.js';
 import { mergeAccountsForSave, syncRefreshedTokens, removedAccountIds, clearRemovedAccountIds } from './account-pairing.js';
 import { ensureAccountIds } from './account-id.js';
@@ -770,7 +770,11 @@ async function loginCodexCommand() {
   await loadOrCreateConfig();
   let creds;
   try {
-    creds = await loginCodex({ noBrowser: args.includes('--no-browser') });
+    if (args.includes('--device-auth')) {
+      creds = await loginCodexDeviceCode();
+    } else {
+      creds = await loginCodex({ noBrowser: args.includes('--no-browser') });
+    }
   } catch (err) {
     console.error(`Codex login failed: ${err.message}`);
     console.error('');
@@ -849,12 +853,14 @@ async function loginCommand() {
   console.log('  1. Claude subscription  (Pro, Max, Team, Enterprise)');
   console.log('  2. Anthropic API key    (Console API billing)');
   console.log('  3. Codex subscription   (ChatGPT Plus, Pro, Team)');
+  console.log('  4. Codex device code    (headless / SSH)');
   console.log('');
   const choice = await new Promise(resolve => rl.question('Choice [1]: ', resolve));
   rl.close();
 
   switch (choice.trim() || '1') {
     case '3': await loginCodexCommand(); break;
+    case '4': args.push('--device-auth'); await loginCodexCommand(); break;
     case '1': await loginOAuthCommand(); break;
     case '2': await loginApiCommand(); break;
     default:

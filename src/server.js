@@ -37,6 +37,7 @@ import {
 } from './oauth.js';
 import {
   buildCodexAuthUrl, exchangeCodexCode, importCodexCredentials,
+  requestDeviceCode, DEVICE_VERIFICATION_URL,
 } from './codex-auth.js';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -2214,6 +2215,169 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           state,
           provider: 'anthropic',
         }));
+        return;
+      }
+
+      // Device Code Flow: Start — request a device code from OpenAI
+      if (req.method === 'POST' && (normApiPath === '/oauth/device-start' || reqPath === '/agent-lb/oauth/device-start')) {
+        cleanExpiredOAuthStates();
+        let body;
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'invalid request body' }));
+          return;
+        }
+        const provider = body?.provider || 'codex';
+        if (provider !== 'codex') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Device code flow is only supported for the codex provider' }));
+          return;
+        }
+        try {
+          const dc = await requestDeviceCode();
+          // Store the pending device auth so device-poll can look it up.
+          pendingOAuthStates.set(dc.deviceAuthId, {
+            createdAt: Date.now(),
+            provider: 'codex',
+            type: 'device-code',
+            userCode: dc.userCode,
+            interval: dc.interval,
+            expiresAt: dc.expiresAt,
+          });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            ok: true,
+            deviceAuthId: dc.deviceAuthId,
+            userCode: dc.userCode,
+            verificationUrl: DEVICE_VERIFICATION_URL,
+            interval: dc.interval,
+            expiresAt: dc.expiresAt,
+          }));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Device code request failed: ' + err.message }));
+        }
+        return;
+      }
+
+      // Device Code Flow: Poll — check whether the user has approved the code
+      if (req.method === 'POST' && (normApiPath === '/oauth/device-poll' || reqPath === '/agent-lb/oauth/device-poll')) {
+        let body;
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'invalid request body' }));
+          return;
+        }
+        const deviceAuthId = body?.deviceAuthId;
+        const userCode = body?.userCode;
+        if (!deviceAuthId || !userCode) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'deviceAuthId and userCode are required' }));
+          return;
+        }
+        const stored = pendingOAuthStates.get(deviceAuthId);
+        if (!stored || stored.type !== 'device-code') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'unknown or expired device auth session' }));
+          return;
+        }
+
+        // Single poll attempt (no loop — the dashboard frontend re-calls every N seconds)
+        try {
+          const { proxyFetch } = await import('./upstream-fetch.js');
+          const DEVICE_AUTH_BASE = process.env.CODEX_AUTHAPI_BASE_URL
+            || 'https://auth.openai.com/api/accounts/deviceauth';
+          const pollRes = await proxyFetch(`${DEVICE_AUTH_BASE}/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ device_auth_id: deviceAuthId, user_code: userCode }),
+            signal: AbortSignal.timeout(15_000),
+          });
+
+          if (pollRes.status === 400) {
+            const errBody = await pollRes.json().catch(() => ({}));
+            const errCode = errBody.error || errBody.code || '';
+            if (errCode === 'deviceauth_authorization_pending' || errCode === 'authorization_pending') {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ ok: true, status: 'pending' }));
+              return;
+            }
+            pendingOAuthStates.delete(deviceAuthId);
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: errCode || 'device code rejected' }));
+            return;
+          }
+
+          if (!pollRes.ok) {
+            res.writeHead(pollRes.status, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: `poll failed (${pollRes.status})` }));
+            return;
+          }
+
+          // Approved — exchange for credentials
+          const data = await pollRes.json();
+          const { credentialsFromTokenResponse, exchangeCodexCode: exchangeCode } = await import('./codex-auth.js');
+          let codexCreds;
+          if (data.access_token) {
+            codexCreds = credentialsFromTokenResponse(data);
+          } else if (data.authorization_code || data.code) {
+            const code = data.authorization_code || data.code;
+            codexCreds = await exchangeCode({ code, codeVerifier: '', redirectUri: '' });
+          } else {
+            codexCreds = credentialsFromTokenResponse(data);
+          }
+
+          pendingOAuthStates.delete(deviceAuthId);
+
+          const priority = Number.isInteger(body?.priority) ? body.priority : (parseInt(body?.priority, 10) || 0);
+          let name = typeof body?.name === 'string' ? body.name.trim() : '';
+          if (!name && codexCreds?.email) name = codexCreds.email;
+          if (!name) {
+            const count = (config.accounts || []).filter(a => a.provider === 'codex').length + 1;
+            name = `codex-${count}`;
+          }
+
+          const newAccount = {
+            id: mintAccountId(),
+            name,
+            type: 'oauth',
+            provider: 'codex',
+            source: 'web-device-code',
+            accessToken: codexCreds.accessToken,
+            refreshToken: codexCreds.refreshToken || null,
+            accountId: codexCreds.accountId || null,
+            email: codexCreds.email || null,
+            planType: codexCreds.planType || null,
+            expiresAt: codexCreds.expiresAt || null,
+            priority,
+          };
+
+          await atomicConfigUpdate(disk => {
+            if (!Array.isArray(disk.accounts)) disk.accounts = [];
+            const idx = findUpsertTarget(disk.accounts, newAccount);
+            if (idx >= 0) {
+              const prev = disk.accounts[idx];
+              disk.accounts[idx] = { ...prev, ...newAccount, id: prev.id || newAccount.id, name: prev.name };
+              name = prev.name;
+            } else {
+              disk.accounts.push(newAccount);
+            }
+          });
+
+          if (hooks.reload) await hooks.reload();
+          console.log(`[AgentLB] Successfully authenticated Codex account "${name}" via device code (web control)`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, status: 'complete', account: name, email: codexCreds?.email }));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Device code poll error: ' + err.message }));
+        }
         return;
       }
 

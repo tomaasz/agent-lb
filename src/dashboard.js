@@ -1209,6 +1209,7 @@ const PAGE = `<!doctype html>
         <button class="tab-btn" id="tabBtnOAuth">Wklej sesję OAuth</button>
         <button class="tab-btn" id="tabBtnImport">Import ze ścieżki</button>
         <button class="tab-btn" id="tabBtnBrowserOAuth">Logowanie w przeglądarce</button>
+        <button class="tab-btn" id="tabBtnDeviceCode" style="display:none;">Kod urządzenia</button>
       </div>
 
       <!-- Tab 1: API Key -->
@@ -1329,6 +1330,42 @@ const PAGE = `<!doctype html>
             <div class="row" style="gap:8px; margin-top:10px;">
               <button class="btn btn-accent" id="btnCompleteOAuth">Dokończ autoryzację</button>
               <button class="btn" id="btnCancelOAuth">Wróć</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 5: Device Code -->
+      <div id="tabContentDeviceCode" class="tab-content" style="display:none;">
+        <div class="form-grid">
+          <div id="deviceCodeStep1">
+            <p style="color:var(--dim); font-size:12px; margin-bottom:10px;">
+              Zaloguj się na konto OpenAI Codex / ChatGPT za pomocą kodu urządzenia. Idealne dla serwerów i sesji SSH bez przeglądarki.
+            </p>
+            <button class="btn btn-accent" id="btnStartDeviceCode">Rozpocznij logowanie kodem</button>
+          </div>
+          <div id="deviceCodeStep2" style="display:none;">
+            <p style="font-size:13px; margin-bottom:8px;">1. Otwórz ten link w przeglądarce na dowolnym urządzeniu:</p>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 14px; margin-bottom:12px;">
+              <a id="deviceCodeUrl" href="#" target="_blank" style="color:var(--accent); text-decoration:underline; font-size:14px;"></a>
+            </div>
+            <p style="font-size:13px; margin-bottom:8px;">2. Wpisz poniższy kod:</p>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:14px 18px; margin-bottom:12px; text-align:center;">
+              <span id="deviceCodeValue" style="font-family:var(--mono); font-size:28px; font-weight:700; letter-spacing:4px; color:var(--fg);"></span>
+            </div>
+            <div class="form-row" style="margin-top:8px;">
+              <div style="flex:1;">
+                <label>Nazwa konta (opcjonalnie)</label>
+                <input id="inDeviceCodeName" type="text" placeholder="np. codex-server">
+              </div>
+              <div style="width:110px;">
+                <label>Priorytet</label>
+                <input id="inDeviceCodePrio" type="number" value="0">
+              </div>
+            </div>
+            <p id="deviceCodeStatus" style="font-size:12px; color:var(--dim); margin-top:10px;">⏳ Oczekiwanie na zatwierdzenie kodu...</p>
+            <div class="row" style="gap:8px; margin-top:10px;">
+              <button class="btn" id="btnCancelDeviceCode">Anuluj</button>
             </div>
           </div>
         </div>
@@ -3650,6 +3687,9 @@ ${SHARED_HELPERS}
         ? '2. Zaloguj się w OpenAI / ChatGPT i skopiuj kod autoryzacyjny lub adres URL (http://localhost:1455/auth/callback?code=...):'
         : '2. Zaloguj się w Claude.ai i skopiuj kod autoryzacyjny lub pełny adres URL:';
     }
+
+    var dcBtn = document.getElementById('tabBtnDeviceCode');
+    if (dcBtn) dcBtn.style.display = isCodex ? '' : 'none';
   }
 
   function doStartOAuth(btn) {
@@ -3688,6 +3728,70 @@ ${SHARED_HELPERS}
       });
   }
   var doStartBrowserOAuth = doStartOAuth;
+
+  var deviceCodePollTimer = null;
+  var pendingDeviceAuthId = null;
+
+  function doStartDeviceCode(btn) {
+    if (btn) btn.disabled = true;
+    note('ok', 'Inicjowanie logowania kodem urządzenia (Codex)...');
+    apiCall('/agent-lb/oauth/device-start', 'POST', { provider: 'codex' })
+      .then(function (res) {
+        if (btn) btn.disabled = false;
+        if (!res || !res.ok) {
+          note('error', 'Nie można zainicjować logowania: ' + (res ? res.error : 'nieznany błąd'));
+          return;
+        }
+        pendingDeviceAuthId = res.deviceAuthId;
+        var urlEl = document.getElementById('deviceCodeUrl');
+        urlEl.href = res.verificationUrl;
+        urlEl.textContent = res.verificationUrl;
+        document.getElementById('deviceCodeValue').textContent = res.userCode;
+        document.getElementById('deviceCodeStep1').style.display = 'none';
+        document.getElementById('deviceCodeStep2').style.display = 'block';
+        document.getElementById('deviceCodeStatus').textContent = '⏳ Oczekiwanie na zatwierdzenie kodu...';
+        note('ok', 'Kod urządzenia: ' + res.userCode + '. Otwórz link i wpisz kod.');
+
+        var interval = (res.interval || 5) * 1000;
+        deviceCodePollTimer = setInterval(function () {
+          var name = document.getElementById('inDeviceCodeName').value.trim();
+          var prio = parseInt(document.getElementById('inDeviceCodePrio').value.trim(), 10) || 0;
+          apiCall('/agent-lb/oauth/device-poll', 'POST', {
+            deviceAuthId: pendingDeviceAuthId,
+            userCode: res.userCode,
+            name: name,
+            priority: prio,
+          })
+            .then(function (pollRes) {
+              if (!pollRes) return;
+              if (pollRes.ok && pollRes.status === 'complete') {
+                clearInterval(deviceCodePollTimer);
+                deviceCodePollTimer = null;
+                note('ok', 'Zautoryzowano konto "' + pollRes.account + '"' + (pollRes.email ? ' (' + pollRes.email + ')' : ''));
+                document.getElementById('deviceCodeStep1').style.display = 'block';
+                document.getElementById('deviceCodeStep2').style.display = 'none';
+                document.getElementById('inDeviceCodeName').value = '';
+                closeModal('modalAddAccount');
+                pendingDeviceAuthId = null;
+                poll();
+              } else if (!pollRes.ok) {
+                clearInterval(deviceCodePollTimer);
+                deviceCodePollTimer = null;
+                document.getElementById('deviceCodeStatus').textContent = '❌ ' + (pollRes.error || 'Błąd autoryzacji');
+                note('error', pollRes.error || 'Błąd autoryzacji kodem urządzenia');
+              }
+              // else status === 'pending' — keep polling
+            })
+            .catch(function () {
+              // transient error, keep polling
+            });
+        }, interval);
+      })
+      .catch(function (e) {
+        if (btn) btn.disabled = false;
+        note('error', 'Błąd logowania kodem urządzenia: ' + e.message);
+      });
+  }
 
 
   function doCompleteOAuth(btn) {
@@ -4939,7 +5043,7 @@ ${SHARED_HELPERS}
 
   // Tab switching in modalAddAccount
   function selectTab(tab) {
-    var tabs = ['ApiKey', 'OAuth', 'Import', 'BrowserOAuth'];
+    var tabs = ['ApiKey', 'OAuth', 'Import', 'BrowserOAuth', 'DeviceCode'];
     tabs.forEach(function (t) {
       var btn = document.getElementById('tabBtn' + t);
       var content = document.getElementById('tabContent' + t);
@@ -4959,6 +5063,7 @@ ${SHARED_HELPERS}
   document.getElementById('tabBtnOAuth').addEventListener('click', function () { selectTab('OAuth'); });
   document.getElementById('tabBtnImport').addEventListener('click', function () { selectTab('Import'); });
   document.getElementById('tabBtnBrowserOAuth').addEventListener('click', function () { selectTab('BrowserOAuth'); });
+  document.getElementById('tabBtnDeviceCode').addEventListener('click', function () { selectTab('DeviceCode'); });
 
   // Add Account submissions
   document.getElementById('btnSubmitApiKey').addEventListener('click', function () { doAddApiKey(this); });
@@ -4969,6 +5074,12 @@ ${SHARED_HELPERS}
   document.getElementById('btnCancelOAuth').addEventListener('click', function () {
     document.getElementById('oauthStep1').style.display = 'block';
     document.getElementById('oauthStep2').style.display = 'none';
+  });
+  document.getElementById('btnStartDeviceCode').addEventListener('click', function () { doStartDeviceCode(this); });
+  document.getElementById('btnCancelDeviceCode').addEventListener('click', function () {
+    if (deviceCodePollTimer) { clearInterval(deviceCodePollTimer); deviceCodePollTimer = null; }
+    document.getElementById('deviceCodeStep1').style.display = 'block';
+    document.getElementById('deviceCodeStep2').style.display = 'none';
   });
 
   // Create Client Key submission

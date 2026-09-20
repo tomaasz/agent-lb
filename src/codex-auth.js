@@ -429,3 +429,130 @@ export async function loginCodex({ noBrowser = false, timeoutMs = 120_000 } = {}
 
   return exchangeCodexCode({ code, codeVerifier });
 }
+
+// ── Device Code Flow ────────────────────────────────────────────────────────
+
+// OpenAI's private device-auth backend, used by `codex login --device-auth`.
+// Not a standard RFC 8628 endpoint — the flow is conceptually the same but the
+// URL scheme and response shapes are OpenAI-specific.
+const DEVICE_AUTH_BASE = process.env.CODEX_AUTHAPI_BASE_URL
+  || 'https://auth.openai.com/api/accounts/deviceauth';
+const DEVICE_USERCODE_URL = `${DEVICE_AUTH_BASE}/usercode`;
+const DEVICE_TOKEN_URL    = `${DEVICE_AUTH_BASE}/token`;
+export const DEVICE_VERIFICATION_URL = 'https://auth.openai.com/codex/device';
+
+/**
+ * Request a new device code from OpenAI.
+ *
+ * Returns `{ deviceAuthId, userCode, interval, expiresAt }`.  The caller
+ * shows `userCode` to the human and directs them to `DEVICE_VERIFICATION_URL`.
+ */
+export async function requestDeviceCode() {
+  const timeoutMs = Number(process.env.AGENT_LB_REFRESH_TIMEOUT_MS) || 30_000;
+  const res = await proxyFetch(DEVICE_USERCODE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: '{}',
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) {
+    throw new Error(`Device code request failed (${res.status}): ${await res.text()}`);
+  }
+  const data = await res.json();
+  return {
+    deviceAuthId: data.device_auth_id,
+    userCode:     data.user_code,
+    interval:     Number(data.interval) || 5,
+    expiresAt:    data.expires_at || null,
+  };
+}
+
+/**
+ * Poll OpenAI until the user approves the device code, then exchange for tokens.
+ *
+ * Resolves with credentials in the same shape `loginCodex` returns.  Rejects
+ * when the code expires or the server reports a terminal error.
+ *
+ * @param {{ deviceAuthId: string, userCode: string, intervalMs?: number, expiresAt?: string, signal?: AbortSignal }} opts
+ */
+export async function pollDeviceAuthorization({ deviceAuthId, userCode, intervalMs = 5000, expiresAt, signal }) {
+  const deadline = expiresAt ? new Date(expiresAt).getTime() : (Date.now() + 15 * 60 * 1000);
+
+  while (true) {
+    if (signal?.aborted) throw new Error('Device code login cancelled');
+    if (Date.now() >= deadline) throw new Error('Device code expired');
+
+    await new Promise(r => setTimeout(r, intervalMs));
+
+    const res = await proxyFetch(DEVICE_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ device_auth_id: deviceAuthId, user_code: userCode }),
+      signal: signal || AbortSignal.timeout(30_000),
+    });
+
+    if (res.status === 400) {
+      const body = await res.json().catch(() => ({}));
+      const code = body.error || body.code || '';
+      if (code === 'deviceauth_authorization_pending' || code === 'authorization_pending') {
+        continue;                          // user hasn't approved yet
+      }
+      throw new Error(`Device code rejected: ${code} ${body.error_description || body.message || ''}`);
+    }
+
+    if (!res.ok) {
+      throw new Error(`Device code poll failed (${res.status}): ${await res.text()}`);
+    }
+
+    // Success — server returns an authorization code (or directly the tokens).
+    const data = await res.json();
+    // If the response contains an access_token directly, treat as a token response.
+    if (data.access_token) {
+      return credentialsFromTokenResponse(data);
+    }
+    // Otherwise it should be an authorization_code to exchange.
+    if (data.authorization_code || data.code) {
+      const code = data.authorization_code || data.code;
+      // Device code flow doesn't use PKCE code_verifier, so we pass an empty
+      // redirect_uri and verifier.  OpenAI's token endpoint accepts the device
+      // grant without them.
+      return exchangeCodexCode({ code, codeVerifier: '', redirectUri: '' });
+    }
+    // Fallback: maybe the shape changed — try treating the whole blob as tokens.
+    return credentialsFromTokenResponse(data);
+  }
+}
+
+/**
+ * Run a full device-code login against OpenAI and return credentials.
+ *
+ * Interactive: prints the code + URL to stdout so a human on a headless
+ * machine can complete the flow from any device with a browser.
+ */
+export async function loginCodexDeviceCode({ timeoutMs = 15 * 60 * 1000 } = {}) {
+  const { deviceAuthId, userCode, interval, expiresAt } = await requestDeviceCode();
+
+  console.log('');
+  console.log('  Zaloguj się kodem urządzenia:');
+  console.log('');
+  console.log(`  1. Otwórz w przeglądarce:  ${DEVICE_VERIFICATION_URL}`);
+  console.log(`  2. Wpisz kod:              ${userCode}`);
+  console.log('');
+  console.log(`  Kod wygasa za 15 minut.`);
+  console.log('');
+
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  timer.unref();
+  try {
+    return await pollDeviceAuthorization({
+      deviceAuthId,
+      userCode,
+      intervalMs: interval * 1000,
+      expiresAt,
+      signal: ac.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
