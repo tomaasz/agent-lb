@@ -496,48 +496,25 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash High (AGY)', display_name: 'Gemini 3.8 Flash High (AGY)' },
           { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash Low (AGY Fast)', display_name: 'Gemini 3.8 Flash Low (AGY Fast)' }
         ];
+        const defaultReasoningLevels = [
+          { effort: 'low', description: 'Fast responses with lighter reasoning' },
+          { effort: 'medium', description: 'Balances speed with reasoning' },
+          { effort: 'high', description: 'Deeper reasoning for complex problems' },
+          { effort: 'xhigh', description: 'Maximum reasoning effort' }
+        ];
         const modelsList = rawModelsList.map(m => ({
           id: m.id,
           object: 'model',
           type: 'model',
           name: m.name,
           display_name: m.display_name,
-          slug: m.id
+          slug: m.id,
+          default_reasoning_level: 'medium',
+          supported_reasoning_levels: defaultReasoningLevels
         }));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           object: 'list',
-          data: [
-            { id: 'claude-fable-5-1', object: 'model', type: 'model', name: 'Claude Fable 5.1', display_name: 'Claude Fable 5.1' },
-            { id: 'claude-fable-5', object: 'model', type: 'model', name: 'Claude Fable 5', display_name: 'Claude Fable 5' },
-            { id: 'claude-opus-5', object: 'model', type: 'model', name: 'Claude Opus 5', display_name: 'Claude Opus 5' },
-            { id: 'claude-opus-4-8', object: 'model', type: 'model', name: 'Claude Opus 4.8', display_name: 'Claude Opus 4.8' },
-            { id: 'claude-opus-4-7', object: 'model', type: 'model', name: 'Claude Opus 4.7', display_name: 'Claude Opus 4.7' },
-            { id: 'claude-opus-4-6', object: 'model', type: 'model', name: 'Claude Opus 4.6', display_name: 'Claude Opus 4.6' },
-            { id: 'claude-sonnet-5', object: 'model', type: 'model', name: 'Claude Sonnet 5', display_name: 'Claude Sonnet 5' },
-            { id: 'claude-sonnet-4-6', object: 'model', type: 'model', name: 'Claude Sonnet 4.6', display_name: 'Claude Sonnet 4.6' },
-            { id: 'claude-mythos-5-1', object: 'model', type: 'model', name: 'Claude Mythos 5.1', display_name: 'Claude Mythos 5.1' },
-            { id: 'claude-haiku-4-5-20251001', object: 'model', type: 'model', name: 'Claude Haiku 4.5', display_name: 'Claude Haiku 4.5' },
-            { id: 'claude-3-7-sonnet-20250219', object: 'model', type: 'model', name: 'Claude 3.7 Sonnet', display_name: 'Claude 3.7 Sonnet' },
-            { id: 'claude-3-5-sonnet-20241022', object: 'model', type: 'model', name: 'Claude 3.5 Sonnet', display_name: 'Claude 3.5 Sonnet' },
-            { id: 'claude-3-5-haiku-20241022', object: 'model', type: 'model', name: 'Claude 3.5 Haiku', display_name: 'Claude 3.5 Haiku' },
-            { id: 'claude-3-opus-20240229', object: 'model', type: 'model', name: 'Claude 3 Opus', display_name: 'Claude 3 Opus' },
-            { id: 'gpt-5.6-sol', object: 'model', type: 'model', name: 'GPT-5.6 Sol', display_name: 'GPT-5.6 Sol' },
-            { id: 'codex', object: 'model', type: 'model', name: 'Codex (GPT-5.6 Sol)', display_name: 'Codex (GPT-5.6 Sol)' },
-            { id: 'gpt-6-astra', object: 'model', type: 'model', name: 'GPT-6 Astra', display_name: 'GPT-6 Astra' },
-            { id: 'gpt-5.6-terra', object: 'model', type: 'model', name: 'GPT-5.6 Terra', display_name: 'GPT-5.6 Terra' },
-            { id: 'codex-mini', object: 'model', type: 'model', name: 'Codex Mini (GPT-5.6 Terra)', display_name: 'Codex Mini (GPT-5.6 Terra)' },
-            { id: 'gpt-5.6-luna', object: 'model', type: 'model', name: 'GPT-5.6 Luna', display_name: 'GPT-5.6 Luna' },
-            { id: 'gpt-5.5', object: 'model', type: 'model', name: 'GPT-5.5', display_name: 'GPT-5.5' },
-            { id: 'o3-mini', object: 'model', type: 'model', name: 'o3-mini', display_name: 'o3-mini' },
-            { id: 'o1', object: 'model', type: 'model', name: 'o1', display_name: 'o1' },
-            { id: 'gpt-4o', object: 'model', type: 'model', name: 'GPT-4o', display_name: 'GPT-4o' },
-            { id: 'gpt-4o-mini', object: 'model', type: 'model', name: 'GPT-4o mini', display_name: 'GPT-4o mini' },
-            { id: 'agy', object: 'model', type: 'model', name: 'AGY (Antigravity)', display_name: 'AGY (Antigravity)' },
-            { id: 'agy-fast', object: 'model', type: 'model', name: 'AGY Fast', display_name: 'AGY Fast' },
-            { id: 'gemini-3.8-flash-high', object: 'model', type: 'model', name: 'Gemini 3.8 Flash High (AGY)', display_name: 'Gemini 3.8 Flash High (AGY)' },
-            { id: 'gemini-3.8-flash-low', object: 'model', type: 'model', name: 'Gemini 3.8 Flash Low (AGY Fast)', display_name: 'Gemini 3.8 Flash Low (AGY Fast)' }
-          ],
           data: modelsList,
           models: modelsList,
           has_more: false
