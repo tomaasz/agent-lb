@@ -91,7 +91,51 @@ export function tailnetExempt(headers, remoteAddress, proxyConfig) {
   // trusted proxy verifies them. Address-only trust is direct and opt-in.
   if (proxyConfig?.trustTailnet !== true) return false;
   if (isLoopbackAddr(remoteAddress) || isForwardedRequest(headers)) return false;
-  return isTailnetAddr(remoteAddress);
+  if (!isTailnetAddr(remoteAddress)) return false;
+  // With `proxy.tailnetDomains` set, the caller must also be ADDRESSING this
+  // proxy through the tailnet — by a tailnet IP or a MagicDNS name of one of
+  // those tailnets. A request naming a public host (a reverse proxy on another
+  // tailnet node that forgot its forwarding headers) is not tailnet traffic,
+  // whatever address the socket came from.
+  if (tailnetDomains(proxyConfig).length === 0) return true;
+  const host = hostNameOf(headers?.host ?? headers?.[':authority']);
+  return host != null && (isTailnetAddr(host) || isTailnetHostName(host, proxyConfig));
+}
+
+/**
+ * The tailnets this proxy trusts, from `proxy.tailnetDomains` (a MagicDNS
+ * suffix such as "tail1234.ts.net", or a list of them), normalised.
+ */
+export function tailnetDomains(proxyConfig) {
+  const raw = proxyConfig?.tailnetDomains;
+  const list = Array.isArray(raw) ? raw : (typeof raw === 'string' ? raw.split(',') : []);
+  return list
+    .filter(d => typeof d === 'string')
+    .map(d => d.trim().toLowerCase().replace(/^\.+|\.+$/g, ''))
+    .filter(d => d.endsWith('.ts.net'));
+}
+
+/**
+ * Whether a host name is a MagicDNS name of a trusted tailnet. Without
+ * `proxy.tailnetDomains` any `*.ts.net` name counts, as it always has.
+ */
+export function isTailnetHostName(name, proxyConfig) {
+  const host = String(name || '').toLowerCase().replace(/\.$/, '');
+  const domains = tailnetDomains(proxyConfig);
+  if (domains.length === 0) return host.endsWith('.ts.net');
+  return domains.some(d => host === d || host.endsWith(`.${d}`));
+}
+
+// Host header → bare lowercase hostname (port and IPv6 brackets dropped).
+function hostNameOf(host) {
+  if (typeof host !== 'string' || host === '') return null;
+  const h = host.trim().toLowerCase();
+  if (h.startsWith('[')) {
+    const end = h.indexOf(']');
+    return end > 0 ? h.slice(1, end) : null;
+  }
+  const colon = h.indexOf(':');
+  return (colon >= 0 && h.indexOf(':', colon + 1) < 0 ? h.slice(0, colon) : h).replace(/\.$/, '');
 }
 
 

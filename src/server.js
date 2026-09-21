@@ -4,7 +4,7 @@ import { handleClientKeys } from './client-key-admin.js';
 import { readControlBody } from './control-body.js';
 import { resolveBodyIdleTimeout, readWithIdleTimeout, idleBody, collectIdleBody } from './stream-lifecycle.js';
 export { readWithIdleTimeout, idleBody } from './stream-lifecycle.js';
-import { safeKeyEqual, maskSecret, isLoopbackAddr, isForwardedRequest, loopbackExempt, isTailnetAddr, tailnetExempt, resolveClientAuth, relayPolicyAllowed, SENSITIVE_HEADER_NAMES } from './access-control.js';
+import { safeKeyEqual, maskSecret, isLoopbackAddr, isForwardedRequest, loopbackExempt, isTailnetAddr, isTailnetHostName, tailnetExempt, resolveClientAuth, relayPolicyAllowed, SENSITIVE_HEADER_NAMES } from './access-control.js';
 export { safeKeyEqual, maskSecret, isLoopbackAddr, isForwardedRequest, loopbackExempt, isTailnetAddr, tailnetExempt, resolveClientAuth, relayPolicyAllowed, SENSITIVE_HEADER_NAMES } from './access-control.js';
 import http from 'node:http';
 import https from 'node:https';
@@ -37,6 +37,7 @@ import {
 } from './oauth.js';
 import {
   buildCodexAuthUrl, exchangeCodexCode, importCodexCredentials,
+  requestDeviceCode, pollDeviceCodeOnce, DEVICE_VERIFICATION_URL,
 } from './codex-auth.js';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -336,11 +337,25 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // are read live further down the pipeline.
       const rawAuth = req.headers['authorization'] || '';
       const bearerMatch = /^Bearer\s+(\S+)$/i.exec(rawAuth);
-      const clientKey = req.headers['x-api-key'] || (bearerMatch ? bearerMatch[1] : null);
+      const headerKey = req.headers['x-api-key'] || null;
+      const bearerKey = bearerMatch ? bearerMatch[1] : null;
+      let clientKey = headerKey || bearerKey;
       const isLocal = loopbackExempt(req.headers, req.socket.remoteAddress, config.proxy);
       const isTailnet = tailnetExempt(req.headers, req.socket.remoteAddress, config.proxy);
       const isTrustedOrigin = isLocal || isTailnet;
-      const auth = resolveClientAuth(config.proxy, clientKey);
+      let auth = resolveClientAuth(config.proxy, clientKey);
+      // From a trusted origin, a Bearer that is not one of our keys is the
+      // client's OWN upstream credential — Claude Code in OAuth mode sends its
+      // claude.ai token, Codex its ChatGPT token — not a wrong proxy key. The
+      // origin needs no key at all, so read it as "no key" instead of refusing
+      // with a 401 that makes the client drop its login. Only the Bearer gets
+      // this reading: an explicit x-api-key is meant for us, and a wrong one
+      // (e.g. after a key rotation) must still fail loudly. Both credential
+      // headers are stripped before anything goes upstream.
+      if (!auth.ok && !headerKey && bearerKey && isTrustedOrigin) {
+        clientKey = null;
+        auth = { ok: false, client: null, entry: null };
+      }
       if (!auth.ok && (clientKey || !isTrustedOrigin)) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
@@ -436,7 +451,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         // far as the browser can tell, and it can read the answers. What it
         // cannot forge is the Host header, which the browser derives from its
         // own URL bar — so a key-less loopback request must name this machine.
-        if (!isLocalHostHeader(req.headers.host ?? req.headers[':authority'], config.proxy?.host)) {
+        if (!isLocalHostHeader(req.headers.host ?? req.headers[':authority'], config.proxy?.host, [], config.proxy)) {
           res.writeHead(403, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             type: 'error',
@@ -2217,6 +2232,142 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
+      // Device Code Flow: Start — request a device code from OpenAI
+      if (req.method === 'POST' && (normApiPath === '/oauth/device-start' || reqPath === '/agent-lb/oauth/device-start')) {
+        cleanExpiredOAuthStates();
+        let body;
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'invalid request body' }));
+          return;
+        }
+        const provider = body?.provider || 'codex';
+        if (provider !== 'codex') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Device code flow is only supported for the codex provider' }));
+          return;
+        }
+        try {
+          const dc = await requestDeviceCode();
+          // Store the pending device auth so device-poll can look it up.
+          pendingOAuthStates.set(dc.deviceAuthId, {
+            createdAt: Date.now(),
+            provider: 'codex',
+            type: 'device-code',
+            userCode: dc.userCode,
+            interval: dc.interval,
+            expiresAt: dc.expiresAt,
+          });
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            ok: true,
+            deviceAuthId: dc.deviceAuthId,
+            userCode: dc.userCode,
+            verificationUrl: DEVICE_VERIFICATION_URL,
+            interval: dc.interval,
+            expiresAt: dc.expiresAt,
+          }));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Device code request failed: ' + err.message }));
+        }
+        return;
+      }
+
+      // Device Code Flow: Poll — check whether the user has approved the code
+      if (req.method === 'POST' && (normApiPath === '/oauth/device-poll' || reqPath === '/agent-lb/oauth/device-poll')) {
+        let body;
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'invalid request body' }));
+          return;
+        }
+        const deviceAuthId = body?.deviceAuthId;
+        const userCode = body?.userCode;
+        if (!deviceAuthId || !userCode) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'deviceAuthId and userCode are required' }));
+          return;
+        }
+        const stored = pendingOAuthStates.get(deviceAuthId);
+        if (!stored || stored.type !== 'device-code') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'unknown or expired device auth session' }));
+          return;
+        }
+
+        // Single poll attempt (no loop — the dashboard frontend re-calls every N seconds)
+        try {
+          let result;
+          try {
+            result = await pollDeviceCodeOnce({ deviceAuthId, userCode, signal: AbortSignal.timeout(15_000) });
+          } catch (err) {
+            pendingOAuthStates.delete(deviceAuthId);
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: err.message || 'device code rejected' }));
+            return;
+          }
+          if (result.status === 'pending') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, status: 'pending' }));
+            return;
+          }
+          const codexCreds = result.credentials;
+
+          pendingOAuthStates.delete(deviceAuthId);
+
+          const priority = Number.isInteger(body?.priority) ? body.priority : (parseInt(body?.priority, 10) || 0);
+          let name = typeof body?.name === 'string' ? body.name.trim() : '';
+          if (!name && codexCreds?.email) name = codexCreds.email;
+          if (!name) {
+            const count = (config.accounts || []).filter(a => a.provider === 'codex').length + 1;
+            name = `codex-${count}`;
+          }
+
+          const newAccount = {
+            id: mintAccountId(),
+            name,
+            type: 'oauth',
+            provider: 'codex',
+            source: 'web-device-code',
+            accessToken: codexCreds.accessToken,
+            refreshToken: codexCreds.refreshToken || null,
+            accountId: codexCreds.accountId || null,
+            email: codexCreds.email || null,
+            planType: codexCreds.planType || null,
+            expiresAt: codexCreds.expiresAt || null,
+            priority,
+          };
+
+          await atomicConfigUpdate(disk => {
+            if (!Array.isArray(disk.accounts)) disk.accounts = [];
+            const idx = findUpsertTarget(disk.accounts, newAccount);
+            if (idx >= 0) {
+              const prev = disk.accounts[idx];
+              disk.accounts[idx] = { ...prev, ...newAccount, id: prev.id || newAccount.id, name: prev.name };
+              name = prev.name;
+            } else {
+              disk.accounts.push(newAccount);
+            }
+          });
+
+          if (hooks.reload) await hooks.reload();
+          console.log(`[AgentLB] Successfully authenticated Codex account "${name}" via device code (web control)`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, status: 'complete', account: name, email: codexCreds?.email }));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Device code poll error: ' + err.message }));
+        }
+        return;
+      }
+
       // OAuth Flow: Complete
       if (req.method === 'POST' && (normApiPath === '/oauth/complete' || reqPath === '/agent-lb/oauth/complete')) {
         let body;
@@ -2439,6 +2590,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
   // needs its own listener (base-URL routing path; the MITM path wires the
   // same relayUpgrade onto its own terminating server in mitm.js).
   server.on('upgrade', (req, socket, head) => {
+    // Checked before the key gate: the Codex CLI authenticates with a Bearer
+    // only, and answering its handshake 401 would read as an auth failure
+    // rather than "use HTTP". See refuseCodexWebSocket.
+    if (refuseCodexWebSocket(req, socket)) return;
     // The upgrade handshake never reaches requestHandler, so it does not
     // inherit the key gate above — it has to ask for itself. Without this a
     // WebSocket handshake is an unauthenticated relay to `upstream`: the
@@ -2530,12 +2685,13 @@ function hostnameOf(host) {
  * browser speaks HTTP/1.0 — while a hand-rolled local tool might. Refusing it
  * would break that tool without closing anything.
  */
-export function isLocalHostHeader(host, bindHost = null, allowedHosts = []) {
+export function isLocalHostHeader(host, bindHost = null, allowedHosts = [], proxyConfig = null) {
   if (host == null || host === '') return true;
   const name = hostnameOf(host);
   if (name == null) return false;
   if (LOCAL_HOSTNAMES.has(name)) return true;
-  if (name.endsWith('.ts.net')) return true;
+  // MagicDNS names: only the configured tailnets when proxy.tailnetDomains is set.
+  if (isTailnetHostName(name, proxyConfig)) return true;
   if (isTailnetAddr(name)) return true;
   const rawEnvHosts = [
     process.env.AGENT_LB_HOST,
@@ -3429,10 +3585,33 @@ export function resolveUpgradeAuth(req, socket, proxyConfig) {
   if (origin) {
     let originHost;
     try { originHost = new URL(origin).host; } catch { return auth; }
-    if (!isLocalHostHeader(originHost, bindHost)) return auth;
+    if (!isLocalHostHeader(originHost, bindHost, [], proxyConfig)) return auth;
   }
-  if (!isLocalHostHeader(req?.headers?.host, bindHost)) return auth;
+  if (!isLocalHostHeader(req?.headers?.host, bindHost, [], proxyConfig)) return auth;
   return { ok: true, client: null };
+}
+
+/**
+ * Refuse a Codex WebSocket handshake (the Responses API over WS, which Codex
+ * opens when its provider sets `supports_websockets = true`).
+ *
+ * This proxy serves Codex over HTTP only: selection, token injection, quota
+ * accounting and failover all live on the request path. relayUpgrade is a
+ * byte relay for Claude's Remote Control channel — it forwards the client's
+ * own headers to the Anthropic upstream, so a Codex handshake sent through it
+ * carried the client's Bearer to api.anthropic.com, and via MITM it reached
+ * chatgpt.com on the client's own login, bypassing rotation. Answer 426 so the
+ * client falls back to HTTP. Returns true when the socket was answered.
+ * Exported for tests.
+ */
+export function refuseCodexWebSocket(req, socket, log = console.log) {
+  let path;
+  try { path = new URL(req?.url || '/', 'http://proxy.invalid').pathname; } catch { path = req?.url || ''; }
+  if (providerForPath(path) !== 'codex') return false;
+  log(`[AgentLB] Codex WebSocket ${safeLine(path)} refused (426) — Codex is served over HTTP; set supports_websockets = false`);
+  try { socket.write('HTTP/1.1 426 Upgrade Required\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'); } catch { /* client already gone */ }
+  socket.destroy();
+  return true;
 }
 
 /**
@@ -3846,6 +4025,24 @@ export function formatHeaders(headers) {
 // indefinitely — a four-account fleet spent three accounts on a refused
 // connection and answered rate_limit_error. That instance is closed; keeping
 // ECONNREFUSED unconditional means any future gap stays a non-regression.
+/**
+ * A Codex 429 that means the account's quota is spent (not a momentary
+ * throttle): `usage_limit_reached` in the body, or a window reported at 100%.
+ * Returns { resetSeconds } or null. Exported for tests.
+ */
+export function codexUsageLimit(body, headers = {}) {
+  const err = body?.error;
+  const pct = (name) => Number(headers[`x-codex-${name}-used-percent`]);
+  const spent = err?.type === 'usage_limit_reached' || err?.code === 'usage_limit_reached'
+    || pct('primary') >= 100 || pct('secondary') >= 100;
+  if (!spent) return null;
+  const fromBody = Number(err?.resets_in_seconds);
+  const fromHeader = Number(headers['x-codex-primary-reset-after-seconds']);
+  const resetSeconds = Number.isFinite(fromBody) && fromBody > 0 ? fromBody
+    : Number.isFinite(fromHeader) && fromHeader > 0 ? fromHeader : 3600;
+  return { resetSeconds };
+}
+
 const SOCKET_TRANSIENT = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE',
   'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
@@ -4377,14 +4574,20 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         { successful: !!upstreamRes && upstreamRes.status < 400 }) || 0;
     }
 
-    // Extract rate limit headers
+    // Extract rate limit headers. Codex reports the same readings under
+    // `x-codex-*`; dropping those here left a Codex account's quota fed only by
+    // the background prober, so selection kept choosing a spent account.
     const rateLimitHeaders = {};
+    const codexQuotaHeaders = {};
     for (const [key, value] of upstreamRes.headers.entries()) {
       if (key.startsWith('anthropic-ratelimit-')) {
         rateLimitHeaders[key] = value;
+      } else if (key.startsWith('x-codex-')) {
+        codexQuotaHeaders[key] = value;
       }
     }
-    accountManager.updateQuota(account.index, rateLimitHeaders);
+    const isCodexAccount = providerOf(account) === 'codex';
+    accountManager.updateQuota(account.index, isCodexAccount ? codexQuotaHeaders : rateLimitHeaders);
 
     // Any non-429 response is live proof a rate-limit hold no longer binds —
     // this is what lets a revalidation probe (a throttled account selected by
@@ -4418,15 +4621,45 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // and the inline wait then held that client for the same 60s per attempt;
       // together they turned one request's problem into a fleet-wide stall
       // (#288). A throttle, by contrast, always carries the headers.
-      const requestScoped = retryAfterHeader == null && Object.keys(rateLimitHeaders).length === 0;
+      // (Codex's x-codex-* readings ride on every response, so they do not
+      // make a 429 account-scoped; only a spent quota, detected below, does.)
+      let requestScoped = retryAfterHeader == null && Object.keys(rateLimitHeaders).length === 0;
       // The body is diagnostic for a request-scoped refusal (it names the
-      // reason) and noise otherwise.
+      // reason) and noise otherwise. A Codex 429 is read either way: ChatGPT
+      // states quota exhaustion only in the body (`usage_limit_reached`), and
+      // it sends no retry-after.
       let refusal = '';
-      if (requestScoped) {
+      let codexLimit = null;
+      if (requestScoped || isCodexAccount) {
         const raw = await readErrorBody(upstreamRes.body).catch(() => null);
-        try { refusal = raw ? String(JSON.parse(raw.toString('utf8'))?.error?.message || '') : ''; } catch { refusal = ''; }
+        let parsed = null;
+        try { parsed = raw ? JSON.parse(raw.toString('utf8')) : null; } catch { parsed = null; }
+        refusal = String(parsed?.error?.message || '');
+        if (isCodexAccount) codexLimit = codexUsageLimit(parsed, codexQuotaHeaders);
+        if (codexLimit) requestScoped = false;
       } else {
         await upstreamRes.body?.cancel();
+      }
+
+      // Codex quota exhaustion: the account is spent until its window resets,
+      // so waiting on it or retrying it is futile. Hold it (selection then
+      // skips it for later requests too) and move this request to another one.
+      if (codexLimit) {
+        const hold = Math.min(Math.max(codexLimit.resetSeconds, 1), 3600);
+        console.log(`[AgentLB] Codex usage limit reached on "${account.name}" — holding ${hold}s and switching account`);
+        accountManager.markRateLimited(account.index, hold);
+        account.lastError = { reason: 'usage-limit', status: 429, error: refusal || 'Codex usage limit reached', timestamp: Date.now() };
+        if (retryCount < maxRetries) {
+          ctx.tried.add(account.index);
+          if (clientGone(res)) { ctx.abandoned = true; return; }
+          return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+        }
+        ctx.status = 429;
+        if (!res.headersSent && !clientGone(res)) {
+          res.writeHead(429, { 'Content-Type': 'application/json', 'retry-after': String(hold) });
+          res.end(JSON.stringify({ type: 'error', error: { type: 'rate_limit_error', message: refusal || 'Codex usage limit reached on every account.' } }));
+        }
+        return;
       }
 
       // Durable quota exhaustion vs. a transient rate limit. A "rejected" unified
@@ -4712,6 +4945,28 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       await upstreamRes.body?.cancel();
       console.log(`[AgentLB] 401 on "${account.name}" — token rejected; forcing refresh and retrying`);
       await accountManager.ensureTokenFresh(account.index, true);
+      if (clientGone(res)) { ctx.abandoned = true; return; }
+      return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+    }
+
+    // A 401 no refresh cured: an API key upstream rejects, or an OAuth token
+    // still rejected after the forced refresh above. It is about the pooled
+    // credential, which the client never sees — relaying it makes Claude Code
+    // and the IDE extensions drop their OWN login ("run /login") over an
+    // account problem they have no part in. Treat it like the 403 above: skip
+    // the account for this request and fail over; with none left, the
+    // no-account branch reports a proxy error instead of a 401.
+    if (upstreamRes.status === 401 && !res.headersSent && retryCount < maxRetries) {
+      await upstreamRes.body?.cancel();
+      account.lastError = {
+        reason: 'unauthorized',
+        status: 401,
+        error: 'Upstream odrzucił poświadczenie konta (HTTP 401) — sprawdź klucz lub zaloguj konto ponownie.',
+        timestamp: Date.now(),
+      };
+      (ctx.credentialRejected ??= new Set()).add(account.name);
+      ctx.tried.add(account.index);
+      console.error(`[AgentLB] 401 on "${account.name}"; upstream rejected the account credential — failing over`);
       if (clientGone(res)) { ctx.abandoned = true; return; }
       return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
     }

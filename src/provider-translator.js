@@ -227,10 +227,39 @@ export function translateOpenAIToAnthropicResponse(openaiJson, requestedModel = 
 export function createOpenAIToAnthropicTransformStream(requestedModel = 'claude-3-5-sonnet-20241022') {
   let buffer = '';
   let msgStarted = false;
-  let textStarted = false;
-  let activeToolIndex = -1;
+  let finished = false;
   let totalOutputTokens = 0;
+  let usedTools = false;
+  // Anthropic content blocks are numbered in stream order, one open at a time.
+  // OpenAI numbers text implicitly and tool calls from 0, so neither index can
+  // be reused: a text block and the first tool call would both claim index 0,
+  // and a client assembling `content[index]` would merge them.
+  let nextBlock = 0;
+  let openBlock = null;          // { index, kind: 'text' | 'tool' }
+  const toolBlocks = new Map();  // OpenAI tool_calls[].index → Anthropic block index
   const msgId = `msg_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+
+  const emit = (stream, type, data) => stream.push(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
+  const startMessage = (stream) => {
+    if (msgStarted) return;
+    msgStarted = true;
+    emit(stream, 'message_start', {
+      message: { id: msgId, type: 'message', role: 'assistant', content: [], model: requestedModel, stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 0 } },
+    });
+  };
+  const closeOpen = (stream) => {
+    if (!openBlock) return;
+    emit(stream, 'content_block_stop', { index: openBlock.index });
+    openBlock = null;
+  };
+  const finish = (stream, stopReason) => {
+    if (finished) return;
+    startMessage(stream);
+    closeOpen(stream);
+    emit(stream, 'message_delta', { delta: { stop_reason: stopReason, stop_sequence: null }, usage: { output_tokens: totalOutputTokens } });
+    emit(stream, 'message_stop', {});
+    finished = true;
+  };
 
   return new Transform({
     transform(chunk, encoding, callback) {
@@ -239,104 +268,70 @@ export function createOpenAIToAnthropicTransformStream(requestedModel = 'claude-
       buffer = lines.pop() || ''; // Keep incomplete line
 
       for (const line of lines) {
+        if (finished) break;
         const trimmed = line.trim();
         if (!trimmed || !trimmed.startsWith('data:')) continue;
         const dataStr = trimmed.slice(5).trim();
 
         if (dataStr === '[DONE]') {
-          // Stream completed
-          if (textStarted) {
-            this.push(`event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n`);
-            textStarted = false;
-          }
-          if (activeToolIndex >= 0) {
-            this.push(`event: content_block_stop\ndata: {"type":"content_block_stop","index":${activeToolIndex}}\n\n`);
-            activeToolIndex = -1;
-          }
-          this.push(`event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":${totalOutputTokens}}}\n\n`);
-          this.push(`event: message_stop\ndata: {"type":"message_stop"}\n\n`);
+          // Only reached without a finish_reason chunk first; a second
+          // message_delta/message_stop after one would overwrite the stop reason.
+          finish(this, usedTools ? 'tool_use' : 'end_turn');
           continue;
         }
 
         try {
           const payload = JSON.parse(dataStr);
+          if (payload.error) {
+            startMessage(this);
+            closeOpen(this);
+            emit(this, 'error', { error: { type: 'api_error', message: String(payload.error.message || 'Upstream error') } });
+            finished = true;
+            continue;
+          }
           const choice = payload.choices?.[0];
           if (!choice) continue;
-
-          if (!msgStarted) {
-            msgStarted = true;
-            this.push(`event: message_start\ndata: {"type":"message_start","message":{"id":"${msgId}","type":"message","role":"assistant","content":[],"model":"${requestedModel}","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}\n\n`);
-          }
+          startMessage(this);
 
           const delta = choice.delta;
-          if (!delta) continue;
 
           // Text content delta
-          if (delta.content != null && delta.content !== '') {
-            if (!textStarted) {
-              textStarted = true;
-              this.push(`event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n`);
+          if (delta?.content != null && delta.content !== '') {
+            if (openBlock?.kind !== 'text') {
+              closeOpen(this);
+              openBlock = { index: nextBlock++, kind: 'text' };
+              emit(this, 'content_block_start', { index: openBlock.index, content_block: { type: 'text', text: '' } });
             }
             totalOutputTokens += Math.max(1, Math.ceil(delta.content.length / 4));
-            const deltaEvt = {
-              type: 'content_block_delta',
-              index: 0,
-              delta: { type: 'text_delta', text: delta.content },
-            };
-            this.push(`event: content_block_delta\ndata: ${JSON.stringify(deltaEvt)}\n\n`);
+            emit(this, 'content_block_delta', { index: openBlock.index, delta: { type: 'text_delta', text: delta.content } });
           }
 
           // Tool call delta
-          if (Array.isArray(delta.tool_calls)) {
+          if (Array.isArray(delta?.tool_calls)) {
             for (const tc of delta.tool_calls) {
-              const idx = tc.index ?? 1;
-              if (activeToolIndex !== idx) {
-                if (textStarted) {
-                  this.push(`event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n`);
-                  textStarted = false;
-                }
-                activeToolIndex = idx;
-                const startEvt = {
-                  type: 'content_block_start',
-                  index: idx,
-                  content_block: {
-                    type: 'tool_use',
-                    id: tc.id || `call_${randomUUID().slice(0, 8)}`,
-                    name: tc.function?.name || '',
-                    input: {},
-                  },
-                };
-                this.push(`event: content_block_start\ndata: ${JSON.stringify(startEvt)}\n\n`);
+              const key = tc.index ?? 0;
+              let index = toolBlocks.get(key);
+              if (index === undefined) {
+                closeOpen(this);
+                index = nextBlock++;
+                toolBlocks.set(key, index);
+                openBlock = { index, kind: 'tool' };
+                usedTools = true;
+                emit(this, 'content_block_start', {
+                  index,
+                  content_block: { type: 'tool_use', id: tc.id || `call_${randomUUID().slice(0, 8)}`, name: tc.function?.name || '', input: {} },
+                });
               }
-
               if (tc.function?.arguments) {
                 totalOutputTokens += Math.max(1, Math.ceil(tc.function.arguments.length / 4));
-                const argEvt = {
-                  type: 'content_block_delta',
-                  index: idx,
-                  delta: {
-                    type: 'input_json_delta',
-                    partial_json: tc.function.arguments,
-                  },
-                };
-                this.push(`event: content_block_delta\ndata: ${JSON.stringify(argEvt)}\n\n`);
+                emit(this, 'content_block_delta', { index, delta: { type: 'input_json_delta', partial_json: tc.function.arguments } });
               }
             }
           }
 
-          // Finish reason
           if (choice.finish_reason) {
-            let stopReason = choice.finish_reason === 'tool_calls' ? 'tool_use' : (choice.finish_reason === 'length' ? 'max_tokens' : 'end_turn');
-            if (textStarted) {
-              this.push(`event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n`);
-              textStarted = false;
-            }
-            if (activeToolIndex >= 0) {
-              this.push(`event: content_block_stop\ndata: {"type":"content_block_stop","index":${activeToolIndex}}\n\n`);
-              activeToolIndex = -1;
-            }
-            this.push(`event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"${stopReason}","stop_sequence":null},"usage":{"output_tokens":${totalOutputTokens}}}\n\n`);
-            this.push(`event: message_stop\ndata: {"type":"message_stop"}\n\n`);
+            const r = choice.finish_reason;
+            finish(this, r === 'tool_calls' || (usedTools && r === 'stop') ? 'tool_use' : (r === 'length' ? 'max_tokens' : 'end_turn'));
           }
         } catch {
           // Incomplete or non-JSON data line, pass through
@@ -345,14 +340,13 @@ export function createOpenAIToAnthropicTransformStream(requestedModel = 'claude-
       callback();
     },
     flush(callback) {
-      if (textStarted) {
-        this.push(`event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n`);
-      }
-      if (activeToolIndex >= 0) {
-        this.push(`event: content_block_stop\ndata: {"type":"content_block_stop","index":${activeToolIndex}}\n\n`);
-      }
-      if (msgStarted) {
-        this.push(`event: message_stop\ndata: {"type":"message_stop"}\n\n`);
+      // The source ended without a finish_reason or [DONE]: the answer was cut
+      // off. Say so, rather than closing it as a complete turn.
+      if (!finished) {
+        startMessage(this);
+        closeOpen(this);
+        emit(this, 'error', { error: { type: 'api_error', message: 'Upstream stream ended before the response completed' } });
+        finished = true;
       }
       callback();
     },
@@ -834,7 +828,19 @@ export function createCodexResponsesToOpenAITransformStream(requestedModel = 'gp
   let firstChunk = true;
   let doneSent = false;
   let hasToolCalls = false;
-  let activeToolIndex = 0;
+  // Chat Completions numbers tool calls 0,1,2… and SDKs accumulate them into a
+  // dense array by that index. Codex's `output_index` counts EVERY output item
+  // (a reasoning item usually comes first), so it cannot be passed through: a
+  // tool call at output_index 1 would leave a nameless phantom call at 0.
+  // Map each function_call's output_index to its ordinal instead, and remember
+  // how much of its arguments went out so a call whose arguments arrive only in
+  // `output_item.done` is not delivered empty.
+  const toolSlots = new Map(); // output_index → { index, sentArgs }
+  let lastToolSlot = null;
+  const slotFor = (outputIndex) => {
+    if (outputIndex != null && toolSlots.has(outputIndex)) return toolSlots.get(outputIndex);
+    return lastToolSlot;
+  };
 
   return new Transform({
     transform(chunk, encoding, callback) {
@@ -874,7 +880,10 @@ export function createCodexResponsesToOpenAITransformStream(requestedModel = 'gp
           } else if (payload.type === 'response.output_item.added' && payload.item?.type === 'function_call') {
             hasToolCalls = true;
             chunkId ??= `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
-            const idx = payload.output_index ?? activeToolIndex++;
+            const slot = { index: toolSlots.size, sentArgs: '' };
+            toolSlots.set(payload.output_index ?? `n${toolSlots.size}`, slot);
+            lastToolSlot = slot;
+            const idx = slot.index;
             const deltaObj = {
               tool_calls: [{
                 index: idx,
@@ -900,9 +909,12 @@ export function createCodexResponsesToOpenAITransformStream(requestedModel = 'gp
             };
             this.push(`data: ${JSON.stringify(sseChunk)}\n\n`);
           } else if (payload.type === 'response.function_call_arguments.delta' && payload.delta != null) {
+            const slot = slotFor(payload.output_index);
+            if (!slot) continue; // arguments for a call that was never announced
             hasToolCalls = true;
             chunkId ??= `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
-            const idx = payload.output_index ?? Math.max(0, activeToolIndex - 1);
+            slot.sentArgs += payload.delta;
+            const idx = slot.index;
             const sseChunk = {
               id: chunkId,
               object: 'chat.completion.chunk',
@@ -920,6 +932,49 @@ export function createCodexResponsesToOpenAITransformStream(requestedModel = 'gp
               }]
             };
             this.push(`data: ${JSON.stringify(sseChunk)}\n\n`);
+          } else if (payload.type === 'response.output_item.done' && payload.item?.type === 'function_call') {
+            // The final item carries the complete arguments. Send whatever the
+            // deltas did not (all of it, when the upstream streamed none).
+            const slot = slotFor(payload.output_index);
+            const full = typeof payload.item.arguments === 'string' ? payload.item.arguments : '';
+            if (slot && full.length > slot.sentArgs.length && full.startsWith(slot.sentArgs)) {
+              const rest = full.slice(slot.sentArgs.length);
+              slot.sentArgs = full;
+              chunkId ??= `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+              this.push(`data: ${JSON.stringify({
+                id: chunkId,
+                object: 'chat.completion.chunk',
+                created,
+                model: requestedModel,
+                choices: [{ index: 0, delta: { tool_calls: [{ index: slot.index, function: { arguments: rest } }] }, finish_reason: null }]
+              })}\n\n`);
+            }
+          } else if (payload.type === 'response.failed' || payload.type === 'error') {
+            // A failed response (context overflow, server error) must reach
+            // the client as an error. Ending the stream with a bare [DONE]
+            // made it look like an empty, successful answer.
+            const err = payload.response?.error || payload.error || payload;
+            this.push(`data: ${JSON.stringify({
+              error: {
+                message: String(err?.message || 'Upstream response failed'),
+                type: String(err?.type || 'upstream_error'),
+                code: err?.code ?? null,
+              }
+            })}\n\n`);
+            this.push('data: [DONE]\n\n');
+            doneSent = true;
+          } else if (payload.type === 'response.incomplete') {
+            chunkId ??= `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+            const reason = payload.response?.incomplete_details?.reason;
+            this.push(`data: ${JSON.stringify({
+              id: chunkId,
+              object: 'chat.completion.chunk',
+              created,
+              model: requestedModel,
+              choices: [{ index: 0, delta: {}, finish_reason: reason === 'content_filter' ? 'content_filter' : 'length' }]
+            })}\n\n`);
+            this.push('data: [DONE]\n\n');
+            doneSent = true;
           } else if (payload.type === 'response.completed') {
             if (payload.response?.id) {
               chunkId = `chatcmpl-${payload.response.id.replace(/^resp_/, '')}`;
@@ -958,6 +1013,9 @@ export function createCodexResponsesToOpenAITransformStream(requestedModel = 'gp
     },
     flush(callback) {
       if (!doneSent) {
+        // No response.completed: the upstream stream was cut off. A bare [DONE]
+        // would present the partial answer (or partial tool arguments) as whole.
+        this.push(`data: ${JSON.stringify({ error: { message: 'Upstream stream ended before response.completed', type: 'upstream_error', code: 'stream_truncated' } })}\n\n`);
         this.push('data: [DONE]\n\n');
       }
       callback();
@@ -1002,6 +1060,14 @@ export function translateCodexResponsesToOpenAIResponse(buffer, requestedModel =
         const idx = payload.output_index ?? Math.max(0, toolCallsMap.size - 1);
         const existing = toolCallsMap.get(idx);
         if (existing) existing.function.arguments += payload.delta;
+      } else if (payload.type === 'response.output_item.done' && payload.item?.type === 'function_call') {
+        // The finished item carries the complete arguments; prefer them when
+        // the deltas were missing or incomplete.
+        const existing = toolCallsMap.get(payload.output_index ?? Math.max(0, toolCallsMap.size - 1));
+        const full = payload.item.arguments;
+        if (existing && typeof full === 'string' && full.length > existing.function.arguments.length) {
+          existing.function.arguments = full;
+        }
       } else if (payload.type === 'response.completed' && payload.response?.usage) {
         usage = payload.response.usage;
       }

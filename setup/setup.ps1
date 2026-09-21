@@ -279,7 +279,7 @@ if ($existingToml -notmatch 'model_providers\.codex-lb') {
 name = "openai"
 base_url = "$Url/backend-api/codex"
 wire_api = "responses"
-supports_websockets = true
+supports_websockets = false
 requires_openai_auth = true
 env_key = "CODEX_LB_API_KEY"
 

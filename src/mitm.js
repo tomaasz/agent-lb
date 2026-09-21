@@ -21,7 +21,7 @@ import tls from 'node:tls';
 import http2 from 'node:http2';
 import { getConfigPath } from './config.js';
 import { generateCertChain } from './x509.js';
-import { createProxyRequestListener, relayUpgrade, resolveAccountPin, describeConnectError } from './server.js';
+import { createProxyRequestListener, relayUpgrade, refuseCodexWebSocket, resolveAccountPin, describeConnectError } from './server.js';
 import { interceptHostsFor, isNeverIntercepted } from './provider.js';
 import { forwardRefusal, guardedLookup, FORBIDDEN_FORWARD } from './forward-target.js';
 import { safeLine } from './safe-text.js';
@@ -245,6 +245,7 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
     // of a response object (h1-only; falls back to blind h2 passthrough is not
     // needed since WS clients negotiate h1 for the handshake).
     srv.on('upgrade', (req, socket, head) => {
+      if (refuseCodexWebSocket(req, socket, log)) return;
       const currentAuth = credential == null ? { ok: true, client: null } : resolveClientAuth(config.proxy, credential);
       if (!relayPolicyAllowed(currentAuth, clientUsage)) { refuseRaw(socket, '403 Forbidden'); return; }
       const target = upgradeUpstreamFor(req.headers.host, config, upstream);

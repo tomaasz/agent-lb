@@ -29,7 +29,7 @@ let targetUrl = (process.env.AGENT_LB_URL || process.env.CODEXLB_URL || 'https:/
 let apiKey = process.env.AGENT_LB_API_KEY || process.env.CODEX_LB_API_KEY || '';
 let model = process.env.CODEXLB_MODEL || 'gpt-5.6-sol';
 let effort = process.env.CODEXLB_EFFORT || 'xhigh';
-let useWs = true;
+let useWs = false; // agent-lb serves Codex over HTTP only; a WebSocket handshake gets 426
 let setDefault = true;
 let runTest = false;
 let isClean = false;
@@ -75,7 +75,7 @@ Opcje:
   --key KLUCZ         Klucz API z panelu codexlb (zakładka /apis)
   --model MODEL       Model Codex (domyślnie: ${model})
   --effort EFFORT     Reasoning effort (domyślnie: ${effort})
-  --no-ws             Wyłącz obsługę WebSocket (zalecane w sieciach z inspekcją TLS)
+  --no-ws             (domyślne) WebSocket wyłączony — proxy obsługuje Codex tylko po HTTP
   --profile-only      Nie zmieniaj domyślnego modelu, utwórz tylko profil codexlb
   --test              Wykonaj testowe zapytanie przez proxy po konfiguracji
   --status, -s        Sprawdź stan konfiguracji, klucza i połączenia z proxy

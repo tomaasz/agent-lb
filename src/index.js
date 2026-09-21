@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { maskSecret } from './access-control.js';
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { createWriteStream } from 'node:fs';
@@ -21,7 +22,7 @@ import {
   oauthIdentityFields,
 } from './identity.js';
 import { resolveAccounts } from './resolve-accounts.js';
-import { loginCodex } from './codex-auth.js';
+import { loginCodex, loginCodexDeviceCode } from './codex-auth.js';
 import { syncAccountsFromDisk } from './sync-accounts.js';
 import { mergeAccountsForSave, syncRefreshedTokens, removedAccountIds, clearRemovedAccountIds } from './account-pairing.js';
 import { ensureAccountIds } from './account-id.js';
@@ -625,7 +626,9 @@ async function serverCommand() {
       console.log(`  Upstream:      ${config.upstream || 'https://api.anthropic.com'}`);
       console.log(`  Web Dashboard: http://${bindHost === '0.0.0.0' ? 'localhost' : bindHost}:${port}/dashboard`);
       if (config.proxy?.apiKey) {
-        console.log(`  Admin Key:     ${config.proxy.apiKey}`);
+        // Masked: this banner lands in journald/log files, which is no place
+        // for the credential that unlocks every management endpoint.
+        console.log(`  Admin Key:     ${maskSecret(config.proxy.apiKey)} (full value: proxy.apiKey in the config)`);
       }
       console.log('');
       if (accounts.length === 0) {
@@ -770,7 +773,11 @@ async function loginCodexCommand() {
   await loadOrCreateConfig();
   let creds;
   try {
-    creds = await loginCodex({ noBrowser: args.includes('--no-browser') });
+    if (args.includes('--device-auth')) {
+      creds = await loginCodexDeviceCode();
+    } else {
+      creds = await loginCodex({ noBrowser: args.includes('--no-browser') });
+    }
   } catch (err) {
     console.error(`Codex login failed: ${err.message}`);
     console.error('');
@@ -849,12 +856,14 @@ async function loginCommand() {
   console.log('  1. Claude subscription  (Pro, Max, Team, Enterprise)');
   console.log('  2. Anthropic API key    (Console API billing)');
   console.log('  3. Codex subscription   (ChatGPT Plus, Pro, Team)');
+  console.log('  4. Codex device code    (headless / SSH)');
   console.log('');
   const choice = await new Promise(resolve => rl.question('Choice [1]: ', resolve));
   rl.close();
 
   switch (choice.trim() || '1') {
     case '3': await loginCodexCommand(); break;
+    case '4': args.push('--device-auth'); await loginCodexCommand(); break;
     case '1': await loginOAuthCommand(); break;
     case '2': await loginApiCommand(); break;
     default:

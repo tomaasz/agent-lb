@@ -7,7 +7,7 @@
 # Uzycie (PowerShell, zwykly uzytkownik, bez administratora):
 #   .\codexlb-setup.ps1                # klucz z pytania, codexlb jako domyslny
 #   .\codexlb-setup.ps1 -ProfileOnly   # nie rusza domyslnych, dodaje tylko profil
-#   .\codexlb-setup.ps1 -NoWs          # bez WebSocketow (firmowe proxy je zrywa)
+#   .\codexlb-setup.ps1 -NoWs          # (domyslne) bez WebSocketow - proxy serwuje Codex po HTTP
 #   .\codexlb-setup.ps1 -Test          # po konfiguracji odpala probne zapytanie
 #   .\codexlb-setup.ps1 -Status        # sprawdza stan konfiguracji i polaczenie
 #   .\codexlb-setup.ps1 -Restore       # przywraca poprzednia konfiguracje z kopii (.bak)
@@ -50,7 +50,7 @@ Opcje:
   -Key <KLUCZ>        Klucz API z panelu codexlb (zakladka /apis)
   -Model <MODEL>      Model Codex (domyslnie: $Model)
   -Effort <EFFORT>    Reasoning effort (domyslnie: $Effort)
-  -NoWs               Wylacz obsluge WebSocket (dla sieci firmowych z inspekcja TLS)
+  -NoWs               (domyslne) WebSocket wylaczony - proxy obsluguje Codex tylko po HTTP
   -ProfileOnly        Nie zmieniaj domyslnego modelu, utworz tylko profil codexlb
   -Test               Wykonaj testowe zapytanie przez proxy po konfiguracji
   -Status, -s         Sprawdz stan konfiguracji, klucza i polaczenia z proxy
@@ -92,7 +92,8 @@ $homeDir = if ($HOME) { $HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } e
 $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $homeDir '.codex' }
 $config    = Join-Path $codexHome 'config.toml'
 $profFile  = Join-Path $codexHome 'codexlb.config.toml'
-$wsValue   = if ($NoWs) { 'false' } else { 'true' }
+# agent-lb serwuje Codex tylko po HTTP (WebSocket dostaje 426) - zawsze false; -NoWs zostaje dla zgodnosci.
+$wsValue   = 'false'
 
 function Mask-Key($k) {
 	if (-not $k) { return '(brak)' }
