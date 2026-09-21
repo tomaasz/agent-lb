@@ -54,6 +54,7 @@ import {
   translateChatCompletionsToCodexResponses,
   createCodexResponsesToOpenAITransformStream,
   translateCodexResponsesToOpenAIResponse,
+  codexResponseFailure,
 } from './provider-translator.js';
 import { FairShareController } from './fair-share.js';
 import { ToolCallDedupeCache } from './tool-call-dedupe.js';
@@ -5011,6 +5012,50 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       }
     }
 
+    // Non-streaming Codex translation. Upstream always streams (Codex has no
+    // other mode), so the answer is buffered and translated whole — which is
+    // what lets a failure it reported INSIDE its 200 stream (response.failed,
+    // an error event, a stream cut off) reach the client as an error status.
+    // Once the 200 is written that is impossible: the client used to get a
+    // 200 with an empty answer and no sign anything went wrong.
+    if (upstreamRes.status < 400 && upstreamRes.body && ctx.isClientStreaming === false
+        && (ctx.isCodexResponsesToOpenAI || ctx.isCodexResponsesToAnthropic)) {
+      const toAnthropic = !!ctx.isCodexResponsesToAnthropic;
+      const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
+      const l = getLog();
+      const failure = codexResponseFailure(buf);
+      let status = 200;
+      let finalBuf;
+      if (failure) {
+        status = failure.status;
+        console.error(`[AgentLB] Codex response failed on "${account.name}" (${safeLine(failure.code)}): ${safeLine(failure.message)}`);
+        finalBuf = Buffer.from(JSON.stringify(toAnthropic
+          ? { type: 'error', error: { type: failure.type, message: failure.message } }
+          : { error: { message: failure.message, type: failure.type, code: failure.code } }), 'utf8');
+      } else {
+        try {
+          const openAIObj = translateCodexResponsesToOpenAIResponse(buf, ctx.originalModel || ctx.model);
+          finalBuf = Buffer.from(JSON.stringify(toAnthropic ? translateOpenAIToAnthropicResponse(openAIObj, ctx.model) : openAIObj), 'utf8');
+          extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
+        } catch (e) {
+          status = 502;
+          console.error(`[AgentLB] Codex response translation failed on "${account.name}": ${safeLine(e.message)}`);
+          finalBuf = Buffer.from(JSON.stringify(toAnthropic
+            ? { type: 'error', error: { type: 'api_error', message: 'Could not translate the upstream response' } }
+            : { error: { message: 'Could not translate the upstream response', type: 'api_error', code: 'translation_failed' } }), 'utf8');
+        }
+      }
+      ctx.status = status;
+      if (status < 400) accountManager.confirmStay(account, restingGen, ctx.sessionId, ctx.provider);
+      if (l) { l.body('RESPONSE BODY', finalBuf, 'application/json'); l.end(); }
+      res.writeHead(status, status < 400
+        ? { ...responseHeaders, 'content-type': 'application/json; charset=utf-8' }
+        : { 'Content-Type': 'application/json' });
+      res.end(finalBuf);
+      ctx.delivered = answeredStatus(status);
+      return;
+    }
+
     res.writeHead(upstreamRes.status, responseHeaders);
 
     // The catch block's retry is guarded by `!res.headersSent`, so a stay
@@ -5051,21 +5096,6 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         l?.end();
         ctx.delivered = answeredStatus(upstreamRes.status);
         return;
-      } else {
-        const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
-        let finalBuf = buf;
-        try {
-          const translated = translateCodexResponsesToOpenAIResponse(buf, ctx.originalModel || ctx.model);
-          finalBuf = Buffer.from(JSON.stringify(translated), 'utf8');
-          extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
-        } catch (e) {
-          console.warn('[Agent-LB] JSON response translation warning:', e.message);
-        }
-        const l = getLog();
-        if (l) { l.body('RESPONSE BODY', finalBuf, 'application/json'); l.end(); }
-        res.end(finalBuf);
-        ctx.delivered = answeredStatus(upstreamRes.status);
-        return;
       }
     }
 
@@ -5083,22 +5113,6 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         const openAIToAnthropic = createOpenAIToAnthropicTransformStream(ctx.model);
         await pipeline(Readable.from(idleBody(upstreamRes.body)), codexToOpenAI, openAIToAnthropic, res);
         l?.end();
-        ctx.delivered = answeredStatus(upstreamRes.status);
-        return;
-      } else {
-        const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
-        let finalBuf = buf;
-        try {
-          const openAIObj = translateCodexResponsesToOpenAIResponse(buf, ctx.originalModel || ctx.model);
-          const translated = translateOpenAIToAnthropicResponse(openAIObj, ctx.model);
-          finalBuf = Buffer.from(JSON.stringify(translated), 'utf8');
-          extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
-        } catch (e) {
-          console.warn('[Agent-LB] JSON response translation warning:', e.message);
-        }
-        const l = getLog();
-        if (l) { l.body('RESPONSE BODY', finalBuf, 'application/json'); l.end(); }
-        res.end(finalBuf);
         ctx.delivered = answeredStatus(upstreamRes.status);
         return;
       }

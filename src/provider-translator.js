@@ -1034,6 +1034,7 @@ export function translateCodexResponsesToOpenAIResponse(buffer, requestedModel =
   const toolCallsMap = new Map();
   let usage = null;
   let hasTools = false;
+  let incompleteReason = null;
 
   for (const line of text.split('\n')) {
     const trimmed = line.trim();
@@ -1042,7 +1043,10 @@ export function translateCodexResponsesToOpenAIResponse(buffer, requestedModel =
     if (dataStr === '[DONE]') continue;
     try {
       const payload = JSON.parse(dataStr);
-      if (payload.type === 'response.created' && payload.response) {
+      if (payload.type === 'response.incomplete') {
+        incompleteReason = payload.response?.incomplete_details?.reason || 'max_output_tokens';
+        if (payload.response?.usage) usage = payload.response.usage;
+      } else if (payload.type === 'response.created' && payload.response) {
         if (payload.response.id) id = `chatcmpl-${payload.response.id.replace(/^resp_/, '')}`;
         if (payload.response.created_at) created = payload.response.created_at;
       } else if (payload.type === 'response.output_text.delta' && payload.delta) {
@@ -1091,7 +1095,11 @@ export function translateCodexResponsesToOpenAIResponse(buffer, requestedModel =
           content: content || null,
           ...(toolCalls.length ? { tool_calls: toolCalls } : {})
         },
-        finish_reason: hasTools ? 'tool_calls' : 'stop'
+        // A response cut short (output token cap, content filter) is not a
+        // normal stop: say so, so the client can continue or report it.
+        finish_reason: incompleteReason
+          ? (incompleteReason === 'content_filter' ? 'content_filter' : 'length')
+          : (hasTools ? 'tool_calls' : 'stop')
       }
     ],
     usage: {
@@ -1104,5 +1112,45 @@ export function translateCodexResponsesToOpenAIResponse(buffer, requestedModel =
   };
 }
 
-
-
+/**
+ * A failure a Codex Responses stream reported inside its 200: a
+ * `response.failed`, an `error` event, or a stream that ended with neither
+ * `response.completed` nor `response.incomplete` (cut off). Returns
+ * { status, type, code, message } for the client-facing error, or null when
+ * the response completed — including a buffer that is not an SSE stream at
+ * all, which is left to the translator as before.
+ */
+export function codexResponseFailure(buffer) {
+  const text = typeof buffer === 'string' ? buffer : Buffer.isBuffer(buffer) ? buffer.toString('utf8') : '';
+  let sawEvent = false;
+  let finished = false;
+  let err = null;
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) continue;
+    const dataStr = trimmed.slice(5).trim();
+    if (dataStr === '[DONE]') continue;
+    let payload;
+    try { payload = JSON.parse(dataStr); } catch { continue; }
+    sawEvent = true;
+    if (payload.type === 'response.completed' || payload.type === 'response.incomplete') finished = true;
+    else if (payload.type === 'response.failed') err = payload.response?.error || { message: 'Upstream response failed' };
+    else if (payload.type === 'error') err = payload.error || payload;
+  }
+  if (!sawEvent) return null;
+  if (err) {
+    const code = String(err.code || err.type || '');
+    const message = String(err.message || 'Upstream response failed');
+    if (/context_length|too_long|invalid_prompt|invalid_request|bad_request/i.test(code)) {
+      return { status: 400, type: 'invalid_request_error', code, message };
+    }
+    if (/rate_limit|usage_limit|quota/i.test(code)) {
+      return { status: 429, type: 'rate_limit_error', code, message };
+    }
+    return { status: 502, type: 'api_error', code: code || 'upstream_error', message };
+  }
+  if (!finished) {
+    return { status: 502, type: 'api_error', code: 'stream_truncated', message: 'Upstream stream ended before the response completed' };
+  }
+  return null;
+}

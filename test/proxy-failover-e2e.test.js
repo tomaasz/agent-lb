@@ -355,3 +355,82 @@ test('anthropic: when every account is rejected with 401 the client gets a proxy
   assert.ok(res.status >= 500, `expected a 5xx proxy error, got ${res.status}`);
   await res.text();
 });
+
+// ------------------------------------------- Codex, client not streaming
+
+const chatRequestNonStream = (base) => fetch(`${base}/v1/chat/completions`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ model: 'gpt-5.6-sol', stream: false, messages: [{ role: 'user', content: 'hi' }] }),
+});
+
+async function codexNonStream(t, events) {
+  const up = await mockUpstream(t, (_req, _body, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.end(codexSse(events));
+  });
+  const { base } = await proxyFor(t, codexAccounts(up.base).slice(0, 1), up.base);
+  const res = await chatRequestNonStream(base);
+  return { status: res.status, json: await res.json() };
+}
+
+test('codex non-stream: response.failed becomes an error status, not an empty 200', async t => {
+  const { status, json } = await codexNonStream(t, [
+    { type: 'response.created', response: { id: 'resp_f' } },
+    { type: 'response.failed', response: { id: 'resp_f', error: { code: 'context_length_exceeded', message: 'Your input exceeds the context window of this model.' } } },
+  ]);
+  assert.equal(status, 400);
+  assert.equal(json.error.code, 'context_length_exceeded');
+  assert.match(json.error.message, /context window/);
+});
+
+test('codex non-stream: a server-side failure maps to 502', async t => {
+  const { status, json } = await codexNonStream(t, [
+    { type: 'response.created', response: { id: 'resp_s' } },
+    { type: 'error', error: { type: 'server_error', message: 'An error occurred while processing your request.' } },
+  ]);
+  assert.equal(status, 502);
+  assert.equal(json.error.type, 'api_error');
+});
+
+test('codex non-stream: a stream cut off before response.completed is an error', async t => {
+  const { status, json } = await codexNonStream(t, [
+    { type: 'response.created', response: { id: 'resp_c' } },
+    { type: 'response.output_text.delta', output_index: 0, delta: 'half an ans' },
+  ]);
+  assert.equal(status, 502);
+  assert.equal(json.error.code, 'stream_truncated');
+});
+
+test('codex non-stream: a completed answer with a tool call is translated whole', async t => {
+  const args = JSON.stringify({ path: 'a.js' });
+  const { status, json } = await codexNonStream(t, [
+    { type: 'response.created', response: { id: 'resp_ok' } },
+    { type: 'response.output_item.added', output_index: 0, item: { type: 'reasoning', id: 'rs' } },
+    { type: 'response.output_item.added', output_index: 1, item: { type: 'function_call', call_id: 'call_1', name: 'read', arguments: '' } },
+    { type: 'response.function_call_arguments.delta', output_index: 1, delta: args },
+    { type: 'response.completed', response: { id: 'resp_ok', usage: { input_tokens: 3, output_tokens: 4 } } },
+  ]);
+  assert.equal(status, 200);
+  assert.equal(json.object, 'chat.completion');
+  assert.equal(json.choices[0].finish_reason, 'tool_calls');
+  assert.deepEqual(json.choices[0].message.tool_calls.map(c => [c.id, c.function.name, JSON.parse(c.function.arguments)]), [['call_1', 'read', { path: 'a.js' }]]);
+});
+
+test('codex non-stream: response.incomplete reports finish_reason length', async t => {
+  const { status, json } = await codexNonStream(t, [
+    { type: 'response.created', response: { id: 'resp_i' } },
+    { type: 'response.output_text.delta', output_index: 0, delta: 'partial' },
+    { type: 'response.incomplete', response: { id: 'resp_i', incomplete_details: { reason: 'max_output_tokens' } } },
+  ]);
+  assert.equal(status, 200);
+  assert.equal(json.choices[0].message.content, 'partial');
+  assert.equal(json.choices[0].finish_reason, 'length');
+});
+
+test('codexResponseFailure classifies and ignores non-SSE bodies', async () => {
+  const { codexResponseFailure } = await import('../src/provider-translator.js');
+  assert.equal(codexResponseFailure('{"id":"x"}'), null);
+  assert.equal(codexResponseFailure(codexSse([{ type: 'response.completed', response: {} }])), null);
+  assert.equal(codexResponseFailure(codexSse([{ type: 'response.failed', response: { error: { code: 'rate_limit_exceeded', message: 'slow down' } } }])).status, 429);
+});
