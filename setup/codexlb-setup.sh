@@ -11,7 +11,7 @@
 #   ./codexlb-setup.sh --status         # sprawdza stan konfiguracji i połączenie z proxy
 #   ./codexlb-setup.sh --restore        # przywraca poprzednią konfigurację z kopii zapasowej (.bak)
 #   ./codexlb-setup.sh --clean          # czyści klucz i konfigurację codexlb
-#   ./codexlb-setup.sh --no-ws          # bez WebSocketów (firmowe proxy je zrywa)
+#   ./codexlb-setup.sh --no-ws          # (domyslne) bez WebSocketow — proxy serwuje Codex po HTTP
 #   ./codexlb-setup.sh --insecure       # ignoruje błędy certyfikatów SSL/TLS (-k)
 #   CODEX_LB_API_KEY=sk-clb-... ./codexlb-setup.sh   # klucz ze zmiennej, bez pytania
 #
@@ -35,7 +35,7 @@ CONFIG="$CODEX_HOME/config.toml"
 PROFILE_FILE="$CODEX_HOME/codexlb.config.toml"
 SET_DEFAULT=1
 RUN_TEST=0
-USE_WS=true
+USE_WS=false  # agent-lb serwuje Codex tylko po HTTP; WebSocket dostaje 426
 CLEAN=0
 STATUS=0
 RESTORE=0

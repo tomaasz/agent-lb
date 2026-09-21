@@ -2576,6 +2576,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
   // needs its own listener (base-URL routing path; the MITM path wires the
   // same relayUpgrade onto its own terminating server in mitm.js).
   server.on('upgrade', (req, socket, head) => {
+    // Checked before the key gate: the Codex CLI authenticates with a Bearer
+    // only, and answering its handshake 401 would read as an auth failure
+    // rather than "use HTTP". See refuseCodexWebSocket.
+    if (refuseCodexWebSocket(req, socket)) return;
     // The upgrade handshake never reaches requestHandler, so it does not
     // inherit the key gate above — it has to ask for itself. Without this a
     // WebSocket handshake is an unauthenticated relay to `upstream`: the
@@ -3570,6 +3574,29 @@ export function resolveUpgradeAuth(req, socket, proxyConfig) {
   }
   if (!isLocalHostHeader(req?.headers?.host, bindHost)) return auth;
   return { ok: true, client: null };
+}
+
+/**
+ * Refuse a Codex WebSocket handshake (the Responses API over WS, which Codex
+ * opens when its provider sets `supports_websockets = true`).
+ *
+ * This proxy serves Codex over HTTP only: selection, token injection, quota
+ * accounting and failover all live on the request path. relayUpgrade is a
+ * byte relay for Claude's Remote Control channel — it forwards the client's
+ * own headers to the Anthropic upstream, so a Codex handshake sent through it
+ * carried the client's Bearer to api.anthropic.com, and via MITM it reached
+ * chatgpt.com on the client's own login, bypassing rotation. Answer 426 so the
+ * client falls back to HTTP. Returns true when the socket was answered.
+ * Exported for tests.
+ */
+export function refuseCodexWebSocket(req, socket, log = console.log) {
+  let path;
+  try { path = new URL(req?.url || '/', 'http://proxy.invalid').pathname; } catch { path = req?.url || ''; }
+  if (providerForPath(path) !== 'codex') return false;
+  log(`[AgentLB] Codex WebSocket ${safeLine(path)} refused (426) — Codex is served over HTTP; set supports_websockets = false`);
+  try { socket.write('HTTP/1.1 426 Upgrade Required\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'); } catch { /* client already gone */ }
+  socket.destroy();
+  return true;
 }
 
 /**
