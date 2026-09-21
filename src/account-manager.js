@@ -158,6 +158,38 @@ function copyBuckets(byBucket) {
   return out;
 }
 
+export const MAX_SESSIONS_PER_ACCOUNT = 100;
+export const MAX_RECENT_USAGE_PER_ACCOUNT = 50;
+
+function copyUsage(usage) {
+  if (!usage) return {};
+  const byClient = {};
+  if (usage.byClient) {
+    for (const [k, v] of Object.entries(usage.byClient)) byClient[k] = { ...v };
+  }
+  const byModel = {};
+  if (usage.byModel) {
+    for (const [k, v] of Object.entries(usage.byModel)) byModel[k] = { ...v };
+  }
+  const bySession = {};
+  if (usage.bySession) {
+    for (const [k, v] of Object.entries(usage.bySession)) bySession[k] = { ...v };
+  }
+  return {
+    totalInputTokens: usage.totalInputTokens || 0,
+    totalOutputTokens: usage.totalOutputTokens || 0,
+    totalCacheReadTokens: usage.totalCacheReadTokens || 0,
+    totalCacheCreationTokens: usage.totalCacheCreationTokens || 0,
+    totalRequests: usage.totalRequests || 0,
+    lastUsed: usage.lastUsed || null,
+    byBucket: copyBuckets(usage.byBucket || {}),
+    byClient,
+    byModel,
+    bySession,
+    recent: Array.isArray(usage.recent) ? usage.recent.slice(0, MAX_RECENT_USAGE_PER_ACCOUNT).map(r => ({ ...r })) : [],
+  };
+}
+
 // Build a fresh in-memory account record from a config/disk account object.
 // Shared by the constructor and addAccount() so the field set can never drift
 // between startup accounts and runtime-added ones (a divergence here once left
@@ -224,6 +256,10 @@ function makeAccount(acct, index) {
       byBucket: {},
       totalRequests: 0,
       lastUsed: null,
+      byClient: {},
+      byModel: {},
+      bySession: {},
+      recent: [],
     },
     rateLimitedUntil: null,
     throttledAt: null,
@@ -3304,7 +3340,7 @@ export class AccountManager {
    * ones are published for an operator to read and are not consulted by
    * selection.
    */
-  recordTokenUsage(accountIndex, sessionId, model, usage) {
+  recordTokenUsage(accountIndex, sessionId, model, usage, details = {}) {
     if (!usage) return;
     // The same resolver routing uses, so a token total and a routing decision
     // agree about which family a request belonged to. Resolved here rather than
@@ -3318,14 +3354,116 @@ export class AccountManager {
     const bucket = this._weeklyBucketFor(model);
     const account = this.accounts[accountIndex];
     if (account) {
-      const read = Number.isFinite(usage.cache_read_input_tokens) ? usage.cache_read_input_tokens : 0;
-      const creation = Number.isFinite(usage.cache_creation_input_tokens) ? usage.cache_creation_input_tokens : 0;
+      const read = Number.isFinite(usage.cache_read_input_tokens) ? usage.cache_read_input_tokens : (Number.isFinite(usage.cacheReadTokens) ? usage.cacheReadTokens : 0);
+      const creation = Number.isFinite(usage.cache_creation_input_tokens) ? usage.cache_creation_input_tokens : (Number.isFinite(usage.cacheCreationTokens) ? usage.cacheCreationTokens : (Number.isFinite(usage.cacheTokens) ? usage.cacheTokens : 0));
+      const input = Number.isFinite(usage.input_tokens) ? usage.input_tokens : (Number.isFinite(usage.prompt_tokens) ? usage.prompt_tokens : (Number.isFinite(usage.inputTokens) ? usage.inputTokens : 0));
+      const output = Number.isFinite(usage.output_tokens) ? usage.output_tokens : (Number.isFinite(usage.completion_tokens) ? usage.completion_tokens : (Number.isFinite(usage.outputTokens) ? usage.outputTokens : 0));
+      const totalTokens = Number.isFinite(usage.total_tokens) ? usage.total_tokens : (Number.isFinite(usage.totalTokens) ? usage.totalTokens : (read + creation + input + output));
+
       account.usage.totalCacheReadTokens += read;
       account.usage.totalCacheCreationTokens += creation;
       const per = account.usage.byBucket[bucket]
         || (account.usage.byBucket[bucket] = { cacheReadTokens: 0, cacheCreationTokens: 0 });
       per.cacheReadTokens += read;
       per.cacheCreationTokens += creation;
+
+      const now = new Date().toISOString();
+      account.usage.lastUsed = now;
+      const client = details.client || 'Lokalny / Bez klucza';
+      const modelName = model || 'nieznany';
+      const sessionTitle = details.sessionTitle || null;
+      const project = details.project || null;
+
+      // Attribution byClient
+      if (!account.usage.byClient) account.usage.byClient = {};
+      const clientStats = account.usage.byClient[client] || (account.usage.byClient[client] = {
+        requests: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        totalTokens: 0,
+        lastUsed: null,
+      });
+      clientStats.requests += 1;
+      clientStats.inputTokens += input;
+      clientStats.outputTokens += output;
+      clientStats.cacheReadTokens += read;
+      clientStats.cacheCreationTokens += creation;
+      clientStats.totalTokens += totalTokens;
+      clientStats.lastUsed = now;
+
+      // Attribution byModel
+      if (!account.usage.byModel) account.usage.byModel = {};
+      const modelStats = account.usage.byModel[modelName] || (account.usage.byModel[modelName] = {
+        requests: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        totalTokens: 0,
+        lastUsed: null,
+      });
+      modelStats.requests += 1;
+      modelStats.inputTokens += input;
+      modelStats.outputTokens += output;
+      modelStats.cacheReadTokens += read;
+      modelStats.cacheCreationTokens += creation;
+      modelStats.totalTokens += totalTokens;
+      modelStats.lastUsed = now;
+
+      // Attribution bySession
+      if (sessionId) {
+        if (!account.usage.bySession) account.usage.bySession = {};
+        const sessStats = account.usage.bySession[sessionId] || (account.usage.bySession[sessionId] = {
+          client,
+          model: modelName,
+          project,
+          title: sessionTitle,
+          requests: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          totalTokens: 0,
+          lastUsed: null,
+        });
+        sessStats.requests += 1;
+        sessStats.inputTokens += input;
+        sessStats.outputTokens += output;
+        sessStats.cacheReadTokens += read;
+        sessStats.cacheCreationTokens += creation;
+        sessStats.totalTokens += totalTokens;
+        if (sessionTitle) sessStats.title = sessionTitle;
+        if (project) sessStats.project = project;
+        sessStats.lastUsed = now;
+
+        const sessionKeys = Object.keys(account.usage.bySession);
+        if (sessionKeys.length > MAX_SESSIONS_PER_ACCOUNT) {
+          sessionKeys.sort((a, b) => (account.usage.bySession[a].lastUsed || '').localeCompare(account.usage.bySession[b].lastUsed || ''));
+          for (let i = 0; i < sessionKeys.length - MAX_SESSIONS_PER_ACCOUNT; i++) {
+            delete account.usage.bySession[sessionKeys[i]];
+          }
+        }
+      }
+
+      // Recent activity buffer
+      if (!Array.isArray(account.usage.recent)) account.usage.recent = [];
+      account.usage.recent.unshift({
+        timestamp: now,
+        client,
+        sessionId: sessionId || null,
+        sessionTitle: sessionTitle || null,
+        project: project || null,
+        model: modelName,
+        inputTokens: input,
+        outputTokens: output,
+        cacheTokens: read + creation,
+        totalTokens,
+      });
+      if (account.usage.recent.length > MAX_RECENT_USAGE_PER_ACCOUNT) {
+        account.usage.recent.length = MAX_RECENT_USAGE_PER_ACCOUNT;
+      }
     }
     // A request with no session id (or one the tracker has forgotten) is still a
     // real spend by the account, so the two scopes are recorded independently.
@@ -3803,7 +3941,8 @@ export class AccountManager {
         burnRate: this.burnRateLearner.export(a.index),
         concCap: this.concurrencyLearner.export(a.index),
       };
-      return { accountUuid: a.accountUuid, orgUuid: a.orgUuid, orgName: a.orgName, name: a.name, profile, quota, adaptive, lastError: a.lastError || null };
+      const usage = copyUsage(a.usage);
+      return { accountUuid: a.accountUuid, orgUuid: a.orgUuid, orgName: a.orgName, name: a.name, profile, quota, adaptive, usage, lastError: a.lastError || null };
     });
   }
 
@@ -3824,6 +3963,29 @@ export class AccountManager {
       }
       for (const field of ['organizationType', 'rateLimitTier', 'seatTier', 'hasClaudeMax', 'hasClaudePro']) {
         if (match.profile?.[field] != null) account[field] = match.profile[field];
+      }
+      if (match.usage && typeof match.usage === 'object') {
+        account.usage.totalInputTokens = Number(match.usage.totalInputTokens) || 0;
+        account.usage.totalOutputTokens = Number(match.usage.totalOutputTokens) || 0;
+        account.usage.totalCacheReadTokens = Number(match.usage.totalCacheReadTokens) || 0;
+        account.usage.totalCacheCreationTokens = Number(match.usage.totalCacheCreationTokens) || 0;
+        account.usage.totalRequests = Number(match.usage.totalRequests) || 0;
+        account.usage.lastUsed = match.usage.lastUsed || null;
+        if (match.usage.byBucket && typeof match.usage.byBucket === 'object') {
+          account.usage.byBucket = copyBuckets(match.usage.byBucket);
+        }
+        if (match.usage.byClient && typeof match.usage.byClient === 'object') {
+          account.usage.byClient = { ...match.usage.byClient };
+        }
+        if (match.usage.byModel && typeof match.usage.byModel === 'object') {
+          account.usage.byModel = { ...match.usage.byModel };
+        }
+        if (match.usage.bySession && typeof match.usage.bySession === 'object') {
+          account.usage.bySession = { ...match.usage.bySession };
+        }
+        if (Array.isArray(match.usage.recent)) {
+          account.usage.recent = match.usage.recent.slice(0, MAX_RECENT_USAGE_PER_ACCOUNT).map(r => ({ ...r }));
+        }
       }
       this.burnRateLearner.restore(account.index, match.adaptive?.burnRate);
       this.concurrencyLearner.restore(account.index, match.adaptive?.concCap);
@@ -3905,14 +4067,7 @@ export class AccountManager {
         // renderer's "is there a breakdown" test stays a plain truthiness check.
         sessionsByBucket: sessions.perAccountBucket?.[a.index] || null,
         quota: { ...a.quota },
-        // `byBucket` is the one nested value under `usage`, so the shallow copy
-        // that covers every flat counter beside it would hand the caller a live
-        // reference into the account, leaving the payload half snapshot and half
-        // window: its per-family figures would keep moving while every other
-        // number on the same object stayed put. Every in-process reader today
-        // serialises it straight away, so this holds a property rather than
-        // fixing a live defect.
-        usage: { ...a.usage, byBucket: copyBuckets(a.usage.byBucket) },
+        usage: copyUsage(a.usage),
         rateLimitedUntil: a.rateLimitedUntil
           ? new Date(a.rateLimitedUntil).toISOString()
           : null,
@@ -3930,6 +4085,108 @@ export class AccountManager {
           : null,
       })),
     };
+  }
+
+  /**
+   * Return comprehensive usage breakdown across accounts, clients, models, and sessions.
+   */
+  getUsageBreakdown() {
+    const accounts = this.accounts.map(a => {
+      const u = a.usage;
+      const clientTokens = Object.values(u.byClient || {}).reduce((s, c) => s + (c.totalTokens || 0), 0);
+      const clientRequests = Object.values(u.byClient || {}).reduce((s, c) => s + (c.requests || 0), 0);
+      const accTok = Math.max(
+        (u.totalInputTokens || 0) + (u.totalOutputTokens || 0) + (u.totalCacheReadTokens || 0) + (u.totalCacheCreationTokens || 0),
+        clientTokens
+      );
+      const accReq = Math.max(u.totalRequests || 0, clientRequests);
+      const usageCopy = copyUsage(u);
+      usageCopy.totalTokens = accTok;
+      usageCopy.totalRequests = accReq;
+      return {
+        name: a.name,
+        provider: a.provider || 'anthropic',
+        planType: a.planType,
+        type: a.type,
+        quota: { ...a.quota },
+        totalTokens: accTok,
+        totalRequests: accReq,
+        usage: usageCopy,
+      };
+    });
+    const fleetClients = {};
+    const fleetModels = {};
+    let fleetRequests = 0;
+    let fleetTokens = 0;
+
+    for (const a of this.accounts) {
+      const u = a.usage;
+      const clientTokens = Object.values(u.byClient || {}).reduce((s, c) => s + (c.totalTokens || 0), 0);
+      const clientRequests = Object.values(u.byClient || {}).reduce((s, c) => s + (c.requests || 0), 0);
+      const accTok = Math.max(
+        (u.totalInputTokens || 0) + (u.totalOutputTokens || 0) + (u.totalCacheReadTokens || 0) + (u.totalCacheCreationTokens || 0),
+        clientTokens
+      );
+      const accReq = Math.max(u.totalRequests || 0, clientRequests);
+      fleetRequests += accReq;
+      fleetTokens += accTok;
+
+      if (u.byClient) {
+        for (const [c, st] of Object.entries(u.byClient)) {
+          if (!fleetClients[c]) fleetClients[c] = { requests: 0, totalTokens: 0, accounts: {} };
+          fleetClients[c].requests += st.requests || 0;
+          fleetClients[c].totalTokens += st.totalTokens || 0;
+          fleetClients[c].accounts[a.name] = (fleetClients[c].accounts[a.name] || 0) + (st.totalTokens || 0);
+        }
+      }
+      if (u.byModel) {
+        for (const [m, st] of Object.entries(u.byModel)) {
+          if (!fleetModels[m]) fleetModels[m] = { requests: 0, totalTokens: 0 };
+          fleetModels[m].requests += st.requests || 0;
+          fleetModels[m].totalTokens += st.totalTokens || 0;
+        }
+      }
+    }
+
+    return {
+      totalRequests: fleetRequests,
+      totalTokens: fleetTokens,
+      clients: fleetClients,
+      models: fleetModels,
+      fleet: {
+        totalRequests: fleetRequests,
+        totalTokens: fleetTokens,
+        byClient: fleetClients,
+        byModel: fleetModels,
+      },
+      accounts,
+    };
+  }
+
+  /**
+   * Reset usage metrics for a single account or all accounts.
+   */
+  resetUsage(accountName = null) {
+    let found = false;
+    for (const a of this.accounts) {
+      if (!accountName || a.name === accountName) {
+        found = true;
+        a.usage = {
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+          totalCacheReadTokens: 0,
+          totalCacheCreationTokens: 0,
+          totalRequests: 0,
+          lastUsed: null,
+          byBucket: {},
+          byClient: {},
+          byModel: {},
+          bySession: {},
+          recent: [],
+        };
+      }
+    }
+    return found;
   }
 
   /** Return per-account quota and fleet aggregates for status clients. */

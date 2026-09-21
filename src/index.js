@@ -539,6 +539,10 @@ async function serverCommand() {
   hooks.reload = reloadAccounts;
   hooks.probeQuota = () => prober?.probeAll();
   hooks.probeAccount = (acct) => prober?.probeAccount(acct);
+  hooks.sessionTitles = sessionTitles;
+  hooks.saveState = () => saveState({ quota: accountManager.exportQuotaState(), clients: clientUsage.export(), usageDimensions: dimensionUsage.export() }).catch(err => {
+    console.error(`[AgentLB] Failed to save state: ${err.message}`);
+  });
 
   hooks.getStatusExtra = () => ({
     // Read live from the shared config (not a startup snapshot) so the TUI's

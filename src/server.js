@@ -1071,6 +1071,28 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         return;
       }
 
+      // Accounts: Usage breakdown (GET /api/accounts/usage & GET /agentlb/api/accounts/usage)
+      if (req.method === 'GET' && (normApiPath === '/api/accounts/usage' || normApiPath === '/accounts/usage')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, ...accountManager.getUsageBreakdown() }));
+        return;
+      }
+
+      // Accounts: Reset usage (POST /api/accounts/usage/reset & POST /agentlb/api/accounts/usage/reset)
+      if (req.method === 'POST' && (normApiPath === '/api/accounts/usage/reset' || normApiPath === '/accounts/usage/reset')) {
+        let body;
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || '{}');
+        } catch { body = {}; }
+        const target = body?.account || body?.name || null;
+        accountManager.resetUsage(target);
+        hooks.saveState?.();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, message: 'Statystyki zużycia zostały zresetowane.' }));
+        return;
+      }
+
       // Accounts: Consume reset credit (POST /api/accounts/consume-reset-credit & POST /accounts/consume-reset-credit)
       if (req.method === 'POST' && (normApiPath === '/api/accounts/consume-reset-credit' || normApiPath === '/accounts/consume-reset-credit')) {
         let body;
@@ -2874,10 +2896,42 @@ const CLIENT_CREDENTIAL_PATHS = ['/v1/code/', '/api/oauth/'];
 // header parser would otherwise let C1 control bytes through untouched.
 const SESSION_ID_SHAPE = /^[A-Za-z0-9._-]{1,128}$/;
 
+/**
+ * Extract a short 1-line text summary from user messages or prompt in a request body.
+ */
+export function extractPromptSummary(parsedBody) {
+  if (!parsedBody) return null;
+  const messages = Array.isArray(parsedBody.messages) ? parsedBody.messages : null;
+  if (messages && messages.length > 0) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m && m.role === 'user') {
+        let text = '';
+        if (typeof m.content === 'string') {
+          text = m.content;
+        } else if (Array.isArray(m.content)) {
+          for (const part of m.content) {
+            if (part?.type === 'text' && typeof part.text === 'string') {
+              text += (text ? ' ' : '') + part.text;
+            }
+          }
+        }
+        text = text.trim().replace(/\s+/g, ' ');
+        if (text) return text.length > 80 ? text.slice(0, 77) + '...' : text;
+      }
+    }
+  }
+  if (typeof parsedBody.prompt === 'string') {
+    const p = parsedBody.prompt.trim().replace(/\s+/g, ' ');
+    if (p) return p.length > 80 ? p.slice(0, 77) + '...' : p;
+  }
+  return null;
+}
+
 /** The session id a request carries, or null when the header is absent or
  *  malformed — a malformed one is treated as no session, not rejected. */
 export function clientSessionId(headers) {
-  const raw = headers['x-claude-code-session-id'];
+  const raw = headers['x-claude-code-session-id'] || headers['x-session-id'] || headers['session-id'];
   return typeof raw === 'string' && SESSION_ID_SHAPE.test(raw) ? raw : null;
 }
 
@@ -3166,7 +3220,17 @@ export function createProxyRequestListener({
                 ? (accountManager.getActiveCount?.('codex') > 0 ? 'codex' : (accountManager.getActiveCount?.('anthropic') > 0 ? 'anthropic' : requestProvider))
                 : requestProvider));
 
-      const ctx = { account: null, status: null, tried: new Set(), reauthed: new Set(), model, advisorModel, pinnedIndex, provider: targetProvider, requestProvider, requestedModel: model, fallbackPolicy: config.fallbackPolicy, clientEntry: req.tcClientEntry, clientUsage, metrics: metricsFor(config), onFirstToken, holdBudgetMs: holdMs, sessionId, client, delivered: false, abandoned: false, onUsage: usageRecorder.onUsage, stripHeaders, logLevel: resolveLogLevel(config), logMaxBodyBytes: resolveLogMaxBodyBytes(config) };
+      const project = usageDimensions.find(d => d.name === 'project')?.key || null;
+      const isLocal = loopbackExempt(req.headers, req.socket?.remoteAddress, config.proxy);
+      const isTailnet = tailnetExempt(req.headers, req.socket?.remoteAddress, config.proxy);
+      const clientLabel = client || (isLocal ? 'Lokalny / Loopback' : (isTailnet ? 'Tailnet' : (req.headers?.['x-api-key'] ? 'Master Key' : 'Bez klucza')));
+      const usageDetails = {
+        client: clientLabel,
+        project,
+        sessionTitle: (sessionId && hooks.sessionTitles?.get?.(sessionId)) || null,
+      };
+
+      const ctx = { account: null, status: null, tried: new Set(), reauthed: new Set(), model, advisorModel, pinnedIndex, provider: targetProvider, requestProvider, requestedModel: model, fallbackPolicy: config.fallbackPolicy, clientEntry: req.tcClientEntry, clientUsage, metrics: metricsFor(config), onFirstToken, holdBudgetMs: holdMs, sessionId, client, usageDetails, delivered: false, abandoned: false, onUsage: usageRecorder.onUsage, stripHeaders, logLevel: resolveLogLevel(config), logMaxBodyBytes: resolveLogMaxBodyBytes(config) };
       // Hold the session "in flight" across the WHOLE request (incl. retries and
       // a multi-minute streaming completion) so it stays counted as active and
       // never expires mid-request.
@@ -3223,6 +3287,10 @@ export function createProxyRequestListener({
       } catch {}
 
       if (parsedBody) {
+        if (!ctx.usageDetails.sessionTitle) {
+          const promptSummary = extractPromptSummary(parsedBody);
+          if (promptSummary) ctx.usageDetails.sessionTitle = promptSummary;
+        }
         // Whether the client asked for a stream decides how long upstream may
         // take to send headers (see nonStreamHeadersTimeout).
         ctx.clientStream = parsedBody.stream === true;
@@ -5036,7 +5104,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         try {
           const openAIObj = translateCodexResponsesToOpenAIResponse(buf, ctx.originalModel || ctx.model);
           finalBuf = Buffer.from(JSON.stringify(toAnthropic ? translateOpenAIToAnthropicResponse(openAIObj, ctx.model) : openAIObj), 'utf8');
-          extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
+          extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model, ctx.usageDetails);
         } catch (e) {
           status = 502;
           console.error(`[AgentLB] Codex response translation failed on "${account.name}": ${safeLine(e.message)}`);
@@ -5090,7 +5158,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
           const outTok = usage.output_tokens || 0;
           accountManager.updateUsage(account.index, inTok, outTok);
           ctx.onUsage?.(inTok, outTok);
-          accountManager.recordTokenUsage(account.index, ctx.sessionId, ctx.model, usage);
+          accountManager.recordTokenUsage(account.index, ctx.sessionId, ctx.model, usage, ctx.usageDetails);
         });
         await pipeline(Readable.from(idleBody(upstreamRes.body)), transform, res);
         l?.end();
@@ -5108,7 +5176,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
           const outTok = usage.output_tokens || 0;
           accountManager.updateUsage(account.index, inTok, outTok);
           ctx.onUsage?.(inTok, outTok);
-          accountManager.recordTokenUsage(account.index, ctx.sessionId, ctx.model, usage);
+          accountManager.recordTokenUsage(account.index, ctx.sessionId, ctx.model, usage, ctx.usageDetails);
         });
         const openAIToAnthropic = createOpenAIToAnthropicTransformStream(ctx.model);
         await pipeline(Readable.from(idleBody(upstreamRes.body)), codexToOpenAI, openAIToAnthropic, res);
@@ -5132,7 +5200,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         try {
           const translated = translateOpenAIToAnthropicResponse(buf, ctx.model);
           finalBuf = Buffer.from(JSON.stringify(translated), 'utf8');
-          extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
+          extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model, ctx.usageDetails);
         } catch (e) {
           console.warn('[Agent-LB] JSON response translation warning:', e.message);
         }
@@ -5158,7 +5226,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         try {
           const translated = translateAnthropicToOpenAIResponse(buf, ctx.model);
           finalBuf = Buffer.from(JSON.stringify(translated), 'utf8');
-          extractUsageFromBody(buf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
+          extractUsageFromBody(buf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model, ctx.usageDetails);
         } catch (e) {
           console.warn('[Agent-LB] JSON response translation warning:', e.message);
         }
@@ -5176,7 +5244,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       const l = getLog();
       const bw = l ? l.bodyWriter('RESPONSE BODY (streamed)', contentType) : null;
       try {
-        await streamResponse(upstreamRes.body, res, account.index, accountManager, bw, ctx.onUsage, ctx.sessionId, ctx.model);
+        await streamResponse(upstreamRes.body, res, account.index, accountManager, bw, ctx.onUsage, ctx.sessionId, ctx.model, ctx.usageDetails);
         // Reached only when the stream completed. A stream that dies upstream
         // throws out of streamResponse, so it never marks itself delivered —
         // which is the failure the token counters cannot see, since a stream
@@ -5191,7 +5259,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       l?.end();
     } else {
       const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
-      extractUsageFromBody(buf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model);
+      extractUsageFromBody(buf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model, ctx.usageDetails);
       const l = getLog();
       if (l) { l.body('RESPONSE BODY', buf, contentType); l.end(); }
       res.end(buf);
@@ -5327,7 +5395,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
 /**
  * Stream an SSE response to the client, parsing usage data along the way.
  */
-export async function streamResponse(webStream, res, accountIndex, accountManager, bodyWriter, onUsage = null, sessionId = null, model = null) {
+export async function streamResponse(webStream, res, accountIndex, accountManager, bodyWriter, onUsage = null, sessionId = null, model = null, details = {}) {
   const reader = webStream.getReader();
   // A client that leaves while upstream is silent must not hold the pending
   // read — and with it the upstream socket and its admission permit — until
@@ -5413,7 +5481,7 @@ export async function streamResponse(webStream, res, accountIndex, accountManage
     // all (a ping and some text deltas, or an upstream error after the headers),
     // and recording those would report an observation that never happened.
     if (Object.keys(merged).length) {
-      accountManager.recordTokenUsage(accountIndex, sessionId, model, merged);
+      accountManager.recordTokenUsage(accountIndex, sessionId, model, merged, details);
     }
     // Cancel upstream reader to stop consuming data nobody needs (and, on the
     // timeout path, to destroy the dead socket so the pool drops it).
@@ -5469,13 +5537,13 @@ export function parseSSEUsage(event, accountIndex, accountManager, onUsage = nul
   }
 }
 
-function extractUsageFromBody(buffer, accountIndex, accountManager, onUsage = null, sessionId = null, model = null) {
+function extractUsageFromBody(buffer, accountIndex, accountManager, onUsage = null, sessionId = null, model = null, details = {}) {
   try {
     const json = JSON.parse(buffer.toString());
     if (json.usage) {
       accountManager.updateUsage(accountIndex, json.usage.input_tokens, json.usage.output_tokens);
       onUsage?.(json.usage.input_tokens || 0, json.usage.output_tokens || 0);
-      accountManager.recordTokenUsage(accountIndex, sessionId, model, json.usage);
+      accountManager.recordTokenUsage(accountIndex, sessionId, model, json.usage, details);
     }
   } catch {
     // not JSON or no usage

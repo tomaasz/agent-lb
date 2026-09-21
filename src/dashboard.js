@@ -889,6 +889,7 @@ const PAGE = `<!doctype html>
         <button class="btn btn-sm btn-accent" id="btnOpenTestChat" title="Otwórz interaktywny czat testowy dla Claude i Codex" data-i18n="btnOpenTestChat" data-i18n-title="btnOpenTestChatTitle">💬 Test Chat</button>
         <button class="btn btn-sm" id="btnProbeQuota" title="Odpytaj o aktualne zużycie limitów i salda kont" data-i18n="btnProbeQuota" data-i18n-title="btnProbeQuotaTitle">⚡ Odśwież salda</button>
         <button class="btn btn-sm" id="btnReloadFleet" title="Przeładuj flotę kont z dysku" data-i18n="btnReloadFleet" data-i18n-title="btnReloadFleetTitle">🔄 Przeładuj flotę</button>
+        <button class="btn btn-sm btn-outline" id="btnOpenFleetUsage" type="button" title="Podgląd kto i na co zużywa limity w całej flocie (zbiorczo)" data-i18n="btnFleetUsage" data-i18n-title="btnFleetUsageTitle" style="border-color:var(--accent); color:var(--accent);">📊 Kto i na co?</button>
         <button class="btn btn-sm btn-bad" id="btnRebootServer" title="Zrestartuj aplikację Agent-LB i wszystkie jej procesy (Reboot)" data-i18n="btnReboot" data-i18n-title="btnRebootTitle">⚡ Reboot</button>
         <button class="btn btn-sm" id="btnLogout" title="Wyloguj z panelu" data-i18n="btnLogout" data-i18n-title="btnLogoutTitle">🚪 Wyloguj</button>
       </div>
@@ -1102,6 +1103,100 @@ const PAGE = `<!doctype html>
       </div>
     </div>
     <footer id="foot"></footer>
+  </div>
+
+  <!-- MODAL: ACCOUNT USAGE DETAILS (KTO I NA CO ZUŻYŁ LIMITY) -->
+  <div id="modalAccountUsage" class="modal-backdrop" style="display:none;">
+    <div class="modal-box" style="max-width:860px; width:95%; max-height:92vh; display:flex; flex-direction:column;">
+      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--line);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-weight:700; font-size:16px;">📊 Szczegóły zużycia konta:</span>
+          <span id="accountUsageNameBadge" class="badge mono" style="background:rgba(88,166,255,0.15); color:var(--accent); font-size:12px;"></span>
+        </div>
+        <button class="btn btn-sm" id="btnCloseAccountUsage" type="button">✕ Zamknij</button>
+      </div>
+
+      <div id="accountUsageHeaderMeta" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:12px; background:var(--bg); padding:10px 12px; border-radius:6px; border:1px solid var(--line);">
+        <div><div style="font-size:10.5px; color:var(--dim);">Łącznie tokenów</div><div id="accountUsageTotalTok" style="font-size:14px; font-weight:700; color:var(--accent);">0</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);">Liczba zapytań</div><div id="accountUsageTotalReq" style="font-size:14px; font-weight:700; color:var(--text);">0</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);">Limit Sesyjny</div><div id="accountUsageSessionPct" style="font-size:14px; font-weight:600;">—</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);">Limit Tygodniowy</div><div id="accountUsageWeeklyPct" style="font-size:14px; font-weight:600;">—</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);">Ostatnia aktywność</div><div id="accountUsageLastUsed" style="font-size:12px; color:var(--dim);">—</div></div>
+      </div>
+
+      <div class="tabs-bar" style="margin-bottom:10px;">
+        <button class="tab-btn active" type="button" id="tabBtnUsageClients">👤 Kto (Klienci / Stacje)</button>
+        <button class="tab-btn" type="button" id="tabBtnUsageSessions">🎯 Na co (Zadania / Sesje / Modele)</button>
+        <button class="tab-btn" type="button" id="tabBtnUsageRecent">📜 Ostatnie zapytania (Live feed)</button>
+      </div>
+
+      <div id="tabContentUsageClients" class="tab-content" style="flex:1; overflow-y:auto;">
+        <div class="table-responsive" style="border:1px solid var(--line); border-radius:6px;">
+          <table id="tblUsageClients" style="width:100%; border-collapse:collapse;"></table>
+        </div>
+      </div>
+
+      <div id="tabContentUsageSessions" class="tab-content" style="flex:1; overflow-y:auto; display:none;">
+        <div class="table-responsive" style="border:1px solid var(--line); border-radius:6px;">
+          <table id="tblUsageSessions" style="width:100%; border-collapse:collapse;"></table>
+        </div>
+      </div>
+
+      <div id="tabContentUsageRecent" class="tab-content" style="flex:1; overflow-y:auto; display:none;">
+        <div class="table-responsive" style="border:1px solid var(--line); border-radius:6px;">
+          <table id="tblUsageRecent" style="width:100%; border-collapse:collapse;"></table>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:8px; border-top:1px solid var(--line);">
+        <button class="btn btn-xs btn-bad" id="btnResetAccountUsage" type="button" title="Zresetuj statystyki zużycia tego konta">🗑️ Zeruj liczniki tego konta</button>
+        <span style="font-size:11px; color:var(--dim);">Dane odświeżane na żywo z agentlb</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: FLEET USAGE OVERVIEW (ZBIORCZY PODGLĄD FLOTY) -->
+  <div id="modalFleetUsage" class="modal-backdrop" style="display:none;">
+    <div class="modal-box" style="max-width:920px; width:95%; max-height:92vh; display:flex; flex-direction:column;">
+      <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--line);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-weight:700; font-size:16px;">🌐 Zbiorczy raport zużycia floty: Kto i Na co</span>
+          <span class="badge ok" style="font-size:11px;">Wszystkie konta</span>
+        </div>
+        <button class="btn btn-sm" id="btnCloseFleetUsage" type="button">✕ Zamknij</button>
+      </div>
+
+      <div id="fleetUsageSummaryMeta" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:12px; background:var(--bg); padding:10px 12px; border-radius:6px; border:1px solid var(--line);">
+        <div><div style="font-size:10.5px; color:var(--dim);">Łącznie tokenów floty</div><div id="fleetUsageTotalTok" style="font-size:14px; font-weight:700; color:var(--accent);">0</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);">Łącznie zapytań</div><div id="fleetUsageTotalReq" style="font-size:14px; font-weight:700; color:var(--text);">0</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);">Liczba kont</div><div id="fleetUsageTotalAccounts" style="font-size:14px; font-weight:600;">0</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);">Zidentyfikowani klienci</div><div id="fleetUsageTotalClients" style="font-size:14px; font-weight:600;">0</div></div>
+      </div>
+
+      <div class="tabs-bar" style="margin-bottom:10px;">
+        <button class="tab-btn active" type="button" id="tabBtnFleetAccounts">🏦 Konta (Podział per konto)</button>
+        <button class="tab-btn" type="button" id="tabBtnFleetClients">👤 Klienci (Kto ile zużył)</button>
+        <button class="tab-btn" type="button" id="tabBtnFleetModels">🤖 Modele (Na jakie modele)</button>
+      </div>
+
+      <div id="tabContentFleetAccounts" class="tab-content" style="flex:1; overflow-y:auto;">
+        <div class="table-responsive" style="border:1px solid var(--line); border-radius:6px;">
+          <table id="tblFleetAccounts" style="width:100%; border-collapse:collapse;"></table>
+        </div>
+      </div>
+
+      <div id="tabContentFleetClients" class="tab-content" style="flex:1; overflow-y:auto; display:none;">
+        <div class="table-responsive" style="border:1px solid var(--line); border-radius:6px;">
+          <table id="tblFleetClients" style="width:100%; border-collapse:collapse;"></table>
+        </div>
+      </div>
+
+      <div id="tabContentFleetModels" class="tab-content" style="flex:1; overflow-y:auto; display:none;">
+        <div class="table-responsive" style="border:1px solid var(--line); border-radius:6px;">
+          <table id="tblFleetModels" style="width:100%; border-collapse:collapse;"></table>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- MODAL: TEST CHAT -->
@@ -2653,12 +2748,27 @@ ${SHARED_HELPERS}
       meta.appendChild(el('span', 'card-meta-item ok', '⚡ ' + a.sessions + ' ses' + (a.sessions > 1 ? 'ji' : 'ja') + ' (cache)'));
     }
 
-    // Usage & request counts (pushed to right)
+    // Usage & request counts (pushed to right, interactive inspect modal)
     var u = a.usage || {};
     var last = u.lastUsed ? ' · ' + fmtAgo(u.lastUsed) : '';
-    var usageSpan = el('span', 'card-meta-item', (u.totalRequests || 0) + ' req · ' + fmtNum(accountTokens(u)) + ' tok' + last);
-    usageSpan.style.marginLeft = 'auto';
-    meta.appendChild(usageSpan);
+    var usageBtn = el('button', 'btn btn-xs card-meta-item', '📊 ' + (u.totalRequests || 0) + ' req · ' + fmtNum(accountTokens(u)) + ' tok' + last);
+    usageBtn.type = 'button';
+    usageBtn.style.marginLeft = 'auto';
+    usageBtn.style.cursor = 'pointer';
+    usageBtn.style.background = 'rgba(88,166,255,0.08)';
+    usageBtn.style.border = '1px solid rgba(88,166,255,0.3)';
+    usageBtn.style.borderRadius = '4px';
+    usageBtn.style.padding = '2px 8px';
+    usageBtn.style.fontSize = '11px';
+    usageBtn.style.color = 'var(--text)';
+    usageBtn.title = currentLang === 'pl'
+      ? 'Kliknij, aby sprawdzić KTO i NA CO zużył limity tego konta'
+      : 'Click to inspect WHO and WHAT spent limits on this account';
+    usageBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      openAccountUsageModal(a);
+    });
+    meta.appendChild(usageBtn);
 
     card.appendChild(meta);
     return card;
@@ -2666,13 +2776,16 @@ ${SHARED_HELPERS}
 
   function renderClients(clients) {
     var wrap = document.getElementById('clientsWrap');
-    if (wrap) wrap.style.display = 'none';
-    return;
+    if (!wrap) return;
+    var names = Object.keys(clients || {});
+    if (!names.length) { wrap.style.display = 'none'; return; }
+    wrap.style.display = '';
     names.sort(function (a, b) {
       var ca = clients[a], cb = clients[b];
       return ((cb.inputTokens || 0) + (cb.outputTokens || 0)) - ((ca.inputTokens || 0) + (ca.outputTokens || 0));
     });
     var table = document.getElementById('clients');
+    if (!table) return;
     table.textContent = '';
     var hr = el('tr');
     ['Client', 'Requests', 'WebSockets', 'Input tok', 'Output tok', 'Last used'].forEach(function (h, i) {
@@ -5035,6 +5148,523 @@ ${SHARED_HELPERS}
   document.getElementById('btnDoneKeyModal').addEventListener('click', function () {
     closeModal('modalKeyCreated');
   });
+
+  // Account & Fleet Usage Modals (Kto i na co zużył limity)
+  var currentUsageAccount = null;
+
+  function switchUsageTab(activeBtnId, activeContentId, allBtnIds, allContentIds) {
+    allBtnIds.forEach(function (id) {
+      var b = document.getElementById(id);
+      if (b) {
+        if (id === activeBtnId) b.classList.add('active');
+        else b.classList.remove('active');
+      }
+    });
+    allContentIds.forEach(function (id) {
+      var c = document.getElementById(id);
+      if (c) c.style.display = id === activeContentId ? 'block' : 'none';
+    });
+  }
+
+  function renderUsageClientsTable(table, byClient, totalTok) {
+    if (!table) return;
+    table.textContent = '';
+    var thead = el('tr');
+    thead.style.background = 'rgba(255,255,255,0.03)';
+    ['Klient / Stacja', 'Żądania', 'Input tok', 'Output tok', 'Cache tok', 'Razem tok', 'Udział w koncie', 'Ostatnio aktywny'].forEach(function (h, i) {
+      thead.appendChild(el('th', i >= 1 && i <= 5 ? 'num' : '', h));
+    });
+    table.appendChild(thead);
+
+    var entries = Object.entries(byClient || {});
+    if (!entries.length) {
+      var trEmpty = el('tr');
+      var tdEmpty = el('td', '', 'Brak zarejestrowanego zużycia przez klientów na tym koncie.');
+      tdEmpty.colSpan = 8;
+      tdEmpty.style.textAlign = 'center';
+      tdEmpty.style.color = 'var(--dim)';
+      tdEmpty.style.padding = '18px';
+      trEmpty.appendChild(tdEmpty);
+      table.appendChild(trEmpty);
+      return;
+    }
+
+    entries.sort(function (a, b) {
+      return (b[1].totalTokens || 0) - (a[1].totalTokens || 0);
+    });
+
+    entries.forEach(function (entry) {
+      var name = entry[0];
+      var c = entry[1] || {};
+      var tr = el('tr');
+      var tdName = el('td', 'mono', name);
+      tdName.style.fontWeight = '600';
+      tr.appendChild(tdName);
+      tr.appendChild(el('td', 'num', fmtNum(c.requests || 0)));
+      tr.appendChild(el('td', 'num', fmtNum(c.inputTokens || 0)));
+      tr.appendChild(el('td', 'num', fmtNum(c.outputTokens || 0)));
+      tr.appendChild(el('td', 'num', fmtNum((c.cacheReadTokens || 0) + (c.cacheCreationTokens || 0))));
+      var tdTotal = el('td', 'num', fmtNum(c.totalTokens || 0));
+      tdTotal.style.fontWeight = '600';
+      tdTotal.style.color = 'var(--accent)';
+      tr.appendChild(tdTotal);
+
+      var tdShare = el('td');
+      var pct = totalTok > 0 ? Math.min(100, Math.round(((c.totalTokens || 0) / totalTok) * 100)) : 0;
+      var barWrap = el('div');
+      barWrap.style.display = 'flex';
+      barWrap.style.alignItems = 'center';
+      barWrap.style.gap = '6px';
+      var barBg = el('div');
+      barBg.style.flex = '1';
+      barBg.style.height = '6px';
+      barBg.style.background = 'var(--line)';
+      barBg.style.borderRadius = '3px';
+      barBg.style.overflow = 'hidden';
+      var barFill = el('div');
+      barFill.style.width = pct + '%';
+      barFill.style.height = '100%';
+      barFill.style.background = 'var(--accent)';
+      barBg.appendChild(barFill);
+      barWrap.appendChild(barBg);
+      barWrap.appendChild(el('span', 'mono', pct + '%'));
+      tdShare.appendChild(barWrap);
+      tr.appendChild(tdShare);
+
+      tr.appendChild(el('td', '', c.lastUsed ? fmtAgo(c.lastUsed) : '—'));
+      table.appendChild(tr);
+    });
+  }
+
+  function renderUsageSessionsTable(table, bySession) {
+    if (!table) return;
+    table.textContent = '';
+    var thead = el('tr');
+    thead.style.background = 'rgba(255,255,255,0.03)';
+    ['Zadanie / Cel / Sesja', 'Projekt', 'Model', 'Klient', 'Żądania', 'Razem tok', 'Ostatnio'].forEach(function (h, i) {
+      thead.appendChild(el('th', i === 4 || i === 5 ? 'num' : '', h));
+    });
+    table.appendChild(thead);
+
+    var entries = Object.entries(bySession || {});
+    if (!entries.length) {
+      var trEmpty = el('tr');
+      var tdEmpty = el('td', '', 'Brak zarejestrowanych sesji dla tego konta.');
+      tdEmpty.colSpan = 7;
+      tdEmpty.style.textAlign = 'center';
+      tdEmpty.style.color = 'var(--dim)';
+      tdEmpty.style.padding = '18px';
+      trEmpty.appendChild(tdEmpty);
+      table.appendChild(trEmpty);
+      return;
+    }
+
+    entries.sort(function (a, b) {
+      return (b[1].lastUsed || '').localeCompare(a[1].lastUsed || '');
+    });
+
+    entries.forEach(function (entry) {
+      var id = entry[0];
+      var s = entry[1] || {};
+      var tr = el('tr');
+
+      var tdTitle = el('td');
+      var label = s.title || (id ? id.slice(0, 8) + '...' : 'Sesja');
+      var sp = el('span', '', label);
+      sp.title = 'Sesja: ' + id + (s.title ? '\\nTytuł: ' + s.title : '');
+      tdTitle.appendChild(sp);
+      tr.appendChild(tdTitle);
+
+      tr.appendChild(el('td', '', s.project || '—'));
+      var tdModel = el('td', 'mono', s.model || '—');
+      tdModel.style.fontSize = '11px';
+      tr.appendChild(tdModel);
+
+      var tdClient = el('td', 'mono', s.client || '—');
+      tdClient.style.fontSize = '11px';
+      tr.appendChild(tdClient);
+
+      tr.appendChild(el('td', 'num', fmtNum(s.requests || 0)));
+      var tdTok = el('td', 'num', fmtNum(s.totalTokens || 0));
+      tdTok.style.fontWeight = '600';
+      tdTok.style.color = 'var(--accent)';
+      tr.appendChild(tdTok);
+
+      tr.appendChild(el('td', '', s.lastUsed ? fmtAgo(s.lastUsed) : '—'));
+      table.appendChild(tr);
+    });
+  }
+
+  function renderUsageRecentTable(table, recent) {
+    if (!table) return;
+    table.textContent = '';
+    var thead = el('tr');
+    thead.style.background = 'rgba(255,255,255,0.03)';
+    ['Czas', 'Klient', 'Zadanie / Cel', 'Model', 'Tokeny (In / Out / Cache / Suma)'].forEach(function (h, i) {
+      thead.appendChild(el('th', i === 4 ? 'num' : '', h));
+    });
+    table.appendChild(thead);
+
+    var items = Array.isArray(recent) ? recent : [];
+    if (!items.length) {
+      var trEmpty = el('tr');
+      var tdEmpty = el('td', '', 'Brak historii ostatnich zapytań dla tego konta.');
+      tdEmpty.colSpan = 5;
+      tdEmpty.style.textAlign = 'center';
+      tdEmpty.style.color = 'var(--dim)';
+      tdEmpty.style.padding = '18px';
+      trEmpty.appendChild(tdEmpty);
+      table.appendChild(trEmpty);
+      return;
+    }
+
+    items.forEach(function (r) {
+      var tr = el('tr');
+      var tStr = r.timestamp ? (new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' (' + fmtAgo(r.timestamp) + ')') : '—';
+      tr.appendChild(el('td', '', tStr));
+
+      var tdClient = el('td', 'mono', r.client || '—');
+      tdClient.style.fontWeight = '600';
+      tr.appendChild(tdClient);
+
+      var tdTask = el('td');
+      var taskDesc = r.sessionTitle || (r.sessionId ? r.sessionId.slice(0, 8) + '...' : 'Zapytanie API');
+      var spanTask = el('span', '', taskDesc);
+      if (r.sessionId) spanTask.title = 'Sesja ID: ' + r.sessionId + (r.sessionTitle ? '\\n' + r.sessionTitle : '');
+      tdTask.appendChild(spanTask);
+      tr.appendChild(tdTask);
+
+      var tdModel = el('td', 'mono', r.model || '—');
+      tdModel.style.fontSize = '11px';
+      tr.appendChild(tdModel);
+
+      var tdTok = el('td', 'num mono', fmtNum(r.inputTokens || 0) + ' / ' + fmtNum(r.outputTokens || 0) + ' / ' + fmtNum(r.cacheTokens || 0) + ' → ' + fmtNum(r.totalTokens || 0));
+      tdTok.style.fontWeight = '600';
+      tdTok.style.color = 'var(--accent)';
+      tr.appendChild(tdTok);
+
+      table.appendChild(tr);
+    });
+  }
+
+  function openAccountUsageModal(account) {
+    if (!account) return;
+    currentUsageAccount = account;
+    var nameBadge = document.getElementById('accountUsageNameBadge');
+    if (nameBadge) nameBadge.textContent = account.name;
+
+    var u = account.usage || {};
+    var totTok = accountTokens(u);
+    var totReq = u.totalRequests || 0;
+
+    var elTok = document.getElementById('accountUsageTotalTok');
+    if (elTok) elTok.textContent = fmtNum(totTok);
+    var elReq = document.getElementById('accountUsageTotalReq');
+    if (elReq) elReq.textContent = fmtNum(totReq);
+
+    var q = account.quota || {};
+    var elSess = document.getElementById('accountUsageSessionPct');
+    if (elSess) elSess.textContent = q.unified5h != null ? Math.round(q.unified5h * 100) + '%' : (q.requestsRemaining != null ? q.requestsRemaining + ' req' : '—');
+    var elWk = document.getElementById('accountUsageWeeklyPct');
+    if (elWk) elWk.textContent = q.unified7d != null ? Math.round(q.unified7d * 100) + '%' : (q.tokensRemaining != null ? fmtNum(q.tokensRemaining) + ' tok' : '—');
+    var elLast = document.getElementById('accountUsageLastUsed');
+    if (elLast) elLast.textContent = u.lastUsed ? fmtAgo(u.lastUsed) : '—';
+
+    renderUsageClientsTable(document.getElementById('tblUsageClients'), u.byClient, totTok);
+    renderUsageSessionsTable(document.getElementById('tblUsageSessions'), u.bySession);
+    renderUsageRecentTable(document.getElementById('tblUsageRecent'), u.recent);
+
+    switchUsageTab(
+      'tabBtnUsageClients',
+      'tabContentUsageClients',
+      ['tabBtnUsageClients', 'tabBtnUsageSessions', 'tabBtnUsageRecent'],
+      ['tabContentUsageClients', 'tabContentUsageSessions', 'tabContentUsageRecent']
+    );
+
+    openModal('modalAccountUsage');
+  }
+
+  function openFleetUsageModal() {
+    if (!lastStatus || !Array.isArray(lastStatus.accounts)) return;
+    var accounts = lastStatus.accounts;
+    var totalTok = 0;
+    var totalReq = 0;
+    var clientMap = {};
+    var modelMap = {};
+
+    accounts.forEach(function (a) {
+      var u = a.usage || {};
+      totalTok += accountTokens(u);
+      totalReq += u.totalRequests || 0;
+
+      if (u.byClient) {
+        Object.entries(u.byClient).forEach(function (e) {
+          var cName = e[0];
+          var st = e[1] || {};
+          if (!clientMap[cName]) clientMap[cName] = { requests: 0, totalTokens: 0, accounts: {} };
+          clientMap[cName].requests += st.requests || 0;
+          clientMap[cName].totalTokens += st.totalTokens || 0;
+          clientMap[cName].accounts[a.name] = (clientMap[cName].accounts[a.name] || 0) + (st.totalTokens || 0);
+        });
+      }
+
+      if (u.byModel) {
+        Object.entries(u.byModel).forEach(function (e) {
+          var mName = e[0];
+          var st = e[1] || {};
+          if (!modelMap[mName]) modelMap[mName] = { requests: 0, totalTokens: 0 };
+          modelMap[mName].requests += st.requests || 0;
+          modelMap[mName].totalTokens += st.totalTokens || 0;
+        });
+      }
+    });
+
+    var elTok = document.getElementById('fleetUsageTotalTok');
+    if (elTok) elTok.textContent = fmtNum(totalTok);
+    var elReq = document.getElementById('fleetUsageTotalReq');
+    if (elReq) elReq.textContent = fmtNum(totalReq);
+    var elAcc = document.getElementById('fleetUsageTotalAccounts');
+    if (elAcc) elAcc.textContent = accounts.length;
+    var elCli = document.getElementById('fleetUsageTotalClients');
+    if (elCli) elCli.textContent = Object.keys(clientMap).length;
+
+    // Render Fleet Accounts Table
+    var tblAcc = document.getElementById('tblFleetAccounts');
+    if (tblAcc) {
+      tblAcc.textContent = '';
+      var thead = el('tr');
+      thead.style.background = 'rgba(255,255,255,0.03)';
+      ['Konto', 'Dostawca', 'Stan limitu', 'Żądania', 'Tokeny razem', 'Główni klienci', 'Akcja'].forEach(function (h, i) {
+        thead.appendChild(el('th', i === 3 || i === 4 ? 'num' : '', h));
+      });
+      tblAcc.appendChild(thead);
+
+      accounts.forEach(function (a) {
+        var tr = el('tr');
+        var tdName = el('td', 'mono', a.name);
+        tdName.style.fontWeight = '600';
+        tr.appendChild(tdName);
+
+        var tdProv = el('td', '', (a.provider === 'codex' ? '🟢 OpenAI' : '🟣 Claude'));
+        tr.appendChild(tdProv);
+
+        var q = a.quota || {};
+        var qStr = (q.unified5h != null ? 'Ses: ' + Math.round(q.unified5h * 100) + '%' : '') +
+          (q.unified7d != null ? ' | Tyg: ' + Math.round(q.unified7d * 100) + '%' : '');
+        tr.appendChild(el('td', '', qStr || '—'));
+
+        var u = a.usage || {};
+        tr.appendChild(el('td', 'num', fmtNum(u.totalRequests || 0)));
+        var tdTok = el('td', 'num', fmtNum(accountTokens(u)));
+        tdTok.style.fontWeight = '600';
+        tdTok.style.color = 'var(--accent)';
+        tr.appendChild(tdTok);
+
+        var clientsList = Object.keys(u.byClient || {}).join(', ') || '—';
+        var tdCli = el('td', '', clientsList);
+        tdCli.style.fontSize = '11px';
+        tr.appendChild(tdCli);
+
+        var tdAct = el('td');
+        var btnInspect = el('button', 'btn btn-xs btn-outline', '🔍 Podgląd');
+        btnInspect.type = 'button';
+        btnInspect.addEventListener('click', function () {
+          closeModal('modalFleetUsage');
+          openAccountUsageModal(a);
+        });
+        tdAct.appendChild(btnInspect);
+        tr.appendChild(tdAct);
+
+        tblAcc.appendChild(tr);
+      });
+    }
+
+    // Render Fleet Clients Table
+    var tblCli = document.getElementById('tblFleetClients');
+    if (tblCli) {
+      tblCli.textContent = '';
+      var theadC = el('tr');
+      theadC.style.background = 'rgba(255,255,255,0.03)';
+      ['Klient (Stacja)', 'Żądania', 'Łącznie tokenów', 'Udział we flocie', 'Używane konta'].forEach(function (h, i) {
+        theadC.appendChild(el('th', i === 1 || i === 2 ? 'num' : '', h));
+      });
+      tblCli.appendChild(theadC);
+
+      var clientEntries = Object.entries(clientMap);
+      if (!clientEntries.length) {
+        var trE = el('tr');
+        var tdE = el('td', '', 'Brak aktywności klientów.');
+        tdE.colSpan = 5;
+        tdE.style.textAlign = 'center';
+        trE.appendChild(tdE);
+        tblCli.appendChild(trE);
+      } else {
+        clientEntries.sort(function (a, b) { return b[1].totalTokens - a[1].totalTokens; });
+        clientEntries.forEach(function (entry) {
+          var cName = entry[0];
+          var data = entry[1];
+          var tr = el('tr');
+          var tdName = el('td', 'mono', cName);
+          tdName.style.fontWeight = '600';
+          tr.appendChild(tdName);
+
+          tr.appendChild(el('td', 'num', fmtNum(data.requests)));
+          var tdTok = el('td', 'num', fmtNum(data.totalTokens));
+          tdTok.style.fontWeight = '600';
+          tdTok.style.color = 'var(--accent)';
+          tr.appendChild(tdTok);
+
+          var pct = totalTok > 0 ? Math.min(100, Math.round((data.totalTokens / totalTok) * 100)) : 0;
+          tr.appendChild(el('td', 'mono', pct + '%'));
+
+          var accUsageDetails = Object.entries(data.accounts).map(function (acc) {
+            return acc[0] + ' (' + fmtNum(acc[1]) + ')';
+          }).join(', ');
+          var tdAccs = el('td', 'mono', accUsageDetails || '—');
+          tdAccs.style.fontSize = '11px';
+          tr.appendChild(tdAccs);
+
+          tblCli.appendChild(tr);
+        });
+      }
+    }
+
+    // Render Fleet Models Table
+    var tblMod = document.getElementById('tblFleetModels');
+    if (tblMod) {
+      tblMod.textContent = '';
+      var theadM = el('tr');
+      theadM.style.background = 'rgba(255,255,255,0.03)';
+      ['Model', 'Żądania', 'Łącznie tokenów', 'Udział %'].forEach(function (h, i) {
+        theadM.appendChild(el('th', i === 1 || i === 2 ? 'num' : '', h));
+      });
+      tblMod.appendChild(theadM);
+
+      var modelEntries = Object.entries(modelMap);
+      if (!modelEntries.length) {
+        var trM = el('tr');
+        var tdM = el('td', '', 'Brak zarejestrowanych modeli.');
+        tdM.colSpan = 4;
+        tdM.style.textAlign = 'center';
+        trM.appendChild(tdM);
+        tblMod.appendChild(trM);
+      } else {
+        modelEntries.sort(function (a, b) { return b[1].totalTokens - a[1].totalTokens; });
+        modelEntries.forEach(function (entry) {
+          var mName = entry[0];
+          var data = entry[1];
+          var tr = el('tr');
+          var tdName = el('td', 'mono', mName);
+          tdName.style.fontWeight = '600';
+          tr.appendChild(tdName);
+
+          tr.appendChild(el('td', 'num', fmtNum(data.requests)));
+          var tdTok = el('td', 'num', fmtNum(data.totalTokens));
+          tdTok.style.fontWeight = '600';
+          tdTok.style.color = 'var(--accent)';
+          tr.appendChild(tdTok);
+
+          var pct = totalTok > 0 ? Math.min(100, Math.round((data.totalTokens / totalTok) * 100)) : 0;
+          tr.appendChild(el('td', 'mono', pct + '%'));
+
+          tblMod.appendChild(tr);
+        });
+      }
+    }
+
+    switchUsageTab(
+      'tabBtnFleetAccounts',
+      'tabContentFleetAccounts',
+      ['tabBtnFleetAccounts', 'tabBtnFleetClients', 'tabBtnFleetModels'],
+      ['tabContentFleetAccounts', 'tabContentFleetClients', 'tabContentFleetModels']
+    );
+
+    openModal('modalFleetUsage');
+  }
+
+  // Hook up Account Usage modal buttons
+  var btnCloseAccountUsage = document.getElementById('btnCloseAccountUsage');
+  if (btnCloseAccountUsage) {
+    btnCloseAccountUsage.addEventListener('click', function () {
+      closeModal('modalAccountUsage');
+    });
+  }
+
+  var btnCloseFleetUsage = document.getElementById('btnCloseFleetUsage');
+  if (btnCloseFleetUsage) {
+    btnCloseFleetUsage.addEventListener('click', function () {
+      closeModal('modalFleetUsage');
+    });
+  }
+
+  var btnOpenFleetUsage = document.getElementById('btnOpenFleetUsage');
+  if (btnOpenFleetUsage) {
+    btnOpenFleetUsage.addEventListener('click', function () {
+      openFleetUsageModal();
+    });
+  }
+
+  // Tab switching inside modalAccountUsage
+  ['tabBtnUsageClients', 'tabBtnUsageSessions', 'tabBtnUsageRecent'].forEach(function (bId) {
+    var b = document.getElementById(bId);
+    if (b) {
+      b.addEventListener('click', function () {
+        var contentMap = {
+          tabBtnUsageClients: 'tabContentUsageClients',
+          tabBtnUsageSessions: 'tabContentUsageSessions',
+          tabBtnUsageRecent: 'tabContentUsageRecent'
+        };
+        switchUsageTab(
+          bId,
+          contentMap[bId],
+          ['tabBtnUsageClients', 'tabBtnUsageSessions', 'tabBtnUsageRecent'],
+          ['tabContentUsageClients', 'tabContentUsageSessions', 'tabContentUsageRecent']
+        );
+      });
+    }
+  });
+
+  // Tab switching inside modalFleetUsage
+  ['tabBtnFleetAccounts', 'tabBtnFleetClients', 'tabBtnFleetModels'].forEach(function (bId) {
+    var b = document.getElementById(bId);
+    if (b) {
+      b.addEventListener('click', function () {
+        var contentMap = {
+          tabBtnFleetAccounts: 'tabContentFleetAccounts',
+          tabBtnFleetClients: 'tabContentFleetClients',
+          tabBtnFleetModels: 'tabContentFleetModels'
+        };
+        switchUsageTab(
+          bId,
+          contentMap[bId],
+          ['tabBtnFleetAccounts', 'tabBtnFleetClients', 'tabBtnFleetModels'],
+          ['tabContentFleetAccounts', 'tabContentFleetClients', 'tabContentFleetModels']
+        );
+      });
+    }
+  });
+
+  // Reset usage button
+  var btnResetAccUsage = document.getElementById('btnResetAccountUsage');
+  if (btnResetAccUsage) {
+    btnResetAccUsage.addEventListener('click', function () {
+      if (!currentUsageAccount) return;
+      if (!confirm('Czy na pewno chcesz zresetować statystyki zużycia dla konta "' + currentUsageAccount.name + '"?')) return;
+      apiCall('/api/accounts/usage/reset', 'POST', { account: currentUsageAccount.name })
+        .then(function (res) {
+          if (res && res.ok) {
+            note('ok', 'Zresetowano liczniki zużycia dla konta ' + currentUsageAccount.name);
+            closeModal('modalAccountUsage');
+            poll();
+          } else {
+            note('bad', 'Błąd resetowania liczników: ' + (res && res.error ? res.error : 'błąd serwera'));
+          }
+        })
+        .catch(function (err) {
+          note('bad', 'Błąd połączenia: ' + err.message);
+        });
+    });
+  }
 
   var btnWorkstationGuide = document.getElementById('btnShowWorkstationGuide');
   if (btnWorkstationGuide) {
