@@ -1,356 +1,681 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
-import vm from 'node:vm';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import { renderDashboardHtml, dashboardCsp } from '../src/dashboard.js';
-import { resolveClientAuth, safeKeyEqual, isLocalHostHeader, createProxyServer } from '../src/server.js';
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import vm from "node:vm";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { renderDashboardHtml, dashboardCsp } from "../src/dashboard.js";
+import {
+  resolveClientAuth,
+  safeKeyEqual,
+  isLocalHostHeader,
+  createProxyServer,
+} from "../src/server.js";
 
-
-describe('Dashboard Authentication and Layout', () => {
-  it('renders modern login card and auth elements in dashboard HTML', () => {
+describe("Dashboard Authentication and Layout", () => {
+  it("renders modern login card and auth elements in dashboard HTML", () => {
     const html = renderDashboardHtml();
-    assert.ok(html.includes('id="keybox"'), 'contains #keybox');
-    assert.ok(html.includes('login-card-head'), 'contains modern login card header');
-    assert.ok(html.includes('login-card-icon'), 'contains login card icon');
-    assert.ok(html.includes('id="keyboxErr"'), 'contains error message container');
-    assert.ok(html.includes('id="keyboxInfo"'), 'contains info/logout message container');
-    assert.ok(html.includes('id="btnLogout"'), 'contains logout button in header actions');
-    assert.ok(html.includes('checkAuthAndStart()'), 'initializes with checkAuthAndStart');
+    assert.ok(html.includes('id="keybox"'), "contains #keybox");
+    assert.ok(
+      html.includes("login-card-head"),
+      "contains modern login card header",
+    );
+    assert.ok(html.includes("login-card-icon"), "contains login card icon");
+    assert.ok(
+      html.includes('id="keyboxErr"'),
+      "contains error message container",
+    );
+    assert.ok(
+      html.includes('id="keyboxInfo"'),
+      "contains info/logout message container",
+    );
+    assert.ok(
+      html.includes('id="btnLogout"'),
+      "contains logout button in header actions",
+    );
+    assert.ok(
+      html.includes("checkAuthAndStart()"),
+      "initializes with checkAuthAndStart",
+    );
   });
 
-  it('removes duplicate probe button and updates accounts heading', () => {
+  it("removes duplicate probe button and updates accounts heading", () => {
     const html = renderDashboardHtml();
     // Exactly one occurrence of btnProbeQuota in the DOM, and zero of btnProbeQuotaSec
     const probeMatches = (html.match(/id="btnProbeQuota"/g) || []).length;
-    assert.equal(probeMatches, 1, 'exactly one btnProbeQuota button in HTML');
-    assert.ok(!html.includes('id="btnProbeQuotaSec"'), 'no duplicate btnProbeQuotaSec in HTML');
-    assert.ok(html.includes('Konta Claude & Codex'), 'accounts header mentions both Claude and Codex');
+    assert.equal(probeMatches, 1, "exactly one btnProbeQuota button in HTML");
+    assert.ok(
+      !html.includes('id="btnProbeQuotaSec"'),
+      "no duplicate btnProbeQuotaSec in HTML",
+    );
+    assert.ok(
+      html.includes("Konta Claude & Codex"),
+      "accounts header mentions both Claude and Codex",
+    );
   });
 
-  it('embedded dashboard script has valid syntax and compiles cleanly', () => {
+  it("embedded dashboard script has valid syntax and compiles cleanly", () => {
     const html = renderDashboardHtml();
-    const scriptStart = html.indexOf('<script>') + 8;
-    const scriptEnd = html.indexOf('</script>');
-    assert.ok(scriptStart > 8 && scriptEnd > scriptStart, 'found <script> block');
+    const scriptStart = html.indexOf("<script>") + 8;
+    const scriptEnd = html.indexOf("</script>");
+    assert.ok(
+      scriptStart > 8 && scriptEnd > scriptStart,
+      "found <script> block",
+    );
     const script = html.slice(scriptStart, scriptEnd);
     assert.doesNotThrow(() => {
       new vm.Script(script);
-    }, 'embedded dashboard script must compile without syntax errors');
+    }, "embedded dashboard script must compile without syntax errors");
   });
 
-  it('computes valid Content-Security-Policy with sha256 hash', () => {
+  it("computes valid Content-Security-Policy with sha256 hash", () => {
     const csp = dashboardCsp();
-    assert.ok(csp.startsWith("default-src 'none'"), 'starts with default-src none');
-    assert.ok(csp.includes("script-src 'sha256-"), 'includes sha256 script hash');
-    assert.ok(csp.includes("connect-src 'self'"), 'allows connect-src self');
+    assert.ok(
+      csp.startsWith("default-src 'none'"),
+      "starts with default-src none",
+    );
+    assert.ok(
+      csp.includes("script-src 'sha256-"),
+      "includes sha256 script hash",
+    );
+    assert.ok(csp.includes("connect-src 'self'"), "allows connect-src self");
   });
 
-  it('safely verifies admin keys', () => {
-    const adminKey = 'tc-secret-key-12345';
-    assert.ok(safeKeyEqual(adminKey, 'tc-secret-key-12345'), 'matches identical key');
-    assert.ok(!safeKeyEqual(adminKey, 'wrong-key'), 'rejects mismatched key');
-    assert.ok(!safeKeyEqual(null, adminKey), 'rejects null');
-    assert.ok(!safeKeyEqual('', adminKey), 'rejects empty string');
+  it("safely verifies admin keys", () => {
+    const adminKey = "tc-secret-key-12345";
+    assert.ok(
+      safeKeyEqual(adminKey, "tc-secret-key-12345"),
+      "matches identical key",
+    );
+    assert.ok(!safeKeyEqual(adminKey, "wrong-key"), "rejects mismatched key");
+    assert.ok(!safeKeyEqual(null, adminKey), "rejects null");
+    assert.ok(!safeKeyEqual("", adminKey), "rejects empty string");
 
     const auth = resolveClientAuth({ apiKey: adminKey }, adminKey);
     assert.equal(auth.ok, true);
 
-    const badAuth = resolveClientAuth({ apiKey: adminKey }, 'bad-key');
+    const badAuth = resolveClientAuth({ apiKey: adminKey }, "bad-key");
     assert.equal(badAuth.ok, false);
   });
 
-  it('renders both Claude and Codex setup commands and scripts in setup directory', async () => {
-    const fs = await import('node:fs');
+  it("renders both Claude and Codex setup commands and scripts in setup directory", async () => {
+    const fs = await import("node:fs");
     const html = renderDashboardHtml();
-    assert.ok(html.includes('id="cmdSetupCodexBash"'), 'contains Codex bash command element');
-    assert.ok(html.includes('id="cmdSetupCodexPowershell"'), 'contains Codex powershell command element');
-    assert.ok(html.includes('btnCopySetupCodexBash'), 'contains copy button for Codex bash');
-    assert.ok(html.includes('btnCopySetupCodexPowershell'), 'contains copy button for Codex powershell');
-    assert.ok(html.includes('id="cmdSetupAgentBash"'), 'contains Agent bash command element');
-    assert.ok(html.includes('btnCopySetupAgentBash'), 'contains copy button for Agent bash');
+    assert.ok(
+      html.includes('id="cmdSetupCodexBash"'),
+      "contains Codex bash command element",
+    );
+    assert.ok(
+      html.includes('id="cmdSetupCodexPowershell"'),
+      "contains Codex powershell command element",
+    );
+    assert.ok(
+      html.includes("btnCopySetupCodexBash"),
+      "contains copy button for Codex bash",
+    );
+    assert.ok(
+      html.includes("btnCopySetupCodexPowershell"),
+      "contains copy button for Codex powershell",
+    );
+    assert.ok(
+      html.includes('id="cmdSetupAgentBash"'),
+      "contains Agent bash command element",
+    );
+    assert.ok(
+      html.includes("btnCopySetupAgentBash"),
+      "contains copy button for Agent bash",
+    );
 
-    assert.ok(fs.existsSync('setup/claude-setup.sh'), 'setup/claude-setup.sh exists');
-    assert.ok(fs.existsSync('setup/codex-setup.sh'), 'setup/codex-setup.sh exists');
-    assert.ok(fs.existsSync('setup/agent-setup.sh'), 'setup/agent-setup.sh exists');
-    assert.ok(fs.existsSync('setup/codexlb-setup.sh'), 'setup/codexlb-setup.sh exists');
-    assert.ok(fs.existsSync('setup/codexlb-setup.ps1'), 'setup/codexlb-setup.ps1 exists');
-    assert.ok(fs.existsSync('setup/codexlb-setup.js'), 'setup/codexlb-setup.js exists');
+    assert.ok(
+      fs.existsSync("setup/claude-setup.sh"),
+      "setup/claude-setup.sh exists",
+    );
+    assert.ok(
+      fs.existsSync("setup/codex-setup.sh"),
+      "setup/codex-setup.sh exists",
+    );
+    assert.ok(
+      fs.existsSync("setup/agent-setup.sh"),
+      "setup/agent-setup.sh exists",
+    );
+    assert.ok(
+      fs.existsSync("setup/codexlb-setup.sh"),
+      "setup/codexlb-setup.sh exists",
+    );
+    assert.ok(
+      fs.existsSync("setup/codexlb-setup.ps1"),
+      "setup/codexlb-setup.ps1 exists",
+    );
+    assert.ok(
+      fs.existsSync("setup/codexlb-setup.js"),
+      "setup/codexlb-setup.js exists",
+    );
   });
 
-  it('validates host header correctly for agentlb.gotova.pl and custom domains', () => {
-    assert.ok(isLocalHostHeader('localhost:3456'), 'localhost accepted');
-    assert.ok(isLocalHostHeader('127.0.0.1:3456'), '127.0.0.1 accepted');
-    assert.ok(isLocalHostHeader('agentlb.gotova.pl'), 'agentlb.gotova.pl accepted');
-    assert.ok(isLocalHostHeader('agent-lb.gotova.pl'), 'agent-lb.gotova.pl accepted');
-    assert.ok(isLocalHostHeader('debian-lite.tail7319.ts.net:3456'), 'tailscale host accepted');
-    assert.ok(!isLocalHostHeader('malicious-site.com'), 'malicious host rejected');
+  it("validates host header correctly for agentlb.gotova.pl and custom domains", () => {
+    assert.ok(isLocalHostHeader("localhost:3456"), "localhost accepted");
+    assert.ok(isLocalHostHeader("127.0.0.1:3456"), "127.0.0.1 accepted");
+    assert.ok(
+      isLocalHostHeader("agentlb.gotova.pl"),
+      "agentlb.gotova.pl accepted",
+    );
+    assert.ok(
+      isLocalHostHeader("agent-lb.gotova.pl"),
+      "agent-lb.gotova.pl accepted",
+    );
+    assert.ok(
+      isLocalHostHeader("debian-lite.tail7319.ts.net:3456"),
+      "tailscale host accepted",
+    );
+    assert.ok(
+      !isLocalHostHeader("malicious-site.com"),
+      "malicious host rejected",
+    );
 
-    process.env.AGENT_LB_HOST = 'custom1.example.com, custom2.example.com';
+    process.env.AGENT_LB_HOST = "custom1.example.com, custom2.example.com";
     try {
-      assert.ok(isLocalHostHeader('custom1.example.com'), 'custom1 in AGENT_LB_HOST accepted');
-      assert.ok(isLocalHostHeader('custom2.example.com:8443'), 'custom2 in AGENT_LB_HOST accepted');
-      assert.ok(!isLocalHostHeader('unauthorized.example.com'), 'unauthorized host rejected');
+      assert.ok(
+        isLocalHostHeader("custom1.example.com"),
+        "custom1 in AGENT_LB_HOST accepted",
+      );
+      assert.ok(
+        isLocalHostHeader("custom2.example.com:8443"),
+        "custom2 in AGENT_LB_HOST accepted",
+      );
+      assert.ok(
+        !isLocalHostHeader("unauthorized.example.com"),
+        "unauthorized host rejected",
+      );
     } finally {
       delete process.env.AGENT_LB_HOST;
     }
   });
 
-  it('renders valid JavaScript without syntax errors in dashboard script', () => {
+  it("renders valid JavaScript without syntax errors in dashboard script", () => {
     const html = renderDashboardHtml();
-    const sStart = html.indexOf('<script>') + 8;
-    const sEnd = html.indexOf('</script>');
-    assert.ok(sStart > 7 && sEnd > sStart, 'script tags found in rendered HTML');
+    const sStart = html.indexOf("<script>") + 8;
+    const sEnd = html.indexOf("</script>");
+    assert.ok(
+      sStart > 7 && sEnd > sStart,
+      "script tags found in rendered HTML",
+    );
     const script = html.slice(sStart, sEnd);
     assert.doesNotThrow(() => {
       new vm.Script(script);
-    }, 'dashboard script must compile without syntax errors');
+    }, "dashboard script must compile without syntax errors");
   });
 
-  it('renders 2-column layout and drag-and-drop elements for Claude and Codex accounts', () => {
+  it("renders 2-column layout and drag-and-drop elements for Claude and Codex accounts", () => {
     const html = renderDashboardHtml();
-    assert.ok(html.includes('id="accountsGrid"'), 'contains #accountsGrid');
-    assert.ok(html.includes('id="colClaude"'), 'contains #colClaude');
-    assert.ok(html.includes('id="colCodex"'), 'contains #colCodex');
-    assert.ok(html.includes('id="listClaude"'), 'contains #listClaude');
-    assert.ok(html.includes('id="listCodex"'), 'contains #listCodex');
-    assert.ok(html.includes('data-provider="anthropic"'), 'listClaude has data-provider anthropic');
-    assert.ok(html.includes('data-provider="codex"'), 'listCodex has data-provider codex');
-    assert.ok(html.includes('renderAccountsGrid'), 'script defines renderAccountsGrid');
-    assert.ok(html.includes('/api/accounts/reorder'), 'script targets accounts reorder endpoint');
-    assert.ok(html.includes('function moveToTop'), 'script defines moveToTop for 1-click priority promotion');
-    assert.ok(!html.includes('⚡ Aktywuj'), 'removed confusing Aktywuj button');
-    assert.ok(!html.includes('Polityka Burn-first'), 'removed confusing Burn-first button');
-    assert.ok(html.includes('card-name-row'), 'dashboard defines card-name-row for dedicated account name line');
-    assert.ok(html.includes('btn-rename'), 'dashboard contains account rename button');
-    assert.ok(html.includes('function startInlineRename'), 'script defines inline account renaming');
-    assert.ok(html.includes('function doRenameAccount'), 'script defines fallback rename helper');
-    assert.ok(!html.includes('#1 Główny'), 'rank badge does not contain confusing Główny label');
-    assert.ok(html.includes('function doStartOAuth'), 'script defines doStartOAuth');
-    assert.ok(html.includes('function doCompleteOAuth'), 'script defines doCompleteOAuth');
-    assert.ok(html.includes('function updateAddAccountProviderUI'), 'script defines updateAddAccountProviderUI');
-    assert.ok(html.includes('id="btnAddClaudeCol"'), 'contains column btnAddClaudeCol');
-    assert.ok(html.includes('id="btnAddCodexCol"'), 'contains column btnAddCodexCol');
-    assert.ok(!html.includes('id="btnShowAddClaude"'), 'no duplicate section btnShowAddClaude');
-    assert.ok(!html.includes('id="btnShowAddCodex"'), 'no duplicate section btnShowAddCodex');
-    assert.ok(html.includes('function openAddAccountModal'), 'script defines openAddAccountModal');
+    assert.ok(html.includes('id="accountsGrid"'), "contains #accountsGrid");
+    assert.ok(html.includes('id="colClaude"'), "contains #colClaude");
+    assert.ok(html.includes('id="colCodex"'), "contains #colCodex");
+    assert.ok(html.includes('id="listClaude"'), "contains #listClaude");
+    assert.ok(html.includes('id="listCodex"'), "contains #listCodex");
+    assert.ok(
+      html.includes('data-provider="anthropic"'),
+      "listClaude has data-provider anthropic",
+    );
+    assert.ok(
+      html.includes('data-provider="codex"'),
+      "listCodex has data-provider codex",
+    );
+    assert.ok(
+      html.includes("renderAccountsGrid"),
+      "script defines renderAccountsGrid",
+    );
+    assert.ok(
+      html.includes("/api/accounts/reorder"),
+      "script targets accounts reorder endpoint",
+    );
+    assert.ok(
+      html.includes("function moveToTop"),
+      "script defines moveToTop for 1-click priority promotion",
+    );
+    assert.ok(!html.includes("⚡ Aktywuj"), "removed confusing Aktywuj button");
+    assert.ok(
+      !html.includes("Polityka Burn-first"),
+      "removed confusing Burn-first button",
+    );
+    assert.ok(
+      html.includes("card-name-row"),
+      "dashboard defines card-name-row for dedicated account name line",
+    );
+    assert.ok(
+      html.includes("btn-rename"),
+      "dashboard contains account rename button",
+    );
+    assert.ok(
+      html.includes("btn-copy-name"),
+      "dashboard contains account name copy button",
+    );
+    assert.ok(
+      html.includes("activeRenameAccount"),
+      "dashboard defines activeRenameAccount guard to protect editing state from polling",
+    );
+    assert.ok(
+      html.includes("function startInlineRename"),
+      "script defines inline account renaming",
+    );
+    assert.ok(
+      html.includes("function doRenameAccount"),
+      "script defines fallback rename helper",
+    );
+    assert.ok(
+      !html.includes("#1 Główny"),
+      "rank badge does not contain confusing Główny label",
+    );
+    assert.ok(
+      html.includes("function doStartOAuth"),
+      "script defines doStartOAuth",
+    );
+    assert.ok(
+      html.includes("function doCompleteOAuth"),
+      "script defines doCompleteOAuth",
+    );
+    assert.ok(
+      html.includes("function updateAddAccountProviderUI"),
+      "script defines updateAddAccountProviderUI",
+    );
+    assert.ok(
+      html.includes('id="btnAddClaudeCol"'),
+      "contains column btnAddClaudeCol",
+    );
+    assert.ok(
+      html.includes('id="btnAddCodexCol"'),
+      "contains column btnAddCodexCol",
+    );
+    assert.ok(
+      !html.includes('id="btnShowAddClaude"'),
+      "no duplicate section btnShowAddClaude",
+    );
+    assert.ok(
+      !html.includes('id="btnShowAddCodex"'),
+      "no duplicate section btnShowAddCodex",
+    );
+    assert.ok(
+      html.includes("function openAddAccountModal"),
+      "script defines openAddAccountModal",
+    );
   });
 
-  it('renders spacious policy panel with explanations, PL/EN dual-language support, and dark/light themes', () => {
+  it("renders spacious policy panel with explanations, PL/EN dual-language support, and dark/light themes", () => {
     const html = renderDashboardHtml();
 
     // Theme toggles
-    assert.ok(html.includes('id="btnThemeToggle"'), 'header contains #btnThemeToggle');
-    assert.ok(html.includes('id="btnLoginThemeToggle"'), 'login card contains #btnLoginThemeToggle');
-    assert.ok(html.includes('[data-theme="light"]'), 'styles include [data-theme="light"] overrides');
+    assert.ok(
+      html.includes('id="btnThemeToggle"'),
+      "header contains #btnThemeToggle",
+    );
+    assert.ok(
+      html.includes('id="btnLoginThemeToggle"'),
+      "login card contains #btnLoginThemeToggle",
+    );
+    assert.ok(
+      html.includes('[data-theme="light"]'),
+      'styles include [data-theme="light"] overrides',
+    );
 
     // Language toggles
-    assert.ok(html.includes('id="btnLangToggle"'), 'header contains #btnLangToggle');
-    assert.ok(html.includes('id="btnLoginLangToggle"'), 'login card contains #btnLoginLangToggle');
+    assert.ok(
+      html.includes('id="btnLangToggle"'),
+      "header contains #btnLangToggle",
+    );
+    assert.ok(
+      html.includes('id="btnLoginLangToggle"'),
+      "login card contains #btnLoginLangToggle",
+    );
 
     // Policy Panel & Grid
-    assert.ok(html.includes('id="fleetPolicyPanel"'), 'contains #fleetPolicyPanel');
-    assert.ok(html.includes('class="policy-panel"'), 'contains .policy-panel');
-    assert.ok(html.includes('class="policy-grid"'), 'contains .policy-grid');
+    assert.ok(
+      html.includes('id="fleetPolicyPanel"'),
+      "contains #fleetPolicyPanel",
+    );
+    assert.ok(html.includes('class="policy-panel"'), "contains .policy-panel");
+    assert.ok(html.includes('class="policy-grid"'), "contains .policy-grid");
     const cardCount = (html.match(/class="policy-card"/g) || []).length;
-    assert.equal(cardCount, 4, 'contains exactly 4 policy cards for routing features');
+    assert.equal(
+      cardCount,
+      4,
+      "contains exactly 4 policy cards for routing features",
+    );
 
     // Required control IDs preserved
-    assert.ok(html.includes('id="selDistributeSessions"'), 'contains #selDistributeSessions');
-    assert.ok(html.includes('id="chkExpiryRouting"'), 'contains #chkExpiryRouting');
-    assert.ok(html.includes('id="chkCrossProviderFallback"'), 'contains #chkCrossProviderFallback');
-    assert.ok(html.includes('id="chkAutoHealthCheck"'), 'contains #chkAutoHealthCheck');
-    assert.ok(html.includes('id="btnDrainToggle"'), 'contains #btnDrainToggle');
-    assert.ok(html.includes('id="btnTogglePolicyHelp"'), 'contains #btnTogglePolicyHelp');
+    assert.ok(
+      html.includes('id="selDistributeSessions"'),
+      "contains #selDistributeSessions",
+    );
+    assert.ok(
+      html.includes('id="chkExpiryRouting"'),
+      "contains #chkExpiryRouting",
+    );
+    assert.ok(
+      html.includes('id="chkCrossProviderFallback"'),
+      "contains #chkCrossProviderFallback",
+    );
+    assert.ok(
+      html.includes('id="chkAutoHealthCheck"'),
+      "contains #chkAutoHealthCheck",
+    );
+    assert.ok(html.includes('id="btnDrainToggle"'), "contains #btnDrainToggle");
+    assert.ok(
+      html.includes('id="btnTogglePolicyHelp"'),
+      "contains #btnTogglePolicyHelp",
+    );
 
     // Explanations present
-    assert.ok(html.includes('id="descAffinity"'), 'contains prompt cache explanation');
-    assert.ok(html.includes('id="descReset"'), 'contains earliest-reset explanation');
-    assert.ok(html.includes('id="descFallback"'), 'contains cross-provider fallback explanation');
-    assert.ok(html.includes('id="descHealth"'), 'contains auto-health explanation');
+    assert.ok(
+      html.includes('id="descAffinity"'),
+      "contains prompt cache explanation",
+    );
+    assert.ok(
+      html.includes('id="descReset"'),
+      "contains earliest-reset explanation",
+    );
+    assert.ok(
+      html.includes('id="descFallback"'),
+      "contains cross-provider fallback explanation",
+    );
+    assert.ok(
+      html.includes('id="descHealth"'),
+      "contains auto-health explanation",
+    );
 
     // i18n dictionary and functions in script
-    assert.ok(html.includes('var I18N = {'), 'script contains I18N dictionary');
-    assert.ok(html.includes('function t('), 'script defines t() translation helper');
-    assert.ok(html.includes('function updateI18nDOM()'), 'script defines updateI18nDOM()');
-    assert.ok(html.includes('function setLang('), 'script defines setLang()');
-    assert.ok(html.includes('function setTheme('), 'script defines setTheme()');
+    assert.ok(html.includes("var I18N = {"), "script contains I18N dictionary");
+    assert.ok(
+      html.includes("function t("),
+      "script defines t() translation helper",
+    );
+    assert.ok(
+      html.includes("function updateI18nDOM()"),
+      "script defines updateI18nDOM()",
+    );
+    assert.ok(html.includes("function setLang("), "script defines setLang()");
+    assert.ok(html.includes("function setTheme("), "script defines setTheme()");
   });
 
-  it('renders redesigned workstations section with dedicated master banner and integrated cards', () => {
+  it("renders redesigned workstations section with dedicated master banner and integrated cards", () => {
     const html = renderDashboardHtml();
-    assert.ok(html.includes('id="selQuickStation"'), 'contains workstation quick selector #selQuickStation');
-    assert.ok(html.includes('id="btnShowWorkstationGuide"'), 'contains guide button #btnShowWorkstationGuide');
-    assert.ok(html.includes('master-key-banner'), 'styles define .master-key-banner');
-    assert.ok(html.includes('workstation-card'), 'styles define .workstation-card');
-    assert.ok(html.includes('workstation-metrics'), 'styles define .workstation-metrics');
-    assert.ok(html.includes('id="clientsWrap" style="display:none;'), 'clientsWrap table is hidden by default');
-    assert.ok(html.includes('Podłącz nową stację roboczą'), 'modalAddClientKey contains updated workstation header');
-    assert.ok(html.includes('Konfiguracja stacji roboczej'), 'modalKeyCreated contains updated workstation setup header');
-    assert.ok(html.includes('Klucz Master Administratora'), 'translations include Master Administrator Key');
-    assert.ok(html.includes('💻 Stacje robocze'), 'translations include Workstations title');
+    assert.ok(
+      html.includes('id="selQuickStation"'),
+      "contains workstation quick selector #selQuickStation",
+    );
+    assert.ok(
+      html.includes('id="btnShowWorkstationGuide"'),
+      "contains guide button #btnShowWorkstationGuide",
+    );
+    assert.ok(
+      html.includes("master-key-banner"),
+      "styles define .master-key-banner",
+    );
+    assert.ok(
+      html.includes("workstation-card"),
+      "styles define .workstation-card",
+    );
+    assert.ok(
+      html.includes("workstation-metrics"),
+      "styles define .workstation-metrics",
+    );
+    assert.ok(
+      html.includes('id="clientsWrap" style="display:none;'),
+      "clientsWrap table is hidden by default",
+    );
+    assert.ok(
+      html.includes("Podłącz nową stację roboczą"),
+      "modalAddClientKey contains updated workstation header",
+    );
+    assert.ok(
+      html.includes("Konfiguracja stacji roboczej"),
+      "modalKeyCreated contains updated workstation setup header",
+    );
+    assert.ok(
+      html.includes("Klucz Master Administratora"),
+      "translations include Master Administrator Key",
+    );
+    assert.ok(
+      html.includes("💻 Stacje robocze"),
+      "translations include Workstations title",
+    );
   });
 
-  it('updates account priority and persists order on POST /api/accounts/reorder', async () => {
-    const fs = await import('node:fs/promises');
-    const os = await import('node:os');
-    const path = await import('node:path');
+  it("updates account priority and persists order on POST /api/accounts/reorder", async () => {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
 
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-lb-test-'));
-    const tmpCfg = path.join(tmpDir, 'config.json');
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-lb-test-"));
+    const tmpCfg = path.join(tmpDir, "config.json");
 
     const initialConfig = {
       accounts: [
-        { name: 'konto-a', type: 'apikey', apiKey: 'sk-ant-test-a', priority: 0 },
-        { name: 'konto-b', type: 'apikey', apiKey: 'sk-ant-test-b', priority: 1 },
+        {
+          name: "konto-a",
+          type: "apikey",
+          apiKey: "sk-ant-test-a",
+          priority: 0,
+        },
+        {
+          name: "konto-b",
+          type: "apikey",
+          apiKey: "sk-ant-test-b",
+          priority: 1,
+        },
       ],
       proxy: {
-        apiKey: 'admin-secret',
-        clientKeys: [{ name: 'worker', key: 'worker-secret-1234', created: '2026-01-01T00:00:00.000Z' }],
-      }
+        apiKey: "admin-secret",
+        clientKeys: [
+          {
+            name: "worker",
+            key: "worker-secret-1234",
+            created: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      },
     };
     await fs.writeFile(tmpCfg, JSON.stringify(initialConfig, null, 2));
     process.env.AGENT_LB_CONFIG = tmpCfg;
 
     const dummyAccountManager = {
       accounts: [
-        { name: 'konto-a', priority: 0 },
-        { name: 'konto-b', priority: 1 },
+        { name: "konto-a", priority: 0 },
+        { name: "konto-b", priority: 1 },
       ],
-      getStatus() { return { accounts: [], sessions: {} }; },
+      getStatus() {
+        return { accounts: [], sessions: {} };
+      },
     };
 
     const server = createProxyServer(dummyAccountManager, initialConfig);
-    await new Promise(res => server.listen(0, '127.0.0.1', res));
+    await new Promise((res) => server.listen(0, "127.0.0.1", res));
     const port = server.address().port;
 
     try {
       // Reorder accounts
-      const reorderRes = await fetch(`http://127.0.0.1:${port}/api/accounts/reorder`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': 'admin-secret',
+      const reorderRes = await fetch(
+        `http://127.0.0.1:${port}/api/accounts/reorder`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": "admin-secret",
+          },
+          body: JSON.stringify({ order: ["konto-b", "konto-a"] }),
         },
-        body: JSON.stringify({ order: ['konto-b', 'konto-a'] })
-      });
+      );
       assert.equal(reorderRes.status, 200);
       const reorderData = await reorderRes.json();
       assert.equal(reorderData.ok, true);
 
       // In-memory dummyAccountManager updated
-      assert.equal(dummyAccountManager.accounts.find(a => a.name === 'konto-b').priority, 0);
-      assert.equal(dummyAccountManager.accounts.find(a => a.name === 'konto-a').priority, 1);
+      assert.equal(
+        dummyAccountManager.accounts.find((a) => a.name === "konto-b").priority,
+        0,
+      );
+      assert.equal(
+        dummyAccountManager.accounts.find((a) => a.name === "konto-a").priority,
+        1,
+      );
 
       // Disk config updated
-      const disk = JSON.parse(await fs.readFile(tmpCfg, 'utf8'));
-      assert.equal(disk.accounts.find(a => a.name === 'konto-b').priority, 0);
-      assert.equal(disk.accounts.find(a => a.name === 'konto-a').priority, 1);
+      const disk = JSON.parse(await fs.readFile(tmpCfg, "utf8"));
+      assert.equal(disk.accounts.find((a) => a.name === "konto-b").priority, 0);
+      assert.equal(disk.accounts.find((a) => a.name === "konto-a").priority, 1);
 
       // Rename account via POST /api/accounts/rename
-      const renameRes = await fetch(`http://127.0.0.1:${port}/api/accounts/rename`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': 'admin-secret',
+      const renameRes = await fetch(
+        `http://127.0.0.1:${port}/api/accounts/rename`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": "admin-secret",
+          },
+          body: JSON.stringify({ oldName: "konto-a", newName: "konto-glówne" }),
         },
-        body: JSON.stringify({ oldName: 'konto-a', newName: 'konto-glówne' })
-      });
+      );
       assert.equal(renameRes.status, 200);
       const renameData = await renameRes.json();
       assert.equal(renameData.ok, true);
-      assert.equal(renameData.oldName, 'konto-a');
-      assert.equal(renameData.newName, 'konto-glówne');
+      assert.equal(renameData.oldName, "konto-a");
+      assert.equal(renameData.newName, "konto-glówne");
 
       // In-memory dummyAccountManager and disk updated
-      assert.ok(dummyAccountManager.accounts.find(a => a.name === 'konto-glówne'), 'in-memory name updated');
-      const diskAfterRename = JSON.parse(await fs.readFile(tmpCfg, 'utf8'));
-      assert.ok(diskAfterRename.accounts.find(a => a.name === 'konto-glówne'), 'disk config name updated');
+      assert.ok(
+        dummyAccountManager.accounts.find((a) => a.name === "konto-glówne"),
+        "in-memory name updated",
+      );
+      const diskAfterRename = JSON.parse(await fs.readFile(tmpCfg, "utf8"));
+      assert.ok(
+        diskAfterRename.accounts.find((a) => a.name === "konto-glówne"),
+        "disk config name updated",
+      );
 
       // Duplicate rename rejected with 409
-      const dupRes = await fetch(`http://127.0.0.1:${port}/api/accounts/rename`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': 'admin-secret' },
-        body: JSON.stringify({ oldName: 'konto-glówne', newName: 'konto-b' })
-      });
+      const dupRes = await fetch(
+        `http://127.0.0.1:${port}/api/accounts/rename`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": "admin-secret",
+          },
+          body: JSON.stringify({ oldName: "konto-glówne", newName: "konto-b" }),
+        },
+      );
       assert.equal(dupRes.status, 409);
 
       // Nonexistent account returns 404
-      const nonExistentRes = await fetch(`http://127.0.0.1:${port}/api/accounts/rename`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': 'admin-secret' },
-        body: JSON.stringify({ oldName: 'nonexistent', newName: 'anything' })
-      });
+      const nonExistentRes = await fetch(
+        `http://127.0.0.1:${port}/api/accounts/rename`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": "admin-secret",
+          },
+          body: JSON.stringify({ oldName: "nonexistent", newName: "anything" }),
+        },
+      );
       assert.equal(nonExistentRes.status, 404);
 
-      const statusRes = await fetch(`http://127.0.0.1:${port}/agent-lb/status`, {
-        headers: { 'x-api-key': 'admin-secret' },
-      });
+      const statusRes = await fetch(
+        `http://127.0.0.1:${port}/agent-lb/status`,
+        {
+          headers: { "x-api-key": "admin-secret" },
+        },
+      );
       assert.equal(statusRes.status, 200);
       const statusText = await statusRes.text();
-      assert.ok(!statusText.includes('admin-secret'), 'status must not expose the admin credential');
-      assert.ok(!statusText.includes('worker-secret-1234'), 'status must not expose raw client credentials');
-      assert.ok(statusText.includes('work...1234'), 'status may expose only a masked client key');
+      assert.ok(
+        !statusText.includes("admin-secret"),
+        "status must not expose the admin credential",
+      );
+      assert.ok(
+        !statusText.includes("worker-secret-1234"),
+        "status must not expose raw client credentials",
+      );
+      assert.ok(
+        statusText.includes("work...1234"),
+        "status may expose only a masked client key",
+      );
 
       // Unauthenticated external request on /api/keys must be rejected
-      const unauthKeysRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/keys`, {
-        headers: { 'x-forwarded-for': '203.0.113.195' }
-      });
+      const unauthKeysRes = await fetch(
+        `http://127.0.0.1:${port}/agent-lb/api/keys`,
+        {
+          headers: { "x-forwarded-for": "203.0.113.195" },
+        },
+      );
       assert.equal(unauthKeysRes.status, 401);
 
       // Invalid key on /api/keys must be rejected (401)
-      const wrongKeysRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/keys`, {
-        headers: {
-          'x-forwarded-for': '203.0.113.195',
-          'x-api-key': 'wrong-secret'
+      const wrongKeysRes = await fetch(
+        `http://127.0.0.1:${port}/agent-lb/api/keys`,
+        {
+          headers: {
+            "x-forwarded-for": "203.0.113.195",
+            "x-api-key": "wrong-secret",
+          },
         },
-      });
+      );
       assert.equal(wrongKeysRes.status, 401);
 
       // A client key must never gain access to key administration
-      const clientKeysRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/keys`, {
-        headers: {
-          'x-forwarded-for': '203.0.113.195',
-          'x-api-key': 'worker-secret-1234'
+      const clientKeysRes = await fetch(
+        `http://127.0.0.1:${port}/agent-lb/api/keys`,
+        {
+          headers: {
+            "x-forwarded-for": "203.0.113.195",
+            "x-api-key": "worker-secret-1234",
+          },
         },
-      });
+      );
       assert.equal(clientKeysRes.status, 403);
       const clientKeysData = await clientKeysRes.json();
       assert.equal(clientKeysData.ok, false);
       assert.equal(clientKeysData.primaryKey, undefined);
 
       // Admin lists masked credentials; secrets are returned only on creation/rotation
-      const adminKeysRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/keys`, {
-        headers: { 'x-api-key': 'admin-secret' },
-      });
+      const adminKeysRes = await fetch(
+        `http://127.0.0.1:${port}/agent-lb/api/keys`,
+        {
+          headers: { "x-api-key": "admin-secret" },
+        },
+      );
       assert.equal(adminKeysRes.status, 200);
       const adminKeysData = await adminKeysRes.json();
       assert.equal(adminKeysData.ok, true);
       assert.equal(adminKeysData.primaryKey, undefined);
       assert.equal(adminKeysData.keys.length, 1);
-      assert.equal(adminKeysData.keys[0].name, 'worker');
-      assert.equal(adminKeysData.keys[0].key, 'work...1234');
+      assert.equal(adminKeysData.keys[0].name, "worker");
+      assert.equal(adminKeysData.keys[0].key, "work...1234");
       assert.equal(adminKeysData.keys[0].rawKey, undefined);
-      assert.equal(adminKeysData.keys[0].maskedKey, 'work...1234');
+      assert.equal(adminKeysData.keys[0].maskedKey, "work...1234");
 
       // /api/auth/verify: Admin key succeeds as primary admin
-      const authAdminRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/auth/verify`, {
-        headers: { 'x-api-key': 'admin-secret' }
-      });
+      const authAdminRes = await fetch(
+        `http://127.0.0.1:${port}/agent-lb/api/auth/verify`,
+        {
+          headers: { "x-api-key": "admin-secret" },
+        },
+      );
       assert.equal(authAdminRes.status, 200);
       const authAdminData = await authAdminRes.json();
       assert.equal(authAdminData.ok, true);
-      assert.equal(authAdminData.role, 'admin');
+      assert.equal(authAdminData.role, "admin");
       assert.equal(authAdminData.isPrimary, true);
 
       // /api/auth/verify: Client key cannot open the administrative dashboard
-      const authClientRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/auth/verify`, {
-        headers: {
-          'x-forwarded-for': '203.0.113.195',
-          'x-api-key': 'worker-secret-1234'
-        }
-      });
+      const authClientRes = await fetch(
+        `http://127.0.0.1:${port}/agent-lb/api/auth/verify`,
+        {
+          headers: {
+            "x-forwarded-for": "203.0.113.195",
+            "x-api-key": "worker-secret-1234",
+          },
+        },
+      );
       assert.equal(authClientRes.status, 403);
       const authClientData = await authClientRes.json();
       assert.equal(authClientData.ok, false);
@@ -358,148 +683,202 @@ describe('Dashboard Authentication and Layout', () => {
       assert.equal(authClientData.clientName, undefined);
 
       // /api/auth/verify: Invalid key returns 401
-      const authInvalidRes = await fetch(`http://127.0.0.1:${port}/agent-lb/api/auth/verify`, {
-        headers: {
-          'x-forwarded-for': '203.0.113.195',
-          'x-api-key': 'totally-wrong'
-        }
-      });
+      const authInvalidRes = await fetch(
+        `http://127.0.0.1:${port}/agent-lb/api/auth/verify`,
+        {
+          headers: {
+            "x-forwarded-for": "203.0.113.195",
+            "x-api-key": "totally-wrong",
+          },
+        },
+      );
       assert.equal(authInvalidRes.status, 401);
     } finally {
       delete process.env.AGENT_LB_CONFIG;
-      await new Promise(res => server.close(res));
+      await new Promise((res) => server.close(res));
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it('renders Reboot button and handles POST /api/system/reboot', async () => {
+  it("renders Reboot button and handles POST /api/system/reboot", async () => {
     const html = renderDashboardHtml();
-    assert.ok(html.includes('id="btnRebootServer"'), 'contains reboot button element');
-    assert.ok(html.includes('data-i18n="btnReboot"'), 'contains i18n attribute for reboot');
+    assert.ok(
+      html.includes('id="btnRebootServer"'),
+      "contains reboot button element",
+    );
+    assert.ok(
+      html.includes('data-i18n="btnReboot"'),
+      "contains i18n attribute for reboot",
+    );
 
     let rebootCalled = false;
-    const testConfig = { proxy: { apiKey: 'admin-secret' } };
-    const fakeAccountManager = { accounts: [], distributionMode: 'adaptive' };
+    const testConfig = { proxy: { apiKey: "admin-secret" } };
+    const fakeAccountManager = { accounts: [], distributionMode: "adaptive" };
     const hooks = {
-      reboot: () => { rebootCalled = true; },
+      reboot: () => {
+        rebootCalled = true;
+      },
     };
 
     const server = createProxyServer(fakeAccountManager, testConfig, hooks);
-    await new Promise(res => server.listen(0, '127.0.0.1', res));
+    await new Promise((res) => server.listen(0, "127.0.0.1", res));
     const port = server.address().port;
 
     try {
       // Unauthenticated request should fail with 401
-      const unauthRes = await fetch(`http://127.0.0.1:${port}/api/system/reboot`, {
-        method: 'POST',
-        headers: {
-          'x-forwarded-for': '203.0.113.195',
+      const unauthRes = await fetch(
+        `http://127.0.0.1:${port}/api/system/reboot`,
+        {
+          method: "POST",
+          headers: {
+            "x-forwarded-for": "203.0.113.195",
+          },
         },
-      });
+      );
       assert.equal(unauthRes.status, 401);
       assert.equal(rebootCalled, false);
 
       // Authenticated with admin key should succeed
-      const authRes = await fetch(`http://127.0.0.1:${port}/api/system/reboot`, {
-        method: 'POST',
-        headers: {
-          'x-forwarded-for': '203.0.113.195',
-          'x-api-key': 'admin-secret',
+      const authRes = await fetch(
+        `http://127.0.0.1:${port}/api/system/reboot`,
+        {
+          method: "POST",
+          headers: {
+            "x-forwarded-for": "203.0.113.195",
+            "x-api-key": "admin-secret",
+          },
         },
-      });
+      );
       assert.equal(authRes.status, 200);
       const data = await authRes.json();
       assert.equal(data.ok, true);
       assert.equal(rebootCalled, true);
     } finally {
-      await new Promise(res => server.close(res));
+      await new Promise((res) => server.close(res));
     }
   });
 });
 
-describe('Dashboard login error text', () => {
+describe("Dashboard login error text", () => {
   const html = renderDashboardHtml();
-  const src = html.match(/function keyboxErrorText\(err, lang\) \{[\s\S]*?\n {2}\}\n/)[0];
-  const keyboxErrorText = vm.runInNewContext(`(${src.replace('function keyboxErrorText', 'function')})`);
+  const src = html.match(
+    /function keyboxErrorText\(err, lang\) \{[\s\S]*?\n {2}\}\n/,
+  )[0];
+  const keyboxErrorText = vm.runInNewContext(
+    `(${src.replace("function keyboxErrorText", "function")})`,
+  );
 
   it('never renders an error object as "[object Object]"', () => {
-    const gate = { type: 'authentication_error', message: 'Invalid proxy API key' };
-    assert.match(keyboxErrorText(gate, 'pl'), /Nieprawidłowy klucz/);
-    assert.match(keyboxErrorText(gate, 'en'), /Invalid key/);
-    assert.equal(keyboxErrorText({ type: 'x', message: 'Coś innego' }, 'pl'), 'Coś innego');
-    assert.match(keyboxErrorText({}, 'pl'), /Nieprawidłowy klucz/);
-    assert.equal(keyboxErrorText('Wymagana autoryzacja', 'pl'), 'Wymagana autoryzacja');
-    assert.equal(keyboxErrorText(null, 'pl'), '');
+    const gate = {
+      type: "authentication_error",
+      message: "Invalid proxy API key",
+    };
+    assert.match(keyboxErrorText(gate, "pl"), /Nieprawidłowy klucz/);
+    assert.match(keyboxErrorText(gate, "en"), /Invalid key/);
+    assert.equal(
+      keyboxErrorText({ type: "x", message: "Coś innego" }, "pl"),
+      "Coś innego",
+    );
+    assert.match(keyboxErrorText({}, "pl"), /Nieprawidłowy klucz/);
+    assert.equal(
+      keyboxErrorText("Wymagana autoryzacja", "pl"),
+      "Wymagana autoryzacja",
+    );
+    assert.equal(keyboxErrorText(null, "pl"), "");
   });
 });
 
-describe('Account deletion and re-login upsert targeting', () => {
-  it('removes specifically by id without deleting accounts with same name', async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-lb-remove-test-'));
-    const tmpCfg = path.join(tmpDir, 'agent-lb.json');
+describe("Account deletion and re-login upsert targeting", () => {
+  it("removes specifically by id without deleting accounts with same name", async () => {
+    const tmpDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "agent-lb-remove-test-"),
+    );
+    const tmpCfg = path.join(tmpDir, "agent-lb.json");
     const initialConfig = {
       accounts: [
-        { id: 'acc-1', name: 'duplicate-name', type: 'apikey', apiKey: 'sk-ant-1', priority: 0 },
-        { id: 'acc-2', name: 'duplicate-name', type: 'apikey', apiKey: 'sk-ant-2', priority: 1 },
+        {
+          id: "acc-1",
+          name: "duplicate-name",
+          type: "apikey",
+          apiKey: "sk-ant-1",
+          priority: 0,
+        },
+        {
+          id: "acc-2",
+          name: "duplicate-name",
+          type: "apikey",
+          apiKey: "sk-ant-2",
+          priority: 1,
+        },
       ],
-      proxy: { apiKey: 'admin-secret' },
+      proxy: { apiKey: "admin-secret" },
     };
     await fs.writeFile(tmpCfg, JSON.stringify(initialConfig, null, 2));
     process.env.AGENT_LB_CONFIG = tmpCfg;
 
     const dummyAccountManager = {
       accounts: [
-        { id: 'acc-1', name: 'duplicate-name', priority: 0 },
-        { id: 'acc-2', name: 'duplicate-name', priority: 1 },
+        { id: "acc-1", name: "duplicate-name", priority: 0 },
+        { id: "acc-2", name: "duplicate-name", priority: 1 },
       ],
       removeAccount(idx) {
         this.accounts.splice(idx, 1);
       },
-      getStatus() { return { accounts: [], sessions: {} }; },
+      getStatus() {
+        return { accounts: [], sessions: {} };
+      },
     };
 
     const server = createProxyServer(dummyAccountManager, initialConfig);
-    await new Promise(res => server.listen(0, '127.0.0.1', res));
+    await new Promise((res) => server.listen(0, "127.0.0.1", res));
     const port = server.address().port;
 
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/agent-lb/api/accounts/remove`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': 'admin-secret' },
-        body: JSON.stringify({ id: 'acc-1', name: 'duplicate-name' }),
-      });
+      const res = await fetch(
+        `http://127.0.0.1:${port}/agent-lb/api/accounts/remove`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": "admin-secret",
+          },
+          body: JSON.stringify({ id: "acc-1", name: "duplicate-name" }),
+        },
+      );
       assert.equal(res.status, 200);
       const data = await res.json();
       assert.equal(data.ok, true);
 
       assert.equal(dummyAccountManager.accounts.length, 1);
-      assert.equal(dummyAccountManager.accounts[0].id, 'acc-2');
+      assert.equal(dummyAccountManager.accounts[0].id, "acc-2");
 
-      const disk = JSON.parse(await fs.readFile(tmpCfg, 'utf8'));
+      const disk = JSON.parse(await fs.readFile(tmpCfg, "utf8"));
       assert.equal(disk.accounts.length, 1);
-      assert.equal(disk.accounts[0].id, 'acc-2');
+      assert.equal(disk.accounts[0].id, "acc-2");
     } finally {
       delete process.env.AGENT_LB_CONFIG;
-      await new Promise(res => server.close(res));
+      await new Promise((res) => server.close(res));
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it('re-login upsert replaces existing account by name even if accountUuid changes', async () => {
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-lb-relogin-test-'));
-    const tmpCfg = path.join(tmpDir, 'agent-lb.json');
+  it("re-login upsert replaces existing account by name even if accountUuid changes", async () => {
+    const tmpDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "agent-lb-relogin-test-"),
+    );
+    const tmpCfg = path.join(tmpDir, "agent-lb.json");
     const initialConfig = {
       accounts: [
         {
-          id: 'acc-old',
-          name: 'target-account',
-          type: 'oauth',
-          accountUuid: 'uuid-1111',
-          accessToken: 'old-token',
+          id: "acc-old",
+          name: "target-account",
+          type: "oauth",
+          accountUuid: "uuid-1111",
+          accessToken: "old-token",
           priority: 0,
         },
       ],
-      proxy: { apiKey: 'admin-secret' },
+      proxy: { apiKey: "admin-secret" },
     };
     await fs.writeFile(tmpCfg, JSON.stringify(initialConfig, null, 2));
     process.env.AGENT_LB_CONFIG = tmpCfg;
@@ -507,45 +886,57 @@ describe('Account deletion and re-login upsert targeting', () => {
     const dummyAccountManager = {
       accounts: [
         {
-          id: 'acc-old',
-          name: 'target-account',
-          accountUuid: 'uuid-1111',
+          id: "acc-old",
+          name: "target-account",
+          accountUuid: "uuid-1111",
           priority: 0,
-          lastError: 'blocked',
-          status: 'error',
+          lastError: "blocked",
+          status: "error",
         },
       ],
-      getStatus() { return { accounts: [], sessions: {} }; },
+      getStatus() {
+        return { accounts: [], sessions: {} };
+      },
     };
 
     const server = createProxyServer(dummyAccountManager, initialConfig);
-    await new Promise(res => server.listen(0, '127.0.0.1', res));
+    await new Promise((res) => server.listen(0, "127.0.0.1", res));
     const port = server.address().port;
 
     try {
-      const res = await fetch(`http://127.0.0.1:${port}/agent-lb/api/accounts/add`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': 'admin-secret' },
-        body: JSON.stringify({
-          name: 'target-account',
-          type: 'oauth',
-          accountUuid: 'uuid-2222',
-          accessToken: 'new-token',
-          refreshToken: 'new-refresh',
-        }),
-      });
+      const res = await fetch(
+        `http://127.0.0.1:${port}/agent-lb/api/accounts/add`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-api-key": "admin-secret",
+          },
+          body: JSON.stringify({
+            name: "target-account",
+            type: "oauth",
+            accountUuid: "uuid-2222",
+            accessToken: "new-token",
+            refreshToken: "new-refresh",
+          }),
+        },
+      );
       assert.equal(res.status, 200);
       const data = await res.json();
       assert.equal(data.ok, true);
 
-      const disk = JSON.parse(await fs.readFile(tmpCfg, 'utf8'));
-      assert.equal(disk.accounts.length, 1, 'must update in-place, not create duplicate');
-      assert.equal(disk.accounts[0].name, 'target-account');
-      assert.equal(disk.accounts[0].accountUuid, 'uuid-2222');
-      assert.equal(disk.accounts[0].accessToken, 'new-token');
+      const disk = JSON.parse(await fs.readFile(tmpCfg, "utf8"));
+      assert.equal(
+        disk.accounts.length,
+        1,
+        "must update in-place, not create duplicate",
+      );
+      assert.equal(disk.accounts[0].name, "target-account");
+      assert.equal(disk.accounts[0].accountUuid, "uuid-2222");
+      assert.equal(disk.accounts[0].accessToken, "new-token");
     } finally {
       delete process.env.AGENT_LB_CONFIG;
-      await new Promise(res => server.close(res));
+      await new Promise((res) => server.close(res));
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });

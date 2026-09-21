@@ -645,8 +645,8 @@ const PAGE = `<!doctype html>
   .card-name-display { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
   .card-name-text { font-size: 13px; font-weight: 600; color: var(--heading); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; transition: color .15s ease; }
   .card-name-text:hover { color: var(--accent); text-decoration: underline dotted; }
-  .btn-rename { background: transparent; border: none; padding: 2px 4px; font-size: 11px; cursor: pointer; opacity: 0.45; transition: opacity .15s ease, transform .15s ease; border-radius: 3px; line-height: 1; color: var(--dim); }
-  .btn-rename:hover { opacity: 1; transform: scale(1.12); color: var(--accent); background: var(--line-subtle); }
+  .btn-rename, .btn-copy-name { background: transparent; border: none; padding: 2px 4px; font-size: 11px; cursor: pointer; opacity: 0.45; transition: opacity .15s ease, transform .15s ease; border-radius: 3px; line-height: 1; color: var(--dim); flex-shrink: 0; }
+  .btn-rename:hover, .btn-copy-name:hover { opacity: 1; transform: scale(1.12); color: var(--accent); background: var(--line-subtle); }
   .card-rename-form { display: flex; align-items: center; gap: 4px; width: 100%; }
   .card-rename-input { flex: 1; min-width: 0; background: var(--input-bg); border: 1px solid var(--accent); color: var(--heading); font-size: 12px; padding: 2px 6px; border-radius: 4px; outline: none; }
   .card-rename-input:focus { box-shadow: 0 0 0 2px var(--accent-glow); }
@@ -1892,6 +1892,7 @@ const PAGE = `<!doctype html>
       btnDelete: 'Usuń konto z konfiguracji Agent LB',
       renameAccount: 'Zmień nazwę konta',
       renameAccountDblClick: 'Kliknij dwukrotnie lub użyj ikony ołówka ✏️, aby zmienić nazwę konta',
+      btnCopyName: 'Kopiuj pełną nazwę konta do schowka',
       prioBadgeTopTitle: 'Pozycja #1 — główne konto obsługujące zapytania w pierwszej kolejności',
       prioBadgeOtherTitle: 'Pozycja #{rank} — konto zapasowe w kolejce (kliknij „▲ Na górę” lub przeciągnij ⠿, aby zmienić)',
       dragHandleTitle: 'Przeciągnij myszką, aby zmienić priorytet w kolumnie',
@@ -1995,6 +1996,7 @@ const PAGE = `<!doctype html>
       btnDelete: 'Remove account from Agent LB config',
       renameAccount: 'Rename account',
       renameAccountDblClick: 'Double-click or click pencil ✏️ icon to rename account',
+      btnCopyName: 'Copy full account name to clipboard',
       prioBadgeTopTitle: 'Rank #1 — primary account handling requests first',
       prioBadgeOtherTitle: 'Rank #{rank} — fallback account in queue (click "▲ Move to Top" or drag ⠿ to reorder)',
       dragHandleTitle: 'Drag with mouse to reorder queue priority in column',
@@ -2190,6 +2192,7 @@ ${SHARED_HELPERS}
   }
 
   var draggedCard = null;
+  var activeRenameAccount = null;
 
   function attachCardDragListeners(card) {
     card.addEventListener('dragstart', function (e) {
@@ -2328,23 +2331,35 @@ ${SHARED_HELPERS}
   }
 
   function startInlineRename(currentName, nameRow, nameDisplay, card) {
+    activeRenameAccount = currentName;
     nameRow.innerHTML = '';
     var form = el('form', 'card-rename-form');
     var input = el('input', 'card-rename-input');
     input.type = 'text';
     input.value = currentName;
-    input.placeholder = 'Wpisz nową nazwę konta...';
+    input.placeholder = currentLang === 'pl' ? 'Wpisz nową nazwę konta...' : 'Enter new account name...';
     input.required = true;
 
-    var btnSave = el('button', 'btn btn-xs btn-accent', '✓ Zapisz');
+    var btnCopyInput = el('button', 'btn btn-xs btn-outline', '📋');
+    btnCopyInput.type = 'button';
+    btnCopyInput.title = t('btnCopyName');
+    btnCopyInput.addEventListener('click', function (e) {
+      e.stopPropagation();
+      copyToClipboard(input.value || currentName, currentLang === 'pl' ? 'nazwa konta' : 'Account name');
+      btnCopyInput.textContent = '✅';
+      setTimeout(function () { btnCopyInput.textContent = '📋'; }, 1500);
+    });
+
+    var btnSave = el('button', 'btn btn-xs btn-accent', '✓ ' + (currentLang === 'pl' ? 'Zapisz' : 'Save'));
     btnSave.type = 'submit';
-    btnSave.title = 'Zapisz nową nazwę konta';
+    btnSave.title = currentLang === 'pl' ? 'Zapisz nową nazwę konta' : 'Save new account name';
 
     var btnCancel = el('button', 'btn btn-xs btn-outline', '✕');
     btnCancel.type = 'button';
-    btnCancel.title = 'Anuluj';
+    btnCancel.title = currentLang === 'pl' ? 'Anuluj' : 'Cancel';
 
     form.appendChild(input);
+    form.appendChild(btnCopyInput);
     form.appendChild(btnSave);
     form.appendChild(btnCancel);
     nameRow.appendChild(form);
@@ -2353,6 +2368,7 @@ ${SHARED_HELPERS}
     input.select();
 
     function cancel() {
+      activeRenameAccount = null;
       nameRow.innerHTML = '';
       nameRow.appendChild(nameDisplay);
     }
@@ -2374,7 +2390,7 @@ ${SHARED_HELPERS}
       e.stopPropagation();
       var val = input.value.trim();
       if (!val) {
-        note('warn', 'Nazwa konta nie może być pusta');
+        note('warn', currentLang === 'pl' ? 'Nazwa konta nie może być pusta' : 'Account name cannot be empty');
         input.focus();
         return;
       }
@@ -2384,6 +2400,7 @@ ${SHARED_HELPERS}
       }
       btnSave.disabled = true;
       btnCancel.disabled = true;
+      btnCopyInput.disabled = true;
       input.disabled = true;
 
       apiCall('/agent-lb/api/accounts/rename', 'POST', { oldName: currentName, newName: val })
@@ -2393,24 +2410,29 @@ ${SHARED_HELPERS}
             return;
           }
           if (res.ok) {
-            note('ok', 'Zmieniono nazwę konta z "' + currentName + '" na "' + res.newName + '"');
+            activeRenameAccount = null;
+            note('ok', (currentLang === 'pl' ? 'Zmieniono nazwę konta z "' : 'Renamed account from "') + currentName + (currentLang === 'pl' ? '" na "' : '" to "') + res.newName + '"');
             if (card) {
               card.dataset.accountName = res.newName;
             }
+            nameRow.innerHTML = '';
             poll();
           } else {
-            note('error', 'Błąd zmiany nazwy: ' + (res.error || 'nieznany błąd'));
+            note('error', (currentLang === 'pl' ? 'Błąd zmiany nazwy: ' : 'Rename error: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
             btnSave.disabled = false;
             btnCancel.disabled = false;
+            btnCopyInput.disabled = false;
             input.disabled = false;
             input.focus();
           }
         })
         .catch(function (err) {
-          note('error', 'Błąd: ' + err.message);
+          note('error', (currentLang === 'pl' ? 'Błąd: ' : 'Error: ') + err.message);
           btnSave.disabled = false;
           btnCancel.disabled = false;
+          btnCopyInput.disabled = false;
           input.disabled = false;
+          input.focus();
         });
     });
   }
@@ -2604,22 +2626,33 @@ ${SHARED_HELPERS}
     nameText.title = t('renameAccountDblClick');
     nameDisplay.appendChild(nameText);
 
-    var btnRename = el('button', 'btn-rename', '✏️');
-    btnRename.title = t('renameAccount');
-    btnRename.setAttribute('aria-label', t('renameAccount') + ' ' + (a.name || ''));
-    nameDisplay.appendChild(btnRename);
-    nameRow.appendChild(nameDisplay);
-
     if (a.name) {
+      var btnCopy = el('button', 'btn-rename btn-copy-name', '📋');
+      btnCopy.title = t('btnCopyName');
+      btnCopy.setAttribute('aria-label', t('btnCopyName') + ' ' + a.name);
+      btnCopy.addEventListener('click', function (e) {
+        e.stopPropagation();
+        copyToClipboard(a.name, currentLang === 'pl' ? 'nazwa konta' : 'Account name');
+        btnCopy.textContent = '✅';
+        setTimeout(function () { btnCopy.textContent = '📋'; }, 1500);
+      });
+      nameDisplay.appendChild(btnCopy);
+
+      var btnRename = el('button', 'btn-rename', '✏️');
+      btnRename.title = t('renameAccount');
+      btnRename.setAttribute('aria-label', t('renameAccount') + ' ' + a.name);
       btnRename.addEventListener('click', function (e) {
         e.stopPropagation();
         startInlineRename(a.name, nameRow, nameDisplay, card);
       });
+      nameDisplay.appendChild(btnRename);
+
       nameText.addEventListener('dblclick', function (e) {
         e.stopPropagation();
         startInlineRename(a.name, nameRow, nameDisplay, card);
       });
     }
+    nameRow.appendChild(nameDisplay);
     card.appendChild(nameRow);
 
     // Body: quota rows
@@ -3013,6 +3046,10 @@ ${SHARED_HELPERS}
     var listCodex = document.getElementById('listCodex');
     if (!listClaude || !listCodex) return;
 
+    if (activeRenameAccount || document.querySelector('.card-rename-input')) {
+      return; // Do not replace account cards while inline renaming is active
+    }
+
     attachListDropTarget(listClaude);
     attachListDropTarget(listCodex);
 
@@ -3253,9 +3290,15 @@ ${SHARED_HELPERS}
   }
 
   function copyToClipboard(text, label) {
+    function notifySuccess() {
+      var msg = currentLang === 'pl'
+        ? ('Skopiowano do schowka: ' + (label || 'tekst'))
+        : ((label || 'Text') + ' copied to clipboard');
+      note('ok', msg);
+    }
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () {
-        note('ok', (label || 'Text') + ' copied to clipboard');
+        notifySuccess();
       }).catch(function () {
         fallbackCopy(text, label);
       });
@@ -3273,9 +3316,12 @@ ${SHARED_HELPERS}
     ta.select();
     try {
       document.execCommand('copy');
-      note('ok', (label || 'Text') + ' copied to clipboard');
+      var msg = currentLang === 'pl'
+        ? ('Skopiowano do schowka: ' + (label || 'tekst'))
+        : ((label || 'Text') + ' copied to clipboard');
+      note('ok', msg);
     } catch (e) {
-      note('error', 'Could not copy to clipboard: ' + e.message);
+      note('error', (currentLang === 'pl' ? 'Nie udało się skopiować: ' : 'Could not copy to clipboard: ') + e.message);
     }
     document.body.removeChild(ta);
   }
