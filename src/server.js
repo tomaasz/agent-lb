@@ -4010,6 +4010,24 @@ export function formatHeaders(headers) {
 // indefinitely — a four-account fleet spent three accounts on a refused
 // connection and answered rate_limit_error. That instance is closed; keeping
 // ECONNREFUSED unconditional means any future gap stays a non-regression.
+/**
+ * A Codex 429 that means the account's quota is spent (not a momentary
+ * throttle): `usage_limit_reached` in the body, or a window reported at 100%.
+ * Returns { resetSeconds } or null. Exported for tests.
+ */
+export function codexUsageLimit(body, headers = {}) {
+  const err = body?.error;
+  const pct = (name) => Number(headers[`x-codex-${name}-used-percent`]);
+  const spent = err?.type === 'usage_limit_reached' || err?.code === 'usage_limit_reached'
+    || pct('primary') >= 100 || pct('secondary') >= 100;
+  if (!spent) return null;
+  const fromBody = Number(err?.resets_in_seconds);
+  const fromHeader = Number(headers['x-codex-primary-reset-after-seconds']);
+  const resetSeconds = Number.isFinite(fromBody) && fromBody > 0 ? fromBody
+    : Number.isFinite(fromHeader) && fromHeader > 0 ? fromHeader : 3600;
+  return { resetSeconds };
+}
+
 const SOCKET_TRANSIENT = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE',
   'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
@@ -4541,14 +4559,20 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         { successful: !!upstreamRes && upstreamRes.status < 400 }) || 0;
     }
 
-    // Extract rate limit headers
+    // Extract rate limit headers. Codex reports the same readings under
+    // `x-codex-*`; dropping those here left a Codex account's quota fed only by
+    // the background prober, so selection kept choosing a spent account.
     const rateLimitHeaders = {};
+    const codexQuotaHeaders = {};
     for (const [key, value] of upstreamRes.headers.entries()) {
       if (key.startsWith('anthropic-ratelimit-')) {
         rateLimitHeaders[key] = value;
+      } else if (key.startsWith('x-codex-')) {
+        codexQuotaHeaders[key] = value;
       }
     }
-    accountManager.updateQuota(account.index, rateLimitHeaders);
+    const isCodexAccount = providerOf(account) === 'codex';
+    accountManager.updateQuota(account.index, isCodexAccount ? codexQuotaHeaders : rateLimitHeaders);
 
     // Any non-429 response is live proof a rate-limit hold no longer binds —
     // this is what lets a revalidation probe (a throttled account selected by
@@ -4582,15 +4606,45 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // and the inline wait then held that client for the same 60s per attempt;
       // together they turned one request's problem into a fleet-wide stall
       // (#288). A throttle, by contrast, always carries the headers.
-      const requestScoped = retryAfterHeader == null && Object.keys(rateLimitHeaders).length === 0;
+      // (Codex's x-codex-* readings ride on every response, so they do not
+      // make a 429 account-scoped; only a spent quota, detected below, does.)
+      let requestScoped = retryAfterHeader == null && Object.keys(rateLimitHeaders).length === 0;
       // The body is diagnostic for a request-scoped refusal (it names the
-      // reason) and noise otherwise.
+      // reason) and noise otherwise. A Codex 429 is read either way: ChatGPT
+      // states quota exhaustion only in the body (`usage_limit_reached`), and
+      // it sends no retry-after.
       let refusal = '';
-      if (requestScoped) {
+      let codexLimit = null;
+      if (requestScoped || isCodexAccount) {
         const raw = await readErrorBody(upstreamRes.body).catch(() => null);
-        try { refusal = raw ? String(JSON.parse(raw.toString('utf8'))?.error?.message || '') : ''; } catch { refusal = ''; }
+        let parsed = null;
+        try { parsed = raw ? JSON.parse(raw.toString('utf8')) : null; } catch { parsed = null; }
+        refusal = String(parsed?.error?.message || '');
+        if (isCodexAccount) codexLimit = codexUsageLimit(parsed, codexQuotaHeaders);
+        if (codexLimit) requestScoped = false;
       } else {
         await upstreamRes.body?.cancel();
+      }
+
+      // Codex quota exhaustion: the account is spent until its window resets,
+      // so waiting on it or retrying it is futile. Hold it (selection then
+      // skips it for later requests too) and move this request to another one.
+      if (codexLimit) {
+        const hold = Math.min(Math.max(codexLimit.resetSeconds, 1), 3600);
+        console.log(`[AgentLB] Codex usage limit reached on "${account.name}" — holding ${hold}s and switching account`);
+        accountManager.markRateLimited(account.index, hold);
+        account.lastError = { reason: 'usage-limit', status: 429, error: refusal || 'Codex usage limit reached', timestamp: Date.now() };
+        if (retryCount < maxRetries) {
+          ctx.tried.add(account.index);
+          if (clientGone(res)) { ctx.abandoned = true; return; }
+          return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+        }
+        ctx.status = 429;
+        if (!res.headersSent && !clientGone(res)) {
+          res.writeHead(429, { 'Content-Type': 'application/json', 'retry-after': String(hold) });
+          res.end(JSON.stringify({ type: 'error', error: { type: 'rate_limit_error', message: refusal || 'Codex usage limit reached on every account.' } }));
+        }
+        return;
       }
 
       // Durable quota exhaustion vs. a transient rate limit. A "rejected" unified
@@ -4876,6 +4930,28 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       await upstreamRes.body?.cancel();
       console.log(`[AgentLB] 401 on "${account.name}" — token rejected; forcing refresh and retrying`);
       await accountManager.ensureTokenFresh(account.index, true);
+      if (clientGone(res)) { ctx.abandoned = true; return; }
+      return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+    }
+
+    // A 401 no refresh cured: an API key upstream rejects, or an OAuth token
+    // still rejected after the forced refresh above. It is about the pooled
+    // credential, which the client never sees — relaying it makes Claude Code
+    // and the IDE extensions drop their OWN login ("run /login") over an
+    // account problem they have no part in. Treat it like the 403 above: skip
+    // the account for this request and fail over; with none left, the
+    // no-account branch reports a proxy error instead of a 401.
+    if (upstreamRes.status === 401 && !res.headersSent && retryCount < maxRetries) {
+      await upstreamRes.body?.cancel();
+      account.lastError = {
+        reason: 'unauthorized',
+        status: 401,
+        error: 'Upstream odrzucił poświadczenie konta (HTTP 401) — sprawdź klucz lub zaloguj konto ponownie.',
+        timestamp: Date.now(),
+      };
+      (ctx.credentialRejected ??= new Set()).add(account.name);
+      ctx.tried.add(account.index);
+      console.error(`[AgentLB] 401 on "${account.name}"; upstream rejected the account credential — failing over`);
       if (clientGone(res)) { ctx.abandoned = true; return; }
       return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
     }
