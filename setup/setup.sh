@@ -199,12 +199,21 @@ fi
 
 command -v curl >/dev/null || die "brak curl"
 
+if [ -n "$KEY" ]; then
+	case "$KEY" in
+		\<*\>|"<KLUCZ_STACJI>"|"<KEY>"|"<TWÓJ_KLUCZ>") KEY="" ;;
+	esac
+fi
+
 if [ -z "$KEY" ] && [ -n "${ANTHROPIC_CUSTOM_HEADERS:-}" ]; then
 	KEY="$(printf '%s\n' "$ANTHROPIC_CUSTOM_HEADERS" | sed -n 's/^[Xx]-[Aa][Pp][Ii]-[Kk][Ee][Yy][[:space:]]*:[[:space:]]*//p' | head -1)"
 fi
 if [ -z "$KEY" ] && [ -r "$ENV_FILE" ]; then
 	KEY="$(sed -n -e 's/^export CODEX_LB_API_KEY=//p' -e 's/^export ANTHROPIC_API_KEY=//p' "$ENV_FILE" | tr -d '"'\''' | head -1)"
-	[ -n "$KEY" ] && say "Używam klucza zapisanego w $ENV_FILE."
+	case "$KEY" in
+		\<*\>|"<KLUCZ_STACJI>"|"<KEY>"|"<TWÓJ_KLUCZ>") KEY="" ;;
+		*) [ -n "$KEY" ] && say "Używam klucza zapisanego w $ENV_FILE." ;;
+	esac
 fi
 if [ -z "$KEY" ]; then
 	printf 'Klucz API z Agent LB (%s), wklej i Enter: ' "$URL"
@@ -218,15 +227,15 @@ fi
 KEY="$(printf '%s' "${KEY:-}" | tr -d '\r\n\t ')"
 [ -n "$KEY" ] || die "nie podano klucza"
 
-say "Sprawdzam połączenie z $URL..."
-code="$(curl -s -o /dev/null -m 15 -w '%{http_code}' -H "x-api-key: $KEY" "$URL/agent-lb/status" || true)"
+say "Sprawdzam połączenie i autoryzację klucza w $URL..."
+code="$(curl -s -o /dev/null -m 15 -w '%{http_code}' -H "x-api-key: $KEY" "$URL/v1/models" || true)"
 if [ "$code" = "404" ]; then
-	code="$(curl -s -o /dev/null -m 15 -w '%{http_code}' -H "x-api-key: $KEY" "$URL/status" || true)"
+	code="$(curl -s -o /dev/null -m 15 -w '%{http_code}' -H "x-api-key: $KEY" "$URL/backend-api/codex/models" || true)"
 fi
 case "$code" in
-	200) say "OK — klucz poprawny, proxy odpowiada." ;;
-	401|403) die "serwer odrzucił klucz ($code)." ;;
-	000) die "brak połączenia z $URL. Sprawdź Tailscale/sieć." ;;
+	200) say "OK — klucz poprawny, proxy autoryzowało dostęp." ;;
+	401|403) die "serwer odrzucił klucz ($code). Podaj prawidłowy klucz stacji roboczej (znajdziesz go w panelu https://agentlb.gotova.pl)." ;;
+	000) die "brak połączenia z $URL. Sprawdź sieć/domenę." ;;
 	*) say "Otrzymano kod $code — kontynuuję konfigurację." ;;
 esac
 

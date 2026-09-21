@@ -205,6 +205,9 @@ if ($Uninstall) {
 }
 
 # ---------------------------------------------------------------- klucz API
+if ($Key -and ($Key -match '^<.*>$' -or $Key -eq '<KLUCZ_STACJI>' -or $Key -eq '<KEY>' -or $Key -eq '<TWÓJ_KLUCZ>')) {
+	$Key = ''
+}
 if (-not $Key) {
 	if ($env:AGENT_LB_API_KEY) { $Key = $env:AGENT_LB_API_KEY }
 	elseif ($env:AGENTLB_API_KEY) { $Key = $env:AGENTLB_API_KEY }
@@ -217,6 +220,9 @@ if (-not $Key) {
 	}
 	elseif ($env:ANTHROPIC_API_KEY) { $Key = $env:ANTHROPIC_API_KEY }
 }
+if ($Key -and ($Key -match '^<.*>$' -or $Key -eq '<KLUCZ_STACJI>' -or $Key -eq '<KEY>' -or $Key -eq '<TWÓJ_KLUCZ>')) {
+	$Key = ''
+}
 if (-not $Key) {
 	$secure = Read-Host -Prompt "Klucz API z Agent LB ($Url), wklej i Enter" -AsSecureString
 	$Key = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
@@ -224,31 +230,34 @@ if (-not $Key) {
 }
 if ($Key) { $Key = $Key.Trim() }
 if (-not $Key) { throw 'Nie podano klucza.' }
+if ($Key -match '^<.*>$' -or $Key -eq '<KLUCZ_STACJI>' -or $Key -eq '<KEY>' -or $Key -eq '<TWÓJ_KLUCZ>') {
+	throw 'Podano placeholder zamiast rzeczywistego klucza stacji. Podaj prawidłowy klucz wygenerowany w panelu https://agentlb.gotova.pl.'
+}
 if ($Key -match '[\r\n]') { throw 'Klucz API nie może zawierać znaku nowej linii.' }
 
 # ------------------------------------------------------- sprawdzenie klucza
-Say "Sprawdzam połączenie i klucz na $Url ..."
+Say "Sprawdzam połączenie i autoryzację klucza na $Url ..."
 try {
-	$statusUri = "$Url/agent-lb/status"
+	$statusUri = "$Url/v1/models"
 	try {
 		$resp = Invoke-WebRequest -Uri $statusUri -Method Get `
-			-Headers @{ "x-api-key" = $Key } -TimeoutSec 15 -UseBasicParsing
+			-Headers @{ "Authorization" = "Bearer $Key"; "x-api-key" = $Key } -TimeoutSec 15 -UseBasicParsing
 	} catch {
 		if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 404) {
-			$resp = Invoke-WebRequest -Uri "$Url/status" -Method Get `
-				-Headers @{ "x-api-key" = $Key } -TimeoutSec 15 -UseBasicParsing
+			$resp = Invoke-WebRequest -Uri "$Url/backend-api/codex/models" -Method Get `
+				-Headers @{ "Authorization" = "Bearer $Key"; "x-api-key" = $Key } -TimeoutSec 15 -UseBasicParsing
 		} else {
 			throw $_
 		}
 	}
 	if ($resp.StatusCode -ne 200) { throw "nieoczekiwana odpowiedz $($resp.StatusCode)" }
-	Say 'OK — klucz działa, proxy Agent-LB odpowiada.'
+	Say 'OK — klucz poprawny, proxy autoryzowało dostęp.'
 } catch {
 	$code = $null
 	if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
 	switch ($code) {
-		401 { throw 'Serwer odrzucił klucz (401). Sprawdź klucz w Agent-LB.' }
-		403 { throw 'Serwer odrzucił klucz (403). Sprawdź klucz w Agent-LB.' }
+		401 { throw 'Serwer odrzucił klucz (401). Podaj prawidłowy klucz stacji roboczej (znajdziesz go w panelu https://agentlb.gotova.pl).' }
+		403 { throw 'Serwer odrzucił klucz (403). Podaj prawidłowy klucz stacji roboczej (znajdziesz go w panelu https://agentlb.gotova.pl).' }
 		default {
 			throw "Brak połączenia z $Url ($($_.Exception.Message)). Sprawdź połączenie sieciowe."
 		}

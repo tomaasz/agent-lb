@@ -203,12 +203,22 @@ function checkUrlOnce(urlPath, urlStr, key) {
 }
 
 async function checkConnection(urlStr, key) {
-  const code = await checkUrlOnce("/agent-lb/status", urlStr, key);
-  if (code === 404) {
-    const code2 = await checkUrlOnce("/status", urlStr, key);
-    return code2 === 200 || code2 < 500;
+  let code = await checkUrlOnce("/v1/models", urlStr, key);
+  if (code === 401 || code === 403) {
+    throw new Error(
+      `Serwer odrzucił klucz (kod ${code}). Upewnij się, że podajesz prawidłowy klucz stacji roboczej.`,
+    );
   }
-  return true;
+  if (code === 404) {
+    code = await checkUrlOnce("/backend-api/codex/models", urlStr, key);
+    if (code === 401 || code === 403) {
+      throw new Error(`Serwer odrzucił klucz (kod ${code}).`);
+    }
+  }
+  if (code === 404) {
+    code = await checkUrlOnce("/agent-lb/status", urlStr, key);
+  }
+  return code === 200 || code < 500;
 }
 
 function stripJsonComments(str) {
@@ -650,9 +660,29 @@ async function main() {
     }
   }
 
+  if (
+    apiKey &&
+    (/^<.*>$/.test(apiKey) ||
+      apiKey === "<KLUCZ_STACJI>" ||
+      apiKey === "<KEY>" ||
+      apiKey === "<TWÓJ_KLUCZ>")
+  ) {
+    apiKey = "";
+  }
+
   if (!apiKey) {
     apiKey = await promptHidden(`Wklej klucz API z Agent-LB (${targetUrl}): `);
     console.log("");
+  }
+
+  if (
+    apiKey &&
+    (/^<.*>$/.test(apiKey) ||
+      apiKey === "<KLUCZ_STACJI>" ||
+      apiKey === "<KEY>" ||
+      apiKey === "<TWÓJ_KLUCZ>")
+  ) {
+    apiKey = "";
   }
 
   if (!apiKey) {
