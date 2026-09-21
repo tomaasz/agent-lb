@@ -110,3 +110,33 @@ test('non-codex WebSocket handshakes still go through the key gate', async t => 
   const status = await handshake(base, '/v1/session_ingress/ws/abc');
   assert.match(status, /^HTTP\/1\.1 401/);
 });
+
+test('tailnetDomains: only direct peers addressing this tailnet are exempt', async () => {
+  const { tailnetExempt, isTailnetHostName } = await import('../src/access-control.js');
+  const cfg = { trustTailnet: true, tailnetDomains: ['tail7319.ts.net'] };
+  const peer = '100.72.157.58';
+  assert.equal(tailnetExempt({ host: 'debian-lite.tail7319.ts.net:3456' }, peer, cfg), true);
+  assert.equal(tailnetExempt({ host: 'DEBIAN-LITE.tail7319.ts.net.' }, peer, cfg), true);
+  assert.equal(tailnetExempt({ host: '100.87.39.48:3456' }, peer, cfg), true);
+  assert.equal(tailnetExempt({ host: '[fd7a:115c:a1e0::3238:2730]:3456' }, 'fd7a:115c:a1e0::1', cfg), true);
+  assert.equal(tailnetExempt({ host: 'agentlb.gotova.pl' }, peer, cfg), false, 'a public name is not tailnet traffic');
+  assert.equal(tailnetExempt({ host: 'box.tail9999.ts.net' }, peer, cfg), false, 'another tailnet is not ours');
+  assert.equal(tailnetExempt({ host: 'evil-tail7319.ts.net' }, peer, cfg), false);
+  assert.equal(tailnetExempt({}, peer, cfg), false);
+  assert.equal(tailnetExempt({ host: 'debian-lite.tail7319.ts.net', 'x-forwarded-for': '1.2.3.4' }, peer, cfg), false);
+  assert.equal(tailnetExempt({ host: 'debian-lite.tail7319.ts.net' }, '203.0.113.9', cfg), false);
+  assert.equal(tailnetExempt({ host: 'debian-lite.tail7319.ts.net' }, peer, { ...cfg, trustTailnet: false }), false);
+  // Without the setting the old address-only behaviour is kept.
+  assert.equal(tailnetExempt({ host: 'agentlb.gotova.pl' }, peer, { trustTailnet: true }), true);
+  assert.equal(isTailnetHostName('x.tail9999.ts.net', null), true);
+  assert.equal(isTailnetHostName('x.tail9999.ts.net', cfg), false);
+  assert.equal(isTailnetHostName('x.tail7319.ts.net', { tailnetDomains: 'tail7319.ts.net' }), true);
+});
+
+test('tailnetDomains: the Host check refuses other tailnets\' MagicDNS names', async () => {
+  const { isLocalHostHeader } = await import('../src/server.js');
+  const cfg = { tailnetDomains: ['tail7319.ts.net'] };
+  assert.equal(isLocalHostHeader('debian-lite.tail7319.ts.net:3456', null, [], cfg), true);
+  assert.equal(isLocalHostHeader('x.tail9999.ts.net', null, [], cfg), false);
+  assert.equal(isLocalHostHeader('x.tail9999.ts.net', null, [], null), true);
+});

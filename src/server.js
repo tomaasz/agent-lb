@@ -4,7 +4,7 @@ import { handleClientKeys } from './client-key-admin.js';
 import { readControlBody } from './control-body.js';
 import { resolveBodyIdleTimeout, readWithIdleTimeout, idleBody, collectIdleBody } from './stream-lifecycle.js';
 export { readWithIdleTimeout, idleBody } from './stream-lifecycle.js';
-import { safeKeyEqual, maskSecret, isLoopbackAddr, isForwardedRequest, loopbackExempt, isTailnetAddr, tailnetExempt, resolveClientAuth, relayPolicyAllowed, SENSITIVE_HEADER_NAMES } from './access-control.js';
+import { safeKeyEqual, maskSecret, isLoopbackAddr, isForwardedRequest, loopbackExempt, isTailnetAddr, isTailnetHostName, tailnetExempt, resolveClientAuth, relayPolicyAllowed, SENSITIVE_HEADER_NAMES } from './access-control.js';
 export { safeKeyEqual, maskSecret, isLoopbackAddr, isForwardedRequest, loopbackExempt, isTailnetAddr, tailnetExempt, resolveClientAuth, relayPolicyAllowed, SENSITIVE_HEADER_NAMES } from './access-control.js';
 import http from 'node:http';
 import https from 'node:https';
@@ -451,7 +451,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         // far as the browser can tell, and it can read the answers. What it
         // cannot forge is the Host header, which the browser derives from its
         // own URL bar — so a key-less loopback request must name this machine.
-        if (!isLocalHostHeader(req.headers.host ?? req.headers[':authority'], config.proxy?.host)) {
+        if (!isLocalHostHeader(req.headers.host ?? req.headers[':authority'], config.proxy?.host, [], config.proxy)) {
           res.writeHead(403, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             type: 'error',
@@ -2685,12 +2685,13 @@ function hostnameOf(host) {
  * browser speaks HTTP/1.0 — while a hand-rolled local tool might. Refusing it
  * would break that tool without closing anything.
  */
-export function isLocalHostHeader(host, bindHost = null, allowedHosts = []) {
+export function isLocalHostHeader(host, bindHost = null, allowedHosts = [], proxyConfig = null) {
   if (host == null || host === '') return true;
   const name = hostnameOf(host);
   if (name == null) return false;
   if (LOCAL_HOSTNAMES.has(name)) return true;
-  if (name.endsWith('.ts.net')) return true;
+  // MagicDNS names: only the configured tailnets when proxy.tailnetDomains is set.
+  if (isTailnetHostName(name, proxyConfig)) return true;
   if (isTailnetAddr(name)) return true;
   const rawEnvHosts = [
     process.env.AGENT_LB_HOST,
@@ -3584,9 +3585,9 @@ export function resolveUpgradeAuth(req, socket, proxyConfig) {
   if (origin) {
     let originHost;
     try { originHost = new URL(origin).host; } catch { return auth; }
-    if (!isLocalHostHeader(originHost, bindHost)) return auth;
+    if (!isLocalHostHeader(originHost, bindHost, [], proxyConfig)) return auth;
   }
-  if (!isLocalHostHeader(req?.headers?.host, bindHost)) return auth;
+  if (!isLocalHostHeader(req?.headers?.host, bindHost, [], proxyConfig)) return auth;
   return { ok: true, client: null };
 }
 
