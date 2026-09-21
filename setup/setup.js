@@ -307,7 +307,7 @@ function uninstallClientSettings() {
   const vs = safeReadJson(vscodePath);
   if (vs) {
     if (Array.isArray(vs['claudeCode.environmentVariables'])) {
-      let envVars = vs['claudeCode.environmentVariables'].filter(e => e.name !== 'ANTHROPIC_BASE_URL' && e.name !== 'ANTHROPIC_API_KEY');
+      let envVars = vs['claudeCode.environmentVariables'].filter(e => e.name !== 'ANTHROPIC_BASE_URL' && e.name !== 'ANTHROPIC_API_KEY' && e.name !== 'ANTHROPIC_AUTH_TOKEN');
       const customHdr = envVars.find(e => e.name === 'ANTHROPIC_CUSTOM_HEADERS')?.value;
       const rem = removeCustomHeader(customHdr, 'x-api-key');
       envVars = envVars.filter(e => e.name !== 'ANTHROPIC_CUSTOM_HEADERS');
@@ -485,38 +485,53 @@ async function main() {
       vscodeSettingsDir = path.join(os.homedir(), '.config', 'Code', 'User');
     }
 
-    const vscodeSettingsFile = path.join(vscodeSettingsDir, 'settings.json');
-    if (fs.existsSync(vscodeSettingsDir)) {
-      try {
-        let vsSettings = safeReadJson(vscodeSettingsFile) || {};
-        vsSettings['claudeCode.disableLoginPrompt'] = true;
-        let envVars = Array.isArray(vsSettings['claudeCode.environmentVariables'])
-          ? [...vsSettings['claudeCode.environmentVariables']]
-          : [];
-        envVars = envVars.filter(e => e.name !== 'ANTHROPIC_BASE_URL');
-        envVars.push({ name: 'ANTHROPIC_BASE_URL', value: targetUrl });
-        if (oauthSession) {
-          envVars = envVars.filter(e => e.name !== 'ANTHROPIC_API_KEY');
-          const existingHdr = envVars.find(e => e.name === 'ANTHROPIC_CUSTOM_HEADERS')?.value;
-          const updatedHdr = proxyCustomHeaders(apiKey, existingHdr);
-          envVars = envVars.filter(e => e.name !== 'ANTHROPIC_CUSTOM_HEADERS');
-          envVars.push({ name: 'ANTHROPIC_CUSTOM_HEADERS', value: updatedHdr });
-        } else {
-          envVars = envVars.filter(e => e.name !== 'ANTHROPIC_API_KEY');
-          envVars.push({ name: 'ANTHROPIC_API_KEY', value: apiKey });
-          const existingHdr = envVars.find(e => e.name === 'ANTHROPIC_CUSTOM_HEADERS')?.value;
-          const rem = removeCustomHeader(existingHdr, 'x-api-key');
-          envVars = envVars.filter(e => e.name !== 'ANTHROPIC_CUSTOM_HEADERS');
-          if (rem) envVars.push({ name: 'ANTHROPIC_CUSTOM_HEADERS', value: rem });
-        }
-        vsSettings['claudeCode.environmentVariables'] = envVars;
+    const vscodeDirs = [];
+    if (vscodeSettingsDir) vscodeDirs.push(vscodeSettingsDir);
+    for (const serverBase of ['.vscode-server', '.vscode-server-insiders']) {
+      vscodeDirs.push(path.join(os.homedir(), serverBase, 'data', 'Machine'));
+      vscodeDirs.push(path.join(os.homedir(), serverBase, 'data', 'User'));
+    }
 
-        writeJsonSafe(vscodeSettingsFile, vsSettings, 0o600);
-        console.log(`[OK] Skonfigurowano oficjalne rozszerzenie Claude Code w VS Code (${vscodeSettingsFile}).`);
-      } catch (err) {
-        console.warn(`[Ostrzeżenie] Nie udało się zaktualizować VS Code: ${err.message}`);
+    let configuredAny = false;
+    for (const dir of vscodeDirs) {
+      if (fs.existsSync(dir) || (dir.includes('.vscode-server') && fs.existsSync(path.dirname(path.dirname(dir))))) {
+        try {
+          fs.mkdirSync(dir, { recursive: true });
+          const vscodeSettingsFile = path.join(dir, 'settings.json');
+          let vsSettings = safeReadJson(vscodeSettingsFile) || {};
+          vsSettings['claudeCode.disableLoginPrompt'] = true;
+          vsSettings['claudeCode.hideOnboarding'] = true;
+          let envVars = Array.isArray(vsSettings['claudeCode.environmentVariables'])
+            ? [...vsSettings['claudeCode.environmentVariables']]
+            : [];
+          envVars = envVars.filter(e => e.name !== 'ANTHROPIC_BASE_URL');
+          envVars.push({ name: 'ANTHROPIC_BASE_URL', value: targetUrl });
+          if (oauthSession) {
+            envVars = envVars.filter(e => e.name !== 'ANTHROPIC_API_KEY' && e.name !== 'ANTHROPIC_AUTH_TOKEN');
+            const existingHdr = envVars.find(e => e.name === 'ANTHROPIC_CUSTOM_HEADERS')?.value;
+            const updatedHdr = proxyCustomHeaders(apiKey, existingHdr);
+            envVars = envVars.filter(e => e.name !== 'ANTHROPIC_CUSTOM_HEADERS');
+            envVars.push({ name: 'ANTHROPIC_CUSTOM_HEADERS', value: updatedHdr });
+          } else {
+            envVars = envVars.filter(e => e.name !== 'ANTHROPIC_API_KEY' && e.name !== 'ANTHROPIC_AUTH_TOKEN');
+            envVars.push({ name: 'ANTHROPIC_API_KEY', value: apiKey });
+            envVars.push({ name: 'ANTHROPIC_AUTH_TOKEN', value: apiKey });
+            const existingHdr = envVars.find(e => e.name === 'ANTHROPIC_CUSTOM_HEADERS')?.value;
+            const rem = removeCustomHeader(existingHdr, 'x-api-key');
+            envVars = envVars.filter(e => e.name !== 'ANTHROPIC_CUSTOM_HEADERS');
+            if (rem) envVars.push({ name: 'ANTHROPIC_CUSTOM_HEADERS', value: rem });
+          }
+          vsSettings['claudeCode.environmentVariables'] = envVars;
+
+          writeJsonSafe(vscodeSettingsFile, vsSettings, 0o600);
+          console.log(`[OK] Skonfigurowano oficjalne rozszerzenie Claude Code w VS Code (${vscodeSettingsFile}).`);
+          configuredAny = true;
+        } catch (err) {
+          console.warn(`[Ostrzeżenie] Nie udało się zaktualizować VS Code w ${dir}: ${err.message}`);
+        }
       }
-    } else {
+    }
+    if (!configuredAny) {
       console.log(`[INFO] Nie wykryto katalogu VS Code (${vscodeSettingsDir}) — pominięto konfigurację rozszerzenia IDE.`);
     }
   }

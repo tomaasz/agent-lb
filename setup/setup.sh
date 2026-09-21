@@ -285,6 +285,61 @@ with open(p, 'w', encoding='utf-8') as f:
 PY
 fi
 
+# Konfiguracja oficjalnego rozszerzenia Claude Code w VS Code (zarówno desktop jak i Remote SSH)
+if command -v python3 >/dev/null 2>&1; then
+	SETUP_URL="$URL" SETUP_KEY="$KEY" SETUP_OAUTH="$OAUTH_SESSION" python3 - <<'PY' 2>/dev/null || true
+import json, os
+
+url = os.environ['SETUP_URL']
+key = os.environ['SETUP_KEY']
+oauth = os.environ.get('SETUP_OAUTH') == '1'
+
+targets = [
+    os.path.expanduser('~/.config/Code/User/settings.json'),
+    os.path.expanduser('~/.vscode-server/data/Machine/settings.json'),
+    os.path.expanduser('~/.vscode-server/data/User/settings.json'),
+    os.path.expanduser('~/.vscode-server-insiders/data/Machine/settings.json'),
+    os.path.expanduser('~/.vscode-server-insiders/data/User/settings.json')
+]
+
+def update_file(p):
+    d = os.path.dirname(p)
+    if not os.path.isdir(d):
+        base = os.path.dirname(d)
+        if not os.path.isdir(base):
+            return
+        os.makedirs(d, exist_ok=True)
+    try:
+        with open(p, encoding='utf-8') as f: data = json.load(f)
+    except Exception: data = {}
+    data['claudeCode.disableLoginPrompt'] = True
+    data['claudeCode.hideOnboarding'] = True
+    env_vars = [e for e in data.get('claudeCode.environmentVariables', []) if e.get('name') not in ('ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN')]
+    env_vars.append({'name': 'ANTHROPIC_BASE_URL', 'value': url})
+    if oauth:
+        existing_hdr = next((e.get('value', '') for e in env_vars if e.get('name') == 'ANTHROPIC_CUSTOM_HEADERS'), '')
+        lines = [l.strip() for l in existing_hdr.splitlines() if l.strip() and not l.lower().startswith('x-api-key:')]
+        lines.append(f'x-api-key: {key}')
+        env_vars = [e for e in env_vars if e.get('name') != 'ANTHROPIC_CUSTOM_HEADERS']
+        env_vars.append({'name': 'ANTHROPIC_CUSTOM_HEADERS', 'value': '\n'.join(lines)})
+    else:
+        env_vars.append({'name': 'ANTHROPIC_API_KEY', 'value': key})
+        env_vars.append({'name': 'ANTHROPIC_AUTH_TOKEN', 'value': key})
+        existing_hdr = next((e.get('value', '') for e in env_vars if e.get('name') == 'ANTHROPIC_CUSTOM_HEADERS'), '')
+        lines = [l.strip() for l in existing_hdr.splitlines() if l.strip() and not l.lower().startswith('x-api-key:')]
+        env_vars = [e for e in env_vars if e.get('name') != 'ANTHROPIC_CUSTOM_HEADERS']
+        if lines:
+            env_vars.append({'name': 'ANTHROPIC_CUSTOM_HEADERS', 'value': '\n'.join(lines)})
+    data['claudeCode.environmentVariables'] = env_vars
+    with open(p, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+        f.write('\n')
+
+for t in targets:
+    update_file(t)
+PY
+fi
+
 # Konfiguracja ~/.codex (OpenAI Codex CLI: config.toml oraz config.json)
 mkdir -p "$HOME/.codex"
 CODEX_TOML="$HOME/.codex/config.toml"

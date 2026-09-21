@@ -244,14 +244,15 @@ if (Test-Path $vsCodeDir) {
 		} else { @() }
 		$claudeEnvironmentVariables += @{ name = "ANTHROPIC_BASE_URL"; value = $Url }
 		if ($oauthSession) {
-			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_API_KEY" })
+			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_API_KEY" -and $_.name -ne "ANTHROPIC_AUTH_TOKEN" })
 			$existingHdr = ($claudeEnvironmentVariables | Where-Object { $_.name -eq "ANTHROPIC_CUSTOM_HEADERS" }).value
 			$updatedHdr = Set-CustomHeader $existingHdr "x-api-key" $Key
 			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_CUSTOM_HEADERS" })
 			$claudeEnvironmentVariables += @{ name = "ANTHROPIC_CUSTOM_HEADERS"; value = $updatedHdr }
 		} else {
-			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_API_KEY" })
+			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_API_KEY" -and $_.name -ne "ANTHROPIC_AUTH_TOKEN" })
 			$claudeEnvironmentVariables += @{ name = "ANTHROPIC_API_KEY"; value = $Key }
+			$claudeEnvironmentVariables += @{ name = "ANTHROPIC_AUTH_TOKEN"; value = $Key }
 			$existingHdr = ($claudeEnvironmentVariables | Where-Object { $_.name -eq "ANTHROPIC_CUSTOM_HEADERS" }).value
 			$rem = Remove-CustomHeader $existingHdr "x-api-key"
 			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_CUSTOM_HEADERS" })
