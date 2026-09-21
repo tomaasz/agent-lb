@@ -308,17 +308,22 @@ export function buildCodexAuthUrl({ state, codeChallenge, redirectUri = REDIRECT
 }
 
 /** Exchange an authorization code for tokens, completing the PKCE handshake. */
-export async function exchangeCodexCode({ code, codeVerifier, redirectUri = REDIRECT_URI }) {
-  const res = await proxyFetch(TOKEN_ENDPOINT, {
+export async function exchangeCodexCode({ code, codeVerifier, redirectUri = REDIRECT_URI, endpoint = TOKEN_ENDPOINT, form = false }) {
+  const fields = {
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: redirectUri,
+    client_id: CLIENT_ID,
+    code_verifier: codeVerifier,
+  };
+  const res = await proxyFetch(endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'authorization_code',
-      code,
-      client_id: CLIENT_ID,
-      redirect_uri: redirectUri,
-      code_verifier: codeVerifier,
-    }),
+    // The Codex CLI posts this grant form-encoded (RFC 6749 §4.1.3); the
+    // device flow uses that encoding to match it exactly.
+    headers: form
+      ? { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' }
+      : { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: form ? new URLSearchParams(fields).toString() : JSON.stringify(fields),
   });
   if (!res.ok) {
     throw new Error(`Codex token exchange failed (${res.status}): ${await res.text()}`);
@@ -433,13 +438,21 @@ export async function loginCodex({ noBrowser = false, timeoutMs = 120_000 } = {}
 // ── Device Code Flow ────────────────────────────────────────────────────────
 
 // OpenAI's private device-auth backend, used by `codex login --device-auth`.
-// Not a standard RFC 8628 endpoint — the flow is conceptually the same but the
-// URL scheme and response shapes are OpenAI-specific.
-const DEVICE_AUTH_BASE = process.env.CODEX_AUTHAPI_BASE_URL
-  || 'https://auth.openai.com/api/accounts/deviceauth';
-const DEVICE_USERCODE_URL = `${DEVICE_AUTH_BASE}/usercode`;
-const DEVICE_TOKEN_URL    = `${DEVICE_AUTH_BASE}/token`;
-export const DEVICE_VERIFICATION_URL = 'https://auth.openai.com/codex/device';
+// Not RFC 8628: the shapes below are the ones the Codex CLI itself uses
+// (login/src/device_code_auth.rs) —
+//   POST {base}/deviceauth/usercode  { client_id }
+//        → { device_auth_id, user_code | usercode, interval }
+//   POST {base}/deviceauth/token     { device_auth_id, user_code }
+//        → 403/404 while the user has not approved yet,
+//          200 { authorization_code, code_challenge, code_verifier } once approved
+//   POST {issuer}/oauth/token        authorization_code grant, form-encoded, with
+//        redirect_uri {issuer}/deviceauth/callback and the code_verifier the
+//        server handed back (the server generated the PKCE pair, not us).
+// CODEX_AUTHAPI_BASE_URL has the Codex CLI's meaning: the `/api/accounts` base.
+const AUTH_ISSUER = 'https://auth.openai.com';
+const deviceAuthBase = () => (process.env.CODEX_AUTHAPI_BASE_URL || `${AUTH_ISSUER}/api/accounts`).replace(/\/+$/, '');
+export const DEVICE_VERIFICATION_URL = `${AUTH_ISSUER}/codex/device`;
+const DEVICE_REDIRECT_URI = `${AUTH_ISSUER}/deviceauth/callback`;
 
 /**
  * Request a new device code from OpenAI.
@@ -447,24 +460,76 @@ export const DEVICE_VERIFICATION_URL = 'https://auth.openai.com/codex/device';
  * Returns `{ deviceAuthId, userCode, interval, expiresAt }`.  The caller
  * shows `userCode` to the human and directs them to `DEVICE_VERIFICATION_URL`.
  */
-export async function requestDeviceCode() {
+export async function requestDeviceCode({ base = deviceAuthBase() } = {}) {
   const timeoutMs = Number(process.env.AGENT_LB_REFRESH_TIMEOUT_MS) || 30_000;
-  const res = await proxyFetch(DEVICE_USERCODE_URL, {
+  const res = await proxyFetch(`${base}/deviceauth/usercode`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: '{}',
+    body: JSON.stringify({ client_id: CLIENT_ID }),
     signal: AbortSignal.timeout(timeoutMs),
   });
+  if (res.status === 404) {
+    throw new Error('Device code login is not enabled for this account/server — use the browser login');
+  }
   if (!res.ok) {
     throw new Error(`Device code request failed (${res.status}): ${await res.text()}`);
   }
   const data = await res.json();
+  const userCode = data.user_code || data.usercode;
+  if (!data.device_auth_id || !userCode) throw new Error('Device code response is missing device_auth_id/user_code');
   return {
     deviceAuthId: data.device_auth_id,
-    userCode:     data.user_code,
+    userCode,
     interval:     Number(data.interval) || 5,
     expiresAt:    data.expires_at || null,
   };
+}
+
+/**
+ * One poll of the device-auth token endpoint.
+ *
+ * Resolves `{ status: 'pending' }` while the user has not approved the code,
+ * or `{ status: 'complete', credentials }` once they have (the authorization
+ * code already exchanged for tokens). Rejects on a terminal error. The
+ * dashboard calls this once per browser poll; the CLI loops over it.
+ */
+export async function pollDeviceCodeOnce({ deviceAuthId, userCode, signal, base = deviceAuthBase(), tokenEndpoint = TOKEN_ENDPOINT }) {
+  const res = await proxyFetch(`${base}/deviceauth/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ device_auth_id: deviceAuthId, user_code: userCode }),
+    signal: signal || AbortSignal.timeout(30_000),
+  });
+
+  // Pending is signalled by status, as the Codex CLI reads it. A 400 carrying
+  // an RFC 8628-style `authorization_pending` is accepted too.
+  if (res.status === 403 || res.status === 404) {
+    await res.body?.cancel?.();
+    return { status: 'pending' };
+  }
+  if (res.status === 400) {
+    const body = await res.json().catch(() => ({}));
+    const code = body.error?.code || body.error || body.code || '';
+    if (code === 'deviceauth_authorization_pending' || code === 'authorization_pending') return { status: 'pending' };
+    throw new Error(`Device code rejected: ${typeof code === 'string' ? code : JSON.stringify(code)} ${body.error_description || body.message || ''}`.trim());
+  }
+  if (!res.ok) {
+    throw new Error(`Device code poll failed (${res.status}): ${await res.text()}`);
+  }
+
+  const data = await res.json();
+  if (data.access_token) return { status: 'complete', credentials: credentialsFromTokenResponse(data) };
+  const code = data.authorization_code || data.code;
+  if (!code) throw new Error('Device code approval carried no authorization_code');
+  if (!data.code_verifier) throw new Error('Device code approval carried no code_verifier');
+  const credentials = await exchangeCodexCode({
+    code,
+    codeVerifier: data.code_verifier,
+    redirectUri: DEVICE_REDIRECT_URI,
+    endpoint: tokenEndpoint,
+    form: true,
+  });
+  return { status: 'complete', credentials };
 }
 
 /**
@@ -473,9 +538,9 @@ export async function requestDeviceCode() {
  * Resolves with credentials in the same shape `loginCodex` returns.  Rejects
  * when the code expires or the server reports a terminal error.
  *
- * @param {{ deviceAuthId: string, userCode: string, intervalMs?: number, expiresAt?: string, signal?: AbortSignal }} opts
+ * @param {{ deviceAuthId: string, userCode: string, intervalMs?: number, expiresAt?: string, signal?: AbortSignal, base?: string, tokenEndpoint?: string }} opts
  */
-export async function pollDeviceAuthorization({ deviceAuthId, userCode, intervalMs = 5000, expiresAt, signal }) {
+export async function pollDeviceAuthorization({ deviceAuthId, userCode, intervalMs = 5000, expiresAt, signal, base, tokenEndpoint }) {
   const deadline = expiresAt ? new Date(expiresAt).getTime() : (Date.now() + 15 * 60 * 1000);
 
   while (true) {
@@ -484,42 +549,8 @@ export async function pollDeviceAuthorization({ deviceAuthId, userCode, interval
 
     await new Promise(r => setTimeout(r, intervalMs));
 
-    const res = await proxyFetch(DEVICE_TOKEN_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ device_auth_id: deviceAuthId, user_code: userCode }),
-      signal: signal || AbortSignal.timeout(30_000),
-    });
-
-    if (res.status === 400) {
-      const body = await res.json().catch(() => ({}));
-      const code = body.error || body.code || '';
-      if (code === 'deviceauth_authorization_pending' || code === 'authorization_pending') {
-        continue;                          // user hasn't approved yet
-      }
-      throw new Error(`Device code rejected: ${code} ${body.error_description || body.message || ''}`);
-    }
-
-    if (!res.ok) {
-      throw new Error(`Device code poll failed (${res.status}): ${await res.text()}`);
-    }
-
-    // Success — server returns an authorization code (or directly the tokens).
-    const data = await res.json();
-    // If the response contains an access_token directly, treat as a token response.
-    if (data.access_token) {
-      return credentialsFromTokenResponse(data);
-    }
-    // Otherwise it should be an authorization_code to exchange.
-    if (data.authorization_code || data.code) {
-      const code = data.authorization_code || data.code;
-      // Device code flow doesn't use PKCE code_verifier, so we pass an empty
-      // redirect_uri and verifier.  OpenAI's token endpoint accepts the device
-      // grant without them.
-      return exchangeCodexCode({ code, codeVerifier: '', redirectUri: '' });
-    }
-    // Fallback: maybe the shape changed — try treating the whole blob as tokens.
-    return credentialsFromTokenResponse(data);
+    const result = await pollDeviceCodeOnce({ deviceAuthId, userCode, signal, base, tokenEndpoint });
+    if (result.status === 'complete') return result.credentials;
   }
 }
 

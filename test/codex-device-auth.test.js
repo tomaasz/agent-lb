@@ -112,3 +112,53 @@ describe('Codex Device Code Auth', () => {
     });
   });
 });
+
+// Protocol checks against a local stand-in for auth.openai.com, shaped after
+// the Codex CLI's own device flow (login/src/device_code_auth.rs).
+describe('Codex Device Code protocol', () => {
+  it('sends client_id, treats 403 as pending, and exchanges with the server-issued verifier', async (t) => {
+    const http = await import('node:http');
+    const seen = [];
+    let polls = 0;
+    const server = http.createServer(async (req, res) => {
+      const chunks = [];
+      for await (const c of req) chunks.push(c);
+      const body = Buffer.concat(chunks).toString('utf8');
+      seen.push({ url: req.url, type: req.headers['content-type'], body });
+      if (req.url === '/api/accounts/deviceauth/usercode') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ device_auth_id: 'dev-1', usercode: 'ABCD-EFGH', interval: '0' }));
+      } else if (req.url === '/api/accounts/deviceauth/token') {
+        polls++;
+        if (polls < 3) { res.writeHead(403); res.end('{}'); return; }
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ authorization_code: 'code-1', code_challenge: 'chal', code_verifier: 'ver-1' }));
+      } else if (req.url === '/oauth/token') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ access_token: 'at', refresh_token: 'rt', expires_in: 3600 }));
+      } else { res.writeHead(404); res.end(); }
+    });
+    await new Promise(r => server.listen(0, '127.0.0.1', r));
+    t.after(() => new Promise(r => server.close(r)));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const base = `${origin}/api/accounts`;
+
+    const dc = await codexAuth.requestDeviceCode({ base });
+    assert.equal(dc.deviceAuthId, 'dev-1');
+    assert.equal(dc.userCode, 'ABCD-EFGH', 'the `usercode` spelling must be accepted');
+    assert.equal(JSON.parse(seen[0].body).client_id, 'app_EMoamEEZ73f0CkXaXp7hrann');
+
+    const creds = await codexAuth.pollDeviceAuthorization({
+      deviceAuthId: dc.deviceAuthId, userCode: dc.userCode, intervalMs: 1, base, tokenEndpoint: `${origin}/oauth/token`,
+    });
+    assert.equal(creds.accessToken, 'at');
+    assert.equal(polls, 3);
+    const exchange = seen.find(s => s.url === '/oauth/token');
+    assert.match(exchange.type, /x-www-form-urlencoded/);
+    const form = new URLSearchParams(exchange.body);
+    assert.equal(form.get('grant_type'), 'authorization_code');
+    assert.equal(form.get('code'), 'code-1');
+    assert.equal(form.get('code_verifier'), 'ver-1');
+    assert.equal(form.get('redirect_uri'), 'https://auth.openai.com/deviceauth/callback');
+  });
+});

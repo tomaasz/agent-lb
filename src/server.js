@@ -37,7 +37,7 @@ import {
 } from './oauth.js';
 import {
   buildCodexAuthUrl, exchangeCodexCode, importCodexCredentials,
-  requestDeviceCode, DEVICE_VERIFICATION_URL,
+  requestDeviceCode, pollDeviceCodeOnce, DEVICE_VERIFICATION_URL,
 } from './codex-auth.js';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -2290,48 +2290,21 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
         // Single poll attempt (no loop — the dashboard frontend re-calls every N seconds)
         try {
-          const { proxyFetch } = await import('./upstream-fetch.js');
-          const DEVICE_AUTH_BASE = process.env.CODEX_AUTHAPI_BASE_URL
-            || 'https://auth.openai.com/api/accounts/deviceauth';
-          const pollRes = await proxyFetch(`${DEVICE_AUTH_BASE}/token`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-            body: JSON.stringify({ device_auth_id: deviceAuthId, user_code: userCode }),
-            signal: AbortSignal.timeout(15_000),
-          });
-
-          if (pollRes.status === 400) {
-            const errBody = await pollRes.json().catch(() => ({}));
-            const errCode = errBody.error || errBody.code || '';
-            if (errCode === 'deviceauth_authorization_pending' || errCode === 'authorization_pending') {
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ ok: true, status: 'pending' }));
-              return;
-            }
+          let result;
+          try {
+            result = await pollDeviceCodeOnce({ deviceAuthId, userCode, signal: AbortSignal.timeout(15_000) });
+          } catch (err) {
             pendingOAuthStates.delete(deviceAuthId);
             res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, error: errCode || 'device code rejected' }));
+            res.end(JSON.stringify({ ok: false, error: err.message || 'device code rejected' }));
             return;
           }
-
-          if (!pollRes.ok) {
-            res.writeHead(pollRes.status, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, error: `poll failed (${pollRes.status})` }));
+          if (result.status === 'pending') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, status: 'pending' }));
             return;
           }
-
-          // Approved — exchange for credentials
-          const data = await pollRes.json();
-          const { credentialsFromTokenResponse, exchangeCodexCode: exchangeCode } = await import('./codex-auth.js');
-          let codexCreds;
-          if (data.access_token) {
-            codexCreds = credentialsFromTokenResponse(data);
-          } else if (data.authorization_code || data.code) {
-            const code = data.authorization_code || data.code;
-            codexCreds = await exchangeCode({ code, codeVerifier: '', redirectUri: '' });
-          } else {
-            codexCreds = credentialsFromTokenResponse(data);
-          }
+          const codexCreds = result.credentials;
 
           pendingOAuthStates.delete(deviceAuthId);
 
