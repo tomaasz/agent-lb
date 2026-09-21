@@ -545,24 +545,77 @@ const PAGE = `<!doctype html>
     min-height: auto;
   }
 
-  /* 3-column master dashboard grid: Col 1 Claude (1fr) | Col 2 Codex (1fr) | Col 3 Client Keys (compact 390px sidebar) */
-  .dashboard-grid { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr) minmax(320px, 390px); gap: 14px; align-items: start; margin-top: 6px; }
-  .grid-head-accounts { grid-column: 1 / 3; grid-row: 1; min-width: 0; }
-  .grid-head-clients { grid-column: 3 / 4; grid-row: 1; min-width: 0; }
-  #colClaude { grid-column: 1 / 2; grid-row: 2; min-width: 0; }
-  #colCodex { grid-column: 2 / 3; grid-row: 2; min-width: 0; }
-  .dash-col-side { grid-column: 3 / 4; grid-row: 2; min-width: 0; }
-  @media (max-width: 1200px) {
-    .dashboard-grid { grid-template-columns: 1fr 1fr; }
-    .grid-head-accounts { grid-column: 1 / 3; grid-row: auto; }
-    #colClaude { grid-column: 1 / 2; grid-row: auto; }
-    #colCodex { grid-column: 2 / 3; grid-row: auto; }
-    .grid-head-clients { grid-column: 1 / 3; grid-row: auto; }
-    .dash-col-side { grid-column: 1 / 3; grid-row: auto; }
+  /* Main navigation tab bar */
+  .main-nav-tabs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--line);
+    margin: 14px 0 16px;
+    padding: 0 4px;
   }
-  @media (max-width: 768px) {
+  .main-nav-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--dim);
+    font-size: 13.5px;
+    font-weight: 600;
+    padding: 8px 18px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.15s ease;
+    border-radius: 6px 6px 0 0;
+    user-select: none;
+  }
+  .main-nav-tab:hover {
+    color: var(--heading);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .main-nav-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: rgba(88, 166, 255, 0.08);
+  }
+  .main-nav-badge {
+    font-size: 11px;
+    padding: 1px 7px;
+    border-radius: 12px;
+    background: var(--chip-bg);
+    color: var(--text);
+    font-weight: 500;
+  }
+  .main-nav-tab.active .main-nav-badge {
+    background: rgba(88, 166, 255, 0.2);
+    color: var(--accent);
+  }
+  .tab-pane {
+    display: block;
+  }
+
+  /* 2-column master accounts grid: Col 1 Claude (1fr) | Col 2 Codex (1fr) */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
+    gap: 16px;
+    align-items: start;
+    margin-top: 6px;
+  }
+  .grid-head-accounts { grid-column: 1 / 3; min-width: 0; }
+  #colClaude { grid-column: 1 / 2; min-width: 0; }
+  #colCodex { grid-column: 2 / 3; min-width: 0; }
+  @media (max-width: 860px) {
     .dashboard-grid { grid-template-columns: 1fr; }
-    .grid-head-accounts, .grid-head-clients, #colClaude, #colCodex, .dash-col-side { grid-column: 1 / 2; grid-row: auto; }
+    .grid-head-accounts, #colClaude, #colCodex { grid-column: 1 / 2; }
+  }
+
+  .workstations-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 4px;
   }
   .account-col { background: var(--card-col-bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: flex; flex-direction: column; min-width: 0; }
   .col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line-subtle); }
@@ -571,7 +624,10 @@ const PAGE = `<!doctype html>
   .col-title.codex { color: #56d364; }
   .col-hint { font-size: 10.5px; color: var(--dim); font-weight: normal; }
   .account-list { display: flex; flex-direction: column; gap: 8px; }
-  .client-keys-list { display: flex; flex-direction: column; gap: 8px; }
+  .client-keys-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 12px; }
+  @media (max-width: 600px) {
+    .client-keys-list { grid-template-columns: 1fr; }
+  }
 
   /* Master Key Banner */
   .master-key-banner {
@@ -903,188 +959,201 @@ const PAGE = `<!doctype html>
     </div>
 
     <div id="accounts" style="display:none"></div>
-    <!-- Fleet Policy & Graceful Operations Panel -->
-    <div class="policy-panel" id="fleetPolicyPanel">
-      <div class="policy-panel-head">
-        <div class="policy-head-left">
-          <span class="policy-title-icon">⚖️</span>
-          <div>
-            <div class="policy-title-row">
-              <h3 class="policy-title" data-i18n="policyTitle">Polityka routingu i działania floty</h3>
-              <button class="btn btn-xs" id="btnTogglePolicyHelp" type="button" data-i18n="btnPolicyHelp">ℹ️ Wyjaśnienia</button>
+    <!-- Main Navigation Tabs -->
+    <nav class="main-nav-tabs" id="mainNavTabs">
+      <button class="main-nav-tab active" id="tabBtnAccounts" data-tab="tabAccounts" type="button">
+        <span class="main-nav-tab-icon">🤖</span>
+        <span data-i18n="tabAccountsTitle">Konta & Flota</span>
+        <span class="main-nav-badge" id="tabBadgeAccounts">0</span>
+      </button>
+      <button class="main-nav-tab" id="tabBtnWorkstations" data-tab="tabWorkstations" type="button">
+        <span class="main-nav-tab-icon">💻</span>
+        <span data-i18n="tabWorkstationsTitle">Stacje robocze & Narzędzia</span>
+        <span class="main-nav-badge" id="tabBadgeWorkstations">0</span>
+      </button>
+    </nav>
+
+    <!-- TAB 1: KONTA & FLOTA -->
+    <div id="tabAccounts" class="tab-pane">
+      <!-- Fleet Policy & Graceful Operations Panel -->
+      <div class="policy-panel" id="fleetPolicyPanel">
+        <div class="policy-panel-head">
+          <div class="policy-head-left">
+            <span class="policy-title-icon">⚖️</span>
+            <div>
+              <div class="policy-title-row">
+                <h3 class="policy-title" data-i18n="policyTitle">Polityka routingu i działania floty</h3>
+                <button class="btn btn-xs" id="btnTogglePolicyHelp" type="button" data-i18n="btnPolicyHelp">ℹ️ Wyjaśnienia</button>
+              </div>
+              <p class="policy-subtitle" data-i18n="policySubtitle">Inteligentny podział obciążenia, pamięć podręczna promptów i odporność na limity API.</p>
             </div>
-            <p class="policy-subtitle" data-i18n="policySubtitle">Inteligentny podział obciążenia, pamięć podręczna promptów i odporność na limity API.</p>
+          </div>
+          <div class="policy-head-right">
+            <span id="drainStatusBadge" class="badge error" style="display:none; font-size:11px;"></span>
+            <button id="btnSetDefaults" class="btn btn-sm" data-i18n="btnSetDefaults" data-i18n-title="btnSetDefaultsTitle" title="Przywróć optymalne ustawienia domyślne floty (Adaptive, Earliest-Reset, Fallback, Auto-Health)">✨ Ustaw domyślne</button>
+            <button id="btnDrainToggle" class="btn btn-sm" data-i18n="btnDrainMode" data-i18n-title="btnDrainModeTitle" title="Przełącz tryb drain — dokończ aktywne żądania bez przyjmowania nowych">🛑 Drain Mode</button>
           </div>
         </div>
-        <div class="policy-head-right">
-          <span id="drainStatusBadge" class="badge error" style="display:none; font-size:11px;"></span>
-          <button id="btnSetDefaults" class="btn btn-sm" data-i18n="btnSetDefaults" data-i18n-title="btnSetDefaultsTitle" title="Przywróć optymalne ustawienia domyślne floty (Adaptive, Earliest-Reset, Fallback, Auto-Health)">✨ Ustaw domyślne</button>
-          <button id="btnDrainToggle" class="btn btn-sm" data-i18n="btnDrainMode" data-i18n-title="btnDrainModeTitle" title="Przełącz tryb drain — dokończ aktywne żądania bez przyjmowania nowych">🛑 Drain Mode</button>
+
+        <div class="policy-grid">
+          <!-- Card 1: Session Affinity (Prompt Cache) -->
+          <div class="policy-card">
+            <div class="policy-card-top">
+              <span class="policy-card-badge">PROMPT CACHE</span>
+              <span class="policy-card-icon">⚡</span>
+            </div>
+            <div class="policy-card-head">
+              <label for="selDistributeSessions" class="policy-card-label" data-i18n="policyCardAffinityTitle">Affinity (Prompt Cache)</label>
+              <select id="selDistributeSessions" class="policy-select">
+                <option value="adaptive" data-i18n="optAffinityAdaptive">Adaptive (Cache reuse + load balancing)</option>
+                <option value="even" data-i18n="optAffinityEven">Even (Rozkładanie sesji wg liczby)</option>
+                <option value="off" data-i18n="optAffinityOff">Off (Czysta rotacja)</option>
+              </select>
+            </div>
+            <p class="policy-card-desc" id="descAffinity" data-i18n="policyCardAffinityDesc">
+              Kieruje kolejne zapytania tej samej sesji (projektu) do tego samego konta, aby wykorzystać pamięć podręczną Anthropic Prompt Cache (-90% kosztów tokenów wejściowych i 3-5x szybsza odpowiedź).
+            </p>
+          </div>
+
+          <!-- Card 2: Earliest-Reset-First -->
+          <div class="policy-card">
+            <div class="policy-card-top">
+              <span class="policy-card-badge">SMART ROTATION</span>
+              <span class="policy-card-icon">🕒</span>
+            </div>
+            <div class="policy-card-head">
+              <label class="policy-check-label" title="Kieruj nowe sesje do kont, których 5h limit resetuje się najszybciej">
+                <input type="checkbox" id="chkExpiryRouting" class="policy-checkbox">
+                <span class="policy-card-label" data-i18n="policyCardResetTitle">Earliest-Reset-First</span>
+              </label>
+            </div>
+            <p class="policy-card-desc" id="descReset" data-i18n="policyCardResetDesc">
+              Gdy rozpoczyna się nowa sesja, wybiera konto, którego limit 5h lub 7d zresetuje się najszybciej. Zapobiega blokowaniu floty i maksymalizuje łączną dostępność.
+            </p>
+          </div>
+
+          <!-- Card 3: Cross-Provider Fallback -->
+          <div class="policy-card">
+            <div class="policy-card-top">
+              <span class="policy-card-badge">ZERO DOWNTIME</span>
+              <span class="policy-card-icon">🔄</span>
+            </div>
+            <div class="policy-card-head">
+              <label class="policy-check-label" title="Gdy wszystkie konta Claude są wyczerpane, przekieruj zapytanie do OpenAI Codex">
+                <input type="checkbox" id="chkCrossProviderFallback" class="policy-checkbox">
+                <span class="policy-card-label" data-i18n="policyCardFallbackTitle">Cross-Provider Fallback</span>
+              </label>
+            </div>
+            <p class="policy-card-desc" id="descFallback" data-i18n="policyCardFallbackDesc">
+              W przypadku wyczerpania limitów wszystkich kont Claude lub blokady upstreamu, automatycznie przekierowuje zapytania do OpenAI Codex (i odwrotnie), zapewniając zerowy przestój.
+            </p>
+          </div>
+
+          <!-- Card 4: Auto-Health -->
+          <div class="policy-card">
+            <div class="policy-card-top">
+              <span class="policy-card-badge">DIAGNOSTICS</span>
+              <span id="autoHealthBadge" class="badge" style="font-size:10px; padding:1px 6px; display:none;"></span>
+            </div>
+            <div class="policy-card-head">
+              <label class="policy-check-label" title="Inteligentne okresowe sprawdzanie dostępności (0 tokenów dla aktywnych, 1 token dla bezczynnych)">
+                <input type="checkbox" id="chkAutoHealthCheck" class="policy-checkbox">
+                <span class="policy-card-label" data-i18n="policyCardHealthTitle">Auto-Health</span>
+              </label>
+            </div>
+            <p class="policy-card-desc" id="descHealth" data-i18n="policyCardHealthDesc">
+              Okresowe badanie stanu kont w tle (co 15 min). Bezpieczne dla limitów: 0 tokenów dla aktywnych kont, 1 mikro-token dla kont bezczynnych. Błyskawicznie wykrywa odblokowanie kont.
+            </p>
+          </div>
         </div>
       </div>
 
-      <div class="policy-grid">
-        <!-- Card 1: Session Affinity (Prompt Cache) -->
-        <div class="policy-card">
-          <div class="policy-card-top">
-            <span class="policy-card-badge">PROMPT CACHE</span>
-            <span class="policy-card-icon">⚡</span>
+      <div class="dashboard-grid" id="accountsGrid">
+        <!-- Sekcja nagłówka kont -->
+        <div class="grid-head-accounts">
+          <div class="sec-head" style="margin:0 0 4px; justify-content:flex-start; gap:12px;">
+            <h2 data-i18n="accountsHeading">Konta Claude & Codex</h2>
+            <span style="font-size:11px; color:var(--dim);" data-i18n="accountsHint">💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet</span>
           </div>
-          <div class="policy-card-head">
-            <label for="selDistributeSessions" class="policy-card-label" data-i18n="policyCardAffinityTitle">Affinity (Prompt Cache)</label>
-            <select id="selDistributeSessions" class="policy-select">
-              <option value="adaptive" data-i18n="optAffinityAdaptive">Adaptive (Cache reuse + load balancing)</option>
-              <option value="even" data-i18n="optAffinityEven">Even (Rozkładanie sesji wg liczby)</option>
-              <option value="off" data-i18n="optAffinityOff">Off (Czysta rotacja)</option>
-            </select>
-          </div>
-          <p class="policy-card-desc" id="descAffinity" data-i18n="policyCardAffinityDesc">
-            Kieruje kolejne zapytania tej samej sesji (projektu) do tego samego konta, aby wykorzystać pamięć podręczną Anthropic Prompt Cache (-90% kosztów tokenów wejściowych i 3-5x szybsza odpowiedź).
-          </p>
         </div>
 
-        <!-- Card 2: Earliest-Reset-First -->
-        <div class="policy-card">
-          <div class="policy-card-top">
-            <span class="policy-card-badge">SMART ROTATION</span>
-            <span class="policy-card-icon">🕒</span>
+        <!-- Column 1: Claude (Anthropic) -->
+        <div class="account-col" id="colClaude">
+          <div class="col-head">
+            <div class="row" style="gap:6px; align-items:center;">
+              <span class="col-title claude" data-i18n="colClaudeTitle">🟣 Claude (Anthropic)</span>
+              <span class="col-hint" id="countClaude">0 kont</span>
+            </div>
+            <button class="btn btn-sm btn-accent" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto Claude (Anthropic)" data-i18n="btnAddAccount">➕ Dodaj konto</button>
           </div>
-          <div class="policy-card-head">
-            <label class="policy-check-label" title="Kieruj nowe sesje do kont, których 5h limit resetuje się najszybciej">
-              <input type="checkbox" id="chkExpiryRouting" class="policy-checkbox">
-              <span class="policy-card-label" data-i18n="policyCardResetTitle">Earliest-Reset-First</span>
-            </label>
-          </div>
-          <p class="policy-card-desc" id="descReset" data-i18n="policyCardResetDesc">
-            Gdy rozpoczyna się nowa sesja, wybiera konto, którego limit 5h lub 7d zresetuje się najszybciej. Zapobiega blokowaniu floty i maksymalizuje łączną dostępność.
-          </p>
+          <div class="account-list" id="listClaude" data-provider="anthropic"></div>
         </div>
 
-        <!-- Card 3: Cross-Provider Fallback -->
-        <div class="policy-card">
-          <div class="policy-card-top">
-            <span class="policy-card-badge">ZERO DOWNTIME</span>
-            <span class="policy-card-icon">🔄</span>
+        <!-- Column 2: OpenAI Codex -->
+        <div class="account-col" id="colCodex">
+          <div class="col-head">
+            <div class="row" style="gap:6px; align-items:center;">
+              <span class="col-title codex" data-i18n="colCodexTitle">🟢 OpenAI Codex</span>
+              <span class="col-hint" id="countCodex">0 kont</span>
+            </div>
+            <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto OpenAI Codex" data-i18n="btnAddAccount">➕ Dodaj konto</button>
           </div>
-          <div class="policy-card-head">
-            <label class="policy-check-label" title="Gdy wszystkie konta Claude są wyczerpane, przekieruj zapytanie do OpenAI Codex">
-              <input type="checkbox" id="chkCrossProviderFallback" class="policy-checkbox">
-              <span class="policy-card-label" data-i18n="policyCardFallbackTitle">Cross-Provider Fallback</span>
-            </label>
-          </div>
-          <p class="policy-card-desc" id="descFallback" data-i18n="policyCardFallbackDesc">
-            W przypadku wyczerpania limitów wszystkich kont Claude lub blokady upstreamu, automatycznie przekierowuje zapytania do OpenAI Codex (i odwrotnie), zapewniając zerowy przestój.
-          </p>
-        </div>
-
-        <!-- Card 4: Auto-Health -->
-        <div class="policy-card">
-          <div class="policy-card-top">
-            <span class="policy-card-badge">DIAGNOSTICS</span>
-            <span id="autoHealthBadge" class="badge" style="font-size:10px; padding:1px 6px; display:none;"></span>
-          </div>
-          <div class="policy-card-head">
-            <label class="policy-check-label" title="Inteligentne okresowe sprawdzanie dostępności (0 tokenów dla aktywnych, 1 token dla bezczynnych)">
-              <input type="checkbox" id="chkAutoHealthCheck" class="policy-checkbox">
-              <span class="policy-card-label" data-i18n="policyCardHealthTitle">Auto-Health</span>
-            </label>
-          </div>
-          <p class="policy-card-desc" id="descHealth" data-i18n="policyCardHealthDesc">
-            Okresowe badanie stanu kont w tle (co 15 min). Bezpieczne dla limitów: 0 tokenów dla aktywnych kont, 1 mikro-token dla kont bezczynnych. Błyskawicznie wykrywa odblokowanie kont.
-          </p>
+          <div class="account-list" id="listCodex" data-provider="codex"></div>
         </div>
       </div>
     </div>
-    <div class="dashboard-grid" id="accountsGrid">
-      <!-- Sekcja nagłówka kont -->
-      <div class="grid-head-accounts">
-        <div class="sec-head" style="margin:0 0 4px; justify-content:flex-start; gap:12px;">
-          <h2 data-i18n="accountsHeading">Konta Claude & Codex</h2>
-          <span style="font-size:11px; color:var(--dim);" data-i18n="accountsHint">💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet</span>
-        </div>
-      </div>
 
-      <!-- Sekcja nagłówka kluczy klientów -->
-      <div class="grid-head-clients">
-        <div class="sec-head" style="margin:0 0 4px;">
-          <h2 data-i18n="clientsHeading">Stacje robocze & Klucze</h2>
-        </div>
-      </div>
-
-      <!-- Column 1: Claude (Anthropic) -->
-      <div class="account-col" id="colClaude">
-        <div class="col-head">
-          <div class="row" style="gap:6px; align-items:center;">
-            <span class="col-title claude" data-i18n="colClaudeTitle">🟣 Claude (Anthropic)</span>
-            <span class="col-hint" id="countClaude">0 kont</span>
-          </div>
-          <button class="btn btn-sm btn-accent" id="btnAddClaudeCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto Claude (Anthropic)" data-i18n="btnAddAccount">➕ Dodaj konto</button>
-        </div>
-        <div class="account-list" id="listClaude" data-provider="anthropic"></div>
-      </div>
-
-      <!-- Column 2: OpenAI Codex -->
-      <div class="account-col" id="colCodex">
-        <div class="col-head">
-          <div class="row" style="gap:6px; align-items:center;">
-            <span class="col-title codex" data-i18n="colCodexTitle">🟢 OpenAI Codex</span>
-            <span class="col-hint" id="countCodex">0 kont</span>
-          </div>
-          <button class="btn btn-sm btn-accent" id="btnAddCodexCol" style="padding:2px 8px; font-size:11px;" title="Dodaj konto OpenAI Codex" data-i18n="btnAddAccount">➕ Dodaj konto</button>
-        </div>
-        <div class="account-list" id="listCodex" data-provider="codex"></div>
-      </div>
-
-      <!-- Column 3: Stacje robocze & Narzędzia -->
-      <div class="account-col dash-col-side" id="colClients">
-        <div class="col-head">
-          <div class="row" style="gap:6px; align-items:center;">
-            <span class="col-title" style="color:#58a6ff;" data-i18n="colClientsTitle">💻 Stacje robocze</span>
+    <!-- TAB 2: STACJE ROBOCZE & NARZĘDZIA -->
+    <div id="tabWorkstations" class="tab-pane" style="display:none;">
+      <div class="workstations-pane" id="colClients">
+        <div class="sec-head" style="margin:0 0 8px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+          <div class="row" style="gap:8px; align-items:center;">
+            <h2 data-i18n="clientsHeading">Stacje robocze & Narzędzia</h2>
             <span class="col-hint" id="countClientKeys">0 stacji</span>
           </div>
-          <div class="row" style="gap:4px;">
-            <button class="btn btn-sm btn-accent" id="btnShowAddClientKey" style="padding:2px 8px; font-size:11px;" title="Podłącz nową stację roboczą lub agenta CLI" data-i18n="btnNewKey">➕ Podłącz stację</button>
-            <button class="btn btn-sm" id="btnShowWorkstationGuide" style="padding:2px 7px; font-size:11px;" title="Przewodnik konfiguracji stacji (Linux, macOS, Windows)" data-i18n="btnWorkstationGuide">📖 Instrukcja</button>
-            <button class="btn btn-sm" id="btnPullSetupRepo" style="padding:2px 6px; font-size:11px;" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)" data-i18n-title="btnUpdateTitle">🔄</button>
+          <div class="row" style="gap:6px;">
+            <button class="btn btn-sm btn-accent" id="btnShowAddClientKey" style="padding:4px 10px; font-size:12px;" title="Podłącz nową stację roboczą lub agenta CLI" data-i18n="btnNewKey">➕ Podłącz stację</button>
+            <button class="btn btn-sm" id="btnShowWorkstationGuide" style="padding:4px 9px; font-size:12px;" title="Przewodnik konfiguracji stacji (Linux, macOS, Windows)" data-i18n="btnWorkstationGuide">📖 Instrukcja</button>
+            <button class="btn btn-sm" id="btnPullSetupRepo" style="padding:4px 8px; font-size:12px;" title="Pobierz najnowsze skrypty instalatora z GitHub (git pull)" data-i18n-title="btnUpdateTitle">🔄 Aktualizuj instalatory</button>
           </div>
         </div>
 
-        <div class="card quick-station-box" style="margin-bottom:10px; background:rgba(83,177,253,0.05); border-color:rgba(83,177,253,0.22); padding:8px 10px; border-radius:7px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:4px;">
-            <div style="display:flex; align-items:center; gap:5px;">
-              <span style="font-weight:600; font-size:11px; color:var(--heading);" data-i18n="quickConnectTitle">⚡ Szybkie podłączenie:</span>
-              <select id="selQuickStation" style="font-size:10px; padding:1px 5px; background:var(--input-bg); border:1px solid var(--line); color:var(--heading); border-radius:4px; max-width:130px; cursor:pointer;" title="Wybierz stację roboczą dla tego polecenia"></select>
+        <div class="card quick-station-box" style="margin-bottom:12px; background:rgba(83,177,253,0.05); border-color:rgba(83,177,253,0.22); padding:10px 14px; border-radius:8px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-weight:600; font-size:12px; color:var(--heading);" data-i18n="quickConnectTitle">⚡ Szybkie podłączenie:</span>
+              <select id="selQuickStation" style="font-size:11px; padding:2px 6px; background:var(--input-bg); border:1px solid var(--line); color:var(--heading); border-radius:4px; max-width:180px; cursor:pointer;" title="Wybierz stację roboczą dla tego polecenia"></select>
             </div>
-            <div style="display:flex; gap:3px;">
-              <button class="btn btn-xs active" id="btnQuickTabBash" type="button" style="padding:1px 7px; font-size:10px;" title="Skrypt instalacyjny Linux, macOS, WSL (Bash)">Linux / macOS</button>
-              <button class="btn btn-xs" id="btnQuickTabPS" type="button" style="padding:1px 7px; font-size:10px;" title="Skrypt instalacyjny Windows (PowerShell)">Windows</button>
+            <div style="display:flex; gap:4px;">
+              <button class="btn btn-xs active" id="btnQuickTabBash" type="button" style="padding:2px 9px; font-size:11px;" title="Skrypt instalacyjny Linux, macOS, WSL (Bash)">Linux / macOS / WSL</button>
+              <button class="btn btn-xs" id="btnQuickTabPS" type="button" style="padding:2px 9px; font-size:11px;" title="Skrypt instalacyjny Windows (PowerShell)">Windows</button>
             </div>
           </div>
-          <div style="display:flex; align-items:center; gap:4px; margin-bottom:5px; flex-wrap:wrap;">
-            <span style="font-size:10px; color:var(--dim); font-weight:600;">Narzędzie:</span>
-            <button class="btn btn-xs active" id="btnQuickToolClaude" type="button" style="padding:1px 6px; font-size:10px;" title="Claude Code CLI & VS Code (claude-setup)">Claude</button>
-            <button class="btn btn-xs" id="btnQuickToolCodex" type="button" style="padding:1px 6px; font-size:10px;" title="OpenAI Codex CLI & VS Code (codex-setup)">Codex</button>
-            <button class="btn btn-xs" id="btnQuickToolHermes" type="button" style="padding:1px 6px; font-size:10px;" title="Hermes Agent (dodaje providera agentlb ze wszystkimi modelami)">Hermes</button>
-            <button class="btn btn-xs" id="btnQuickToolOpenCode" type="button" style="padding:1px 6px; font-size:10px;" title="OpenCode (dodaje providera agentlb do opencode.json)">OpenCode</button>
-            <button class="btn btn-xs" id="btnQuickToolClaw" type="button" style="padding:1px 6px; font-size:10px;" title="Claw / OpenClaw (dodaje providera agentlb do openclaw.json)">Claw</button>
-            <button class="btn btn-xs" id="btnQuickToolOrca" type="button" style="padding:1px 6px; font-size:10px;" title="Orca (ADE stablyai/orca — dodaje providera i środowisko)">Orca</button>
-            <button class="btn btn-xs" id="btnQuickToolAgent" type="button" style="padding:1px 6px; font-size:10px;" title="Zmienne środowiskowe OpenAI / Anthropic">ENV</button>
+          <div style="display:flex; align-items:center; gap:5px; margin-bottom:8px; flex-wrap:wrap;">
+            <span style="font-size:11px; color:var(--dim); font-weight:600;">Narzędzie:</span>
+            <button class="btn btn-xs active" id="btnQuickToolClaude" type="button" style="padding:2px 8px; font-size:11px;" title="Claude Code CLI & VS Code (claude-setup)">Claude</button>
+            <button class="btn btn-xs" id="btnQuickToolCodex" type="button" style="padding:2px 8px; font-size:11px;" title="OpenAI Codex CLI & VS Code (codex-setup)">Codex</button>
+            <button class="btn btn-xs" id="btnQuickToolHermes" type="button" style="padding:2px 8px; font-size:11px;" title="Hermes Agent (dodaje providera agentlb ze wszystkimi modelami)">Hermes</button>
+            <button class="btn btn-xs" id="btnQuickToolOpenCode" type="button" style="padding:2px 8px; font-size:11px;" title="OpenCode (dodaje providera agentlb do opencode.json)">OpenCode</button>
+            <button class="btn btn-xs" id="btnQuickToolClaw" type="button" style="padding:2px 8px; font-size:11px;" title="Claw / OpenClaw (dodaje providera agentlb do openclaw.json)">Claw</button>
+            <button class="btn btn-xs" id="btnQuickToolOrca" type="button" style="padding:2px 8px; font-size:11px;" title="Orca (ADE stablyai/orca — dodaje providera i środowisko)">Orca</button>
+            <button class="btn btn-xs" id="btnQuickToolAgent" type="button" style="padding:2px 8px; font-size:11px;" title="Zmienne środowiskowe OpenAI / Anthropic">ENV</button>
           </div>
-          <div class="quick-cmd-wrap" style="display:flex; align-items:center; gap:6px; background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:4px; padding:4px 7px;">
-            <code id="quickCmdText" class="mono" style="flex:1; font-size:10.5px; color:#58a6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" title="Kliknij, aby skopiować pełną komendę"></code>
-            <button class="btn btn-xs btn-accent" id="btnQuickCopyCmd" type="button" style="flex-shrink:0; padding:1px 7px;" title="Kopiuj polecenie do schowka" data-i18n="copyCmd">📋 Kopiuj</button>
+          <div class="quick-cmd-wrap" style="display:flex; align-items:center; gap:8px; background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px;">
+            <code id="quickCmdText" class="mono" style="flex:1; font-size:11.5px; color:#58a6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" title="Kliknij, aby skopiować pełną komendę"></code>
+            <button class="btn btn-xs btn-accent" id="btnQuickCopyCmd" type="button" style="flex-shrink:0; padding:2px 10px; font-size:11px;" title="Kopiuj polecenie do schowka" data-i18n="copyCmd">📋 Kopiuj</button>
           </div>
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:5px; font-size:10.5px; color:var(--dim);">
-            <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; user-select:none; color:var(--text);" title="Odznacz, jeśli chcesz uruchomić czystą komendę — instalator sam zapyta o wklejenie klucza">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:6px; font-size:11px; color:var(--dim);">
+            <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; color:var(--text);" title="Odznacz, jeśli chcesz uruchomić czystą komendę — instalator sam zapyta o wklejenie klucza">
               <input type="checkbox" id="chkIncludeKeyInCmd" checked style="margin:0; cursor:pointer;"> <span data-i18n="includeKey">Dołącz klucz stacji</span>
             </label>
-            <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-size:10.5px;" data-i18n="githubGuide">instrukcja GitHub ↗</a>
+            <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-size:11px;" data-i18n="githubGuide">instrukcja GitHub ↗</a>
           </div>
         </div>
 
         <div id="clientKeysTable" class="client-keys-list"></div>
 
-        <div id="clientsWrap" style="display:none; margin-top:8px;">
+        <div id="clientsWrap" style="display:none; margin-top:10px;">
           <h2>Clients</h2>
           <div class="card table-responsive" style="padding:4px 6px"><table id="clients"></table></div>
         </div>
@@ -1855,6 +1924,8 @@ const PAGE = `<!doctype html>
       policyCardHealthDesc: 'Okresowe badanie stanu kont w tle (co 15 min). Bezpieczne dla limitów: 0 tokenów dla aktywnych kont, 1 mikro-token dla kont bezczynnych. Błyskawicznie wykrywa odblokowanie kont.',
       autoHealthActive: 'Aktywny',
       autoHealthDisabled: 'Wyłączony',
+      tabAccountsTitle: 'Konta & Flota',
+      tabWorkstationsTitle: 'Stacje robocze & Narzędzia',
       accountsHeading: 'Konta Claude & Codex',
       accountsHint: '💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet',
       clientsHeading: 'Stacje robocze & Narzędzia',
@@ -1959,6 +2030,8 @@ const PAGE = `<!doctype html>
       policyCardHealthDesc: 'Silent background diagnostics every 15 minutes. Consumes 0 tokens for active accounts and only 1 micro-token for idle accounts, auto-recovering cleared accounts.',
       autoHealthActive: 'Active',
       autoHealthDisabled: 'Disabled',
+      tabAccountsTitle: 'Accounts & Fleet',
+      tabWorkstationsTitle: 'Workstations & Tools',
       accountsHeading: 'Claude & Codex Accounts',
       accountsHint: '💡 Drag card ⠿ in column to adjust queue priority',
       clientsHeading: 'Workstations & Tools',
@@ -3080,6 +3153,10 @@ ${SHARED_HELPERS}
     var countClaude = document.getElementById('countClaude');
     if (countClaude) {
       countClaude.textContent = claudeAccts.length + (claudeAccts.length === 1 ? (currentLang === 'pl' ? ' konto' : ' account') : (currentLang === 'pl' ? ' kont' : ' accounts'));
+    }
+    var bAcc = document.getElementById('tabBadgeAccounts');
+    if (bAcc) {
+      bAcc.textContent = accts.length;
     }
     var countCodex = document.getElementById('countCodex');
     if (countCodex) {
@@ -4577,6 +4654,10 @@ ${SHARED_HELPERS}
       countEl.textContent = wsCount === 1
         ? (currentLang === 'pl' ? '1 stacja' : '1 workstation')
         : (wsCount + (currentLang === 'pl' ? ' stacji' : ' workstations'));
+    }
+    var bWork = document.getElementById('tabBadgeWorkstations');
+    if (bWork) {
+      bWork.textContent = list.length;
     }
 
     // 1. Dedicated Master Admin Key banner at top
@@ -6466,6 +6547,47 @@ ${SHARED_HELPERS}
   // Initial theme and i18n DOM update
   setTheme(currentTheme);
   updateI18nDOM();
+
+  // Main navigation tabs (Konta & Flota vs Stacje robocze & Narzędzia)
+  function switchMainTab(tabId) {
+    var tabAccounts = document.getElementById('tabAccounts');
+    var tabWorkstations = document.getElementById('tabWorkstations');
+    var btnAccounts = document.getElementById('tabBtnAccounts');
+    var btnWorkstations = document.getElementById('tabBtnWorkstations');
+
+    if (tabId === 'tabWorkstations') {
+      if (tabAccounts) tabAccounts.style.display = 'none';
+      if (tabWorkstations) tabWorkstations.style.display = 'block';
+      if (btnAccounts) btnAccounts.classList.remove('active');
+      if (btnWorkstations) btnWorkstations.classList.add('active');
+    } else {
+      if (tabAccounts) tabAccounts.style.display = 'block';
+      if (tabWorkstations) tabWorkstations.style.display = 'none';
+      if (btnAccounts) btnAccounts.classList.add('active');
+      if (btnWorkstations) btnWorkstations.classList.remove('active');
+    }
+    try { localStorage.setItem('agentlb-active-tab', tabId); } catch (e) {}
+  }
+
+  var btnTabAccounts = document.getElementById('tabBtnAccounts');
+  if (btnTabAccounts) {
+    btnTabAccounts.addEventListener('click', function () {
+      switchMainTab('tabAccounts');
+    });
+  }
+  var btnTabWorkstations = document.getElementById('tabBtnWorkstations');
+  if (btnTabWorkstations) {
+    btnTabWorkstations.addEventListener('click', function () {
+      switchMainTab('tabWorkstations');
+    });
+  }
+
+  try {
+    var savedTab = localStorage.getItem('agentlb-active-tab');
+    if (savedTab === 'tabWorkstations') {
+      switchMainTab('tabWorkstations');
+    }
+  } catch (e) {}
 
   checkAuthAndStart();
 })();
