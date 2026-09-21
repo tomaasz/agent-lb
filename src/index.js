@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { maskSecret } from './access-control.js';
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { createWriteStream } from 'node:fs';
@@ -625,7 +626,9 @@ async function serverCommand() {
       console.log(`  Upstream:      ${config.upstream || 'https://api.anthropic.com'}`);
       console.log(`  Web Dashboard: http://${bindHost === '0.0.0.0' ? 'localhost' : bindHost}:${port}/dashboard`);
       if (config.proxy?.apiKey) {
-        console.log(`  Admin Key:     ${config.proxy.apiKey}`);
+        // Masked: this banner lands in journald/log files, which is no place
+        // for the credential that unlocks every management endpoint.
+        console.log(`  Admin Key:     ${maskSecret(config.proxy.apiKey)} (full value: proxy.apiKey in the config)`);
       }
       console.log('');
       if (accounts.length === 0) {
