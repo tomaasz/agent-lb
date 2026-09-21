@@ -3222,6 +3222,9 @@ export function createProxyRequestListener({
       } catch {}
 
       if (parsedBody) {
+        // Whether the client asked for a stream decides how long upstream may
+        // take to send headers (see nonStreamHeadersTimeout).
+        ctx.clientStream = parsedBody.stream === true;
         const dedupeResult = toolDedupe.inspectRequest(parsedBody, sessionId);
         if (dedupeResult.hasDuplicate) {
           console.warn(`[AgentLB] [ToolDedupe] Warning: detected replayed side-effect tool calls in session "${sessionId}": ${dedupeResult.duplicates.map(d => d.name).join(', ')}`);
@@ -4011,6 +4014,20 @@ export function formatHeaders(headers) {
 // indefinitely — a four-account fleet spent three accounts on a refused
 // connection and answered rate_limit_error. That instance is closed; keeping
 // ECONNREFUSED unconditional means any future gap stays a non-regression.
+// A non-streaming response sends its headers only once the whole answer is
+// generated, which for a long answer (extended thinking, a large max_tokens)
+// takes minutes. The stream-oriented time-to-first-byte guard (120s) cut those
+// off and the client's retry paid for the generation again. Ten minutes
+// matches the Anthropic SDK's own non-streaming timeout; never shorter than the
+// general guard. Override: AGENT_LB_UPSTREAM_NONSTREAM_HEADERS_TIMEOUT_MS.
+const DEFAULT_NONSTREAM_HEADERS_TIMEOUT_MS = 600_000;
+export function nonStreamHeadersTimeout() {
+  const env = Number(process.env.AGENT_LB_UPSTREAM_NONSTREAM_HEADERS_TIMEOUT_MS);
+  const general = Number(process.env.AGENT_LB_UPSTREAM_HEADERS_TIMEOUT_MS);
+  const base = env > 0 ? env : DEFAULT_NONSTREAM_HEADERS_TIMEOUT_MS;
+  return general > base ? general : base;
+}
+
 /**
  * A Codex 429 that means the account's quota is spent (not a momentary
  * throttle): `usage_limit_reached` in the body, or a window reported at 100%.
@@ -4545,7 +4562,11 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     }
     if (halfOpen) { account.halfOpenInFlight = true; ownsRecoveryProbe = true; }
     try {
+      // Codex translation always streams upstream; otherwise the client's own
+      // choice is what upstream sees.
+      const upstreamStreams = ctx.isCodexResponsesToOpenAI || ctx.isCodexResponsesToAnthropic || ctx.clientStream !== false;
       upstreamRes = await upstreamFetch(upstreamUrl, {
+        headersTimeoutMs: upstreamStreams ? undefined : nonStreamHeadersTimeout(),
         method,
         headers,
         // Cancels the admission wait and the request itself when the client
