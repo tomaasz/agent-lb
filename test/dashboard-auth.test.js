@@ -413,3 +413,19 @@ describe('Dashboard Authentication and Layout', () => {
     }
   });
 });
+
+describe('Dashboard login error text', () => {
+  const html = renderDashboardHtml();
+  const src = html.match(/function keyboxErrorText\(err, lang\) \{[\s\S]*?\n {2}\}\n/)[0];
+  const keyboxErrorText = vm.runInNewContext(`(${src.replace('function keyboxErrorText', 'function')})`);
+
+  it('never renders an error object as "[object Object]"', () => {
+    const gate = { type: 'authentication_error', message: 'Invalid proxy API key' };
+    assert.match(keyboxErrorText(gate, 'pl'), /Nieprawidłowy klucz/);
+    assert.match(keyboxErrorText(gate, 'en'), /Invalid key/);
+    assert.equal(keyboxErrorText({ type: 'x', message: 'Coś innego' }, 'pl'), 'Coś innego');
+    assert.match(keyboxErrorText({}, 'pl'), /Nieprawidłowy klucz/);
+    assert.equal(keyboxErrorText('Wymagana autoryzacja', 'pl'), 'Wymagana autoryzacja');
+    assert.equal(keyboxErrorText(null, 'pl'), '');
+  });
+});
