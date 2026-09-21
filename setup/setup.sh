@@ -234,7 +234,7 @@ if [ "$code" = "404" ]; then
 fi
 case "$code" in
 	200) say "OK — klucz poprawny, proxy autoryzowało dostęp." ;;
-	401|403) die "serwer odrzucił klucz ($code). Podaj prawidłowy klucz stacji roboczej (znajdziesz go w panelu https://agentlb.gotova.pl)." ;;
+	401|403) die "serwer odrzucił klucz ($code). Podaj prawidłowy klucz stacji roboczej (znajdziesz go w panelu $URL)." ;;
 	000) die "brak połączenia z $URL. Sprawdź sieć/domenę." ;;
 	*) say "Otrzymano kod $code — kontynuuję konfigurację." ;;
 esac

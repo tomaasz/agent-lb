@@ -231,7 +231,7 @@ if (-not $Key) {
 if ($Key) { $Key = $Key.Trim() }
 if (-not $Key) { throw 'Nie podano klucza.' }
 if ($Key -match '^<.*>$' -or $Key -eq '<KLUCZ_STACJI>' -or $Key -eq '<KEY>' -or $Key -eq '<TWÓJ_KLUCZ>') {
-	throw 'Podano placeholder zamiast rzeczywistego klucza stacji. Podaj prawidłowy klucz wygenerowany w panelu https://agentlb.gotova.pl.'
+	throw "Podano placeholder zamiast rzeczywistego klucza stacji. Podaj prawidłowy klucz wygenerowany w panelu $Url."
 }
 if ($Key -match '[\r\n]') { throw 'Klucz API nie może zawierać znaku nowej linii.' }
 
@@ -256,8 +256,8 @@ try {
 	$code = $null
 	if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
 	switch ($code) {
-		401 { throw 'Serwer odrzucił klucz (401). Podaj prawidłowy klucz stacji roboczej (znajdziesz go w panelu https://agentlb.gotova.pl).' }
-		403 { throw 'Serwer odrzucił klucz (403). Podaj prawidłowy klucz stacji roboczej (znajdziesz go w panelu https://agentlb.gotova.pl).' }
+		401 { throw "Serwer odrzucił klucz (401). Podaj prawidłowy klucz stacji roboczej (znajdziesz go w panelu $Url)." }
+		403 { throw "Serwer odrzucił klucz (403). Podaj prawidłowy klucz stacji roboczej (znajdziesz go w panelu $Url)." }
 		default {
 			throw "Brak połączenia z $Url ($($_.Exception.Message)). Sprawdź połączenie sieciowe."
 		}

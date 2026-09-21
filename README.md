@@ -90,6 +90,7 @@ node src/index.js headless
 ```
 
 On first startup, `agent-lb` generates a primary admin API key and prints the dashboard URL:
+
 ```text
 Agent-LB proxy listening on 0.0.0.0:3456
 Web Dashboard: http://localhost:3456/dashboard
@@ -140,38 +141,50 @@ systemctl --user enable --now agentlb
 
 ## 💻 Client Setup (Connecting Developers)
 
-Connecting developer machines takes a single command. The server dynamically bakes its address into the installer script:
+Connecting developer workstations takes a single command. The server dynamically bakes its address into the installer script and offers a **unified all-in-one installer** supporting both **Claude Code CLI** and **OpenAI Codex CLI** (alongside their official VS Code extensions):
 
-### 1. Claude Code CLI & VS Code
+### All-in-One Setup (Claude Code + OpenAI Codex + VS Code)
 
 #### Linux / macOS / WSL:
+
 ```bash
-curl -sSL http://your-server:3456/setup | bash
+# Interactive (prompts for client key):
+curl -fsSL http://your-server:3456/setup.sh | bash
+
+# Non-interactive with station key:
+curl -fsSL http://your-server:3456/setup.sh | bash -s -- --key tc-YOUR_STATION_KEY
 ```
 
 #### Windows (PowerShell):
+
 ```powershell
-irm http://your-server:3456/setup.ps1 | iex
+# Interactive (prompts for client key):
+& ([scriptblock]::Create((irm http://your-server:3456/setup.ps1)))
+
+# Non-interactive with station key:
+& ([scriptblock]::Create((irm http://your-server:3456/setup.ps1))) -Key tc-YOUR_STATION_KEY
 ```
 
-### 2. OpenAI Codex CLI & VS Code (`codexlb-setup`)
+> **WSL Detection on Windows**: When run under Windows PowerShell, `setup.ps1` automatically detects any installed WSL distributions (e.g., Debian, Ubuntu) and prints the exact command to configure your WSL environment as well.
 
-#### Linux / macOS / WSL:
-```bash
-curl -sSL http://your-server:3456/codexlb-setup.sh | bash
-```
+#### Installer Options & Flags:
 
-#### Windows (PowerShell):
-```powershell
-irm http://your-server:3456/codexlb-setup.ps1 | iex
-```
+- `--key <KEY>` / `-Key <KEY>`: Provide the client workstation key directly.
+- `--url <URL>` / `-Url <URL>`: Override the proxy server URL (e.g. `https://agentlb.yourdomain.com`).
+- `--test` / `-Test`: Run diagnostic connection and authentication tests without altering settings.
+- `--no-install`: Skip automatic installation/upgrade of npm packages (`@anthropic-ai/claude-code`, `@openai/codex`).
+- `--uninstall` / `-Uninstall`: Remove proxy environment configurations and restore backed-up config files.
+
+---
 
 ### What the client installers do automatically:
-1. Prompts for your Client API Key (`tc-...`) and verifies live connection with the server (`/backend-api/codex/models` and `/status`).
-2. Backs up existing configs (`.bak`) and prevents OAuth *"Auth conflict"* errors.
-3. Automatically configures `~/.claude/settings.json` (for Claude Code) or `~/.codex/config.toml` and `~/.codex/codexlb.config.toml` (for Codex CLI 0.14+).
-4. Sets up official **VS Code extensions** (Claude Code & OpenAI Codex).
-5. Persists the proxy URL and client credentials in shell configs or Windows Registry. When `~/.claude/.credentials.json` contains a Claude OAuth session, the installer keeps Claude Code in subscription mode by removing `ANTHROPIC_API_KEY` and setting `ANTHROPIC_CUSTOM_HEADERS=x-api-key: <proxy-key>`. This authenticates the client to the LB without replacing its Claude login; the LB consumes that header and injects the selected upstream account credential.
+
+1. **Environment check & auto-installation**: Verifies Node.js & npm; automatically installs `@anthropic-ai/claude-code` and `@openai/codex` CLI globally if missing.
+2. **Auth verification**: Verifies connection and key validity live against the server (`/v1/models` and `/backend-api/codex/models`).
+3. **Clean configuration & OAuth conflict prevention**: Backs up existing configs (`.bak`) and prevents OAuth _"Auth conflict"_ errors.
+4. **Tool configuration**: Configures `~/.claude/settings.json` (Claude Code) and `~/.codex/config.json` / `config.toml` (OpenAI Codex CLI 0.14+).
+5. **VS Code extensions**: Configures official VS Code extensions for both Claude Code and OpenAI Codex.
+6. **Persistence**: Saves proxy settings to shell profiles (`~/.bashrc`, `~/.zshrc`, `~/.config/agent-lb.env`) or the Windows User Registry. When `~/.claude/.credentials.json` contains a Claude OAuth session, the installer keeps Claude Code in subscription mode by removing conflicting `ANTHROPIC_API_KEY` and injecting `ANTHROPIC_CUSTOM_HEADERS=x-api-key: <proxy-key>`. The load balancer consumes this header and transparently attaches upstream account credentials.
 
 The proxy does not set a Claude token or context-window value. It forwards `max_tokens`, messages, cache controls, and compaction requests unchanged. `proxy.maxBodyBytes` is only a memory-safety cap on the serialized HTTP body (64 MiB by default, `0` for an explicit unlimited setting); it is not a token limit. Increase it for unusually large multimodal payloads, for example:
 
@@ -186,11 +199,13 @@ The proxy does not set a Claude token or context-window value. It forwards `max_
 ## 🖥️ Web Dashboard
 
 Access the interactive dashboard at:
+
 ```text
 http://your-server:3456/dashboard
 ```
 
 ### Dashboard Features:
+
 - **Accounts Overview**: Real-time status badges (`active`, `idle`, `rate-limited`, `error`, `needs-relogin`), provider indicator (`Anthropic` / `OpenAI Codex`), 5h session and 7d weekly quota gauges, and prepaid account balances ($ / credits).
 - **1-Click OAuth Login & Re-login**: Add new Anthropic or OpenAI Codex accounts or refresh expired sessions directly from your browser.
 - **Client Access Keys**: Create, copy, rotate, and revoke client API keys (`tc-...`) with usage stats (requests, tokens) and granular provider restrictions (`allowedProviders: ["anthropic", "codex"]`).
@@ -204,6 +219,7 @@ http://your-server:3456/dashboard
 `AgentLB` supports reverse proxies and **Tailscale**. Keep `proxy.trustLoopback` and `proxy.trustTailnet` false behind a reverse proxy. Every client must send its own key; management endpoints require the administrator key. See [security and deployment notes](docs/audit-hardening.md).
 
 ### Tailscale Tailnet Authentication
+
 Tailnet address exemptions are disabled by default. An explicit `proxy.trustTailnet: true` only admits direct Tailnet peers for inference; it never grants administrator access and never trusts forwarded identity headers. Configure allowed hostnames via environment variable:
 
 ```bash
@@ -325,12 +341,12 @@ Configuration is stored in `~/.config/agent-lb.json` (or `~/.config/claude-lb.js
 
 ### Environment Variables
 
-| Variable | Description | Default |
-| --- | --- | --- |
-| `AGENT_LB_PORT` (or `CLAUDE_LB_PORT`) | Port to bind proxy server | `3456` |
-| `AGENT_LB_HOST` (or `CLAUDE_LB_HOST`) | Host address or domain allowed | `0.0.0.0` |
-| `AGENT_LB_CONFIG` (or `CLAUDE_LB_CONFIG`) | Custom path to config file | `~/.config/agent-lb.json` |
-| `AGENT_LB_URL` (or `CLAUDE_LB_URL`) | Base URL used by installer scripts | Dynamic detection |
+| Variable                                  | Description                        | Default                   |
+| ----------------------------------------- | ---------------------------------- | ------------------------- |
+| `AGENT_LB_PORT` (or `CLAUDE_LB_PORT`)     | Port to bind proxy server          | `3456`                    |
+| `AGENT_LB_HOST` (or `CLAUDE_LB_HOST`)     | Host address or domain allowed     | `0.0.0.0`                 |
+| `AGENT_LB_CONFIG` (or `CLAUDE_LB_CONFIG`) | Custom path to config file         | `~/.config/agent-lb.json` |
+| `AGENT_LB_URL` (or `CLAUDE_LB_URL`)       | Base URL used by installer scripts | Dynamic detection         |
 
 ---
 
@@ -339,15 +355,16 @@ Configuration is stored in `~/.config/agent-lb.json` (or `~/.config/claude-lb.js
 Projekt **AgentLB** powstał jako zaawansowana ewolucja i rozbudowa koncepcji projektu `claude-lb` autorstwa [KarpelesLab](https://github.com/KarpelesLab/agentlb) (stworzonego pierwotnie do pulowania kont wyłącznie dla narzędzia Claude Code).
 
 Z biegiem rozwoju projekt został przekształcony w uniwersalną bramę **AgentLB** (`agentlb` / `agent-lb`) obsługującą pełne środowisko programistów i autonomicznych agentów kodujących:
+
 - **Wielomodelowość i wielu dostawców**: Równorzędna obsługa Anthropic Claude oraz OpenAI Codex CLI / ChatGPT (OAuth PKCE i klucze API).
 - **Sprawiedliwy podział strumieni (Max-Min Fair Share)**: Ochrona interaktywnych sesji programistów przed zagłodzeniem przez intensywne procesy autonomiczne w tle (np. Hermes, AutoGPT).
 - **Inteligentny harmonogram Keep-Warm**: Podtrzymywanie gotowości sesji w godzinach pracy i automatyczne oszczędzanie limitów nocami oraz w weekendy.
 - **Bezpieczeństwo i deduplikacja narzędzi**: Zabezpieczenie przed wielokrotnym wykonaniem nieidempotentnych operacji basha i edycji plików przy zerwaniu połączenia.
-- **Nowoczesny Dashboard WWW**: Dwukolumnowy interfejs z intuicyjnym przeciąganiem (drag & drop), natychmiastową edycją nazw kont (*inline rename*), testami łączności (*quick test*) oraz zarządzaniem kluczami klienckimi bez konieczności restartu serwera.
+- **Nowoczesny Dashboard WWW**: Dwukolumnowy interfejs z intuicyjnym przeciąganiem (drag & drop), natychmiastową edycją nazw kont (_inline rename_), testami łączności (_quick test_) oraz zarządzaniem kluczami klienckimi bez konieczności restartu serwera.
 
 ---
 
 ## 📄 License
 
-MIT © [Tomasz](https://github.com/tomaasz)  
+MIT © [Tomasz](https://github.com/tomaasz)
 Inspirowane pracami [KarpelesLab](https://github.com/KarpelesLab/agentlb).
