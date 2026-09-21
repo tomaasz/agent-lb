@@ -337,11 +337,25 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // are read live further down the pipeline.
       const rawAuth = req.headers['authorization'] || '';
       const bearerMatch = /^Bearer\s+(\S+)$/i.exec(rawAuth);
-      const clientKey = req.headers['x-api-key'] || (bearerMatch ? bearerMatch[1] : null);
+      const headerKey = req.headers['x-api-key'] || null;
+      const bearerKey = bearerMatch ? bearerMatch[1] : null;
+      let clientKey = headerKey || bearerKey;
       const isLocal = loopbackExempt(req.headers, req.socket.remoteAddress, config.proxy);
       const isTailnet = tailnetExempt(req.headers, req.socket.remoteAddress, config.proxy);
       const isTrustedOrigin = isLocal || isTailnet;
-      const auth = resolveClientAuth(config.proxy, clientKey);
+      let auth = resolveClientAuth(config.proxy, clientKey);
+      // From a trusted origin, a Bearer that is not one of our keys is the
+      // client's OWN upstream credential — Claude Code in OAuth mode sends its
+      // claude.ai token, Codex its ChatGPT token — not a wrong proxy key. The
+      // origin needs no key at all, so read it as "no key" instead of refusing
+      // with a 401 that makes the client drop its login. Only the Bearer gets
+      // this reading: an explicit x-api-key is meant for us, and a wrong one
+      // (e.g. after a key rotation) must still fail loudly. Both credential
+      // headers are stripped before anything goes upstream.
+      if (!auth.ok && !headerKey && bearerKey && isTrustedOrigin) {
+        clientKey = null;
+        auth = { ok: false, client: null, entry: null };
+      }
       if (!auth.ok && (clientKey || !isTrustedOrigin)) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
