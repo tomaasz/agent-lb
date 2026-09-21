@@ -491,6 +491,9 @@ if [ "$RUN_TEST" -eq 1 ] && command -v claude >/dev/null 2>&1; then
 	fi
 fi
 
+# Zakończ stare procesy demona Codex (VS Code zrestartuje je automatycznie z nowymi zmiennymi)
+killall codex 2>/dev/null || pkill -f "codex.*app-server" 2>/dev/null || true
+
 say ""
 say "=== Wdrożenie i konfiguracja zakończona sukcesem! ==="
 if command -v claude >/dev/null 2>&1; then
@@ -506,3 +509,4 @@ say "✔ Agenty i narzędzia: zmienne zapisano w $ENV_FILE (załadowano do powł
 say "✔ Serwer proxy: $URL"
 say ""
 say "Zrestartuj terminal lub otwórz nową kartę, aby wczytać zmienne środowiskowe."
+say "W VS Code wciśnij Ctrl+Shift+P i wybierz 'Developer: Reload Window', aby odświeżyć rozszerzenia."
