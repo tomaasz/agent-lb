@@ -358,6 +358,14 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         auth = { ok: false, client: null, entry: null };
       }
       if (!auth.ok && (clientKey || !isTrustedOrigin)) {
+        console.warn('[AgentLB Auth Rejection]', {
+          method: req.method,
+          url: req.url,
+          clientKey: clientKey ? (clientKey.length > 8 ? clientKey.slice(0, 4) + '...' + clientKey.slice(-4) : clientKey) : null,
+          hasHeader: !!headerKey,
+          hasBearer: !!bearerKey,
+          remote: req.socket.remoteAddress,
+        });
         res.writeHead(401, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           type: 'error',
@@ -509,8 +517,12 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           name: m.name,
           display_name: m.display_name,
           slug: m.id,
+          description: m.name,
           default_reasoning_level: 'medium',
-          supported_reasoning_levels: defaultReasoningLevels
+          supported_reasoning_levels: defaultReasoningLevels,
+          shell_type: 'unified_exec',
+          visibility: 'list',
+          supported_in_api: true
         }));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
