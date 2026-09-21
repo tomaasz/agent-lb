@@ -4741,7 +4741,24 @@ ${SHARED_HELPERS}
       .catch(function (e) { note('error', 'switch failed: ' + e.message); btn.disabled = false; });
   }
 
+  // A login/verify refusal can be the proxy's own key gate, which answers in
+  // the API error shape { error: { type, message } } rather than the auth
+  // endpoints' { error: "text" }. Rendering that object verbatim showed
+  // "[object Object]" — typically right after a key rotation, when the browser
+  // still held the old key.
+  function keyboxErrorText(err, lang) {
+    if (err == null || err === '') return '';
+    var text = typeof err === 'string' ? err : (err && typeof err.message === 'string' ? err.message : '');
+    if (!text || text === 'Invalid proxy API key') {
+      return lang === 'pl'
+        ? 'Nieprawidłowy klucz. Jeśli klucz był niedawno zmieniany, wpisz nowy.'
+        : 'Invalid key. If the key was changed recently, enter the new one.';
+    }
+    return text;
+  }
+
   function showKeybox(errMsg, infoMsg) {
+    errMsg = keyboxErrorText(errMsg, currentLang);
     if (timer) { clearInterval(timer); timer = null; }
     document.getElementById('app').style.display = 'none';
     document.getElementById('keybox').style.display = 'block';
