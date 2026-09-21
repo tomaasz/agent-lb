@@ -2590,7 +2590,7 @@ ${SHARED_HELPERS}
 
     var btnDel = el('button', 'btn-icon btn-icon-del', '🗑️');
     btnDel.title = t('btnDelete');
-    btnDel.addEventListener('click', function () { doRemoveAccount(a.name, btnDel); });
+    btnDel.addEventListener('click', function () { doRemoveAccount(a.id || a.name, a.name, btnDel); });
     acts.appendChild(btnDel);
 
     head.appendChild(acts);
@@ -3352,14 +3352,15 @@ ${SHARED_HELPERS}
       });
   }
 
-  function doRemoveAccount(name, btn) {
-    if (!confirm('Czy na pewno chcesz usunąć konto "' + name + '" z konfiguracji Agent LB?')) return;
+  function doRemoveAccount(targetId, displayName, btn) {
+    var nameToAsk = displayName || targetId;
+    if (!confirm('Czy na pewno chcesz usunąć konto "' + nameToAsk + '" z konfiguracji Agent LB?')) return;
     if (btn) btn.disabled = true;
-    apiCall('/agent-lb/api/accounts/remove', 'POST', { id: name, account: name })
+    apiCall('/agent-lb/api/accounts/remove', 'POST', { id: targetId, name: nameToAsk, account: nameToAsk })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Usunięto konto "' + name + '"');
+          note('ok', 'Usunięto konto "' + nameToAsk + '"');
           poll();
         } else {
           note('error', 'Błąd usuwania konta: ' + (res.error || 'nieznany błąd'));

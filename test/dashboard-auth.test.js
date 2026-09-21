@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { renderDashboardHtml, dashboardCsp } from '../src/dashboard.js';
 import { resolveClientAuth, safeKeyEqual, isLocalHostHeader, createProxyServer } from '../src/server.js';
 
@@ -427,5 +430,123 @@ describe('Dashboard login error text', () => {
     assert.match(keyboxErrorText({}, 'pl'), /Nieprawidłowy klucz/);
     assert.equal(keyboxErrorText('Wymagana autoryzacja', 'pl'), 'Wymagana autoryzacja');
     assert.equal(keyboxErrorText(null, 'pl'), '');
+  });
+});
+
+describe('Account deletion and re-login upsert targeting', () => {
+  it('removes specifically by id without deleting accounts with same name', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-lb-remove-test-'));
+    const tmpCfg = path.join(tmpDir, 'agent-lb.json');
+    const initialConfig = {
+      accounts: [
+        { id: 'acc-1', name: 'duplicate-name', type: 'apikey', apiKey: 'sk-ant-1', priority: 0 },
+        { id: 'acc-2', name: 'duplicate-name', type: 'apikey', apiKey: 'sk-ant-2', priority: 1 },
+      ],
+      proxy: { apiKey: 'admin-secret' },
+    };
+    await fs.writeFile(tmpCfg, JSON.stringify(initialConfig, null, 2));
+    process.env.AGENT_LB_CONFIG = tmpCfg;
+
+    const dummyAccountManager = {
+      accounts: [
+        { id: 'acc-1', name: 'duplicate-name', priority: 0 },
+        { id: 'acc-2', name: 'duplicate-name', priority: 1 },
+      ],
+      removeAccount(idx) {
+        this.accounts.splice(idx, 1);
+      },
+      getStatus() { return { accounts: [], sessions: {} }; },
+    };
+
+    const server = createProxyServer(dummyAccountManager, initialConfig);
+    await new Promise(res => server.listen(0, '127.0.0.1', res));
+    const port = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/agent-lb/api/accounts/remove`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': 'admin-secret' },
+        body: JSON.stringify({ id: 'acc-1', name: 'duplicate-name' }),
+      });
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.ok, true);
+
+      assert.equal(dummyAccountManager.accounts.length, 1);
+      assert.equal(dummyAccountManager.accounts[0].id, 'acc-2');
+
+      const disk = JSON.parse(await fs.readFile(tmpCfg, 'utf8'));
+      assert.equal(disk.accounts.length, 1);
+      assert.equal(disk.accounts[0].id, 'acc-2');
+    } finally {
+      delete process.env.AGENT_LB_CONFIG;
+      await new Promise(res => server.close(res));
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('re-login upsert replaces existing account by name even if accountUuid changes', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-lb-relogin-test-'));
+    const tmpCfg = path.join(tmpDir, 'agent-lb.json');
+    const initialConfig = {
+      accounts: [
+        {
+          id: 'acc-old',
+          name: 'target-account',
+          type: 'oauth',
+          accountUuid: 'uuid-1111',
+          accessToken: 'old-token',
+          priority: 0,
+        },
+      ],
+      proxy: { apiKey: 'admin-secret' },
+    };
+    await fs.writeFile(tmpCfg, JSON.stringify(initialConfig, null, 2));
+    process.env.AGENT_LB_CONFIG = tmpCfg;
+
+    const dummyAccountManager = {
+      accounts: [
+        {
+          id: 'acc-old',
+          name: 'target-account',
+          accountUuid: 'uuid-1111',
+          priority: 0,
+          lastError: 'blocked',
+          status: 'error',
+        },
+      ],
+      getStatus() { return { accounts: [], sessions: {} }; },
+    };
+
+    const server = createProxyServer(dummyAccountManager, initialConfig);
+    await new Promise(res => server.listen(0, '127.0.0.1', res));
+    const port = server.address().port;
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/agent-lb/api/accounts/add`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': 'admin-secret' },
+        body: JSON.stringify({
+          name: 'target-account',
+          type: 'oauth',
+          accountUuid: 'uuid-2222',
+          accessToken: 'new-token',
+          refreshToken: 'new-refresh',
+        }),
+      });
+      assert.equal(res.status, 200);
+      const data = await res.json();
+      assert.equal(data.ok, true);
+
+      const disk = JSON.parse(await fs.readFile(tmpCfg, 'utf8'));
+      assert.equal(disk.accounts.length, 1, 'must update in-place, not create duplicate');
+      assert.equal(disk.accounts[0].name, 'target-account');
+      assert.equal(disk.accounts[0].accountUuid, 'uuid-2222');
+      assert.equal(disk.accounts[0].accessToken, 'new-token');
+    } finally {
+      delete process.env.AGENT_LB_CONFIG;
+      await new Promise(res => server.close(res));
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });

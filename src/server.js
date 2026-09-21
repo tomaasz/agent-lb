@@ -1018,11 +1018,19 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         accountManager.removeAccount(index);
 
         await atomicConfigUpdate(disk => {
-          disk.accounts = (disk.accounts || []).filter(a => !( (id && a.id === id) || sameIdentity(a, mgr) || a.name === name ));
+          disk.accounts = (disk.accounts || []).filter(a => {
+            if (id && a.id) return a.id !== id;
+            if (mgr.accountUuid && a.accountUuid) return a.accountUuid !== mgr.accountUuid;
+            return a.name !== name;
+          });
         });
 
         if (Array.isArray(config.accounts)) {
-          config.accounts = config.accounts.filter(a => !( (id && a.id === id) || sameIdentity(a, mgr) || a.name === name ));
+          config.accounts = config.accounts.filter(a => {
+            if (id && a.id) return a.id !== id;
+            if (mgr.accountUuid && a.accountUuid) return a.accountUuid !== mgr.accountUuid;
+            return a.name !== name;
+          });
         }
 
         if (hooks.reload) await hooks.reload();
@@ -2174,9 +2182,9 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             accessToken,
             refreshToken,
             expiresAt,
-            accountUuid: profile?.accountUuid || null,
-            orgUuid: profile?.orgUuid || null,
-            orgName: profile?.orgName || null,
+            accountUuid: profile?.accountUuid || body?.accountUuid || null,
+            orgUuid: profile?.orgUuid || body?.orgUuid || null,
+            orgName: profile?.orgName || body?.orgName || null,
             organizationType: profile?.organizationType || null,
             rateLimitTier: profile?.rateLimitTier || null,
             seatTier: profile?.seatTier || null,
@@ -2187,7 +2195,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
           await atomicConfigUpdate(disk => {
             if (!Array.isArray(disk.accounts)) disk.accounts = [];
-            const idx = findUpsertTarget(disk.accounts, newAccount);
+            let idx = findUpsertTarget(disk.accounts, newAccount);
+            if (idx < 0 && name) {
+              idx = disk.accounts.findIndex(a => a.name === name);
+            }
             if (idx >= 0) {
               const prev = disk.accounts[idx];
               disk.accounts[idx] = { ...prev, ...newAccount, id: prev.id || newAccount.id, name: prev.name };
@@ -2198,6 +2209,14 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           });
 
           if (hooks.reload) await hooks.reload();
+          const reloaded = accountManager.accounts.find(a => a.name === name);
+          if (reloaded) {
+            reloaded.lastError = null;
+            reloaded.entitlementDeniedUntil = null;
+            reloaded.identityVerificationUntil = null;
+            reloaded.unavailable = null;
+            reloaded.status = 'active';
+          }
           console.log(`[AgentLB] Added/updated OAuth account "${name}" (web control)`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'oauth', email: profile?.email }));
@@ -2461,7 +2480,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
           await atomicConfigUpdate(disk => {
             if (!Array.isArray(disk.accounts)) disk.accounts = [];
-            const idx = findUpsertTarget(disk.accounts, newAccount);
+            let idx = findUpsertTarget(disk.accounts, newAccount);
+            if (idx < 0 && name) {
+              idx = disk.accounts.findIndex(a => a.name === name);
+            }
             if (idx >= 0) {
               const prev = disk.accounts[idx];
               disk.accounts[idx] = { ...prev, ...newAccount, id: prev.id || newAccount.id, name: prev.name };
@@ -2472,6 +2494,14 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           });
 
           if (hooks.reload) await hooks.reload();
+          const reloaded = accountManager.accounts.find(a => a.name === name);
+          if (reloaded) {
+            reloaded.lastError = null;
+            reloaded.entitlementDeniedUntil = null;
+            reloaded.identityVerificationUntil = null;
+            reloaded.unavailable = null;
+            reloaded.status = 'active';
+          }
           console.log(`[AgentLB] Successfully authenticated Codex OAuth account "${name}" (web control)`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true, account: name, provider: 'codex', email: codexCreds?.email }));
@@ -2534,7 +2564,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
         await atomicConfigUpdate(disk => {
           if (!Array.isArray(disk.accounts)) disk.accounts = [];
-          const idx = findUpsertTarget(disk.accounts, newAccount);
+          let idx = findUpsertTarget(disk.accounts, newAccount);
+          if (idx < 0 && name) {
+            idx = disk.accounts.findIndex(a => a.name === name);
+          }
           if (idx >= 0) {
             const prev = disk.accounts[idx];
             disk.accounts[idx] = { ...prev, ...newAccount, id: prev.id || newAccount.id, name: prev.name };
@@ -2545,6 +2578,14 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         });
 
         if (hooks.reload) await hooks.reload();
+        const reloadedAnthropic = accountManager.accounts.find(a => a.name === name);
+        if (reloadedAnthropic) {
+          reloadedAnthropic.lastError = null;
+          reloadedAnthropic.entitlementDeniedUntil = null;
+          reloadedAnthropic.identityVerificationUntil = null;
+          reloadedAnthropic.unavailable = null;
+          reloadedAnthropic.status = 'active';
+        }
         console.log(`[AgentLB] Successfully authenticated OAuth account "${name}" (web control)`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, account: name, email: profile?.email }));
