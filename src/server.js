@@ -3263,21 +3263,7 @@ export function createProxyRequestListener({
         drainTracker.activeRequests = Math.max(0, drainTracker.activeRequests - 1);
         fairShare.release(keyId);
         if (parsedBody && ctx.status >= 200 && ctx.status < 300) {
-          const messages = Array.isArray(parsedBody.messages) ? parsedBody.messages : [];
-          for (const msg of messages) {
-            if (Array.isArray(msg?.content)) {
-              for (const block of msg.content) {
-                if (block?.type === 'tool_use') {
-                  toolDedupe.record(sessionId, block.id, block.name, block.input);
-                }
-              }
-            }
-            if (Array.isArray(msg?.tool_calls)) {
-              for (const call of msg.tool_calls) {
-                toolDedupe.record(sessionId, call.id, call.function?.name || call.name, call.function?.arguments);
-              }
-            }
-          }
+          toolDedupe.recordRequest(parsedBody, sessionId);
         }
         res.off('close', onRequestClose);
         // The signal fires only for a departure (see above), so this is the

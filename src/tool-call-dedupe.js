@@ -139,7 +139,14 @@ export class ToolCallDedupeCache {
   }
 
   /**
-   * Inspect a request body for repeated side-effect tool calls.
+   * Inspect a request body for a replayed side-effect tool call.
+   *
+   * Only the LATEST assistant turn is examined. Every request of a
+   * conversation re-sends the whole history, so every earlier tool call is
+   * legitimately present again on every later turn; inspecting all of them
+   * flagged each turn of every session as a "replay". What a genuine replay
+   * repeats is the newest turn: the tool call the client has just executed,
+   * sent again after a request carrying it already succeeded.
    * @param {any} body - Parsed JSON request body
    * @param {string} [sessionId]
    * @param {number} [now]
@@ -147,39 +154,52 @@ export class ToolCallDedupeCache {
    */
   inspectRequest(body, sessionId = '', now = Date.now()) {
     const duplicates = [];
-    if (!body || typeof body !== 'object') return { hasDuplicate: false, duplicates };
-
-    // 1. Anthropic format: body.messages -> content blocks
-    const messages = Array.isArray(body.messages) ? body.messages : [];
-    for (const msg of messages) {
-      if (!Array.isArray(msg?.content)) continue;
-      for (const block of msg.content) {
-        if (block?.type === 'tool_use' && typeof block?.name === 'string' && typeof block?.id === 'string') {
-          if (this.isDuplicate(sessionId, block.id, block.name, block.input, now)) {
-            duplicates.push({ id: block.id, name: block.name });
-          }
-        }
+    for (const call of latestToolCalls(body)) {
+      if (this.isDuplicate(sessionId, call.id, call.name, call.args, now)) {
+        duplicates.push({ id: call.id, name: call.name });
       }
     }
+    return { hasDuplicate: duplicates.length > 0, duplicates };
+  }
 
-    // 2. OpenAI format: body.messages -> tool_calls
-    for (const msg of messages) {
-      if (!Array.isArray(msg?.tool_calls)) continue;
-      for (const call of msg.tool_calls) {
-        const fnName = call?.function?.name || call?.name;
-        const callId = call?.id;
-        if (fnName && callId) {
-          if (this.isDuplicate(sessionId, callId, fnName, call.function?.arguments, now)) {
-            duplicates.push({ id: callId, name: fnName });
-          }
-        }
-      }
-    }
-
-    return {
-      hasDuplicate: duplicates.length > 0,
-      duplicates,
-    };
+  /**
+   * Record the latest assistant turn's side-effect tool calls once a request
+   * carrying them has succeeded — the counterpart of inspectRequest.
+   * @param {any} body - Parsed JSON request body
+   * @param {string} [sessionId]
+   * @param {number} [now]
+   */
+  recordRequest(body, sessionId = '', now = Date.now()) {
+    for (const call of latestToolCalls(body)) this.record(sessionId, call.id, call.name, call.args, now);
   }
 }
 
+/**
+ * Tool calls of the last assistant message in an Anthropic (`tool_use`
+ * blocks) or OpenAI (`tool_calls`) request body, as { id, name, args }.
+ */
+export function latestToolCalls(body) {
+  const messages = Array.isArray(body?.messages) ? body.messages : [];
+  let last = null;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.role === 'assistant') { last = messages[i]; break; }
+  }
+  if (!last) return [];
+  const calls = [];
+  if (Array.isArray(last.content)) {
+    for (const block of last.content) {
+      if (block?.type === 'tool_use' && typeof block.name === 'string' && typeof block.id === 'string') {
+        calls.push({ id: block.id, name: block.name, args: block.input });
+      }
+    }
+  }
+  if (Array.isArray(last.tool_calls)) {
+    for (const call of last.tool_calls) {
+      const name = call?.function?.name || call?.name;
+      if (typeof name === 'string' && typeof call?.id === 'string') {
+        calls.push({ id: call.id, name, args: call.function?.arguments });
+      }
+    }
+  }
+  return calls;
+}
