@@ -30,6 +30,7 @@ BIN_DIR="${HOME}/bin"
 RUN_TEST=0
 SETUP_CODEX=0
 UNINSTALL=0
+NO_INSTALL=0
 KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${CLAUDE_LB_API_KEY:-${CODEX_LB_API_KEY:-${ANTHROPIC_API_KEY:-}}}}}"
 
 while [ $# -gt 0 ]; do
@@ -37,10 +38,11 @@ while [ $# -gt 0 ]; do
 		--test) RUN_TEST=1 ;;
 		--codex) SETUP_CODEX=1 ;;
 		--uninstall) UNINSTALL=1 ;;
+		--no-install|--skip-install) NO_INSTALL=1 ;;
 		--url) URL="${2%/}"; shift ;;
 		--key) KEY="$2"; shift ;;
 		-h|--help)
-			echo "Użycie: ./setup.sh [--url URL] [--key KEY] [--codex] [--test] [--uninstall]"
+			echo "Użycie: ./setup.sh [--url URL] [--key KEY] [--codex] [--test] [--no-install] [--uninstall]"
 			exit 0
 			;;
 		*) echo "Nieznany argument: $1" >&2; exit 2 ;;
@@ -56,6 +58,74 @@ backup_existing() {
 	local backup="${file}.bak-$(date +%s)"
 	if ! cp -p "$file" "$backup" 2>/dev/null || ! chmod 600 "$backup" 2>/dev/null; then
 		say "Ostrzeżenie: nie udało się utworzyć kopii $file; pozostawiam oryginał i kontynuuję."
+	fi
+}
+
+check_and_ensure_nodejs() {
+	if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+		say "[OK] Node.js $(node --version 2>/dev/null || true) i npm $(npm --version 2>/dev/null || true) są dostępne."
+		return 0
+	fi
+
+	say "[Wykryto brak] Node.js lub npm nie są zainstalowane w systemie."
+	if [ "$NO_INSTALL" -eq 1 ]; then
+		say "  -> Pominięto instalację Node.js (--no-install)."
+		return 0
+	fi
+
+	if command -v apt-get >/dev/null 2>&1; then
+		say "  -> Wykryto system oparty na Debian/Ubuntu/WSL. Próbuję zainstalować nodejs i npm..."
+		if [ "$(id -u)" -eq 0 ]; then
+			apt-get update -qq && apt-get install -y -qq nodejs npm || true
+		elif command -v sudo >/dev/null 2>&1; then
+			sudo apt-get update -qq && sudo apt-get install -y -qq nodejs npm || true
+		fi
+		if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+			say "[OK] Pomyślnie zainstalowano Node.js i npm."
+			return 0
+		fi
+	fi
+
+	say "  [Instrukcja] Aby zainstalować Node.js (zalecana wersja 20+ lub 22+):"
+	say "      curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
+	say "      sudo apt-get install -y nodejs"
+}
+
+ensure_cli_package() {
+	local cmd_name="$1"
+	local pkg_name="$2"
+	local title="$3"
+
+	if command -v "$cmd_name" >/dev/null 2>&1; then
+		local ver
+		ver="$("$cmd_name" --version 2>/dev/null || echo 'OK')"
+		say "[OK] $title ($cmd_name) jest zainstalowany: $ver"
+		return 0
+	fi
+
+	say "[Wykryto brak] $title ($cmd_name) nie jest zainstalowany."
+	if [ "$NO_INSTALL" -eq 1 ]; then
+		say "  -> Pominięto automatyczną instalację (--no-install). Zainstaluj ręcznie: npm install -g $pkg_name"
+		return 0
+	fi
+
+	if ! command -v npm >/dev/null 2>&1; then
+		say "  [Uwaga] Brak npm w PATH. Nie można automatycznie zainstalować $pkg_name."
+		return 0
+	fi
+
+	say "  -> Instaluję $title ($pkg_name)..."
+	if npm install -g "$pkg_name" 2>/dev/null; then
+		say "[OK] Pomyślnie zainstalowano $title ($cmd_name)."
+	elif command -v sudo >/dev/null 2>&1; then
+		say "  -> Wymagane uprawnienia administratora do zapisu w globalnym katalogu npm (sudo)..."
+		if sudo npm install -g "$pkg_name" 2>/dev/null; then
+			say "[OK] Pomyślnie zainstalowano $title ($cmd_name) przez sudo."
+		else
+			say "  [Uwaga] Instalacja przez sudo nie powiodła się. Możesz zainstalować ręcznie: npm install -g $pkg_name"
+		fi
+	else
+		say "  [Uwaga] Brak uprawnień do zapisu w globalnym katalogu npm. Zainstaluj ręcznie: npm install -g $pkg_name"
 	fi
 }
 
@@ -159,6 +229,15 @@ case "$code" in
 	000) die "brak połączenia z $URL. Sprawdź Tailscale/sieć." ;;
 	*) say "Otrzymano kod $code — kontynuuję konfigurację." ;;
 esac
+
+# Weryfikacja środowiska i wdrożenie CLI
+say ""
+say "--- Weryfikacja środowiska i instalacja narzędzi CLI ---"
+check_and_ensure_nodejs
+ensure_cli_package "claude" "@anthropic-ai/claude-code" "Claude Code CLI"
+ensure_cli_package "codex" "@openai/codex" "OpenAI Codex CLI"
+say "--------------------------------------------------------"
+say ""
 
 # Zabezpieczenie przed Auth conflict
 CREDS="$HOME/.claude/.credentials.json"
@@ -403,4 +482,18 @@ if [ "$RUN_TEST" -eq 1 ] && command -v claude >/dev/null 2>&1; then
 	fi
 fi
 
-say "Gotowe!"
+say ""
+say "=== Wdrożenie i konfiguracja zakończona sukcesem! ==="
+if command -v claude >/dev/null 2>&1; then
+	say "✔ Claude Code CLI: $(claude --version 2>/dev/null || echo 'gotowy') -> uruchom 'claude'"
+fi
+if command -v codex >/dev/null 2>&1; then
+	say "✔ OpenAI Codex CLI: $(codex --version 2>/dev/null || echo 'gotowy') -> uruchom 'codex --profile codexlb' lub 'codex'"
+fi
+if [ -d "$HOME/.config/Code" ] || [ -d "$HOME/.vscode-server" ] || command -v code >/dev/null 2>&1; then
+	say "✔ VS Code: oficjalne rozszerzenie Claude Code skonfigurowane pod proxy"
+fi
+say "✔ Agenty i narzędzia: zmienne zapisano w $ENV_FILE (załadowano do powłoki)"
+say "✔ Serwer proxy: $URL"
+say ""
+say "Zrestartuj terminal lub otwórz nową kartę, aby wczytać zmienne środowiskowe."

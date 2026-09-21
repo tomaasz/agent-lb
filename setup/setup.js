@@ -57,6 +57,7 @@ let runTest = false;
 let skipVscode = false;
 let skipEnv = false;
 let setupCodex = true;
+let skipInstall = false;
 let uninstall = false;
 
 // Parsowanie argumentów
@@ -73,6 +74,8 @@ for (let i = 0; i < args.length; i++) {
     setupCodex = true;
   } else if (arg === "--skip-codex") {
     setupCodex = false;
+  } else if (arg === "--skip-install" || arg === "--no-install") {
+    skipInstall = true;
   } else if (arg === "--skip-vscode") {
     skipVscode = true;
   } else if (arg === "--skip-env") {
@@ -525,6 +528,72 @@ function hasOAuthSession(credentialsPath) {
   );
 }
 
+function hasCommand(cmd) {
+  try {
+    execSync(isWin ? `where.exe ${cmd}` : `command -v ${cmd}`, {
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ensureCliPackage(cmdName, pkgName, title) {
+  if (hasCommand(cmdName)) {
+    let ver = "";
+    try {
+      ver = execSync(`${cmdName} --version`, {
+        encoding: "utf-8",
+        timeout: 5000,
+      }).trim();
+    } catch {}
+    console.log(
+      `[OK] ${title} (${cmdName}) jest zainstalowany: ${ver || "OK"}`,
+    );
+    return;
+  }
+
+  console.log(`[Wykryto brak] ${title} (${cmdName}) nie jest zainstalowany.`);
+  if (skipInstall) {
+    console.log(
+      `  -> Pominięto automatyczną instalację (--skip-install). Zainstaluj: npm install -g ${pkgName}`,
+    );
+    return;
+  }
+  if (!hasCommand("npm")) {
+    console.log(
+      `  [Uwaga] Brak npm w PATH. Nie można automatycznie zainstalować ${pkgName}.`,
+    );
+    return;
+  }
+
+  console.log(`  -> Instaluję ${title} (${pkgName})...`);
+  try {
+    execSync(`npm install -g ${pkgName}`, { stdio: "inherit", timeout: 90000 });
+    console.log(`[OK] Pomyślnie zainstalowano ${title} (${cmdName}).`);
+  } catch (err) {
+    if (!isWin && hasCommand("sudo")) {
+      try {
+        console.log(
+          `  -> Wymagane uprawnienia administratora do zapisu w globalnym katalogu npm (sudo)...`,
+        );
+        execSync(`sudo npm install -g ${pkgName}`, {
+          stdio: "inherit",
+          timeout: 90000,
+        });
+        console.log(
+          `[OK] Pomyślnie zainstalowano ${title} (${cmdName}) przez sudo.`,
+        );
+        return;
+      } catch {}
+    }
+    console.warn(
+      `  [Uwaga] Nie udało się zainstalować ${pkgName} automatycznie: ${err.message}. Zainstaluj ręcznie: npm install -g ${pkgName}`,
+    );
+  }
+}
+
 async function main() {
   console.log(
     "=== Konfigurator klienta Agent-LB dla Claude Code, Codex i IDE ===\n",
@@ -606,6 +675,18 @@ async function main() {
     console.log("BŁĄD!");
     console.error(`\n${err.message}`);
     process.exit(1);
+  }
+
+  // Weryfikacja środowiska i instalacja narzędzi CLI
+  if (
+    !skipInstall &&
+    process.env.NODE_ENV !== "test" &&
+    !process.env.AGENT_LB_TEST
+  ) {
+    console.log("--- Weryfikacja środowiska i instalacja narzędzi CLI ---");
+    ensureCliPackage("claude", "@anthropic-ai/claude-code", "Claude Code CLI");
+    ensureCliPackage("codex", "@openai/codex", "OpenAI Codex CLI");
+    console.log("--------------------------------------------------------\n");
   }
 
   // 3. Zabezpieczenie sesji OAuth

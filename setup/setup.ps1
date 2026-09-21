@@ -13,6 +13,7 @@
 param(
 	[switch]$Test,
 	[switch]$Uninstall,
+	[switch]$NoInstall,
 	[string]$Url = '',
 	[string]$Key = ''
 )
@@ -34,6 +35,7 @@ if ($PSScriptRoot) {
 	if ($nodeCmd -and (Test-Path $jsScript)) {
 		$nodeArgs = @($jsScript, "--url", $Url)
 		if ($Uninstall) { $nodeArgs += '--uninstall' }
+		if ($NoInstall) { $nodeArgs += '--no-install' }
 		if ($Key) { $nodeArgs += @("--key", $Key) }
 		if ($Test) { $nodeArgs += "--test" }
 		& node $nodeArgs
@@ -42,6 +44,82 @@ if ($PSScriptRoot) {
 }
 
 function Say($msg) { Write-Host $msg }
+
+function Check-And-Ensure-Node {
+	if ((Get-Command node -ErrorAction SilentlyContinue) -and (Get-Command npm -ErrorAction SilentlyContinue)) {
+		$nv = try { & node --version 2>$null } catch { "" }
+		Say "[OK] Node.js $nv i npm są dostępne w systemie."
+		return
+	}
+
+	Say "[Wykryto brak] Node.js lub npm nie są zainstalowane w systemie Windows."
+	if ($NoInstall) {
+		Say "  -> Pominięto instalację Node.js (-NoInstall)."
+		return
+	}
+
+	if (Get-Command winget -ErrorAction SilentlyContinue) {
+		Say "  -> Wykryto winget. Próbuję zainstalować Node.js LTS automatycznie..."
+		try {
+			& winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --silent
+			Say "[OK] Pomyślnie zainstalowano Node.js. Zrestartuj terminal, aby odświeżyć zmienne PATH."
+		} catch {
+			Say "  [Uwaga] Nie udało się zainstalować przez winget: $($_.Exception.Message)"
+		}
+	} else {
+		Say "  [Instrukcja] Pobierz i zainstaluj Node.js ze strony: https://nodejs.org/"
+	}
+}
+
+function Ensure-CliPackage([string]$cmdName, [string]$pkgName, [string]$title) {
+	if (Get-Command $cmdName -ErrorAction SilentlyContinue) {
+		$ver = try { & $cmdName --version 2>$null } catch { "OK" }
+		Say "[OK] $title ($cmdName) jest zainstalowany: $ver"
+		return
+	}
+
+	Say "[Wykryto brak] $title ($cmdName) nie jest zainstalowany."
+	if ($NoInstall) {
+		Say "  -> Pominięto instalację ($title) (-NoInstall). Zainstaluj ręcznie: npm install -g $pkgName"
+		return
+	}
+
+	if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+		Say "  [Uwaga] Brak npm w PATH. Nie można automatycznie zainstalować $pkgName."
+		return
+	}
+
+	Say "  -> Instaluję $title ($pkgName)..."
+	try {
+		& npm install -g $pkgName
+		if (Get-Command $cmdName -ErrorAction SilentlyContinue) {
+			Say "[OK] Pomyślnie zainstalowano $title ($cmdName)."
+		} else {
+			Say "[OK] Instalacja zakończona (jeśli polecenie nie jest widoczne, zrestartuj okno PowerShell)."
+		}
+	} catch {
+		Say "  [Uwaga] Błąd instalacji $pkgName`: $($_.Exception.Message)"
+	}
+}
+
+function Check-WslIntegration([string]$serverUrl, [string]$clientKey) {
+	$wslCmd = Get-Command wsl -ErrorAction SilentlyContinue
+	if (-not $wslCmd) { return }
+	try {
+		$wslOutput = & wsl.exe -l -q 2>$null
+		$distros = @($wslOutput | Where-Object { $_ -and $_.Trim() } | ForEach-Object { $_.Trim() })
+		if ($distros.Count -gt 0) {
+			$distroStr = $distros -join ', '
+			Say ""
+			Say "----------------------------------------------------------------------"
+			Say "💡 [WSL] Wykryto podsystem WSL w systemie Windows: $distroStr"
+			Say "   Aby wdrożyć Claude i Codex również wewnątrz WSL (np. Debian/Ubuntu):"
+			Say "   Otwórz terminal WSL i uruchom:"
+			Say "   curl -fsSL $serverUrl/setup.sh | bash -s -- --key $clientKey"
+			Say "----------------------------------------------------------------------"
+		}
+	} catch {}
+}
 
 function Backup-ConfigFile([string]$Path) {
 	if (-not (Test-Path $Path)) { return }
@@ -176,6 +254,16 @@ try {
 		}
 	}
 }
+
+# -------------------------------------------------- weryfikacja i instalacja CLI
+Say ""
+Say "--- Weryfikacja środowiska i instalacja narzędzi CLI ---"
+Check-And-Ensure-Node
+Ensure-CliPackage "claude" "@anthropic-ai/claude-code" "Claude Code CLI"
+Ensure-CliPackage "codex" "@openai/codex" "OpenAI Codex CLI"
+Check-WslIntegration $Url $Key
+Say "--------------------------------------------------------"
+Say ""
 
 # -------------------------------------------------- zabezpieczenie OAuth
 $homeDir = if ($HOME) { $HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } else { '.' }
@@ -348,5 +436,19 @@ if ($Test) {
 }
 
 Say ""
-Say "=== Gotowe! ==="
+Say "=== Wdrożenie i konfiguracja zakończona sukcesem! ==="
+if (Get-Command claude -ErrorAction SilentlyContinue) {
+	$cv = try { & claude --version 2>$null } catch { "gotowy" }
+	Say "✔ Claude Code CLI: $cv -> uruchom 'claude'"
+}
+if (Get-Command codex -ErrorAction SilentlyContinue) {
+	$cxv = try { & codex --version 2>$null } catch { "gotowy" }
+	Say "✔ OpenAI Codex CLI: $cxv -> uruchom 'codex --profile codexlb' lub 'codex'"
+}
+if (Test-Path $vsCodeDir) {
+	Say "✔ VS Code: oficjalne rozszerzenie Claude Code skonfigurowane pod proxy"
+}
+Say "✔ Zmienne środowiskowe: zapisane w rejestrze użytkownika Windows"
+Say "✔ Serwer proxy: $Url"
+Say ""
 Say "Zrestartuj otwarte okna VS Code lub terminale, aby wczytały nowe zmienne środowiskowe."
