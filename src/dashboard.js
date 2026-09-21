@@ -1129,26 +1129,32 @@ const PAGE = `<!doctype html>
               <button class="btn btn-xs" id="btnQuickTabPS" type="button" style="padding:2px 9px; font-size:11px;" title="Skrypt instalacyjny Windows (PowerShell)">Windows</button>
             </div>
           </div>
-          <div style="display:flex; align-items:center; gap:5px; margin-bottom:8px; flex-wrap:wrap;">
-            <span style="font-size:11px; color:var(--dim); font-weight:600;">Narzędzie:</span>
-            <button class="btn btn-xs active" id="btnQuickToolClaude" type="button" style="padding:2px 8px; font-size:11px;" title="Claude Code CLI & VS Code (claude-setup)">Claude</button>
-            <button class="btn btn-xs" id="btnQuickToolCodex" type="button" style="padding:2px 8px; font-size:11px;" title="OpenAI Codex CLI & VS Code (codex-setup)">Codex</button>
-            <button class="btn btn-xs" id="btnQuickToolHermes" type="button" style="padding:2px 8px; font-size:11px;" title="Hermes Agent (dodaje providera agentlb ze wszystkimi modelami)">Hermes</button>
-            <button class="btn btn-xs" id="btnQuickToolOpenCode" type="button" style="padding:2px 8px; font-size:11px;" title="OpenCode (dodaje providera agentlb do opencode.json)">OpenCode</button>
-            <button class="btn btn-xs" id="btnQuickToolClaw" type="button" style="padding:2px 8px; font-size:11px;" title="Claw / OpenClaw (dodaje providera agentlb do openclaw.json)">Claw</button>
-            <button class="btn btn-xs" id="btnQuickToolOrca" type="button" style="padding:2px 8px; font-size:11px;" title="Orca (ADE stablyai/orca — dodaje providera i środowisko)">Orca</button>
-            <button class="btn btn-xs" id="btnQuickToolAgent" type="button" style="padding:2px 8px; font-size:11px;" title="Zmienne środowiskowe OpenAI / Anthropic">ENV</button>
-          </div>
           <div class="quick-cmd-wrap" style="display:flex; align-items:center; gap:8px; background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px;">
             <code id="quickCmdText" class="mono" style="flex:1; font-size:11.5px; color:#58a6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" title="Kliknij, aby skopiować pełną komendę"></code>
             <button class="btn btn-xs btn-accent" id="btnQuickCopyCmd" type="button" style="flex-shrink:0; padding:2px 10px; font-size:11px;" title="Kopiuj polecenie do schowka" data-i18n="copyCmd">📋 Kopiuj</button>
           </div>
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:6px; font-size:11px; color:var(--dim);">
-            <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; color:var(--text);" title="Odznacz, jeśli chcesz uruchomić czystą komendę — instalator sam zapyta o wklejenie klucza">
-              <input type="checkbox" id="chkIncludeKeyInCmd" checked style="margin:0; cursor:pointer;"> <span data-i18n="includeKey">Dołącz klucz stacji</span>
-            </label>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:6px; font-size:11px; color:var(--dim); flex-wrap:wrap; gap:6px;">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; color:var(--text);" title="Odznacz, jeśli chcesz uruchomić czystą komendę — instalator sam zapyta o wklejenie klucza">
+                <input type="checkbox" id="chkIncludeKeyInCmd" checked style="margin:0; cursor:pointer;"> <span data-i18n="includeKey">Dołącz klucz stacji</span>
+              </label>
+              <span style="color:var(--dim); font-size:11px;">⚡ <b>All-in-One:</b> Claude Code + Codex + OpenCode / Hermes / Aider</span>
+            </div>
             <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-size:11px;" data-i18n="githubGuide">instrukcja GitHub ↗</a>
           </div>
+          <details style="margin-top:6px; font-size:11px; color:var(--dim);">
+            <summary style="cursor:pointer; color:var(--dim); user-select:none;">Pojedyncze narzędzie lub eksport ENV (opcjonalnie)</summary>
+            <div style="display:flex; align-items:center; gap:5px; margin-top:6px; flex-wrap:wrap;">
+              <button class="btn btn-xs active" id="btnQuickToolAll" type="button" style="padding:2px 8px; font-size:11px;" title="Wszystko naraz: Claude, Codex, OpenCode, Hermes (setup.sh / setup.ps1)">⚡ Wszystko (All-in-One)</button>
+              <button class="btn btn-xs" id="btnQuickToolClaude" type="button" style="padding:2px 8px; font-size:11px;" title="Claude Code CLI & VS Code (claude-setup)">Claude</button>
+              <button class="btn btn-xs" id="btnQuickToolCodex" type="button" style="padding:2px 8px; font-size:11px;" title="OpenAI Codex CLI & VS Code (codex-setup)">Codex</button>
+              <button class="btn btn-xs" id="btnQuickToolHermes" type="button" style="padding:2px 8px; font-size:11px;" title="Hermes Agent">Hermes</button>
+              <button class="btn btn-xs" id="btnQuickToolOpenCode" type="button" style="padding:2px 8px; font-size:11px;" title="OpenCode">OpenCode</button>
+              <button class="btn btn-xs" id="btnQuickToolClaw" type="button" style="padding:2px 8px; font-size:11px;" title="Claw / OpenClaw">Claw</button>
+              <button class="btn btn-xs" id="btnQuickToolOrca" type="button" style="padding:2px 8px; font-size:11px;" title="Orca ADE">Orca</button>
+              <button class="btn btn-xs" id="btnQuickToolAgent" type="button" style="padding:2px 8px; font-size:11px;" title="Zmienne środowiskowe OpenAI / Anthropic">ENV</button>
+            </div>
+          </details>
         </div>
 
         <div id="clientKeysTable" class="client-keys-list"></div>
@@ -1684,165 +1690,117 @@ const PAGE = `<!doctype html>
         <div class="tabs-bar" style="margin-bottom:12px;">
           <button class="tab-btn active" id="tabSetupBash" type="button">🐧 Linux / macOS / WSL</button>
           <button class="tab-btn" id="tabSetupPowershell" type="button">🪟 Windows (PowerShell)</button>
-          <button class="tab-btn" id="tabSetupAgents" type="button">🤖 Agenty AI (Hermes / OpenCode / Claw / Orca)</button>
-          <button class="tab-btn" id="tabSetupNode" type="button">⚡ Node.js</button>
-          <button class="tab-btn" id="tabSetupGit" type="button">📦 Git Clone</button>
-          <button class="tab-btn" id="tabSetupManual" type="button">⚙️ Ręcznie</button>
         </div>
 
+        <!-- TAB 1: LINUX / MACOS / WSL -->
         <div id="contentSetupBash">
-          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">1. Claude Code CLI & VS Code:</div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-            <code class="mono" id="cmdSetupBash" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
-          </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupBash" style="margin-bottom:14px;">📋 Kopiuj polecenie Claude</button>
-
-          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">2. OpenAI Codex CLI & VS Code:</div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-            <code class="mono" id="cmdSetupCodexBash" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
-          </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupCodexBash" style="margin-bottom:14px;">📋 Kopiuj polecenie Codex</button>
-
-          <div style="background:rgba(88,166,255,0.06); border:1px solid rgba(88,166,255,0.25); border-radius:7px; padding:10px 12px; margin-bottom:6px;">
-            <div style="font-size:13px; font-weight:600; color:#58a6ff; margin-bottom:4px;">⚡ 3. OpenCode, Hermes Agent, Aider & Narzędzia OpenAI / Anthropic Compatible:</div>
-            <div style="font-size:12px; color:var(--dim); line-height:1.4; margin-bottom:8px;">
-              Skrypty instalacyjne powyżej zapisują konfigurację na stałe do <code class="mono" style="color:var(--text);">~/.config/agent-lb.env</code>. Możesz też wyeksportować zmienne bezpośrednio w bieżącej konsoli:
+          <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+              <span style="font-size:13px; font-weight:700; color:#58a6ff;">🚀 Jedno polecenie konfiguruje całe środowisko (All-in-One):</span>
+              <button class="btn btn-sm btn-accent" id="btnCopySetupBashMain">📋 Kopiuj polecenie</button>
             </div>
-            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-              <pre class="mono" id="cmdSetupAgentBash" style="margin:0; font-size:12px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+              <code class="mono" id="cmdSetupBashMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
             </div>
-            <button class="btn btn-sm btn-accent" id="btnCopySetupAgentBash">📋 Kopiuj zmienne OpenCode / Hermes</button>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
+              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ OpenCode &amp; Hermes</span> (~/.config/agent-lb.env)</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ Aider, Claw, Orca</span> (.bashrc / .zshrc)</div>
+            </div>
           </div>
+
+          <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
+            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;">
+              ⚙️ Zaawansowane: rozdzielne polecenia, zmienne ENV oraz konfiguracja ręczna
+            </summary>
+            <div style="margin-top:10px; display:flex; flex-direction:column; gap:12px;">
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">1. Tylko Claude Code CLI &amp; VS Code:</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <code class="mono" id="cmdSetupBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupBash">📋 Kopiuj polecenie Claude</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">2. Tylko OpenAI Codex CLI &amp; VS Code:</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <code class="mono" id="cmdSetupCodexBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexBash">📋 Kopiuj polecenie Codex</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">3. Zmienne powłoki (export ENV dla OpenCode / Hermes):</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <pre class="mono" id="cmdSetupAgentBash" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentBash">📋 Kopiuj zmienne powłoki</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">4. Ręczna konfiguracja JSON / env:</div>
+                <div class="row" style="gap:8px; margin-bottom:6px;">
+                  <button class="btn btn-xs" id="btnCopyShellEnv">📋 Kopiuj export ENV</button>
+                  <button class="btn btn-xs" id="btnCopyVSCode">📋 Kopiuj VS Code JSON</button>
+                </div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px;">
+                  <pre class="mono" id="boxManualConfig" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto;"></pre>
+                </div>
+              </div>
+            </div>
+          </details>
         </div>
 
+        <!-- TAB 2: WINDOWS (POWERSHELL) -->
         <div id="contentSetupPowershell" style="display:none;">
-          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">1. Claude Code na Windows (PowerShell):</div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-            <code class="mono" id="cmdSetupPowershell" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
-          </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupPowershell" style="margin-bottom:14px;">📋 Kopiuj polecenie Claude (PS)</button>
-
-          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">2. OpenAI Codex na Windows (PowerShell):</div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-            <code class="mono" id="cmdSetupCodexPowershell" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
-          </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupCodexPowershell" style="margin-bottom:14px;">📋 Kopiuj polecenie Codex (PS)</button>
-
-          <div style="background:rgba(88,166,255,0.06); border:1px solid rgba(88,166,255,0.25); border-radius:7px; padding:10px 12px; margin-bottom:6px;">
-            <div style="font-size:13px; font-weight:600; color:#58a6ff; margin-bottom:4px;">⚡ 3. OpenCode, Hermes Agent & Narzędzia na Windows:</div>
-            <div style="font-size:12px; color:var(--dim); line-height:1.4; margin-bottom:8px;">
-              Ustawienie zmiennych środowiskowych użytkownika w PowerShell dla narzędzi OpenAI/Anthropic:
+          <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+              <span style="font-size:13px; font-weight:700; color:#58a6ff;">🚀 Jedno polecenie konfiguruje całe środowisko Windows (All-in-One):</span>
+              <button class="btn btn-sm btn-accent" id="btnCopySetupPowershellMain">📋 Kopiuj polecenie</button>
             </div>
-            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-              <pre class="mono" id="cmdSetupAgentPowershell" style="margin:0; font-size:12px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+              <code class="mono" id="cmdSetupPowershellMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
             </div>
-            <button class="btn btn-sm btn-accent" id="btnCopySetupAgentPowershell">📋 Kopiuj polecenie PowerShell dla OpenCode / Hermes</button>
-          </div>
-        </div>
-
-        <div id="contentSetupAgents" style="display:none;">
-          <div style="font-size:12.5px; color:var(--dim); margin-bottom:12px; line-height:1.4;">
-            Poniższe polecenia konfigurują providera <b>AgentLB</b> z dostępem do wszystkich modeli Claude oraz Codex naraz w Twoich narzędziach:
-          </div>
-
-          <!-- Hermes Agent -->
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:10px 12px; margin-bottom:10px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-              <span style="font-size:13px; font-weight:600; color:var(--heading);">1. ☤ Hermes Agent (~/.hermes/config.yaml):</span>
-              <button class="btn btn-xs btn-accent" id="btnCopySetupHermesCmd">📋 Kopiuj polecenie Hermes</button>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
+              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ Zmienne Windows User</span> (OpenCode, Hermes, Aider)</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ Trwałe w rejestrze</span> (nie znika po restarcie)</div>
             </div>
-            <div style="background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px; margin-bottom:6px;">
-              <code class="mono" id="cmdSetupHermes" style="display:block; word-break:break-all; font-size:12px; color:#58a6ff;"></code>
-            </div>
-            <div style="font-size:11px; color:var(--dim);">Dodaje providera <code>agentlb</code> do <code>~/.hermes/config.yaml</code> ze wszystkimi modelami. Uruchomienie: <code>hermes --provider agentlb --model codex</code> lub <code>claude-sonnet-5</code></div>
           </div>
 
-          <!-- OpenCode -->
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:10px 12px; margin-bottom:10px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-              <span style="font-size:13px; font-weight:600; color:var(--heading);">2. 💻 OpenCode (~/.config/opencode/opencode.json):</span>
-              <button class="btn btn-xs btn-accent" id="btnCopySetupOpenCodeCmd">📋 Kopiuj polecenie OpenCode</button>
-            </div>
-            <div style="background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px; margin-bottom:6px;">
-              <code class="mono" id="cmdSetupOpenCode" style="display:block; word-break:break-all; font-size:12px; color:#58a6ff;"></code>
-            </div>
-            <div style="font-size:11px; color:var(--dim);">Rejestruje providera <code>agentlb</code> w <code>opencode.json</code>. Uruchomienie: <code>opencode models</code></div>
-          </div>
+          <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
+            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;">
+              ⚙️ Zaawansowane: rozdzielne polecenia Windows i zmienne sesyjne
+            </summary>
+            <div style="margin-top:10px; display:flex; flex-direction:column; gap:12px;">
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">1. Tylko Claude Code na Windows (PowerShell):</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <code class="mono" id="cmdSetupPowershell" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupPowershell">📋 Kopiuj polecenie Claude (PS)</button>
+              </div>
 
-          <!-- Claw / OpenClaw -->
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:10px 12px; margin-bottom:10px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-              <span style="font-size:13px; font-weight:600; color:var(--heading);">3. 🦅 Claw / OpenClaw (~/.openclaw/openclaw.json):</span>
-              <button class="btn btn-xs btn-accent" id="btnCopySetupClawCmd">📋 Kopiuj polecenie Claw</button>
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">2. Tylko OpenAI Codex na Windows (PowerShell):</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <code class="mono" id="cmdSetupCodexPowershell" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexPowershell">📋 Kopiuj polecenie Codex (PS)</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">3. Zmienne sesyjne PowerShell:</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <pre class="mono" id="cmdSetupAgentPowershell" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentPowershell">📋 Kopiuj polecenie PowerShell</button>
+              </div>
             </div>
-            <div style="background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px; margin-bottom:6px;">
-              <code class="mono" id="cmdSetupClaw" style="display:block; word-break:break-all; font-size:12px; color:#58a6ff;"></code>
-            </div>
-            <div style="font-size:11px; color:var(--dim);">Rejestruje providera <code>agentlb</code> w <code>openclaw.json</code>. Uruchomienie: <code>openclaw</code></div>
-          </div>
-
-          <!-- Orca -->
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:10px 12px; margin-bottom:10px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-              <span style="font-size:13px; font-weight:600; color:var(--heading);">4. 🐋 Orca ADE (stablyai/orca):</span>
-              <button class="btn btn-xs btn-accent" id="btnCopySetupOrcaCmd">📋 Kopiuj polecenie Orca</button>
-            </div>
-            <div style="background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px; margin-bottom:6px;">
-              <code class="mono" id="cmdSetupOrca" style="display:block; word-break:break-all; font-size:12px; color:#58a6ff;"></code>
-            </div>
-            <div style="font-size:11px; color:var(--dim);">Konfiguruje providera AgentLB i środowisko dla agentów (Claude/Codex/OpenCode) w ADE Orca. Uruchomienie: <code>orca</code></div>
-          </div>
-
-          <!-- Aider -->
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:7px; padding:10px 12px; margin-bottom:6px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-              <span style="font-size:13px; font-weight:600; color:var(--heading);">5. 🛠️ Aider (~/.aider.conf.yml):</span>
-              <button class="btn btn-xs btn-accent" id="btnCopySetupAiderCmd">📋 Kopiuj polecenie Aider</button>
-            </div>
-            <div style="background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px; margin-bottom:6px;">
-              <code class="mono" id="cmdSetupAider" style="display:block; word-break:break-all; font-size:12px; color:#58a6ff;"></code>
-            </div>
-            <div style="font-size:11px; color:var(--dim);">Zapisuje konfigurację w <code>~/.aider.conf.yml</code>. Uruchomienie: <code>aider</code></div>
-          </div>
-        </div>
-
-        <div id="contentSetupNode" style="display:none;">
-          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">1. Claude Code CLI (Node.js):</div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-            <code class="mono" id="cmdSetupNode" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
-          </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupNode" style="margin-bottom:14px;">📋 Kopiuj komendę Claude (Node.js)</button>
-
-          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">2. OpenAI Codex CLI & Agenty (Node.js):</div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-            <code class="mono" id="cmdSetupCodexNode" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
-          </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupCodexNode">📋 Kopiuj komendę Codex (Node.js)</button>
-        </div>
-
-        <div id="contentSetupGit" style="display:none;">
-          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">1. Claude Code & Agenty przez Git:</div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-            <code class="mono" id="cmdSetupGit" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
-          </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupGit" style="margin-bottom:14px;">📋 Kopiuj komendę Git (Claude)</button>
-
-          <div style="font-size:13px; font-weight:600; color:var(--heading); margin-bottom:5px;">2. OpenAI Codex przez Git:</div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-            <code class="mono" id="cmdSetupCodexGit" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3;"></code>
-          </div>
-          <button class="btn btn-sm btn-accent" id="btnCopySetupCodexGit">📋 Kopiuj komendę Git (Codex)</button>
-        </div>
-
-        <div id="contentSetupManual" style="display:none;">
-          <div style="font-size:13px; color:var(--dim); margin-bottom:8px;">Ręczna konfiguracja zmiennych środowiskowych i rozszerzenia VS Code:</div>
-          <div class="row" style="gap:8px; margin-bottom:10px;">
-            <button class="btn btn-sm" id="btnCopyShellEnv">📋 Kopiuj export ENV</button>
-            <button class="btn btn-sm" id="btnCopyVSCode">📋 Kopiuj VS Code JSON</button>
-          </div>
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px;">
-            <pre class="mono" id="boxManualConfig" style="margin:0; font-size:12px; color:#e6edf3; overflow-x:auto;"></pre>
-          </div>
+          </details>
         </div>
       </div>
 
@@ -4327,6 +4285,14 @@ ${SHARED_HELPERS}
       '# hermes                          -> Hermes Agent z modelem na proxy'
     ].join('\\n');
 
+    var cmdBashMain = 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + realKey;
+    var cmdPsMain = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + realKey + '"';
+
+    var elBashMain = document.getElementById('cmdSetupBashMain');
+    if (elBashMain) elBashMain.textContent = cmdBashMain;
+    var elPsMain = document.getElementById('cmdSetupPowershellMain');
+    if (elPsMain) elPsMain.textContent = cmdPsMain;
+
     var elBash = document.getElementById('cmdSetupBash');
     if (elBash) elBash.textContent = cmdBash;
     var elCodexBash = document.getElementById('cmdSetupCodexBash');
@@ -4376,7 +4342,7 @@ ${SHARED_HELPERS}
   }
 
   function selectSetupTab(tab) {
-    var tabs = ['Bash', 'Powershell', 'Agents', 'Node', 'Git', 'Manual'];
+    var tabs = ['Bash', 'Powershell'];
     tabs.forEach(function (t) {
       var btn = document.getElementById('tabSetup' + t);
       var content = document.getElementById('contentSetup' + t);
@@ -4467,7 +4433,7 @@ ${SHARED_HELPERS}
   }
 
   var currentQuickTab = 'bash';
-  var currentQuickTool = 'claude';
+  var currentQuickTool = 'all';
   var currentQuickKey = '';
 
   function updateQuickCmd(keys) {
@@ -4490,7 +4456,7 @@ ${SHARED_HELPERS}
           optAdmin.value = '__primary__';
           sel.appendChild(optAdmin);
         }
-        if (prevVal && (cachedClientKeys[prevVal] || prevVal === '__primary__')) {
+        if (prevVal && Array.from(sel.options).some(function (o) { return o.value === prevVal; })) {
           sel.value = prevVal;
         }
       } else if (primaryAdminKey) {
@@ -4507,7 +4473,7 @@ ${SHARED_HELPERS}
     var selectedStationName = sel ? sel.value : '';
     var key = '';
 
-    if (selectedStationName === '__primary__') {
+    if (selectedStationName === '__primary__' || (sel && sel.value === '__primary__')) {
       key = primaryAdminKey;
     } else if (selectedStationName && cachedClientKeys[selectedStationName]) {
       key = cachedClientKeys[selectedStationName];
@@ -4518,7 +4484,7 @@ ${SHARED_HELPERS}
         var cand = cachedClientKeys[list[i].name] || ((list[i].rawKey && !list[i].rawKey.includes('...')) ? list[i].rawKey : '');
         if (cand) {
           key = cand;
-          if (sel) sel.value = list[i].name;
+          if (sel && !selectedStationName) sel.value = list[i].name;
           break;
         }
       }
@@ -4533,7 +4499,17 @@ ${SHARED_HELPERS}
     var withKey = chk ? chk.checked : true;
 
     var cmd = '';
-    if (currentQuickTool === 'hermes') {
+    if (currentQuickTool === 'all' || !currentQuickTool) {
+      if (currentQuickTab === 'ps') {
+        cmd = withKey
+          ? '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"'
+          : 'irm ' + hostUrl + '/setup.ps1 | iex';
+      } else {
+        cmd = withKey
+          ? 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + key
+          : 'curl -fsSL ' + hostUrl + '/setup.sh | bash';
+      }
+    } else if (currentQuickTool === 'hermes') {
       cmd = withKey
         ? 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash -s -- --key ' + key
         : 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash';
@@ -4603,6 +4579,7 @@ ${SHARED_HELPERS}
   function setQuickTool(tool) {
     currentQuickTool = tool;
     var tools = [
+      { id: 'btnQuickToolAll', name: 'all' },
       { id: 'btnQuickToolClaude', name: 'claude' },
       { id: 'btnQuickToolCodex', name: 'codex' },
       { id: 'btnQuickToolHermes', name: 'hermes' },
@@ -5861,7 +5838,7 @@ ${SHARED_HELPERS}
   document.getElementById('btnSubmitClientKey').addEventListener('click', function () { doAddClientKey(this); });
 
   // Setup tabs switching
-  ['Bash', 'Powershell', 'Agents', 'Node', 'Git', 'Manual'].forEach(function (t) {
+  ['Bash', 'Powershell'].forEach(function (t) {
     var b = document.getElementById('tabSetup' + t);
     if (b) {
       b.addEventListener('click', function () {
@@ -5882,6 +5859,8 @@ ${SHARED_HELPERS}
   };
 
   bindCopy('btnCopyCreatedKey', 'createdClientKey', 'Klucz klienta');
+  bindCopy('btnCopySetupBashMain', 'cmdSetupBashMain', 'Polecenie instalatora (Linux)');
+  bindCopy('btnCopySetupPowershellMain', 'cmdSetupPowershellMain', 'Polecenie instalatora (Windows)');
   bindCopy('btnCopySetupBash', 'cmdSetupBash', 'Polecenie Claude (Bash)');
   bindCopy('btnCopySetupCodexBash', 'cmdSetupCodexBash', 'Polecenie Codex (Bash)');
   bindCopy('btnCopySetupAgentBash', 'cmdSetupAgentBash', 'Zmienne OpenCode / Hermes (Bash)');
@@ -5954,7 +5933,7 @@ ${SHARED_HELPERS}
       b.addEventListener('click', function () { setQuickTab(t.toLowerCase()); });
     }
   });
-  ['Claude', 'Codex', 'Hermes', 'OpenCode', 'Claw', 'Orca', 'Agent'].forEach(function (tool) {
+  ['All', 'Claude', 'Codex', 'Hermes', 'OpenCode', 'Claw', 'Orca', 'Agent'].forEach(function (tool) {
     var b = document.getElementById('btnQuickTool' + tool);
     if (b) {
       b.addEventListener('click', function () { setQuickTool(tool.toLowerCase()); });
