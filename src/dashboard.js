@@ -1677,10 +1677,17 @@ const PAGE = `<!doctype html>
       </div>
 
       <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <div>
-            <div style="color:var(--dim); font-size:12px;">Stacja robocza: <b id="createdClientName" style="color:var(--text); font-size:13.5px;"></b></div>
-            <div class="mono" id="createdClientKey" style="font-size:13.5px; word-break:break-all; color:var(--accent); font-weight:600; margin-top:3px;"></div>
+        <div class="row" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div style="flex:1; min-width:260px;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+              <span style="color:var(--dim); font-size:12px; font-weight:600;">Stacja robocza:</span>
+              <select id="selModalStation" style="font-size:12.5px; font-weight:600; padding:3px 8px; background:var(--input-bg); border:1px solid var(--line); color:var(--heading); border-radius:5px; cursor:pointer;" title="Wybierz stację roboczą"></select>
+              <b id="createdClientName" style="display:none;"></b>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span style="color:var(--dim); font-size:11px;">Klucz stacji:</span>
+              <code class="mono" id="createdClientKey" style="font-size:12.5px; word-break:break-all; color:var(--accent); font-weight:600;"></code>
+            </div>
           </div>
           <button class="btn btn-sm btn-accent" id="btnCopyCreatedKey">📋 Kopiuj klucz</button>
         </div>
@@ -3298,6 +3305,22 @@ ${SHARED_HELPERS}
 
   var revealedKeys = Object.create(null);
   var cachedClientKeys = Object.create(null);
+  try {
+    var storedKeys = JSON.parse(localStorage.getItem('agentlb_cached_keys') || '{}');
+    if (storedKeys && typeof storedKeys === 'object') {
+      for (var sk in storedKeys) {
+        if (typeof storedKeys[sk] === 'string' && !storedKeys[sk].includes('...')) {
+          cachedClientKeys[sk] = storedKeys[sk];
+        }
+      }
+    }
+  } catch (e) {}
+
+  function saveCachedKeys() {
+    try {
+      localStorage.setItem('agentlb_cached_keys', JSON.stringify(cachedClientKeys));
+    } catch (e) {}
+  }
   var primaryAdminKey = '';
   var pendingOAuthState = null;
 
@@ -4224,74 +4247,76 @@ ${SHARED_HELPERS}
       });
   }
 
-  function showKeyModal(name, key) {
+  function updateModalCommands(name, key) {
     var realKey = (key && !key.includes('...')) ? key : (cachedClientKeys[name] || key || '');
-    if (realKey && !realKey.includes('...')) {
-      cachedClientKeys[name] = realKey;
-    }
-    document.getElementById('createdClientName').textContent = name;
-    document.getElementById('createdClientKey').textContent = realKey;
+    if (name === '__primary__' && primaryAdminKey) realKey = primaryAdminKey;
     var hostUrl = window.location.origin;
+    var cmdKey = realKey || '<KLUCZ_STACJI>';
 
-    var cmdBash = 'curl -fsSL ' + hostUrl + '/claude-setup.sh | bash -s -- --key ' + realKey;
-    var cmdCodexBash = 'curl -fsSL ' + hostUrl + '/codex-setup.sh | bash -s -- --key ' + realKey;
+    var elName = document.getElementById('createdClientName');
+    if (elName) elName.textContent = name || 'stacja';
+    var elKey = document.getElementById('createdClientKey');
+    if (elKey) elKey.textContent = realKey || (name ? 'Wczytywanie klucza...' : '<KLUCZ_STACJI>');
+
+    var cmdBashMain = 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + cmdKey;
+    var cmdPsMain = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + cmdKey + '"';
+
+    var elBashMain = document.getElementById('cmdSetupBashMain');
+    if (elBashMain) elBashMain.textContent = cmdBashMain;
+    var elPsMain = document.getElementById('cmdSetupPowershellMain');
+    if (elPsMain) elPsMain.textContent = cmdPsMain;
+
+    var cmdBash = 'curl -fsSL ' + hostUrl + '/claude-setup.sh | bash -s -- --key ' + cmdKey;
+    var cmdCodexBash = 'curl -fsSL ' + hostUrl + '/codex-setup.sh | bash -s -- --key ' + cmdKey;
     var cmdAgentBash = [
       '# OpenCode, Hermes Agent, Aider (zmienne OpenAI / Anthropic):',
       'export OPENAI_BASE_URL="' + hostUrl + '/v1"',
-      'export OPENAI_API_KEY="' + realKey + '"',
+      'export OPENAI_API_KEY="' + cmdKey + '"',
       'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
-      'export ANTHROPIC_API_KEY="' + realKey + '"',
-      'export AGENT_LB_API_KEY="' + realKey + '"'
+      'export ANTHROPIC_API_KEY="' + cmdKey + '"',
+      'export AGENT_LB_API_KEY="' + cmdKey + '"'
     ].join('\\n');
 
-    var cmdPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/claude-setup.ps1))) -Key "' + realKey + '"';
-    var cmdCodexPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/codex-setup.ps1))) -Key "' + realKey + '"';
+    var cmdPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/claude-setup.ps1))) -Key "' + cmdKey + '"';
+    var cmdCodexPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/codex-setup.ps1))) -Key "' + cmdKey + '"';
     var cmdAgentPs = [
       '[Environment]::SetEnvironmentVariable("OPENAI_BASE_URL", "' + hostUrl + '/v1", "User")',
-      '[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "' + realKey + '", "User")',
+      '[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "' + cmdKey + '" , "User")',
       '[Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "' + hostUrl + '", "User")',
-      '[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "' + realKey + '", "User")',
+      '[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "' + cmdKey + '", "User")',
       '$env:OPENAI_BASE_URL = "' + hostUrl + '/v1"',
-      '$env:OPENAI_API_KEY = "' + realKey + '"'
+      '$env:OPENAI_API_KEY = "' + cmdKey + '"'
     ].join('\\n');
 
-    var cmdNode = 'curl -fsSL ' + hostUrl + '/claude-setup.js | node - --key ' + realKey;
-    var cmdCodexNode = 'curl -fsSL ' + hostUrl + '/codex-setup.js | node - --key ' + realKey;
-    var cmdGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/claude-setup.sh --key ' + realKey;
-    var cmdCodexGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/codex-setup.sh --key ' + realKey;
+    var cmdNode = 'curl -fsSL ' + hostUrl + '/claude-setup.js | node - --key ' + cmdKey;
+    var cmdCodexNode = 'curl -fsSL ' + hostUrl + '/codex-setup.js | node - --key ' + cmdKey;
+    var cmdGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/claude-setup.sh --key ' + cmdKey;
+    var cmdCodexGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/codex-setup.sh --key ' + cmdKey;
     var manualText = [
       '# --- 1. Claude Code CLI (OAuth / subscription — zalecane) ---',
       'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
       'unset ANTHROPIC_API_KEY  # zachowaj sesję OAuth Claude Code',
-      'export ANTHROPIC_CUSTOM_HEADERS="x-api-key: ' + realKey + '"',
+      'export ANTHROPIC_CUSTOM_HEADERS="x-api-key: ' + cmdKey + '"',
       '',
       '# --- 1b. Claude Code CLI (tryb direct API Key) ---',
       'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
-      'export ANTHROPIC_API_KEY="' + realKey + '"',
+      'export ANTHROPIC_API_KEY="' + cmdKey + '"',
       'unset ANTHROPIC_CUSTOM_HEADERS',
       '',
       '# --- 2. OpenAI Codex CLI ---',
       'export CODEX_BASE_URL="' + hostUrl + '/backend-api/codex"',
-      'export CODEX_LB_API_KEY="' + realKey + '"',
+      'export CODEX_LB_API_KEY="' + cmdKey + '"',
       '',
       '# --- 3. OpenCode, Hermes Agent, Aider & OpenAI Compatible ---',
       'export OPENAI_BASE_URL="' + hostUrl + '/v1"',
-      'export OPENAI_API_KEY="' + realKey + '"',
-      'export AGENT_LB_API_KEY="' + realKey + '"',
+      'export OPENAI_API_KEY="' + cmdKey + '"',
+      'export AGENT_LB_API_KEY="' + cmdKey + '"',
       '',
       '# Przykłady uruchomienia narzędzi:',
       '# opencode                        -> OpenCode CLI (model z proxy)',
       '# aider --model openai/gpt-5.6-sol -> Aider CLI z routingiem agent-lb',
       '# hermes                          -> Hermes Agent z modelem na proxy'
     ].join('\\n');
-
-    var cmdBashMain = 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + realKey;
-    var cmdPsMain = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + realKey + '"';
-
-    var elBashMain = document.getElementById('cmdSetupBashMain');
-    if (elBashMain) elBashMain.textContent = cmdBashMain;
-    var elPsMain = document.getElementById('cmdSetupPowershellMain');
-    if (elPsMain) elPsMain.textContent = cmdPsMain;
 
     var elBash = document.getElementById('cmdSetupBash');
     if (elBash) elBash.textContent = cmdBash;
@@ -4320,11 +4345,11 @@ ${SHARED_HELPERS}
     var elManual = document.getElementById('boxManualConfig');
     if (elManual) elManual.textContent = manualText;
 
-    var cmdHermes = 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash -s -- --key ' + realKey;
-    var cmdOpenCode = 'curl -fsSL ' + hostUrl + '/opencode-setup.sh | bash -s -- --key ' + realKey;
-    var cmdClaw = 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash -s -- --key ' + realKey;
-    var cmdOrca = 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash -s -- --key ' + realKey;
-    var cmdAider = 'mkdir -p ~/.aider && printf "openai-api-base: ' + hostUrl + '/v1\\nopenai-api-key: ' + realKey + '\\nmodel: openai/gpt-5.6-sol\\n" > ~/.aider.conf.yml';
+    var cmdHermes = 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash -s -- --key ' + cmdKey;
+    var cmdOpenCode = 'curl -fsSL ' + hostUrl + '/opencode-setup.sh | bash -s -- --key ' + cmdKey;
+    var cmdClaw = 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash -s -- --key ' + cmdKey;
+    var cmdOrca = 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash -s -- --key ' + cmdKey;
+    var cmdAider = 'mkdir -p ~/.aider && printf "openai-api-base: ' + hostUrl + '/v1\\nopenai-api-key: ' + cmdKey + '\\nmodel: openai/gpt-5.6-sol\\n" > ~/.aider.conf.yml';
 
     var elHermes = document.getElementById('cmdSetupHermes');
     if (elHermes) elHermes.textContent = cmdHermes;
@@ -4336,6 +4361,86 @@ ${SHARED_HELPERS}
     if (elOrca) elOrca.textContent = cmdOrca;
     var elAider = document.getElementById('cmdSetupAider');
     if (elAider) elAider.textContent = cmdAider;
+  }
+
+  function showKeyModal(name, key) {
+    var list = (lastStatus && lastStatus.clientKeys) || [];
+    var selModal = document.getElementById('selModalStation');
+    if (selModal) {
+      selModal.textContent = '';
+      if (list.length) {
+        list.forEach(function (k) {
+          var opt = el('option', '', k.name);
+          opt.value = k.name;
+          selModal.appendChild(opt);
+        });
+      }
+      if (primaryAdminKey) {
+        var optAdmin = el('option', '', '👑 Admin (Master)');
+        optAdmin.value = '__primary__';
+        selModal.appendChild(optAdmin);
+      }
+      if (!list.length && !primaryAdminKey) {
+        var optNone = el('option', '', 'Stacja');
+        optNone.value = '';
+        selModal.appendChild(optNone);
+      }
+    }
+
+    var chosenName = name || (selModal ? selModal.value : '');
+    if (!chosenName && selModal && selModal.options.length) {
+      chosenName = selModal.options[0].value;
+    }
+    if (selModal && chosenName) {
+      selModal.value = chosenName;
+    }
+
+    var realKey = (key && !key.includes('...')) ? key : (cachedClientKeys[chosenName] || '');
+    if (chosenName === '__primary__' && primaryAdminKey) {
+      realKey = primaryAdminKey;
+    }
+
+    if (realKey && !realKey.includes('...') && chosenName !== '__primary__') {
+      cachedClientKeys[chosenName] = realKey;
+      saveCachedKeys();
+    }
+
+    updateModalCommands(chosenName, realKey);
+
+    // Asynchronously fetch key if missing
+    if (!realKey && chosenName) {
+      apiCall('/agent-lb/api/keys/reveal', 'POST', { name: chosenName })
+        .then(function (rev) {
+          if (rev && rev.ok && rev.key) {
+            if (chosenName === '__primary__') {
+              primaryAdminKey = rev.key;
+            } else {
+              cachedClientKeys[chosenName] = rev.key;
+              saveCachedKeys();
+            }
+            if (selModal && selModal.value === chosenName) {
+              updateModalCommands(chosenName, rev.key);
+            }
+            updateQuickCmd();
+          }
+        })
+        .catch(function () {});
+    }
+
+    // Attach change listener to selModalStation
+    if (selModal && !selModal._bound) {
+      selModal._bound = true;
+      selModal.addEventListener('change', function () {
+        var st = this.value;
+        var k = (st === '__primary__') ? primaryAdminKey : (cachedClientKeys[st] || '');
+        showKeyModal(st, k);
+        var selQuick = document.getElementById('selQuickStation');
+        if (selQuick && Array.from(selQuick.options).some(function (o) { return o.value === st; })) {
+          selQuick.value = st;
+          updateQuickCmd();
+        }
+      });
+    }
 
     selectSetupTab('Bash');
     openModal('modalKeyCreated');
@@ -4770,12 +4875,10 @@ ${SHARED_HELPERS}
       var acts = el('div', 'card-actions');
 
       var btnSetup = el('button', 'btn btn-xs btn-accent', t('btnKeyConnect'));
-      btnSetup.disabled = !raw;
       btnSetup.title = currentLang === 'pl' ? 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tej stacji' : 'Show installer commands (Linux, Windows, VS Code) for this workstation';
       btnSetup.addEventListener('click', function () {
-        currentQuickKey = raw;
-        updateQuickCmd();
-        showKeyModal(k.name, raw);
+        var kVal = cachedClientKeys[k.name] || raw || '';
+        showKeyModal(k.name, kVal);
       });
       acts.appendChild(btnSetup);
 
@@ -4855,9 +4958,21 @@ ${SHARED_HELPERS}
       }
 
       var btnCopy = el('button', 'btn btn-xs', t('copyCmd'));
-      btnCopy.disabled = !raw;
       btnCopy.addEventListener('click', function () {
-        copyToClipboard(raw, 'Klucz stacji ' + k.name);
+        var toCopy = cachedClientKeys[k.name] || raw;
+        if (toCopy) {
+          copyToClipboard(toCopy, 'Klucz stacji ' + k.name);
+        } else {
+          apiCall('/agent-lb/api/keys/reveal', 'POST', { name: k.name })
+            .then(function (rev) {
+              if (rev && rev.ok && rev.key) {
+                cachedClientKeys[k.name] = rev.key;
+                saveCachedKeys();
+                copyToClipboard(rev.key, 'Klucz stacji ' + k.name);
+                renderClientKeys(keys, clients);
+              }
+            });
+        }
       });
       keyWrap.appendChild(btnCopy);
       bottomRow.appendChild(keyWrap);
@@ -5038,14 +5153,22 @@ ${SHARED_HELPERS}
           .then(function (kr) { return kr.ok ? kr.json() : null; })
           .then(function (kd) {
             if (kd) {
-              primaryAdminKey = ''; // Never distribute the administrator credential to workstations.
+              if (kd.primaryKey) primaryAdminKey = kd.primaryKey;
+              else if (apiKey) primaryAdminKey = apiKey;
               if (Array.isArray(kd.keys)) {
-                kd.keys.forEach(function (k) {
-                  var r = cachedClientKeys[k.name] || '';
-                  if (r) cachedClientKeys[k.name] = r;
-                });
                 renderClientKeys(kd.keys, s.clients);
               }
+              apiCall('/agent-lb/api/keys/reveal', 'POST', { all: true })
+                .then(function (rev) {
+                  if (rev && rev.ok && rev.keys) {
+                    Object.assign(cachedClientKeys, rev.keys);
+                    if (rev.primaryKey) primaryAdminKey = rev.primaryKey;
+                    saveCachedKeys();
+                    if (Array.isArray(kd.keys)) renderClientKeys(kd.keys, s.clients);
+                    updateQuickCmd();
+                  }
+                })
+                .catch(function () {});
             }
           })
           .catch(function () { /* best effort */ });
@@ -5774,22 +5897,40 @@ ${SHARED_HELPERS}
   var btnWorkstationGuide = document.getElementById('btnShowWorkstationGuide');
   if (btnWorkstationGuide) {
     btnWorkstationGuide.addEventListener('click', function () {
+      var sel = document.getElementById('selQuickStation');
       var list = (lastStatus && lastStatus.clientKeys) || [];
-      var firstName = list.length ? list[0].name : (primaryAdminKey ? 'Główny klucz' : 'Stacja');
-      var firstKey = (list.length && cachedClientKeys[list[0].name]) || primaryAdminKey || '<KLUCZ_STACJI>';
-      showKeyModal(firstName, firstKey);
+      var chosen = (sel && sel.value) ? sel.value : (list.length ? list[0].name : (primaryAdminKey ? '__primary__' : ''));
+      var chosenKey = (chosen === '__primary__') ? primaryAdminKey : (cachedClientKeys[chosen] || '');
+      showKeyModal(chosen, chosenKey);
     });
   }
 
   var selQuick = document.getElementById('selQuickStation');
   if (selQuick) {
     selQuick.addEventListener('change', function () {
-      if (this.value === '__primary__') {
+      var val = this.value;
+      if (val === '__primary__') {
         currentQuickKey = primaryAdminKey;
-      } else if (cachedClientKeys[this.value]) {
-        currentQuickKey = cachedClientKeys[this.value];
+        updateQuickCmd();
+      } else if (cachedClientKeys[val]) {
+        currentQuickKey = cachedClientKeys[val];
+        updateQuickCmd();
+      } else {
+        apiCall('/agent-lb/api/keys/reveal', 'POST', { name: val })
+          .then(function (rev) {
+            if (rev && rev.ok && rev.key) {
+              cachedClientKeys[val] = rev.key;
+              saveCachedKeys();
+              currentQuickKey = rev.key;
+              updateQuickCmd();
+            }
+          })
+          .catch(function () {});
       }
-      updateQuickCmd();
+      var selModal = document.getElementById('selModalStation');
+      if (selModal && Array.from(selModal.options).some(function (o) { return o.value === val; })) {
+        selModal.value = val;
+      }
     });
   }
 
