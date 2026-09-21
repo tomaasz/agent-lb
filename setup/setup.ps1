@@ -15,10 +15,17 @@ param(
 	[switch]$Uninstall,
 	[switch]$NoInstall,
 	[string]$Url = '',
-	[string]$Key = ''
+	[string]$Key = '',
+	[string]$Lang = ''
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $Lang) {
+	if ($env:AGENT_LB_LANG) { $Lang = $env:AGENT_LB_LANG }
+	elseif ((Get-Culture).TwoLetterISOLanguageName -eq 'pl') { $Lang = 'pl' }
+	else { $Lang = 'en' }
+}
 
 if (-not $Url) {
 	if ($env:AGENT_LB_URL) { $Url = $env:AGENT_LB_URL }
@@ -33,7 +40,7 @@ if ($PSScriptRoot) {
 	$nodeCmd = Get-Command node -ErrorAction SilentlyContinue
 	$jsScript = Join-Path $PSScriptRoot "setup.js"
 	if ($nodeCmd -and (Test-Path $jsScript)) {
-		$nodeArgs = @($jsScript, "--url", $Url)
+		$nodeArgs = @($jsScript, "--url", $Url, "--lang", $Lang)
 		if ($Uninstall) { $nodeArgs += '--uninstall' }
 		if ($NoInstall) { $nodeArgs += '--no-install' }
 		if ($Key) { $nodeArgs += @("--key", $Key) }

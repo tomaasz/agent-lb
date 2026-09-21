@@ -13,8 +13,8 @@
 // rendering uses textContent — status fields (account names, client names) are
 // operator/OAuth-derived, but they still never reach innerHTML.
 
-import { createHash } from 'node:crypto';
-import { UNAVAILABLE_TEXT } from './status-renderer.js';
+import { createHash } from "node:crypto";
+import { UNAVAILABLE_TEXT } from "./status-renderer.js";
 
 export function renderDashboardHtml() {
   return PAGE;
@@ -34,8 +34,11 @@ export function renderDashboardHtml() {
  * another site's iframe, where a click on "switch" could be overlaid.
  */
 export function dashboardCsp(html = PAGE) {
-  const script = html.slice(html.indexOf('<script>') + 8, html.indexOf('</script>'));
-  const hash = createHash('sha256').update(script, 'utf8').digest('base64');
+  const script = html.slice(
+    html.indexOf("<script>") + 8,
+    html.indexOf("</script>"),
+  );
+  const hash = createHash("sha256").update(script, "utf8").digest("base64");
   return [
     "default-src 'none'",
     `script-src 'sha256-${hash}'`,
@@ -44,7 +47,7 @@ export function dashboardCsp(html = PAGE) {
     "base-uri 'none'",
     "form-action 'none'",
     "frame-ancestors 'none'",
-  ].join('; ');
+  ].join("; ");
 }
 
 // The page's pure logic lives here, not in the script string: these functions
@@ -62,14 +65,39 @@ export function scopedWeeklyRows(quota) {
   var rows = [];
   Object.keys(scoped).forEach(function (family) {
     var b = scoped[family] || {};
-    rows.push({ family: family, label: family.charAt(0).toUpperCase() + family.slice(1), utilization: b.utilization, resetAt: b.resetAt });
+    rows.push({
+      family: family,
+      label: family.charAt(0).toUpperCase() + family.slice(1),
+      utilization: b.utilization,
+      resetAt: b.resetAt,
+    });
   });
-  [{ family: 'fable', label: 'Fable', u: q.unified7dFable, r: q.unified7dFableReset },
-    { family: 'sonnet', label: 'Sonnet', u: q.unified7dSonnet, r: q.unified7dSonnetReset }].forEach(function (f) {
-    if (Object.prototype.hasOwnProperty.call(scoped, f.family) || f.u == null) return;
-    rows.push({ family: f.family, label: f.label, utilization: f.u, resetAt: f.r });
+  [
+    {
+      family: "fable",
+      label: "Fable",
+      u: q.unified7dFable,
+      r: q.unified7dFableReset,
+    },
+    {
+      family: "sonnet",
+      label: "Sonnet",
+      u: q.unified7dSonnet,
+      r: q.unified7dSonnetReset,
+    },
+  ].forEach(function (f) {
+    if (Object.prototype.hasOwnProperty.call(scoped, f.family) || f.u == null)
+      return;
+    rows.push({
+      family: f.family,
+      label: f.label,
+      utilization: f.u,
+      resetAt: f.r,
+    });
   });
-  rows.sort(function (a, b) { return a.family < b.family ? -1 : a.family > b.family ? 1 : 0; });
+  rows.sort(function (a, b) {
+    return a.family < b.family ? -1 : a.family > b.family ? 1 : 0;
+  });
   return rows;
 }
 
@@ -78,8 +106,12 @@ export function scopedWeeklyRows(quota) {
 // total without the cache fields understates the account by orders of magnitude.
 export function accountTokens(usage) {
   var u = usage || {};
-  return (u.totalInputTokens || 0) + (u.totalOutputTokens || 0)
-    + (u.totalCacheReadTokens || 0) + (u.totalCacheCreationTokens || 0);
+  return (
+    (u.totalInputTokens || 0) +
+    (u.totalOutputTokens || 0) +
+    (u.totalCacheReadTokens || 0) +
+    (u.totalCacheCreationTokens || 0)
+  );
 }
 
 // One row per session, from `sessions.items` (proxy.sessionDetail). The token
@@ -93,13 +125,21 @@ export function sessionRows(sessions) {
     var buckets = s.tokens || {};
     var row = {
       id: s.id,
-      client: s.client || '',
-      project: (s.dimensions || {}).project || '',
+      client: s.client || "",
+      project: (s.dimensions || {}).project || "",
       active: !!s.active,
       requests: s.requests || 0,
       starved: s.starved || 0,
-      cacheRead: 0, cacheCreation: 0, input: 0, output: 0, context: 0,
-      accounts: Object.keys(s.pins || {}).map(function (b) { return s.pins[b]; }).join(', '),
+      cacheRead: 0,
+      cacheCreation: 0,
+      input: 0,
+      output: 0,
+      context: 0,
+      accounts: Object.keys(s.pins || {})
+        .map(function (b) {
+          return s.pins[b];
+        })
+        .join(", "),
       lastSeen: s.lastSeen || 0,
     };
     Object.keys(buckets).forEach(function (b) {
@@ -127,11 +167,15 @@ export function filterSessionRows(rows, filters) {
 // Text sorts alphabetically, numbers numerically. A missing value sorts as
 // empty/zero rather than dropping the row.
 export function sortRows(rows, key, dir) {
-  var sign = dir === 'asc' ? 1 : -1;
+  var sign = dir === "asc" ? 1 : -1;
   return (rows || []).slice().sort(function (a, b) {
-    var x = a[key], y = b[key];
-    if (typeof x === 'string' || typeof y === 'string') {
-      return sign * String(x == null ? '' : x).localeCompare(String(y == null ? '' : y));
+    var x = a[key],
+      y = b[key];
+    if (typeof x === "string" || typeof y === "string") {
+      return (
+        sign *
+        String(x == null ? "" : x).localeCompare(String(y == null ? "" : y))
+      );
     }
     return sign * ((x || 0) - (y || 0));
   });
@@ -139,7 +183,9 @@ export function sortRows(rows, key, dir) {
 
 export function uniqSorted(values) {
   var seen = Object.create(null);
-  (values || []).forEach(function (v) { if (v) seen[v] = true; });
+  (values || []).forEach(function (v) {
+    if (v) seen[v] = true;
+  });
   return Object.keys(seen).sort();
 }
 
@@ -148,10 +194,10 @@ export function uniqSorted(values) {
 // through a real proxy and prove the same-origin CSRF gate lets the page in.
 export function switchRequest(name, key) {
   return {
-    url: '/agent-lb/switch',
+    url: "/agent-lb/switch",
     init: {
-      method: 'POST',
-      headers: { 'x-api-key': key || '', 'content-type': 'application/json' },
+      method: "POST",
+      headers: { "x-api-key": key || "", "content-type": "application/json" },
       body: JSON.stringify({ account: name }),
     },
   };
@@ -161,9 +207,21 @@ export function switchRequest(name, key) {
 // being recorded and `eligible` for whether traffic will actually follow it —
 // two different things, and a bare "done" would be a lie for a spent target.
 export function switchOutcome(res) {
-  if (!res || !res.ok) return { kind: 'error', text: 'switch failed' + (res && res.error ? ': ' + res.error : '') };
-  if (res.eligible === false) return { kind: 'warn', text: 'switched to ' + res.account + ', but rotation will not use it' + (res.reason ? ': ' + res.reason : '') };
-  return { kind: 'ok', text: 'switched to ' + res.account };
+  if (!res || !res.ok)
+    return {
+      kind: "error",
+      text: "switch failed" + (res && res.error ? ": " + res.error : ""),
+    };
+  if (res.eligible === false)
+    return {
+      kind: "warn",
+      text:
+        "switched to " +
+        res.account +
+        ", but rotation will not use it" +
+        (res.reason ? ": " + res.reason : ""),
+    };
+  return { kind: "ok", text: "switched to " + res.account };
 }
 
 // One row per route the server reports — each model family the fleet meters
@@ -177,15 +235,15 @@ export function routeRows(status) {
   var blockedModels = s.blockedModels || [];
   var rows = (s.routes || []).map(function (r) {
     var accounts = r.accounts || [];
-    var name = r.name || '';
+    var name = r.name || "";
     var match = r.match || [];
     var target = r.target || null;
     var pinned = r.pinned || null;
     return {
-      kind: 'route',
+      kind: "route",
       name: name,
       label: name.charAt(0).toUpperCase() + name.slice(1),
-      match: match.join(', '),
+      match: match.join(", "),
       target: target,
       pinned: pinned,
       // A pin the server is not honouring (its account cannot serve the
@@ -196,10 +254,26 @@ export function routeRows(status) {
       // glob is blocked has a target no request will reach. A literal glob
       // comparison covers the common case; the server's overlap logic is not
       // shipped to the page.
-      blocked: match.length > 0 && match.every(function (g) { return blockedModels.indexOf(g) !== -1; }),
+      blocked:
+        match.length > 0 &&
+        match.every(function (g) {
+          return blockedModels.indexOf(g) !== -1;
+        }),
       autocreated: !!r.autocreated,
-      eligible: accounts.filter(function (a) { return a.eligible; }).map(function (a) { return a.name; }),
-      ineligible: accounts.filter(function (a) { return !a.eligible; }).map(function (a) { return a.name; }),
+      eligible: accounts
+        .filter(function (a) {
+          return a.eligible;
+        })
+        .map(function (a) {
+          return a.name;
+        }),
+      ineligible: accounts
+        .filter(function (a) {
+          return !a.eligible;
+        })
+        .map(function (a) {
+          return a.name;
+        }),
     };
   });
   if (rows.length) {
@@ -207,12 +281,23 @@ export function routeRows(status) {
     // assumption that unrouted traffic lands on the current account: a
     // blocked or outranked current account is skipped by the next request.
     var current = s.currentAccount || null;
-    var cur = (s.accounts || []).filter(function (a) { return a.name === current; })[0];
+    var cur = (s.accounts || []).filter(function (a) {
+      return a.name === current;
+    })[0];
     rows.push({
-      kind: 'default', name: '', label: 'Everything else', match: '',
-      target: s.defaultTarget || current, current: current,
+      kind: "default",
+      name: "",
+      label: "Everything else",
+      match: "",
+      target: s.defaultTarget || current,
+      current: current,
       currentUnavailable: (cur && cur.unavailable) || null,
-      pinned: null, pinMismatch: false, blocked: false, autocreated: false, eligible: [], ineligible: [],
+      pinned: null,
+      pinMismatch: false,
+      blocked: false,
+      autocreated: false,
+      eligible: [],
+      ineligible: [],
     });
   }
   return rows;
@@ -247,37 +332,65 @@ export function problems(status) {
   // When nothing can serve, every session starves and "it is failing" sends the
   // operator hunting for a broken token. Say which, if the fleet agrees on why.
   var accounts = s.accounts || [];
-  var stalled = accounts.filter(function (a) { return a.unavailable === 'quota' || a.unavailable === 'throttled'; });
+  var stalled = accounts.filter(function (a) {
+    return a.unavailable === "quota" || a.unavailable === "throttled";
+  });
   var reasons = {};
-  stalled.forEach(function (a) { reasons[a.unavailable] = true; });
-  var why = accounts.length && stalled.length === accounts.length
-    ? ' — every account is ' + (reasons.quota && reasons.throttled ? 'over its quota threshold or in a rate-limit hold'
-      : reasons.quota ? 'over its quota threshold' : 'in a rate-limit hold') + '.'
-    : ' — it is failing, not idle.';
+  stalled.forEach(function (a) {
+    reasons[a.unavailable] = true;
+  });
+  var why =
+    accounts.length && stalled.length === accounts.length
+      ? " — every account is " +
+        (reasons.quota && reasons.throttled
+          ? "over its quota threshold or in a rate-limit hold"
+          : reasons.quota
+            ? "over its quota threshold"
+            : "in a rate-limit hold") +
+        "."
+      : " — it is failing, not idle.";
 
   var sessions = s.sessions || {};
-  var named = (sessions.items ? sessionRows(sessions) : []).filter(function (r) {
-    return r.active && r.starved >= STARVED_MIN;
-  }).sort(function (a, b) { return b.starved - a.starved; });
+  var named = (sessions.items ? sessionRows(sessions) : [])
+    .filter(function (r) {
+      return r.active && r.starved >= STARVED_MIN;
+    })
+    .sort(function (a, b) {
+      return b.starved - a.starved;
+    });
   named.slice(0, STARVED_LIST_MAX).forEach(function (r) {
     out.push({
-      severity: 'bad', kind: 'starved-session',
-      text: (r.client ? r.client + "'s session " : 'Session ') + String(r.id || '').slice(0, 8)
-        + ' has had ' + r.starved + ' requests in a row come back with nothing'
-        + (r.project ? ' (' + r.project + ')' : '') + why,
+      severity: "bad",
+      kind: "starved-session",
+      text:
+        (r.client ? r.client + "'s session " : "Session ") +
+        String(r.id || "").slice(0, 8) +
+        " has had " +
+        r.starved +
+        " requests in a row come back with nothing" +
+        (r.project ? " (" + r.project + ")" : "") +
+        why,
     });
   });
   if (named.length > STARVED_LIST_MAX) {
     out.push({
-      severity: 'bad', kind: 'starved-more',
-      text: 'and ' + (named.length - STARVED_LIST_MAX) + ' more sessions are getting nothing back.',
+      severity: "bad",
+      kind: "starved-more",
+      text:
+        "and " +
+        (named.length - STARVED_LIST_MAX) +
+        " more sessions are getting nothing back.",
     });
   }
   if (!named.length && (sessions.starvedMax || 0) >= STARVED_MIN) {
     out.push({
-      severity: 'bad', kind: 'starved-session',
-      text: 'A session has had ' + sessions.starvedMax + ' requests in a row come back with nothing.'
-        + ' Turn on proxy.sessionDetail to see which.',
+      severity: "bad",
+      kind: "starved-session",
+      text:
+        "A session has had " +
+        sessions.starvedMax +
+        " requests in a row come back with nothing." +
+        " Turn on proxy.sessionDetail to see which.",
     });
   }
 
@@ -287,21 +400,22 @@ export function problems(status) {
   // shared bucket — both expire on their own. `identity-verification` requires
   // human action in the browser, and `error` needs re-login.
   var ATTENTION = {
-    error: 'needs a re-login',
-    disabled: 'is disabled',
-    'identity-verification': 'requires identity verification in browser',
+    error: "needs a re-login",
+    disabled: "is disabled",
+    "identity-verification": "requires identity verification in browser",
   };
   (s.accounts || []).forEach(function (a) {
     var why = ATTENTION[a.unavailable];
-    if (why) out.push({
-      severity: 'warn',
-      kind: 'account',
-      text: 'Account ' + a.name + ' ' + why + '.',
-      accountName: a.name,
-      reason: a.unavailable,
-      type: a.type,
-      priority: a.priority || 0
-    });
+    if (why)
+      out.push({
+        severity: "warn",
+        kind: "account",
+        text: "Account " + a.name + " " + why + ".",
+        accountName: a.name,
+        reason: a.unavailable,
+        type: a.type,
+        priority: a.priority || 0,
+      });
   });
 
   // Deliberately no spend line. `usedMinor` is month-to-date overage, so on a
@@ -313,9 +427,19 @@ export function problems(status) {
 }
 
 const SHARED_HELPERS = [
-  scopedWeeklyRows, accountTokens, sessionRows, filterSessionRows, sortRows, uniqSorted,
-  switchRequest, switchOutcome, routeRows, problems,
-].map(fn => fn.toString()).join('\n\n');
+  scopedWeeklyRows,
+  accountTokens,
+  sessionRows,
+  filterSessionRows,
+  sortRows,
+  uniqSorted,
+  switchRequest,
+  switchOutcome,
+  routeRows,
+  problems,
+]
+  .map((fn) => fn.toString())
+  .join("\n\n");
 
 // The threshold rides along: `problems` closes over it, so a page without it
 // would ReferenceError on first render.
@@ -1122,15 +1246,15 @@ const PAGE = `<!doctype html>
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:6px;">
               <span style="font-weight:600; font-size:12px; color:var(--heading);" data-i18n="quickConnectTitle">⚡ Szybkie podłączenie:</span>
-              <select id="selQuickStation" style="font-size:11px; padding:2px 6px; background:var(--input-bg); border:1px solid var(--line); color:var(--heading); border-radius:4px; max-width:180px; cursor:pointer;" title="Wybierz stację roboczą dla tego polecenia"></select>
+              <select id="selQuickStation" style="font-size:11px; padding:2px 6px; background:var(--input-bg); border:1px solid var(--line); color:var(--heading); border-radius:4px; max-width:180px; cursor:pointer;" data-i18n-title="quickStationSelectTitle" title="Wybierz stację roboczą dla tego polecenia"></select>
             </div>
             <div style="display:flex; gap:4px;">
-              <button class="btn btn-xs active" id="btnQuickTabBash" type="button" style="padding:2px 9px; font-size:11px;" title="Skrypt instalacyjny Linux, macOS, WSL (Bash)">Linux / macOS / WSL</button>
-              <button class="btn btn-xs" id="btnQuickTabPS" type="button" style="padding:2px 9px; font-size:11px;" title="Skrypt instalacyjny Windows (PowerShell)">Windows</button>
+              <button class="btn btn-xs active" id="btnQuickTabBash" type="button" style="padding:2px 9px; font-size:11px;" data-i18n="quickTabBash" title="Skrypt instalacyjny Linux, macOS, WSL (Bash)">Linux / macOS / WSL</button>
+              <button class="btn btn-xs" id="btnQuickTabPS" type="button" style="padding:2px 9px; font-size:11px;" data-i18n="quickTabPS" title="Skrypt instalacyjny Windows (PowerShell)">Windows</button>
             </div>
           </div>
           <div class="quick-cmd-wrap" style="display:flex; align-items:center; gap:8px; background:rgba(13,17,23,0.85); border:1px solid var(--line); border-radius:5px; padding:6px 10px;">
-            <code id="quickCmdText" class="mono" style="flex:1; font-size:11.5px; color:#58a6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" title="Kliknij, aby skopiować pełną komendę"></code>
+            <code id="quickCmdText" class="mono" style="flex:1; font-size:11.5px; color:#58a6ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer;" data-i18n-title="quickCmdClickCopy" title="Kliknij, aby skopiować pełną komendę"></code>
             <button class="btn btn-xs btn-accent" id="btnQuickCopyCmd" type="button" style="flex-shrink:0; padding:2px 10px; font-size:11px;" title="Kopiuj polecenie do schowka" data-i18n="copyCmd">📋 Kopiuj</button>
           </div>
           <div style="display:flex; align-items:center; justify-content:space-between; margin-top:6px; font-size:11px; color:var(--dim); flex-wrap:wrap; gap:6px;">
@@ -1143,9 +1267,9 @@ const PAGE = `<!doctype html>
             <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-size:11px;" data-i18n="githubGuide">instrukcja GitHub ↗</a>
           </div>
           <details style="margin-top:6px; font-size:11px; color:var(--dim);">
-            <summary style="cursor:pointer; color:var(--dim); user-select:none;">Pojedyncze narzędzie lub eksport ENV (opcjonalnie)</summary>
+            <summary style="cursor:pointer; color:var(--dim); user-select:none;" data-i18n="quickToolOptional">Pojedyncze narzędzie lub eksport ENV (opcjonalnie)</summary>
             <div style="display:flex; align-items:center; gap:5px; margin-top:6px; flex-wrap:wrap;">
-              <button class="btn btn-xs active" id="btnQuickToolAll" type="button" style="padding:2px 8px; font-size:11px;" title="Wszystko naraz: Claude, Codex, OpenCode, Hermes (setup.sh / setup.ps1)">⚡ Wszystko (All-in-One)</button>
+              <button class="btn btn-xs active" id="btnQuickToolAll" type="button" style="padding:2px 8px; font-size:11px;" data-i18n="quickToolAll" title="Wszystko naraz: Claude, Codex, OpenCode, Hermes (setup.sh / setup.ps1)">⚡ Wszystko (All-in-One)</button>
               <button class="btn btn-xs" id="btnQuickToolClaude" type="button" style="padding:2px 8px; font-size:11px;" title="Claude Code CLI & VS Code (claude-setup)">Claude</button>
               <button class="btn btn-xs" id="btnQuickToolCodex" type="button" style="padding:2px 8px; font-size:11px;" title="OpenAI Codex CLI & VS Code (codex-setup)">Codex</button>
               <button class="btn btn-xs" id="btnQuickToolHermes" type="button" style="padding:2px 8px; font-size:11px;" title="Hermes Agent">Hermes</button>
@@ -1185,24 +1309,24 @@ const PAGE = `<!doctype html>
     <div class="modal-box" style="max-width:860px; width:95%; max-height:92vh; display:flex; flex-direction:column;">
       <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--line);">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-weight:700; font-size:16px;">📊 Szczegóły zużycia konta:</span>
+          <span style="font-weight:700; font-size:16px;" data-i18n="modalAccountUsageTitle">📊 Szczegóły zużycia konta:</span>
           <span id="accountUsageNameBadge" class="badge mono" style="background:rgba(88,166,255,0.15); color:var(--accent); font-size:12px;"></span>
         </div>
-        <button class="btn btn-sm" id="btnCloseAccountUsage" type="button">✕ Zamknij</button>
+        <button class="btn btn-sm" id="btnCloseAccountUsage" type="button" data-i18n="btnClose">✕ Zamknij</button>
       </div>
 
       <div id="accountUsageHeaderMeta" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:12px; background:var(--bg); padding:10px 12px; border-radius:6px; border:1px solid var(--line);">
-        <div><div style="font-size:10.5px; color:var(--dim);">Łącznie tokenów</div><div id="accountUsageTotalTok" style="font-size:14px; font-weight:700; color:var(--accent);">0</div></div>
-        <div><div style="font-size:10.5px; color:var(--dim);">Liczba zapytań</div><div id="accountUsageTotalReq" style="font-size:14px; font-weight:700; color:var(--text);">0</div></div>
-        <div><div style="font-size:10.5px; color:var(--dim);">Limit Sesyjny</div><div id="accountUsageSessionPct" style="font-size:14px; font-weight:600;">—</div></div>
-        <div><div style="font-size:10.5px; color:var(--dim);">Limit Tygodniowy</div><div id="accountUsageWeeklyPct" style="font-size:14px; font-weight:600;">—</div></div>
-        <div><div style="font-size:10.5px; color:var(--dim);">Ostatnia aktywność</div><div id="accountUsageLastUsed" style="font-size:12px; color:var(--dim);">—</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);" data-i18n="lblTotalTokens">Łącznie tokenów</div><div id="accountUsageTotalTok" style="font-size:14px; font-weight:700; color:var(--accent);">0</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);" data-i18n="lblTotalReq">Liczba zapytań</div><div id="accountUsageTotalReq" style="font-size:14px; font-weight:700; color:var(--text);">0</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);" data-i18n="lblSessionLimit">Limit Sesyjny</div><div id="accountUsageSessionPct" style="font-size:14px; font-weight:600;">—</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);" data-i18n="lblWeeklyLimit">Limit Tygodniowy</div><div id="accountUsageWeeklyPct" style="font-size:14px; font-weight:600;">—</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);" data-i18n="lblLastActivity">Ostatnia aktywność</div><div id="accountUsageLastUsed" style="font-size:12px; color:var(--dim);">—</div></div>
       </div>
 
       <div class="tabs-bar" style="margin-bottom:10px;">
-        <button class="tab-btn active" type="button" id="tabBtnUsageClients">👤 Kto (Klienci / Stacje)</button>
-        <button class="tab-btn" type="button" id="tabBtnUsageSessions">🎯 Na co (Zadania / Sesje / Modele)</button>
-        <button class="tab-btn" type="button" id="tabBtnUsageRecent">📜 Ostatnie zapytania (Live feed)</button>
+        <button class="tab-btn active" type="button" id="tabBtnUsageClients" data-i18n="tabUsageClients">👤 Kto (Klienci / Stacje)</button>
+        <button class="tab-btn" type="button" id="tabBtnUsageSessions" data-i18n="tabUsageSessions">🎯 Na co (Zadania / Sesje / Modele)</button>
+        <button class="tab-btn" type="button" id="tabBtnUsageRecent" data-i18n="tabUsageRecent">📜 Ostatnie zapytania (Live feed)</button>
       </div>
 
       <div id="tabContentUsageClients" class="tab-content" style="flex:1; overflow-y:auto;">
@@ -1224,8 +1348,8 @@ const PAGE = `<!doctype html>
       </div>
 
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:8px; border-top:1px solid var(--line);">
-        <button class="btn btn-xs btn-bad" id="btnResetAccountUsage" type="button" title="Zresetuj statystyki zużycia tego konta">🗑️ Zeruj liczniki tego konta</button>
-        <span style="font-size:11px; color:var(--dim);">Dane odświeżane na żywo z agentlb</span>
+        <button class="btn btn-xs btn-bad" id="btnResetAccountUsage" type="button" data-i18n="btnResetAccountUsage" title="Zresetuj statystyki zużycia tego konta">🗑️ Zeruj liczniki tego konta</button>
+        <span style="font-size:11px; color:var(--dim);" data-i18n="lblLiveDataAgentlb">Dane odświeżane na żywo z agentlb</span>
       </div>
     </div>
   </div>
@@ -1235,23 +1359,23 @@ const PAGE = `<!doctype html>
     <div class="modal-box" style="max-width:920px; width:95%; max-height:92vh; display:flex; flex-direction:column;">
       <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--line);">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-weight:700; font-size:16px;">🌐 Zbiorczy raport zużycia floty: Kto i Na co</span>
-          <span class="badge ok" style="font-size:11px;">Wszystkie konta</span>
+          <span style="font-weight:700; font-size:16px;" data-i18n="modalFleetUsageTitle">🌐 Zbiorczy raport zużycia floty: Kto i Na co</span>
+          <span class="badge ok" style="font-size:11px;" data-i18n="badgeAllAccounts">Wszystkie konta</span>
         </div>
-        <button class="btn btn-sm" id="btnCloseFleetUsage" type="button">✕ Zamknij</button>
+        <button class="btn btn-sm" id="btnCloseFleetUsage" type="button" data-i18n="btnClose">✕ Zamknij</button>
       </div>
 
       <div id="fleetUsageSummaryMeta" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:12px; background:var(--bg); padding:10px 12px; border-radius:6px; border:1px solid var(--line);">
-        <div><div style="font-size:10.5px; color:var(--dim);">Łącznie tokenów floty</div><div id="fleetUsageTotalTok" style="font-size:14px; font-weight:700; color:var(--accent);">0</div></div>
-        <div><div style="font-size:10.5px; color:var(--dim);">Łącznie zapytań</div><div id="fleetUsageTotalReq" style="font-size:14px; font-weight:700; color:var(--text);">0</div></div>
-        <div><div style="font-size:10.5px; color:var(--dim);">Liczba kont</div><div id="fleetUsageTotalAccounts" style="font-size:14px; font-weight:600;">0</div></div>
-        <div><div style="font-size:10.5px; color:var(--dim);">Zidentyfikowani klienci</div><div id="fleetUsageTotalClients" style="font-size:14px; font-weight:600;">0</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);" data-i18n="lblTotalFleetTokens">Łącznie tokenów floty</div><div id="fleetUsageTotalTok" style="font-size:14px; font-weight:700; color:var(--accent);">0</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);" data-i18n="lblTotalFleetReq">Łącznie zapytań</div><div id="fleetUsageTotalReq" style="font-size:14px; font-weight:700; color:var(--text);">0</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);" data-i18n="lblTotalFleetAccounts">Liczba kont</div><div id="fleetUsageTotalAccounts" style="font-size:14px; font-weight:600;">0</div></div>
+        <div><div style="font-size:10.5px; color:var(--dim);" data-i18n="lblTotalFleetClients">Zidentyfikowani klienci</div><div id="fleetUsageTotalClients" style="font-size:14px; font-weight:600;">0</div></div>
       </div>
 
       <div class="tabs-bar" style="margin-bottom:10px;">
-        <button class="tab-btn active" type="button" id="tabBtnFleetAccounts">🏦 Konta (Podział per konto)</button>
-        <button class="tab-btn" type="button" id="tabBtnFleetClients">👤 Klienci (Kto ile zużył)</button>
-        <button class="tab-btn" type="button" id="tabBtnFleetModels">🤖 Modele (Na jakie modele)</button>
+        <button class="tab-btn active" type="button" id="tabBtnFleetAccounts" data-i18n="tabFleetAccounts">🏦 Konta (Podział per konto)</button>
+        <button class="tab-btn" type="button" id="tabBtnFleetClients" data-i18n="tabFleetClients">👤 Klienci (Kto ile zużył)</button>
+        <button class="tab-btn" type="button" id="tabBtnFleetModels" data-i18n="tabFleetModels">🤖 Modele (Na jakie modele)</button>
       </div>
 
       <div id="tabContentFleetAccounts" class="tab-content" style="flex:1; overflow-y:auto;">
@@ -1279,45 +1403,45 @@ const PAGE = `<!doctype html>
     <div class="modal-box" style="max-width:700px; width:95%; display:flex; flex-direction:column; max-height:92vh;">
       <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--line);">
         <div style="display:flex; align-items:center; gap:8px;">
-          <span style="font-weight:700; font-size:16px;">💬 Test Chat — Claude & Codex Playground</span>
-          <span class="badge" style="background:rgba(88,166,255,0.15); color:var(--accent); font-size:10.5px;">Live Upstream Test</span>
+          <span style="font-weight:700; font-size:16px;" data-i18n="testChatTitle">💬 Test Chat — Claude & Codex Playground</span>
+          <span class="badge" style="background:rgba(88,166,255,0.15); color:var(--accent); font-size:10.5px;" data-i18n="testChatBadge">Live Upstream Test</span>
         </div>
         <div style="display:flex; align-items:center; gap:6px;">
-          <button class="btn btn-sm" id="btnTestChatHeaderCopy" title="Skopiuj całą historię rozmowy do schowka">📋 Kopiuj czat</button>
-          <button class="btn btn-sm" id="btnCloseTestChat">✕ Zamknij</button>
+          <button class="btn btn-sm" id="btnTestChatHeaderCopy" data-i18n="btnTestChatHeaderCopy" data-i18n-title="btnTestChatHeaderCopyTitle" title="Skopiuj całą historię rozmowy do schowka">📋 Kopiuj czat</button>
+          <button class="btn btn-sm" id="btnCloseTestChat" data-i18n="btnClose">✕ Zamknij</button>
         </div>
       </div>
 
       <!-- Controls row -->
       <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:10px; margin-bottom:10px; background:rgba(13,17,23,0.6); padding:10px 12px; border:1px solid var(--line); border-radius:6px;">
         <div>
-          <label for="selTestProvider" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;">Dostawca (Provider):</label>
+          <label for="selTestProvider" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;" data-i18n="lblTestProvider">Dostawca (Provider):</label>
           <select id="selTestProvider" class="btn btn-sm" style="width:100%; text-align:left; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:4px 8px;">
-            <option value="anthropic">🟣 Claude (Anthropic)</option>
-            <option value="codex">🟢 Codex (ChatGPT / OpenAI)</option>
+            <option value="anthropic" data-i18n="provAnthropicOption">🟣 Claude (Anthropic)</option>
+            <option value="codex" data-i18n="provCodexOption">🟢 Codex (ChatGPT / OpenAI)</option>
           </select>
         </div>
         <div>
-          <label for="selTestModel" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;">Model:</label>
+          <label for="selTestModel" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;" data-i18n="lblTestModel">Model:</label>
           <select id="selTestModel" class="btn btn-sm" style="width:100%; text-align:left; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:4px 8px;">
             <!-- populated dynamically according to provider -->
           </select>
         </div>
         <div id="colTestEffort" style="display:none;">
-          <label for="selTestEffort" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;">Rozumowanie (Effort):</label>
+          <label for="selTestEffort" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;" data-i18n="lblTestEffort">Rozumowanie (Effort):</label>
           <select id="selTestEffort" class="btn btn-sm" style="width:100%; text-align:left; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:4px 8px;">
-            <option value="">⚡ Domyślne (Default)</option>
-            <option value="minimal">🟢 Minimalne (Minimal)</option>
-            <option value="low">🟢 Niskie (Low)</option>
-            <option value="medium" selected>🟡 Średnie (Medium)</option>
-            <option value="high">🔴 Wysokie (High)</option>
-            <option value="max">🔥 Maksymalne (Max)</option>
+            <option value="" data-i18n="optEffortDefault">⚡ Domyślne (Default)</option>
+            <option value="minimal" data-i18n="optEffortMinimal">🟢 Minimalne (Minimal)</option>
+            <option value="low" data-i18n="optEffortLow">🟢 Niskie (Low)</option>
+            <option value="medium" selected data-i18n="optEffortMedium">🟡 Średnie (Medium)</option>
+            <option value="high" data-i18n="optEffortHigh">🔴 Wysokie (High)</option>
+            <option value="max" data-i18n="optEffortMax">🔥 Maksymalne (Max)</option>
           </select>
         </div>
         <div>
-          <label for="selTestAccount" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;">Konto (Routing):</label>
+          <label for="selTestAccount" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;" data-i18n="lblTestAccount">Konto (Routing):</label>
           <select id="selTestAccount" class="btn btn-sm" style="width:100%; text-align:left; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:4px 8px;">
-            <option value="">⚡ Auto (Agent-LB Policy)</option>
+            <option value="" data-i18n="optTestAccountAuto">⚡ Auto (Agent-LB Policy)</option>
             <!-- populated with account list -->
           </select>
         </div>
@@ -1325,16 +1449,16 @@ const PAGE = `<!doctype html>
 
       <!-- Quick prompts pills -->
       <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:10px;">
-        <span style="font-size:11px; color:var(--dim);">Szybkie testy:</span>
-        <button type="button" class="btn btn-xs quick-prompt-btn" data-prompt="Cześć! Przedstaw się w jednym zdaniu i potwierdź, że połączenie działa." style="border-radius:12px; font-size:10.5px; padding:2px 8px; background:rgba(88,166,255,0.1); border-color:rgba(88,166,255,0.3); color:#79c0ff;">👋 Przedstaw się</button>
-        <button type="button" class="btn btn-xs quick-prompt-btn" data-prompt="Odpowiedz jednym słowem: PONG" style="border-radius:12px; font-size:10.5px; padding:2px 8px; background:rgba(88,166,255,0.1); border-color:rgba(88,166,255,0.3); color:#79c0ff;">⚡ Ping</button>
+        <span style="font-size:11px; color:var(--dim);" data-i18n="quickTestsLabel">Szybkie testy:</span>
+        <button type="button" class="btn btn-xs quick-prompt-btn" data-prompt="Cześć! Przedstaw się w jednym zdaniu i potwierdź, że połączenie działa." style="border-radius:12px; font-size:10.5px; padding:2px 8px; background:rgba(88,166,255,0.1); border-color:rgba(88,166,255,0.3); color:#79c0ff;" data-i18n="quickPromptIntro">👋 Przedstaw się</button>
+        <button type="button" class="btn btn-xs quick-prompt-btn" data-prompt="Odpowiedz jednym słowem: PONG" style="border-radius:12px; font-size:10.5px; padding:2px 8px; background:rgba(88,166,255,0.1); border-color:rgba(88,166,255,0.3); color:#79c0ff;" data-i18n="quickPromptPing">⚡ Ping</button>
         <button type="button" class="btn btn-xs quick-prompt-btn" data-prompt="Oblicz 256 * 64 i podaj sam wynik liczbowy." style="border-radius:12px; font-size:10.5px; padding:2px 8px; background:rgba(88,166,255,0.1); border-color:rgba(88,166,255,0.3); color:#79c0ff;">🧮 256 * 64</button>
         <button type="button" class="btn btn-xs quick-prompt-btn" data-prompt="Napisz zwięzłe dwuwersowe haiku o load balancerze Claude." style="border-radius:12px; font-size:10.5px; padding:2px 8px; background:rgba(88,166,255,0.1); border-color:rgba(88,166,255,0.3); color:#79c0ff;">📝 Haiku</button>
       </div>
 
       <!-- Chat History Box -->
       <div id="testChatHistory" style="flex:1; min-height:240px; max-height:380px; overflow-y:auto; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:12px; margin-bottom:12px; display:flex; flex-direction:column; gap:12px;">
-        <div id="testChatPlaceholder" style="margin:auto; text-align:center; color:var(--dim); font-size:12px;">
+        <div id="testChatPlaceholder" style="margin:auto; text-align:center; color:var(--dim); font-size:12px;" data-i18n-html="testChatPlaceholder">
           <div style="font-size:26px; margin-bottom:6px;">💬</div>
           Wybierz dostawcę i model, a następnie wpisz wiadomość lub kliknij szybki test.<br>
           Żądanie zostanie wysłane przez silnik Agent-LB bezpośrednio do wybranego upstreamu.
@@ -1343,15 +1467,15 @@ const PAGE = `<!doctype html>
 
       <!-- Chat Input and Actions -->
       <div style="display:flex; flex-direction:column; gap:8px;">
-        <textarea id="testChatMessage" rows="2" placeholder="Wpisz treść wiadomości testowej (Enter wysyła, Shift+Enter nowa linia)..." style="width:100%; box-sizing:border-box; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-family:inherit; font-size:12.5px; resize:vertical;"></textarea>
+        <textarea id="testChatMessage" rows="2" placeholder="Wpisz treść wiadomości testowej (Enter wysyła, Shift+Enter nowa linia)..." data-i18n-placeholder="testChatMessagePlaceholder" style="width:100%; box-sizing:border-box; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font-family:inherit; font-size:12.5px; resize:vertical;"></textarea>
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
           <div style="display:flex; gap:6px; align-items:center;">
-            <button class="btn btn-sm" id="btnTestChatCopy" type="button" style="font-size:11px; padding:4px 10px;" title="Skopiuj całą historię rozmowy do schowka">📋 Kopiuj czat</button>
-            <button class="btn btn-sm" id="btnTestChatClear" type="button" style="font-size:11px; padding:4px 10px;" title="Wyczyść historię czatu">🗑️ Wyczyść historię</button>
+            <button class="btn btn-sm" id="btnTestChatCopy" type="button" style="font-size:11px; padding:4px 10px;" data-i18n="btnCopyChat" data-i18n-title="btnTestChatHeaderCopyTitle" title="Skopiuj całą historię rozmowy do schowka">📋 Kopiuj czat</button>
+            <button class="btn btn-sm" id="btnTestChatClear" type="button" style="font-size:11px; padding:4px 10px;" data-i18n="btnTestChatClear" title="Wyczyść historię czatu">🗑️ Wyczyść historię</button>
           </div>
           <div style="display:flex; gap:8px; align-items:center;">
             <span id="testChatStatus" style="font-size:11.5px; color:var(--dim);"></span>
-            <button class="btn btn-sm btn-accent" id="btnTestChatSend" type="button" style="font-weight:600; padding:5px 16px;">Wyślij zapytanie 🚀</button>
+            <button class="btn btn-sm btn-accent" id="btnTestChatSend" type="button" style="font-weight:600; padding:5px 16px;" data-i18n="btnTestChatSend">Wyślij zapytanie 🚀</button>
           </div>
         </div>
       </div>
@@ -1362,45 +1486,45 @@ const PAGE = `<!doctype html>
   <div id="modalAddAccount" class="modal-backdrop" style="display:none;">
     <div class="modal-box">
       <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-        <span id="modalAddAccountTitle" style="font-weight:600; font-size:15px;">➕ Dodaj konto</span>
-        <button class="btn btn-sm" id="btnCloseAddAccount">✕ Zamknij</button>
+        <span id="modalAddAccountTitle" style="font-weight:600; font-size:15px;" data-i18n="modalAddAccountTitle">➕ Dodaj konto</span>
+        <button class="btn btn-sm" id="btnCloseAddAccount" data-i18n="btnClose">✕ Zamknij</button>
       </div>
       <div style="margin-bottom:12px; display:flex; align-items:center; gap:14px; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px;">
-        <span style="font-size:13px; color:var(--dim); font-weight:600;">Dostawca:</span>
+        <span style="font-size:13px; color:var(--dim); font-weight:600;" data-i18n="lblProvider">Dostawca:</span>
         <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
-          <input type="radio" name="addAccountProvider" value="anthropic" checked id="radioProvAnthropic"> 🟣 Anthropic (Claude)
+          <input type="radio" name="addAccountProvider" value="anthropic" checked id="radioProvAnthropic"> <span data-i18n="provAnthropicOption">🟣 Anthropic (Claude)</span>
         </label>
         <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
-          <input type="radio" name="addAccountProvider" value="codex" id="radioProvCodex"> 🟢 OpenAI (Codex / ChatGPT)
+          <input type="radio" name="addAccountProvider" value="codex" id="radioProvCodex"> <span data-i18n="provCodexOption">🟢 OpenAI (Codex / ChatGPT)</span>
         </label>
       </div>
       <div class="tabs-bar">
-        <button class="tab-btn active" id="tabBtnApiKey">Klucz API Console</button>
-        <button class="tab-btn" id="tabBtnOAuth">Wklej sesję OAuth</button>
-        <button class="tab-btn" id="tabBtnImport">Import ze ścieżki</button>
-        <button class="tab-btn" id="tabBtnBrowserOAuth">Logowanie w przeglądarce</button>
-        <button class="tab-btn" id="tabBtnDeviceCode" style="display:none;">Kod urządzenia</button>
+        <button class="tab-btn active" id="tabBtnApiKey" data-i18n="tabBtnApiKey">Klucz API Console</button>
+        <button class="tab-btn" id="tabBtnOAuth" data-i18n="tabBtnOAuth">Wklej sesję OAuth</button>
+        <button class="tab-btn" id="tabBtnImport" data-i18n="tabBtnImport">Import ze ścieżki</button>
+        <button class="tab-btn" id="tabBtnBrowserOAuth" data-i18n="tabBtnBrowserOAuth">Logowanie w przeglądarce</button>
+        <button class="tab-btn" id="tabBtnDeviceCode" style="display:none;" data-i18n="tabBtnDeviceCode">Kod urządzenia</button>
       </div>
 
       <!-- Tab 1: API Key -->
       <div id="tabContentApiKey" class="tab-content">
         <div class="form-grid">
           <div>
-            <label id="lblApiKey">Klucz API Anthropic Console (sk-ant-...) *</label>
+            <label id="lblApiKey" data-i18n="lblApiKeyAnthropic">Klucz API Anthropic Console (sk-ant-...) *</label>
             <input id="inApiKey" type="password" placeholder="sk-ant-api03-..." autocomplete="off">
           </div>
           <div class="form-row">
             <div style="flex:1;">
-              <label>Nazwa konta (opcjonalnie)</label>
+              <label data-i18n="lblAccountName">Nazwa konta (opcjonalnie)</label>
               <input id="inApiKeyName" type="text" placeholder="np. api-console-1">
             </div>
             <div style="width:110px;">
-              <label>Priorytet</label>
+              <label data-i18n="lblPriority">Priorytet</label>
               <input id="inApiKeyPrio" type="number" value="0">
             </div>
           </div>
           <div style="margin-top:8px;">
-            <button class="btn btn-accent" id="btnSubmitApiKey">Dodaj konto API</button>
+            <button class="btn btn-accent" id="btnSubmitApiKey" data-i18n="btnSubmitApiKey">Dodaj konto API</button>
           </div>
         </div>
       </div>
@@ -1408,35 +1532,35 @@ const PAGE = `<!doctype html>
       <!-- Tab 2: OAuth paste JSON/tokens -->
       <div id="tabContentOAuth" class="tab-content" style="display:none;">
         <div class="form-grid">
-          <p id="pOAuthHelp" style="color:var(--dim); font-size:12px;">
+          <p id="pOAuthHelp" style="color:var(--dim); font-size:12px;" data-i18n-html="pOAuthHelp">
             Wklej zawartość pliku <code>~/.claude/.credentials.json</code> lub podaj tokeny z sesji OAuth:
           </p>
           <div>
-            <label>Wklej cały JSON poświadczeń (.credentials.json)</label>
+            <label data-i18n="lblOAuthJson">Wklej cały JSON poświadczeń (.credentials.json)</label>
             <textarea id="inOAuthJson" rows="4" placeholder='{"claudeAiOauth":{"accessToken":"...","refreshToken":"...","expiresAt":...}}' class="mono"></textarea>
           </div>
           <div class="form-row">
             <div style="flex:1;">
-              <label>AccessToken (jeśli nie wklejasz JSON)</label>
+              <label data-i18n="lblOAuthAccess">AccessToken (jeśli nie wklejasz JSON)</label>
               <input id="inOAuthAccess" type="password" placeholder="ey..." autocomplete="off">
             </div>
             <div style="flex:1;">
-              <label>RefreshToken (opcjonalnie)</label>
+              <label data-i18n="lblOAuthRefresh">RefreshToken (opcjonalnie)</label>
               <input id="inOAuthRefresh" type="password" placeholder="ey..." autocomplete="off">
             </div>
           </div>
           <div class="form-row">
             <div style="flex:1;">
-              <label>Nazwa konta (opcjonalnie)</label>
+              <label data-i18n="lblAccountName">Nazwa konta (opcjonalnie)</label>
               <input id="inOAuthName" type="text" placeholder="np. dev@firma.pl">
             </div>
             <div style="width:110px;">
-              <label>Priorytet</label>
+              <label data-i18n="lblPriority">Priorytet</label>
               <input id="inOAuthPrio" type="number" value="0">
             </div>
           </div>
           <div style="margin-top:8px;">
-            <button class="btn btn-accent" id="btnSubmitOAuth">Zapisz sesję OAuth</button>
+            <button class="btn btn-accent" id="btnSubmitOAuth" data-i18n="btnSubmitOAuth">Zapisz sesję OAuth</button>
           </div>
         </div>
       </div>
@@ -1444,25 +1568,25 @@ const PAGE = `<!doctype html>
       <!-- Tab 3: Import from server file path -->
       <div id="tabContentImport" class="tab-content" style="display:none;">
         <div class="form-grid">
-          <p style="color:var(--dim); font-size:12px;">
+          <p style="color:var(--dim); font-size:12px;" data-i18n="pImportHelp">
             Wczytaj poświadczenia bezpośrednio z pliku na serwerze:
           </p>
           <div>
-            <label>Ścieżka do pliku na serwerze *</label>
+            <label data-i18n="lblImportPath">Ścieżka do pliku na serwerze *</label>
             <input id="inImportPath" type="text" value="~/.claude/.credentials.json" class="mono">
           </div>
           <div class="form-row">
             <div style="flex:1;">
-              <label>Nazwa konta (opcjonalnie)</label>
+              <label data-i18n="lblAccountName">Nazwa konta (opcjonalnie)</label>
               <input id="inImportPathName" type="text" placeholder="np. claude-local">
             </div>
             <div style="width:110px;">
-              <label>Priorytet</label>
+              <label data-i18n="lblPriority">Priorytet</label>
               <input id="inImportPathPrio" type="number" value="0">
             </div>
           </div>
           <div style="margin-top:8px;">
-            <button class="btn btn-accent" id="btnSubmitImportPath">Importuj z pliku</button>
+            <button class="btn btn-accent" id="btnSubmitImportPath" data-i18n="btnSubmitImportPath">Importuj z pliku</button>
           </div>
         </div>
       </div>
@@ -1471,35 +1595,35 @@ const PAGE = `<!doctype html>
       <div id="tabContentBrowserOAuth" class="tab-content" style="display:none;">
         <div class="form-grid">
           <div id="oauthStep1">
-            <p id="pBrowserOAuthHelp" style="color:var(--dim); font-size:12px; margin-bottom:10px;">
+            <p id="pBrowserOAuthHelp" style="color:var(--dim); font-size:12px; margin-bottom:10px;" data-i18n="pBrowserOAuthHelp">
               Zaloguj się na konto Claude w przeglądarce za pomocą bezpiecznego przepływu PKCE.
             </p>
-            <button class="btn btn-accent" id="btnStartOAuth">Rozpocznij logowanie Claude</button>
+            <button class="btn btn-accent" id="btnStartOAuth" data-i18n="btnStartOAuth">Rozpocznij logowanie Claude</button>
           </div>
           <div id="oauthStep2" style="display:none;">
-            <p style="font-size:12px; margin-bottom:6px;">
+            <p style="font-size:12px; margin-bottom:6px;" data-i18n-html="lblOAuthStep2Link">
               1. Jeśli okno logowania się nie otworzyło, <a id="oauthLink" href="#" target="_blank" style="color:var(--accent); text-decoration:underline;">kliknij tutaj ↗</a>.
             </p>
-            <p id="pOAuthStep2Help" style="font-size:12px; color:var(--dim); margin-bottom:8px;">
+            <p id="pOAuthStep2Help" style="font-size:12px; color:var(--dim); margin-bottom:8px;" data-i18n="lblOAuthStep2Help">
               2. Zaloguj się w Claude.ai i skopiuj kod autoryzacyjny lub pełny adres URL:
             </p>
             <div>
-              <label>Kod autoryzacyjny lub callback URL *</label>
+              <label data-i18n="lblAuthCode">Kod autoryzacyjny lub callback URL *</label>
               <input id="inOAuthCode" type="text" placeholder="Wklej kod lub URL callback..." class="mono">
             </div>
             <div class="form-row" style="margin-top:8px;">
               <div style="flex:1;">
-                <label>Nazwa konta (opcjonalnie)</label>
+                <label data-i18n="lblAccountName">Nazwa konta (opcjonalnie)</label>
                 <input id="inOAuthFlowName" type="text" placeholder="np. konto-osobiste">
               </div>
               <div style="width:110px;">
-                <label>Priorytet</label>
+                <label data-i18n="lblPriority">Priorytet</label>
                 <input id="inOAuthFlowPrio" type="number" value="0">
               </div>
             </div>
             <div class="row" style="gap:8px; margin-top:10px;">
-              <button class="btn btn-accent" id="btnCompleteOAuth">Dokończ autoryzację</button>
-              <button class="btn" id="btnCancelOAuth">Wróć</button>
+              <button class="btn btn-accent" id="btnCompleteOAuth" data-i18n="btnCompleteOAuth">Dokończ autoryzację</button>
+              <button class="btn" id="btnCancelOAuth" data-i18n="btnCancelOAuth">Wróć</button>
             </div>
           </div>
         </div>
@@ -1509,33 +1633,33 @@ const PAGE = `<!doctype html>
       <div id="tabContentDeviceCode" class="tab-content" style="display:none;">
         <div class="form-grid">
           <div id="deviceCodeStep1">
-            <p style="color:var(--dim); font-size:12px; margin-bottom:10px;">
+            <p style="color:var(--dim); font-size:12px; margin-bottom:10px;" data-i18n="pDeviceCodeHelp">
               Zaloguj się na konto OpenAI Codex / ChatGPT za pomocą kodu urządzenia. Idealne dla serwerów i sesji SSH bez przeglądarki.
             </p>
-            <button class="btn btn-accent" id="btnStartDeviceCode">Rozpocznij logowanie kodem</button>
+            <button class="btn btn-accent" id="btnStartDeviceCode" data-i18n="btnStartDeviceCode">Rozpocznij logowanie kodem</button>
           </div>
           <div id="deviceCodeStep2" style="display:none;">
-            <p style="font-size:13px; margin-bottom:8px;">1. Otwórz ten link w przeglądarce na dowolnym urządzeniu:</p>
+            <p style="font-size:13px; margin-bottom:8px;" data-i18n="lblDeviceCodeStep2Link">1. Otwórz ten link w przeglądarce na dowolnym urządzeniu:</p>
             <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 14px; margin-bottom:12px;">
               <a id="deviceCodeUrl" href="#" target="_blank" style="color:var(--accent); text-decoration:underline; font-size:14px;"></a>
             </div>
-            <p style="font-size:13px; margin-bottom:8px;">2. Wpisz poniższy kod:</p>
+            <p style="font-size:13px; margin-bottom:8px;" data-i18n="lblDeviceCodeStep2Code">2. Wpisz poniższy kod:</p>
             <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:14px 18px; margin-bottom:12px; text-align:center;">
               <span id="deviceCodeValue" style="font-family:var(--mono); font-size:28px; font-weight:700; letter-spacing:4px; color:var(--fg);"></span>
             </div>
             <div class="form-row" style="margin-top:8px;">
               <div style="flex:1;">
-                <label>Nazwa konta (opcjonalnie)</label>
+                <label data-i18n="lblAccountName">Nazwa konta (opcjonalnie)</label>
                 <input id="inDeviceCodeName" type="text" placeholder="np. codex-server">
               </div>
               <div style="width:110px;">
-                <label>Priorytet</label>
+                <label data-i18n="lblPriority">Priorytet</label>
                 <input id="inDeviceCodePrio" type="number" value="0">
               </div>
             </div>
-            <p id="deviceCodeStatus" style="font-size:12px; color:var(--dim); margin-top:10px;">⏳ Oczekiwanie na zatwierdzenie kodu...</p>
+            <p id="deviceCodeStatus" style="font-size:12px; color:var(--dim); margin-top:10px;" data-i18n="pDeviceCodeStatus">⏳ Oczekiwanie na zatwierdzenie kodu...</p>
             <div class="row" style="gap:8px; margin-top:10px;">
-              <button class="btn" id="btnCancelDeviceCode">Anuluj</button>
+              <button class="btn" id="btnCancelDeviceCode" data-i18n="btnCancelDeviceCode">Anuluj</button>
             </div>
           </div>
         </div>
@@ -1547,39 +1671,38 @@ const PAGE = `<!doctype html>
   <div id="modalRelogin" class="modal-backdrop" style="display:none;">
     <div class="modal-box" style="max-width:620px;">
       <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:600; font-size:16px;">🔐 Ponowne logowanie: <span id="reloginAccountTitle" class="mono" style="color:var(--accent);"></span></span>
-        <button class="btn btn-sm" id="btnCloseReloginModal">✕ Zamknij</button>
+        <span style="font-weight:600; font-size:16px;"><span data-i18n="modalReloginTitle">🔐 Ponowne logowanie: </span><span id="reloginAccountTitle" class="mono" style="color:var(--accent);"></span></span>
+        <button class="btn btn-sm" id="btnCloseReloginModal" data-i18n="btnClose">✕ Zamknij</button>
       </div>
-      <p style="color:var(--dim); font-size:13px; margin-bottom:14px;">
+      <p style="color:var(--dim); font-size:13px; margin-bottom:14px;" data-i18n="reloginDesc">
         Sesja tego konta wygasła lub token został odrzucony przez serwery Claude. Zaloguj się ponownie w Claude.ai, aby odnowić poświadczenia i natychmiast przywrócić konto do rotacji.
       </p>
 
       <div class="tabs-bar" style="margin-bottom:14px;">
-        <button class="tab-btn active" id="tabBtnReloginBrowser" type="button">🌐 Przeglądarka (OAuth)</button>
-        <button class="tab-btn" id="tabBtnReloginJson" type="button">📋 Wklej JSON / Token</button>
-        <button class="tab-btn" id="tabBtnReloginImport" type="button">📂 Plik na serwerze</button>
+        <button class="tab-btn active" id="tabBtnReloginBrowser" type="button" data-i18n="tabBtnReloginBrowser">🌐 Przeglądarka (OAuth)</button>
+        <button class="tab-btn" id="tabBtnReloginJson" type="button" data-i18n="tabBtnReloginJson">📋 Wklej JSON / Token</button>
+        <button class="tab-btn" id="tabBtnReloginImport" type="button" data-i18n="tabBtnReloginImport">📂 Plik na serwerze</button>
       </div>
 
       <!-- Tab 1: Browser OAuth -->
       <div id="tabContentReloginBrowser">
         <div id="reloginOAuthStep1">
           <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:12px 14px; margin-bottom:14px;">
-            <div style="font-weight:600; font-size:13.5px; margin-bottom:4px;">Krok 1: Otwórz stronę logowania Claude.ai</div>
-            <div style="font-size:12.5px; color:var(--dim); line-height:1.4;">
+            <div style="font-weight:600; font-size:13.5px; margin-bottom:4px;" data-i18n="reloginStep1Title">Krok 1: Otwórz stronę logowania Claude.ai</div>
+            <div style="font-size:12.5px; color:var(--dim); line-height:1.4;" data-i18n="reloginStep1Desc">
               Kliknij poniższy przycisk. Otworzy się nowa karta z oficjalną stroną autoryzacji Claude.ai. Upewnij się, że logujesz się na właściwe konto (<b id="reloginStep1Email" style="color:var(--text);"></b>).
             </div>
           </div>
-          <button class="btn btn-accent" id="btnStartReloginOAuth" style="width:100%; justify-content:center; padding:10px 14px; font-weight:600;">
+          <button class="btn btn-accent" id="btnStartReloginOAuth" style="width:100%; justify-content:center; padding:10px 14px; font-weight:600;" data-i18n="btnStartReloginOAuth">
             🌐 Otwórz logowanie Claude.ai w nowej karcie
           </button>
         </div>
 
         <div id="reloginOAuthStep2" style="display:none;">
           <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:12px 14px; margin-bottom:12px;">
-            <div style="font-weight:600; font-size:13px; margin-bottom:4px;">Krok 2: Skopiuj i wklej kod autoryzacyjny</div>
-            <div style="font-size:12.5px; color:var(--dim); line-height:1.4;">
+            <div style="font-weight:600; font-size:13px; margin-bottom:4px;" data-i18n="reloginStep2Title">Krok 2: Skopiuj i wklej kod autoryzacyjny</div>
+            <div style="font-size:12.5px; color:var(--dim); line-height:1.4;" data-i18n="reloginStep2Desc">
               Po zalogowaniu i zatwierdzeniu w Claude.ai, skopiuj wyświetlony kod autoryzacyjny (lub cały adres URL callback z paska adresu) i wklej poniżej:
-              Po zalogowaniu i zatwierdzeniu na koncie (<b id="reloginStep2Email" style="color:var(--text);"></b>) w Claude.ai, skopiuj wyświetlony kod autoryzacyjny (lub cały adres URL callback z paska adresu) i wklej poniżej:
             </div>
             <div style="font-size:12px; margin-top:6px;">
               <span style="color:var(--dim);">Okno logowania się nie otworzyło? </span>
@@ -1588,36 +1711,36 @@ const PAGE = `<!doctype html>
           </div>
 
           <div style="margin-bottom:12px;">
-            <label style="font-size:12px; color:var(--dim); display:block; margin-bottom:4px;">Kod autoryzacyjny lub callback URL *</label>
+            <label style="font-size:12px; color:var(--dim); display:block; margin-bottom:4px;" data-i18n="lblAuthCode">Kod autoryzacyjny lub callback URL *</label>
             <input id="inReloginOAuthCode" type="text" placeholder="Wklej kod lub URL callback (https://claude.ai/oauth/callback?code=...)" class="mono" style="width:100%;">
           </div>
 
           <div class="row" style="gap:8px;">
-            <button class="btn btn-accent" id="btnCompleteReloginOAuth">✅ Odnów sesję i zaloguj</button>
-            <button class="btn" id="btnRestartReloginOAuth">↺ Uruchom ponownie logowanie</button>
+            <button class="btn btn-accent" id="btnCompleteReloginOAuth" data-i18n="btnCompleteReloginOAuth">✅ Odnów sesję i zaloguj</button>
+            <button class="btn" id="btnRestartReloginOAuth" data-i18n="btnRestartReloginOAuth">↺ Uruchom ponownie logowanie</button>
           </div>
         </div>
       </div>
 
       <!-- Tab 2: Paste JSON -->
       <div id="tabContentReloginJson" style="display:none;">
-        <div style="font-size:12.5px; color:var(--dim); margin-bottom:8px;">
+        <div style="font-size:12.5px; color:var(--dim); margin-bottom:8px;" data-i18n-html="reloginJsonHelp">
           Wklej zawartość pliku <code>~/.claude/.credentials.json</code> lub JSON z tokenami sesji OAuth:
         </div>
         <textarea id="inReloginJson" rows="4" placeholder='{"claudeAiOauth":{"accessToken":"...","refreshToken":"..."}}' class="mono" style="width:100%; margin-bottom:10px;"></textarea>
-        <button class="btn btn-accent" id="btnSubmitReloginJson">Zapisz poświadczenia</button>
+        <button class="btn btn-accent" id="btnSubmitReloginJson" data-i18n="btnSubmitReloginJson">Zapisz poświadczenia</button>
       </div>
 
       <!-- Tab 3: Import from file -->
       <div id="tabContentReloginImport" style="display:none;">
-        <div style="font-size:12.5px; color:var(--dim); margin-bottom:8px;">
+        <div style="font-size:12.5px; color:var(--dim); margin-bottom:8px;" data-i18n-html="reloginImportHelp">
           Wczytaj nowe poświadczenia z pliku zapisanego na serwerze (np. po <code>claude login</code> w konsoli):
         </div>
         <div style="margin-bottom:10px;">
-          <label style="font-size:12px; color:var(--dim); display:block; margin-bottom:4px;">Ścieżka do pliku *</label>
+          <label style="font-size:12px; color:var(--dim); display:block; margin-bottom:4px;" data-i18n="lblImportPath">Ścieżka do pliku *</label>
           <input id="inReloginImportPath" type="text" value="~/.claude/.credentials.json" class="mono" style="width:100%;">
         </div>
-        <button class="btn btn-accent" id="btnSubmitReloginImport">Importuj z pliku</button>
+        <button class="btn btn-accent" id="btnSubmitReloginImport" data-i18n="btnSubmitReloginImport">Importuj z pliku</button>
       </div>
     </div>
   </div>
@@ -1626,43 +1749,43 @@ const PAGE = `<!doctype html>
   <div id="modalAddClientKey" class="modal-backdrop" style="display:none;">
     <div class="modal-box">
       <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:600; font-size:15px;">➕ Podłącz nową stację roboczą</span>
-        <button class="btn btn-sm" id="btnCloseAddClientKey">✕ Zamknij</button>
+        <span style="font-weight:600; font-size:15px;" data-i18n="modalAddClientKeyTitle">➕ Podłącz nową stację roboczą</span>
+        <button class="btn btn-sm" id="btnCloseAddClientKey" data-i18n="btnClose">✕ Zamknij</button>
       </div>
       <div class="form-grid">
-        <p style="color:var(--dim); font-size:12px;">
+        <p style="color:var(--dim); font-size:12px;" data-i18n="modalAddClientKeyDesc">
           Wygeneruj dedykowany klucz dostępu dla komputera, laptopa lub agenta CLI. Po utworzeniu od razu otrzymasz gotową komendę do wklejenia w terminalu.
         </p>
         <div>
-          <label>Nazwa stacji roboczej / urządzenia *</label>
+          <label data-i18n="lblClientName">Nazwa stacji roboczej / urządzenia *</label>
           <input id="inClientName" type="text" placeholder="np. Laptop Tomek, PC Biuro, CI Worker" required>
         </div>
         <div>
-          <label>Własny klucz (opcjonalnie)</label>
+          <label data-i18n="lblClientCustomKey">Własny klucz (opcjonalnie)</label>
           <input id="inClientCustomKey" type="text" placeholder="Pozostaw puste dla losowego tc-..." class="mono">
         </div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
           <div>
-            <label>Dzienny limit tokenów (opcjonalnie)</label>
+            <label data-i18n="lblClientDailyTokens">Dzienny limit tokenów (opcjonalnie)</label>
             <input id="inClientDailyTokens" type="number" min="1" placeholder="np. 500000 (puste = bez limitu)">
           </div>
           <div>
-            <label>Miesięczny limit tokenów (opcjonalnie)</label>
+            <label data-i18n="lblClientMonthlyTokens">Miesięczny limit tokenów (opcjonalnie)</label>
             <input id="inClientMonthlyTokens" type="number" min="1" placeholder="np. 10000000 (puste = bez limitu)">
           </div>
         </div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
           <div>
-            <label>Ważny do (data wygaśnięcia, opcjonalnie)</label>
+            <label data-i18n="lblClientExpiresAt">Ważny do (data wygaśnięcia, opcjonalnie)</label>
             <input id="inClientExpiresAt" type="date">
           </div>
           <div>
-            <label>Dozwolone modele (opcjonalnie)</label>
+            <label data-i18n="lblClientAllowedModels">Dozwolone modele (opcjonalnie)</label>
             <input id="inClientAllowedModels" type="text" placeholder="np. claude-*, gpt-4o">
           </div>
         </div>
         <div style="margin-top:8px;">
-          <button class="btn btn-accent" id="btnSubmitClientKey">Utwórz klucz</button>
+          <button class="btn btn-accent" id="btnSubmitClientKey" data-i18n="btnSubmitClientKey">Utwórz klucz</button>
         </div>
       </div>
     </div>
@@ -1672,39 +1795,39 @@ const PAGE = `<!doctype html>
   <div id="modalKeyCreated" class="modal-backdrop" style="display:none;">
     <div class="modal-box" style="max-width:700px;">
       <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:600; color:var(--ok); font-size:16px;">💻 Konfiguracja stacji roboczej</span>
-        <button class="btn btn-sm" id="btnCloseKeyModal">✕ Zamknij</button>
+        <span style="font-weight:600; color:var(--ok); font-size:16px;" data-i18n="modalKeyCreatedTitle">💻 Konfiguracja stacji roboczej</span>
+        <button class="btn btn-sm" id="btnCloseKeyModal" data-i18n="btnClose">✕ Zamknij</button>
       </div>
 
       <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px;">
         <div class="row" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
           <div style="flex:1; min-width:260px;">
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
-              <span style="color:var(--dim); font-size:12px; font-weight:600;">Stacja robocza:</span>
+              <span style="color:var(--dim); font-size:12px; font-weight:600;" data-i18n="lblStationWorkstation">Stacja robocza:</span>
               <select id="selModalStation" style="font-size:12.5px; font-weight:600; padding:3px 8px; background:var(--input-bg); border:1px solid var(--line); color:var(--heading); border-radius:5px; cursor:pointer;" title="Wybierz stację roboczą"></select>
               <b id="createdClientName" style="display:none;"></b>
             </div>
             <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <span style="color:var(--dim); font-size:11px;">Klucz stacji:</span>
+              <span style="color:var(--dim); font-size:11px;" data-i18n="lblStationKey">Klucz stacji:</span>
               <code class="mono" id="createdClientKey" style="font-size:12.5px; word-break:break-all; color:var(--accent); font-weight:600;"></code>
             </div>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnCopyCreatedKey">📋 Kopiuj klucz</button>
+          <button class="btn btn-sm btn-accent" id="btnCopyCreatedKey" data-i18n="btnCopyCreatedKey">📋 Kopiuj klucz</button>
         </div>
       </div>
 
       <div style="margin-bottom:10px;">
         <div class="tabs-bar" style="margin-bottom:12px;">
-          <button class="tab-btn active" id="tabSetupBash" type="button">🐧 Linux / macOS / WSL</button>
-          <button class="tab-btn" id="tabSetupPowershell" type="button">🪟 Windows (PowerShell)</button>
+          <button class="tab-btn active" id="tabSetupBash" type="button" data-i18n="tabSetupBash">🐧 Linux / macOS / WSL</button>
+          <button class="tab-btn" id="tabSetupPowershell" type="button" data-i18n="tabSetupPowershell">🪟 Windows (PowerShell)</button>
         </div>
 
         <!-- TAB 1: LINUX / MACOS / WSL -->
         <div id="contentSetupBash">
           <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-              <span style="font-size:13px; font-weight:700; color:#58a6ff;">🚀 Jedno polecenie konfiguruje całe środowisko (All-in-One):</span>
-              <button class="btn btn-sm btn-accent" id="btnCopySetupBashMain">📋 Kopiuj polecenie</button>
+              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupBashAllInOneTitle">🚀 Jedno polecenie konfiguruje całe środowisko (All-in-One):</span>
+              <button class="btn btn-sm btn-accent" id="btnCopySetupBashMain" data-i18n="btnCopyCmd">📋 Kopiuj polecenie</button>
             </div>
             <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
               <code class="mono" id="cmdSetupBashMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
@@ -1718,39 +1841,39 @@ const PAGE = `<!doctype html>
           </div>
 
           <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
-            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;">
+            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;" data-i18n="setupAdvancedSummary">
               ⚙️ Zaawansowane: rozdzielne polecenia, zmienne ENV oraz konfiguracja ręczna
             </summary>
             <div style="margin-top:10px; display:flex; flex-direction:column; gap:12px;">
               <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">1. Tylko Claude Code CLI &amp; VS Code:</div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashClaudeOnly">1. Tylko Claude Code CLI &amp; VS Code:</div>
                 <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
                   <code class="mono" id="cmdSetupBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
                 </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupBash">📋 Kopiuj polecenie Claude</button>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupBash" data-i18n="btnCopySetupBash">📋 Kopiuj polecenie Claude</button>
               </div>
 
               <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">2. Tylko OpenAI Codex CLI &amp; VS Code:</div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashCodexOnly">2. Tylko OpenAI Codex CLI &amp; VS Code:</div>
                 <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
                   <code class="mono" id="cmdSetupCodexBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
                 </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexBash">📋 Kopiuj polecenie Codex</button>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexBash" data-i18n="btnCopySetupCodexBash">📋 Kopiuj polecenie Codex</button>
               </div>
 
               <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">3. Zmienne powłoki (export ENV dla OpenCode / Hermes):</div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashAgentOnly">3. Zmienne powłoki (export ENV dla OpenCode / Hermes):</div>
                 <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
                   <pre class="mono" id="cmdSetupAgentBash" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
                 </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentBash">📋 Kopiuj zmienne powłoki</button>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentBash" data-i18n="btnCopySetupAgentBash">📋 Kopiuj zmienne powłoki</button>
               </div>
 
               <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">4. Ręczna konfiguracja JSON / env:</div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashManualOnly">4. Ręczna konfiguracja JSON / env:</div>
                 <div class="row" style="gap:8px; margin-bottom:6px;">
-                  <button class="btn btn-xs" id="btnCopyShellEnv">📋 Kopiuj export ENV</button>
-                  <button class="btn btn-xs" id="btnCopyVSCode">📋 Kopiuj VS Code JSON</button>
+                  <button class="btn btn-xs" id="btnCopyShellEnv" data-i18n="btnCopyShellEnv">📋 Kopiuj export ENV</button>
+                  <button class="btn btn-xs" id="btnCopyVSCode" data-i18n="btnCopyVSCode">📋 Kopiuj VS Code JSON</button>
                 </div>
                 <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px;">
                   <pre class="mono" id="boxManualConfig" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto;"></pre>
@@ -1764,8 +1887,8 @@ const PAGE = `<!doctype html>
         <div id="contentSetupPowershell" style="display:none;">
           <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-              <span style="font-size:13px; font-weight:700; color:#58a6ff;">🚀 Jedno polecenie konfiguruje całe środowisko Windows (All-in-One):</span>
-              <button class="btn btn-sm btn-accent" id="btnCopySetupPowershellMain">📋 Kopiuj polecenie</button>
+              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupPowershellAllInOneTitle">🚀 Jedno polecenie konfiguruje całe środowisko Windows (All-in-One):</span>
+              <button class="btn btn-sm btn-accent" id="btnCopySetupPowershellMain" data-i18n="btnCopyCmd">📋 Kopiuj polecenie</button>
             </div>
             <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
               <code class="mono" id="cmdSetupPowershellMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
@@ -1779,32 +1902,32 @@ const PAGE = `<!doctype html>
           </div>
 
           <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
-            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;">
+            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;" data-i18n="setupAdvancedPSSummary">
               ⚙️ Zaawansowane: rozdzielne polecenia Windows i zmienne sesyjne
             </summary>
             <div style="margin-top:10px; display:flex; flex-direction:column; gap:12px;">
               <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">1. Tylko Claude Code na Windows (PowerShell):</div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSClaudeOnly">1. Tylko Claude Code na Windows (PowerShell):</div>
                 <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
                   <code class="mono" id="cmdSetupPowershell" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
                 </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupPowershell">📋 Kopiuj polecenie Claude (PS)</button>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupPowershell" data-i18n="btnCopySetupPowershell">📋 Kopiuj polecenie Claude (PS)</button>
               </div>
 
               <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">2. Tylko OpenAI Codex na Windows (PowerShell):</div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSCodexOnly">2. Tylko OpenAI Codex na Windows (PowerShell):</div>
                 <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
                   <code class="mono" id="cmdSetupCodexPowershell" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
                 </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexPowershell">📋 Kopiuj polecenie Codex (PS)</button>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexPowershell" data-i18n="btnCopySetupCodexPowershell">📋 Kopiuj polecenie Codex (PS)</button>
               </div>
 
               <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;">3. Zmienne sesyjne PowerShell:</div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSAgentOnly">3. Zmienne sesyjne PowerShell:</div>
                 <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
                   <pre class="mono" id="cmdSetupAgentPowershell" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
                 </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentPowershell">📋 Kopiuj polecenie PowerShell</button>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentPowershell" data-i18n="btnCopySetupAgentPowershell">📋 Kopiuj polecenie PowerShell</button>
               </div>
             </div>
           </details>
@@ -1812,8 +1935,8 @@ const PAGE = `<!doctype html>
       </div>
 
       <div class="row" style="justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--line); padding-top:12px;">
-        <span style="font-size:12px; color:var(--dim);">Repozytorium: <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/agent-lb ↗</a></span>
-        <button class="btn" id="btnDoneKeyModal">Zamknij</button>
+        <span style="font-size:12px; color:var(--dim);"><span data-i18n="lblRepoLink">Repozytorium:</span> <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/agent-lb ↗</a></span>
+        <button class="btn" id="btnDoneKeyModal" data-i18n="btnDoneKeyModal">Zamknij</button>
       </div>
     </div>
   </div>
@@ -1942,7 +2065,158 @@ const PAGE = `<!doctype html>
       primaryAdminKeyName: 'Klucz Master Administratora',
       btnKeyConnect: '💻 Setup',
       keyShow: 'Pokaż',
-      keyHide: 'Ukryj'
+      keyHide: 'Ukryj',
+      btnFleetUsage: '📊 Kto i na co?',
+      btnFleetUsageTitle: 'Podgląd kto i na co zużywa limity w całej flocie (zbiorczo)',
+      quickStationSelectTitle: 'Wybierz stację roboczą dla tego polecenia',
+      quickCmdClickCopy: 'Kliknij, aby skopiować pełną komendę',
+      quickToolOptional: 'Pojedyncze narzędzie lub eksport ENV (opcjonalnie)',
+      quickToolAll: '⚡ Wszystko (All-in-One)',
+      quickTabBash: 'Linux / macOS / WSL',
+      quickTabPS: 'Windows',
+      modalAddAccountTitle: '➕ Dodaj konto',
+      btnClose: '✕ Zamknij',
+      lblProvider: 'Dostawca:',
+      provAnthropicOption: '🟣 Anthropic (Claude)',
+      provCodexOption: '🟢 OpenAI (Codex / ChatGPT)',
+      tabBtnApiKey: 'Klucz API Console',
+      tabBtnOAuth: 'Wklej sesję OAuth',
+      tabBtnImport: 'Import ze ścieżki',
+      tabBtnBrowserOAuth: 'Logowanie w przeglądarce',
+      tabBtnDeviceCode: 'Kod urządzenia',
+      lblApiKeyAnthropic: 'Klucz API Anthropic Console (sk-ant-...) *',
+      lblApiKeyCodex: 'Klucz API OpenAI Platform (sk-proj-...) *',
+      lblAccountName: 'Nazwa konta (opcjonalnie)',
+      lblPriority: 'Priorytet',
+      btnSubmitApiKey: 'Dodaj konto API',
+      pOAuthHelp: 'Wklej zawartość pliku <code>~/.claude/.credentials.json</code> lub podaj tokeny z sesji OAuth:',
+      lblOAuthJson: 'Wklej cały JSON poświadczeń (.credentials.json)',
+      lblOAuthAccess: 'AccessToken (jeśli nie wklejasz JSON)',
+      lblOAuthRefresh: 'RefreshToken (opcjonalnie)',
+      btnSubmitOAuth: 'Zapisz sesję OAuth',
+      pImportHelp: 'Wczytaj poświadczenia bezpośrednio z pliku na serwerze:',
+      lblImportPath: 'Ścieżka do pliku na serwerze *',
+      btnSubmitImportPath: 'Importuj z pliku',
+      pBrowserOAuthHelp: 'Zaloguj się na konto Claude w przeglądarce za pomocą bezpiecznego przepływu PKCE.',
+      btnStartOAuth: 'Rozpocznij logowanie Claude',
+      lblOAuthStep2Link: '1. Jeśli okno logowania się nie otworzyło, <a id="oauthLink" href="#" target="_blank" style="color:var(--accent); text-decoration:underline;">kliknij tutaj ↗</a>.',
+      lblOAuthStep2Help: '2. Zaloguj się w Claude.ai i skopiuj kod autoryzacyjny lub pełny adres URL:',
+      lblAuthCode: 'Kod autoryzacyjny lub callback URL *',
+      btnCompleteOAuth: 'Dokończ autoryzację',
+      btnCancelOAuth: 'Wróć',
+      pDeviceCodeHelp: 'Zaloguj się na konto OpenAI Codex / ChatGPT za pomocą kodu urządzenia. Idealne dla serwerów i sesji SSH bez przeglądarki.',
+      btnStartDeviceCode: 'Rozpocznij logowanie kodem',
+      lblDeviceCodeStep2Link: '1. Otwórz ten link w przeglądarce na dowolnym urządzeniu:',
+      lblDeviceCodeStep2Code: '2. Wpisz poniższy kod:',
+      pDeviceCodeStatus: '⏳ Oczekiwanie na zatwierdzenie kodu...',
+      btnCancelDeviceCode: 'Anuluj',
+      modalReloginTitle: '🔐 Ponowne logowanie: ',
+      reloginDesc: 'Sesja tego konta wygasła lub token został odrzucony przez serwery Claude. Zaloguj się ponownie w Claude.ai, aby odnowić poświadczenia i natychmiast przywrócić konto do rotacji.',
+      tabBtnReloginBrowser: '🌐 Przeglądarka (OAuth)',
+      tabBtnReloginJson: '📋 Wklej JSON / Token',
+      tabBtnReloginImport: '📂 Plik na serwerze',
+      reloginStep1Title: 'Krok 1: Otwórz stronę logowania Claude.ai',
+      reloginStep1Desc: 'Kliknij poniższy przycisk. Otworzy się nowa karta z oficjalną stroną autoryzacji Claude.ai. Upewnij się, że logujesz się na właściwe konto.',
+      btnStartReloginOAuth: '🌐 Otwórz logowanie Claude.ai w nowej karcie',
+      reloginStep2Title: 'Krok 2: Skopiuj i wklej kod autoryzacyjny',
+      reloginStep2Desc: 'Po zalogowaniu i zatwierdzeniu w Claude.ai, skopiuj wyświetlony kod autoryzacyjny (lub cały adres URL callback z paska adresu) i wklej poniżej:',
+      btnCompleteReloginOAuth: '✅ Odnów sesję i zaloguj',
+      btnRestartReloginOAuth: '↺ Uruchom ponownie logowanie',
+      reloginJsonHelp: 'Wklej zawartość pliku <code>~/.claude/.credentials.json</code> lub JSON z tokenami sesji OAuth:',
+      btnSubmitReloginJson: 'Zapisz poświadczenia',
+      reloginImportHelp: 'Wczytaj nowe poświadczenia z pliku zapisanego na serwerze (np. po <code>claude login</code> w konsoli):',
+      btnSubmitReloginImport: 'Importuj z pliku',
+      modalAddClientKeyTitle: '➕ Podłącz nową stację roboczą',
+      modalAddClientKeyDesc: 'Wygeneruj dedykowany klucz dostępu dla komputera, laptopa lub agenta CLI. Po utworzeniu od razu otrzymasz gotową komendę do wklejenia w terminalu.',
+      lblClientName: 'Nazwa stacji roboczej / urządzenia *',
+      lblClientCustomKey: 'Własny klucz (opcjonalnie)',
+      lblClientDailyTokens: 'Dzienny limit tokenów (opcjonalnie)',
+      lblClientMonthlyTokens: 'Miesięczny limit tokenów (opcjonalnie)',
+      lblClientExpiresAt: 'Ważny do (data wygaśnięcia, opcjonalnie)',
+      lblClientAllowedModels: 'Dozwolone modele (opcjonalnie)',
+      btnSubmitClientKey: 'Utwórz klucz',
+      modalKeyCreatedTitle: '💻 Konfiguracja stacji roboczej',
+      lblStationWorkstation: 'Stacja robocza:',
+      lblStationKey: 'Klucz stacji:',
+      btnCopyCreatedKey: '📋 Kopiuj klucz',
+      tabSetupBash: '🐧 Linux / macOS / WSL',
+      tabSetupPowershell: '🪟 Windows (PowerShell)',
+      setupBashAllInOneTitle: '🚀 Jedno polecenie konfiguruje całe środowisko (All-in-One):',
+      setupPowershellAllInOneTitle: '🚀 Jedno polecenie konfiguruje całe środowisko Windows (All-in-One):',
+      btnCopyCmd: '📋 Kopiuj polecenie',
+      setupAdvancedSummary: '⚙️ Zaawansowane: rozdzielne polecenia, zmienne ENV oraz konfiguracja ręczna',
+      setupAdvancedPSSummary: '⚙️ Zaawansowane: rozdzielne polecenia Windows i zmienne sesyjne',
+      lblBashClaudeOnly: '1. Tylko Claude Code CLI & VS Code:',
+      lblBashCodexOnly: '2. Tylko OpenAI Codex CLI & VS Code:',
+      lblBashAgentOnly: '3. Zmienne powłoki (export ENV dla OpenCode / Hermes):',
+      lblBashManualOnly: '4. Ręczna konfiguracja JSON / env:',
+      lblPSClaudeOnly: '1. Tylko Claude Code na Windows (PowerShell):',
+      lblPSCodexOnly: '2. Tylko OpenAI Codex na Windows (PowerShell):',
+      lblPSAgentOnly: '3. Zmienne sesyjne PowerShell:',
+      btnCopySetupBash: '📋 Kopiuj polecenie Claude',
+      btnCopySetupCodexBash: '📋 Kopiuj polecenie Codex',
+      btnCopySetupAgentBash: '📋 Kopiuj zmienne powłoki',
+      btnCopyShellEnv: '📋 Kopiuj export ENV',
+      btnCopyVSCode: '📋 Kopiuj VS Code JSON',
+      btnCopySetupPowershell: '📋 Kopiuj polecenie Claude (PS)',
+      btnCopySetupCodexPowershell: '📋 Kopiuj polecenie Codex (PS)',
+      btnCopySetupAgentPowershell: '📋 Kopiuj polecenie PowerShell',
+      btnDoneKeyModal: 'Zamknij',
+      lblRepoLink: 'Repozytorium:',
+      modalAccountUsageTitle: '📊 Szczegóły zużycia konta:',
+      lblTotalTokens: 'Łącznie tokenów',
+      lblTotalReq: 'Liczba zapytań',
+      lblSessionLimit: 'Limit Sesyjny',
+      lblWeeklyLimit: 'Limit Tygodniowy',
+      lblLastActivity: 'Ostatnia aktywność',
+      tabUsageClients: '👤 Kto (Klienci / Stacje)',
+      tabUsageSessions: '🎯 Na co (Zadania / Sesje / Modele)',
+      tabUsageRecent: '📜 Ostatnie zapytania (Live feed)',
+      btnResetAccountUsage: '🗑️ Zeruj liczniki tego konta',
+      lblLiveDataAgentlb: 'Dane odświeżane na żywo z agentlb',
+      modalFleetUsageTitle: '🌐 Zbiorczy raport zużycia floty: Kto i Na co',
+      badgeAllAccounts: 'Wszystkie konta',
+      lblTotalFleetTokens: 'Łącznie tokenów floty',
+      lblTotalFleetReq: 'Łącznie zapytań',
+      lblTotalFleetAccounts: 'Liczba kont',
+      lblTotalFleetClients: 'Zidentyfikowani klienci',
+      tabFleetAccounts: '🏦 Konta (Podział per konto)',
+      tabFleetClients: '👤 Klienci (Kto ile zużył)',
+      tabFleetModels: '🤖 Modele (Na jakie modele)',
+      testChatTitle: '💬 Test Chat — Claude & Codex Playground',
+      testChatBadge: 'Live Upstream Test',
+      btnTestChatHeaderCopy: '📋 Kopiuj czat',
+      btnTestChatHeaderCopyTitle: 'Skopiuj całą historię rozmowy do schowka',
+      lblTestProvider: 'Dostawca (Provider):',
+      lblTestModel: 'Model:',
+      lblTestEffort: 'Rozumowanie (Effort):',
+      optEffortDefault: '⚡ Domyślne (Default)',
+      optEffortMinimal: '🟢 Minimalne (Minimal)',
+      optEffortLow: '🟢 Niskie (Low)',
+      optEffortMedium: '🟡 Średnie (Medium)',
+      optEffortHigh: '🔴 Wysokie (High)',
+      optEffortMax: '🔥 Maksymalne (Max)',
+      lblTestAccount: 'Konto (Routing):',
+      optTestAccountAuto: '⚡ Auto (Agent-LB Policy)',
+      quickTestsLabel: 'Szybkie testy:',
+      quickPromptIntro: '👋 Przedstaw się',
+      quickPromptPing: '⚡ Ping',
+      testChatPlaceholder: 'Wybierz dostawcę i model, a następnie wpisz wiadomość lub kliknij szybki test.<br>Żądanie zostanie wysłane przez silnik Agent-LB bezpośrednio do wybranego upstreamu.',
+      testChatMessagePlaceholder: 'Wpisz treść wiadomości testowej (Enter wysyła, Shift+Enter nowa linia)...',
+      btnTestChatClear: '🗑️ Wyczyść historię',
+      btnTestChatSend: 'Wyślij zapytanie 🚀',
+      thAccount: 'Konto',
+      thProvider: 'Dostawca',
+      thRequests: 'Żądania',
+      thTokens: 'Tokeny',
+      thShare: 'Udział %',
+      thClient: 'Klient / Stacja',
+      thProject: 'Projekt',
+      thSession: 'Sesja',
+      thModel: 'Model',
+      thTime: 'Czas',
+      thStatus: 'Status',
+      thActions: 'Akcje'
     },
     en: {
       appTitle: 'Agent LB',
@@ -2048,7 +2322,158 @@ const PAGE = `<!doctype html>
       primaryAdminKeyName: 'Master Administrator Key',
       btnKeyConnect: '💻 Setup',
       keyShow: 'Show',
-      keyHide: 'Hide'
+      keyHide: 'Hide',
+      btnFleetUsage: '📊 Who & What?',
+      btnFleetUsageTitle: 'View who and what consumes limits across the whole fleet (aggregate)',
+      quickStationSelectTitle: 'Select workstation for this command',
+      quickCmdClickCopy: 'Click to copy full command',
+      quickToolOptional: 'Single tool or ENV export (optional)',
+      quickToolAll: '⚡ Everything (All-in-One)',
+      quickTabBash: 'Linux / macOS / WSL',
+      quickTabPS: 'Windows',
+      modalAddAccountTitle: '➕ Add New Account',
+      btnClose: '✕ Close',
+      lblProvider: 'Provider:',
+      provAnthropicOption: '🟣 Anthropic (Claude)',
+      provCodexOption: '🟢 OpenAI (Codex / ChatGPT)',
+      tabBtnApiKey: 'Console API Key',
+      tabBtnOAuth: 'Paste OAuth Session',
+      tabBtnImport: 'Import from Path',
+      tabBtnBrowserOAuth: 'Browser Login',
+      tabBtnDeviceCode: 'Device Code',
+      lblApiKeyAnthropic: 'Anthropic Console API Key (sk-ant-...) *',
+      lblApiKeyCodex: 'OpenAI Platform API Key (sk-proj-...) *',
+      lblAccountName: 'Account Name (optional)',
+      lblPriority: 'Priority',
+      btnSubmitApiKey: 'Add API Account',
+      pOAuthHelp: 'Paste content of <code>~/.claude/.credentials.json</code> or OAuth session tokens:',
+      lblOAuthJson: 'Paste entire credentials JSON (.credentials.json)',
+      lblOAuthAccess: 'AccessToken (if not pasting JSON)',
+      lblOAuthRefresh: 'RefreshToken (optional)',
+      btnSubmitOAuth: 'Save OAuth Session',
+      pImportHelp: 'Load credentials directly from file on the server:',
+      lblImportPath: 'File path on server *',
+      btnSubmitImportPath: 'Import from File',
+      pBrowserOAuthHelp: 'Sign in to Claude account in browser using secure PKCE flow.',
+      btnStartOAuth: 'Start Claude Login',
+      lblOAuthStep2Link: '1. If login window did not open, <a id="oauthLink" href="#" target="_blank" style="color:var(--accent); text-decoration:underline;">click here ↗</a>.',
+      lblOAuthStep2Help: '2. Sign in to Claude.ai and copy authorization code or callback URL:',
+      lblAuthCode: 'Authorization code or callback URL *',
+      btnCompleteOAuth: 'Complete Authorization',
+      btnCancelOAuth: 'Back',
+      pDeviceCodeHelp: 'Log in to OpenAI Codex / ChatGPT using a device code. Ideal for headless servers and SSH sessions.',
+      btnStartDeviceCode: 'Start Device Code Login',
+      lblDeviceCodeStep2Link: '1. Open this link in a browser on any device:',
+      lblDeviceCodeStep2Code: '2. Enter the code below:',
+      pDeviceCodeStatus: '⏳ Waiting for code approval...',
+      btnCancelDeviceCode: 'Cancel',
+      modalReloginTitle: '🔐 Re-login Account: ',
+      reloginDesc: 'Session has expired or upstream rejected tokens. Sign in to Claude.ai again to renew credentials and immediately restore account to rotation.',
+      tabBtnReloginBrowser: '🌐 Browser (OAuth)',
+      tabBtnReloginJson: '📋 Paste JSON / Token',
+      tabBtnReloginImport: '📂 Server File',
+      reloginStep1Title: 'Step 1: Open Claude.ai Login Page',
+      reloginStep1Desc: 'Click the button below to open official Claude.ai authorization page in a new tab. Make sure you log into the correct account.',
+      btnStartReloginOAuth: '🌐 Open Claude.ai login in new tab',
+      reloginStep2Title: 'Step 2: Copy and paste authorization code',
+      reloginStep2Desc: 'After logging in and approving in Claude.ai, copy the authorization code (or the full callback URL) and paste below:',
+      btnCompleteReloginOAuth: '✅ Renew Session & Log In',
+      btnRestartReloginOAuth: '↺ Restart Login Flow',
+      reloginJsonHelp: 'Paste content of <code>~/.claude/.credentials.json</code> or OAuth session tokens JSON:',
+      btnSubmitReloginJson: 'Save Credentials',
+      reloginImportHelp: 'Load new credentials from a file saved on server (e.g. after <code>claude login</code> in console):',
+      btnSubmitReloginImport: 'Import from File',
+      modalAddClientKeyTitle: '➕ Connect New Workstation',
+      modalAddClientKeyDesc: 'Generate a dedicated access key for a developer machine or CLI agent. You will get ready-to-run terminal commands immediately.',
+      lblClientName: 'Workstation / device name *',
+      lblClientCustomKey: 'Custom key (optional)',
+      lblClientDailyTokens: 'Daily token limit (optional)',
+      lblClientMonthlyTokens: 'Monthly token limit (optional)',
+      lblClientExpiresAt: 'Expires at (date, optional)',
+      lblClientAllowedModels: 'Allowed models (optional)',
+      btnSubmitClientKey: 'Create Key',
+      modalKeyCreatedTitle: '💻 Workstation Setup & Connect',
+      lblStationWorkstation: 'Workstation:',
+      lblStationKey: 'Workstation key:',
+      btnCopyCreatedKey: '📋 Copy key',
+      tabSetupBash: '🐧 Linux / macOS / WSL',
+      tabSetupPowershell: '🪟 Windows (PowerShell)',
+      setupBashAllInOneTitle: '🚀 One command configures entire environment (All-in-One):',
+      setupPowershellAllInOneTitle: '🚀 One command configures entire Windows environment (All-in-One):',
+      btnCopyCmd: '📋 Copy command',
+      setupAdvancedSummary: '⚙️ Advanced: separate commands, ENV variables & manual setup',
+      setupAdvancedPSSummary: '⚙️ Advanced: separate Windows commands & session variables',
+      lblBashClaudeOnly: '1. Claude Code CLI & VS Code only:',
+      lblBashCodexOnly: '2. OpenAI Codex CLI & VS Code only:',
+      lblBashAgentOnly: '3. Shell environment variables (export ENV for OpenCode / Hermes):',
+      lblBashManualOnly: '4. Manual JSON / env configuration:',
+      lblPSClaudeOnly: '1. Claude Code on Windows (PowerShell) only:',
+      lblPSCodexOnly: '2. OpenAI Codex on Windows (PowerShell) only:',
+      lblPSAgentOnly: '3. PowerShell session variables:',
+      btnCopySetupBash: '📋 Copy Claude command',
+      btnCopySetupCodexBash: '📋 Copy Codex command',
+      btnCopySetupAgentBash: '📋 Copy shell variables',
+      btnCopyShellEnv: '📋 Copy export ENV',
+      btnCopyVSCode: '📋 Copy VS Code JSON',
+      btnCopySetupPowershell: '📋 Copy Claude command (PS)',
+      btnCopySetupCodexPowershell: '📋 Copy Codex command (PS)',
+      btnCopySetupAgentPowershell: '📋 Copy PowerShell command',
+      btnDoneKeyModal: 'Close',
+      lblRepoLink: 'Repository:',
+      modalAccountUsageTitle: '📊 Account Usage Details:',
+      lblTotalTokens: 'Total Tokens',
+      lblTotalReq: 'Total Requests',
+      lblSessionLimit: 'Session Limit',
+      lblWeeklyLimit: 'Weekly Limit',
+      lblLastActivity: 'Last Activity',
+      tabUsageClients: '👤 Who (Clients / Workstations)',
+      tabUsageSessions: '🎯 What (Tasks / Sessions / Models)',
+      tabUsageRecent: '📜 Recent requests (Live feed)',
+      btnResetAccountUsage: '🗑️ Reset account counters',
+      lblLiveDataAgentlb: 'Live data from agentlb',
+      modalFleetUsageTitle: '🌐 Fleet Usage Overview: Who & What',
+      badgeAllAccounts: 'All accounts',
+      lblTotalFleetTokens: 'Total fleet tokens',
+      lblTotalFleetReq: 'Total requests',
+      lblTotalFleetAccounts: 'Total accounts',
+      lblTotalFleetClients: 'Identified clients',
+      tabFleetAccounts: '🏦 Accounts (Per-account breakdown)',
+      tabFleetClients: '👤 Clients (Usage by client)',
+      tabFleetModels: '🤖 Models (By model)',
+      testChatTitle: '💬 Test Chat — Claude & Codex Playground',
+      testChatBadge: 'Live Upstream Test',
+      btnTestChatHeaderCopy: '📋 Copy chat',
+      btnTestChatHeaderCopyTitle: 'Copy entire chat history to clipboard',
+      lblTestProvider: 'Provider:',
+      lblTestModel: 'Model:',
+      lblTestEffort: 'Reasoning Effort:',
+      optEffortDefault: '⚡ Default',
+      optEffortMinimal: '🟢 Minimal',
+      optEffortLow: '🟢 Low',
+      optEffortMedium: '🟡 Medium',
+      optEffortHigh: '🔴 High',
+      optEffortMax: '🔥 Max',
+      lblTestAccount: 'Account (Routing):',
+      optTestAccountAuto: '⚡ Auto (Agent-LB Policy)',
+      quickTestsLabel: 'Quick tests:',
+      quickPromptIntro: '👋 Introduce yourself',
+      quickPromptPing: '⚡ Ping',
+      testChatPlaceholder: 'Select a provider and model, then type a message or click a quick prompt.<br>Request will be sent through Agent-LB directly to the chosen upstream.',
+      testChatMessagePlaceholder: 'Type a test message (Enter to send, Shift+Enter for new line)...',
+      btnTestChatClear: '🗑️ Clear history',
+      btnTestChatSend: 'Send Request 🚀',
+      thAccount: 'Account',
+      thProvider: 'Provider',
+      thRequests: 'Requests',
+      thTokens: 'Tokens',
+      thShare: 'Share %',
+      thClient: 'Client / Workstation',
+      thProject: 'Project',
+      thSession: 'Session',
+      thModel: 'Model',
+      thTime: 'Time',
+      thStatus: 'Status',
+      thActions: 'Actions'
     }
   };
 
@@ -2069,6 +2494,12 @@ const PAGE = `<!doctype html>
       var n = nodes[i];
       var k = n.getAttribute('data-i18n');
       if (k) n.textContent = t(k);
+    }
+    var htmlNodes = document.querySelectorAll('[data-i18n-html]');
+    for (var h = 0; h < htmlNodes.length; h++) {
+      var hn = htmlNodes[h];
+      var hk = hn.getAttribute('data-i18n-html');
+      if (hk) hn.innerHTML = t(hk);
     }
     var titleNodes = document.querySelectorAll('[data-i18n-title]');
     for (var j = 0; j < titleNodes.length; j++) {
@@ -2745,7 +3176,7 @@ ${SHARED_HELPERS}
       var sp2 = q.spend;
       var usedVal = sp2.usedMinor ? fmtMoneyVal(sp2.usedMinor, sp2.currency, sp2.exponent) : null;
       if (sp2.disabledReason === 'out_of_credits') {
-        meta.appendChild(el('span', 'card-meta-item bad', '⚠️ Brak środków'));
+        meta.appendChild(el('span', 'card-meta-item bad', currentLang === 'pl' ? '⚠️ Brak środków' : '⚠️ Out of credits'));
       } else if (sp2.disabledReason) {
         meta.appendChild(el('span', 'card-meta-item warn', '⚠️ ' + sp2.disabledReason));
       } else if (sp2.enabled) {
@@ -2753,7 +3184,7 @@ ${SHARED_HELPERS}
       } else if (planName) {
         meta.appendChild(el('span', 'card-meta-item', '💳 ' + planName + (usedVal ? ' · ' + usedVal : '')));
       } else {
-        meta.appendChild(el('span', 'card-meta-item', '💳 Nielimitowany' + (usedVal ? ' · ' + usedVal : '')));
+        meta.appendChild(el('span', 'card-meta-item', (currentLang === 'pl' ? '💳 Nielimitowany' : '💳 Unlimited') + (usedVal ? ' · ' + usedVal : '')));
       }
     } else if (q.backend && (q.backend.text || q.backend.label)) {
       meta.appendChild(el('span', 'card-meta-item', '💳 ' + (q.backend.label || 'Saldo') + ': ' + q.backend.text));
@@ -2770,7 +3201,7 @@ ${SHARED_HELPERS}
         var expStr = rc.nearestExpiresAt ? ' (' + fmtAgo(rc.nearestExpiresAt) + ')' : '';
         rcSpan.appendChild(el('span', '', '⚡ Reset 5h: ' + rcAvail + expStr + ' '));
         var btnReset = el('button', 'btn-xs btn-accent', '🔄 Reset');
-        btnReset.title = 'Zużyj kredyt resetu OpenAI i natychmiast wyzeruj limit 5h';
+        btnReset.title = currentLang === 'pl' ? 'Zużyj kredyt resetu OpenAI i natychmiast wyzeruj limit 5h' : 'Consume OpenAI reset credit and immediately clear 5h limit';
         btnReset.style.padding = '0 4px';
         btnReset.style.fontSize = '9.5px';
         btnReset.style.minHeight = '16px';
@@ -2790,7 +3221,7 @@ ${SHARED_HELPERS}
         var daysLeft = Math.round(msLeft / 86400000);
         if (daysLeft > 1) tokenParts.push('Token ~' + daysLeft + 'd');
         else if (msLeft > 0) tokenParts.push('Token <24h');
-        else tokenParts.push('Wygasł');
+        else tokenParts.push(currentLang === 'pl' ? 'Wygasł' : 'Expired');
       }
       if (a.hasRefreshToken) tokenParts.push('Refresh OK');
       if (tokenParts.length) {
@@ -3068,7 +3499,7 @@ ${SHARED_HELPERS}
         });
         box.appendChild(btn);
       } else if (p.kind === 'account' && p.reason === 'disabled') {
-        var btn = el('button', 'btn btn-sm btn-ok', '▶️ Włącz konto');
+        var btn = el('button', 'btn btn-sm btn-ok', currentLang === 'pl' ? '▶️ Włącz konto' : '▶️ Enable account');
         btn.style.whiteSpace = 'nowrap';
         btn.addEventListener('click', function () {
           doToggleDisabled(p.accountName, true, btn);
@@ -3245,14 +3676,14 @@ ${SHARED_HELPERS}
     apiCall('/agent-lb/api/routing', 'POST', payload)
       .then(function (res) {
         if (res && res.ok) {
-          note('ok', 'Zaktualizowano politykę floty (Routing / Cache)');
+          note('ok', currentLang === 'pl' ? 'Zaktualizowano politykę floty (Routing / Cache)' : 'Updated fleet policy (Routing / Cache)');
           poll();
         } else {
-          note('error', 'Błąd zapisu polityki: ' + (res && res.error ? res.error : 'nieznany'));
+          note('error', (currentLang === 'pl' ? 'Błąd zapisu polityki: ' : 'Error saving policy: ') + (res && res.error ? res.error : (currentLang === 'pl' ? 'nieznany' : 'unknown')));
         }
       })
       .catch(function (e) {
-        note('error', 'Błąd zapisu polityki: ' + e.message);
+        note('error', (currentLang === 'pl' ? 'Błąd zapisu polityki: ' : 'Error saving policy: ') + e.message);
       });
   }
 
@@ -3271,11 +3702,11 @@ ${SHARED_HELPERS}
           note('ok', t('msgFleetDefaultsRestored'));
           poll();
         } else {
-          note('error', 'Błąd przywracania ustawień domyślnych: ' + ((res && res.error) || 'Nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd przywracania ustawień domyślnych: ' : 'Error restoring defaults: ') + ((res && res.error) || (currentLang === 'pl' ? 'Nieznany błąd' : 'Unknown error')));
         }
       })
       .catch(function (e) {
-        note('error', 'Błąd komunikacji z serwerem: ' + e.message);
+        note('error', (currentLang === 'pl' ? 'Błąd komunikacji z serwerem: ' : 'Server communication error: ') + e.message);
       });
   }
 
@@ -3285,10 +3716,10 @@ ${SHARED_HELPERS}
     apiCall(endpoint, 'POST')
       .then(function (res) {
         if (res && res.ok) {
-          note('ok', isDraining ? 'Wznowiono normalną pracę floty (anulowano drain)' : 'Włączono tryb Drain (dokańczanie aktywnych zapytań)');
+          note('ok', isDraining ? (currentLang === 'pl' ? 'Wznowiono normalną pracę floty (anulowano drain)' : 'Resumed normal fleet operation (drain canceled)') : (currentLang === 'pl' ? 'Włączono tryb Drain (dokańczanie aktywnych zapytań)' : 'Drain mode enabled (finishing active requests)'));
           poll();
         } else {
-          note('error', 'Błąd przełączania drain: ' + (res && res.error ? res.error : 'nieznany'));
+          note('error', (currentLang === 'pl' ? 'Błąd przełączania drain: ' : 'Error toggling drain: ') + (res && res.error ? res.error : (currentLang === 'pl' ? 'nieznany' : 'unknown')));
         }
       })
       .catch(function (e) {
@@ -3338,7 +3769,7 @@ ${SHARED_HELPERS}
     return fetch(url, init).then(function (res) {
       if (res.status === 401 || res.status === 403) {
         if (key) localStorage.removeItem(KEY);
-        showKeybox('Wymagana autoryzacja administracyjna. Wprowadź klucz proxy (proxy.apiKey).');
+        showKeybox(currentLang === 'pl' ? 'Wymagana autoryzacja administracyjna. Wprowadź klucz proxy (proxy.apiKey).' : 'Administrative authorization required. Enter proxy key (proxy.apiKey).');
         return null;
       }
       return res.json().catch(function () {
@@ -3400,10 +3831,10 @@ ${SHARED_HELPERS}
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Konto "' + name + '" ' + (res.disabled ? 'wyłączone' : 'włączone'));
+          note('ok', currentLang === 'pl' ? ('Konto "' + name + '" ' + (res.disabled ? 'wyłączone' : 'włączone')) : ('Account "' + name + '" ' + (res.disabled ? 'disabled' : 'enabled')));
           poll();
         } else {
-          note('error', 'Błąd przełączania: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd przełączania: ' : 'Toggle error: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
           btn.disabled = false;
         }
       })
@@ -3414,21 +3845,21 @@ ${SHARED_HELPERS}
   }
 
   function doSetPriority(name, currentPrio) {
-    var input = prompt('Podaj nowy priorytet dla konta "' + name + '" (liczba całkowita, niższa wartość = wyższy priorytet):', currentPrio || 0);
+    var input = prompt(currentLang === 'pl' ? ('Podaj nowy priorytet dla konta "' + name + '" (liczba całkowita, niższa wartość = wyższy priorytet):') : ('Enter new priority for account "' + name + '" (integer, lower value = higher priority):'), currentPrio || 0);
     if (input == null) return;
     var prio = parseInt(input.trim(), 10);
     if (isNaN(prio)) {
-      note('error', 'Priorytet musi być liczbą całkowitą');
+      note('error', currentLang === 'pl' ? 'Priorytet musi być liczbą całkowitą' : 'Priority must be an integer');
       return;
     }
     apiCall('/agent-lb/api/accounts/priority', 'POST', { id: name, account: name, priority: prio })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Zmieniono priorytet konta "' + name + '" na ' + res.priority);
+          note('ok', currentLang === 'pl' ? ('Zmieniono priorytet konta "' + name + '" na ' + res.priority) : ('Changed priority of account "' + name + '" to ' + res.priority));
           poll();
         } else {
-          note('error', 'Błąd zmiany priorytetu: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd zmiany priorytetu: ' : 'Error changing priority: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -3437,7 +3868,7 @@ ${SHARED_HELPERS}
   }
 
   function doRenameAccount(oldName) {
-    var input = prompt('Podaj nową nazwę dla konta "' + oldName + '":', oldName);
+    var input = prompt(currentLang === 'pl' ? ('Podaj nową nazwę dla konta "' + oldName + '":') : ('Enter new name for account "' + oldName + '":'), oldName);
     if (input == null) return;
     var newName = input.trim();
     if (!newName || newName === oldName) return;
@@ -3445,10 +3876,10 @@ ${SHARED_HELPERS}
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Zmieniono nazwę konta z "' + oldName + '" na "' + res.newName + '"');
+          note('ok', currentLang === 'pl' ? ('Zmieniono nazwę konta z "' + oldName + '" na "' + res.newName + '"') : ('Renamed account from "' + oldName + '" to "' + res.newName + '"'));
           poll();
         } else {
-          note('error', 'Błąd zmiany nazwy: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd zmiany nazwy: ' : 'Error renaming account: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -3458,16 +3889,16 @@ ${SHARED_HELPERS}
 
   function doRemoveAccount(targetId, displayName, btn) {
     var nameToAsk = displayName || targetId;
-    if (!confirm('Czy na pewno chcesz usunąć konto "' + nameToAsk + '" z konfiguracji Agent LB?')) return;
+    if (!confirm(currentLang === 'pl' ? ('Czy na pewno chcesz usunąć konto "' + nameToAsk + '" z konfiguracji Agent LB?') : ('Are you sure you want to remove account "' + nameToAsk + '" from Agent LB config?'))) return;
     if (btn) btn.disabled = true;
     apiCall('/agent-lb/api/accounts/remove', 'POST', { id: targetId, name: nameToAsk, account: nameToAsk })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Usunięto konto "' + nameToAsk + '"');
+          note('ok', currentLang === 'pl' ? ('Usunięto konto "' + nameToAsk + '"') : ('Removed account "' + nameToAsk + '"'));
           poll();
         } else {
-          note('error', 'Błąd usuwania konta: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd usuwania konta: ' : 'Error removing account: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
           if (btn) btn.disabled = false;
         }
       })
@@ -3479,15 +3910,15 @@ ${SHARED_HELPERS}
 
   function doProbeSingle(name, btn) {
     if (btn) btn.disabled = true;
-    note('ok', 'Odpytywanie limitów konta "' + name + '"...');
+    note('ok', currentLang === 'pl' ? ('Odpytywanie limitów konta "' + name + '"...') : ('Probing limits for account "' + name + '"...'));
     apiCall('/agent-lb/api/accounts/probe-single', 'POST', { account: name })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Zaktualizowano limity konta "' + name + '"');
+          note('ok', currentLang === 'pl' ? ('Zaktualizowano limity konta "' + name + '"') : ('Updated limits for account "' + name + '"'));
           poll();
         } else {
-          note('error', 'Błąd odświeżania: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd odświeżania: ' : 'Error refreshing: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -3504,12 +3935,12 @@ ${SHARED_HELPERS}
       btn.textContent = '⏳ ...';
     }
     var model = provider === 'codex' ? 'gpt-5.6-sol' : 'claude-haiku-4-5-20251001';
-    note('ok', 'Wysyłanie zapytania testowego do konta "' + name + '"...');
+    note('ok', currentLang === 'pl' ? ('Wysyłanie zapytania testowego do konta "' + name + '"...') : ('Sending test request to account "' + name + '"...'));
     apiCall('/api/test/chat', 'POST', {
       provider: provider,
       account: name,
       model: model,
-      message: 'Ping test konta. Odpowiedz jednym słowem "OK".'
+      message: currentLang === 'pl' ? 'Ping test konta. Odpowiedz jednym słowem "OK".' : 'Ping test for account. Reply with single word "OK".'
     })
       .then(function (res) {
         if (!res) return;
@@ -3518,14 +3949,14 @@ ${SHARED_HELPERS}
             btn.textContent = '🟢 OK (' + (res.durationMs || 0) + 'ms)';
             btn.className = 'btn btn-xs btn-success';
           }
-          note('ok', 'Konto "' + name + '" działa poprawnie! Czas odpowiedzi: ' + (res.durationMs || 0) + 'ms. Model: ' + (res.model || model));
+          note('ok', currentLang === 'pl' ? ('Konto "' + name + '" działa poprawnie! Czas odpowiedzi: ' + (res.durationMs || 0) + 'ms. Model: ' + (res.model || model)) : ('Account "' + name + '" is healthy! Response time: ' + (res.durationMs || 0) + 'ms. Model: ' + (res.model || model)));
           poll();
         } else {
           if (btn) {
-            btn.textContent = '🔴 Błąd';
+            btn.textContent = '🔴 ' + (currentLang === 'pl' ? 'Błąd' : 'Error');
             btn.className = 'btn btn-xs btn-error';
           }
-          note('error', 'Konto "' + name + '" zwróciło błąd: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? ('Konto "' + name + '" zwróciło błąd: ') : ('Account "' + name + '" returned error: ')) + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
           poll();
         }
       })
@@ -3534,7 +3965,7 @@ ${SHARED_HELPERS}
           btn.textContent = '🔴 Błąd';
           btn.className = 'btn btn-xs btn-error';
         }
-        note('error', 'Błąd sieci podczas testowania konta: ' + e.message);
+        note('error', (currentLang === 'pl' ? 'Błąd sieci podczas testowania konta: ' : 'Network error testing account: ') + e.message);
       })
       .finally(function () {
         setTimeout(function () {
@@ -3553,10 +3984,10 @@ ${SHARED_HELPERS}
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Ustawiono politykę konta "' + name + '" na: ' + (policy === 'burn-first' ? 'Burn first' : 'Normal'));
+          note('ok', currentLang === 'pl' ? ('Ustawiono politykę konta "' + name + '" na: ' + (policy === 'burn-first' ? 'Burn first' : 'Normal')) : ('Set policy of account "' + name + '" to: ' + (policy === 'burn-first' ? 'Burn first' : 'Normal')));
           poll();
         } else {
-          note('error', 'Błąd zmiany polityki: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd zmiany polityki: ' : 'Error changing policy: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -3568,18 +3999,18 @@ ${SHARED_HELPERS}
   }
 
   function doConsumeResetCredit(name, btn) {
-    if (!confirm('UWAGA: Czy na pewno chcesz zużyć 1 kredyt resetu OpenAI dla konta "' + name + '"?\\n\\nSpowoduje to natychmiastowe wyzerowanie okna 5h (blokady limitu) w ChatGPT. Ta operacja jest nieodwracalna.')) return;
+    if (!confirm(currentLang === 'pl' ? ('UWAGA: Czy na pewno chcesz zużyć 1 kredyt resetu OpenAI dla konta "' + name + '"?\\n\\nSpowoduje to natychmiastowe wyzerowanie okna 5h (blokady limitu) w ChatGPT. Ta operacja jest nieodwracalna.') : ('WARNING: Are you sure you want to consume 1 OpenAI reset credit for account "' + name + '"?\\n\\nThis will immediately clear the 5h limit window in ChatGPT. This action is irreversible.'))) return;
     if (btn) btn.disabled = true;
 
-    note('ok', 'Wysyłanie żądania resetu limitu do OpenAI...');
+    note('ok', currentLang === 'pl' ? 'Wysyłanie żądania resetu limitu do OpenAI...' : 'Sending reset request to OpenAI...');
     apiCall('/agent-lb/api/accounts/consume-reset-credit', 'POST', { account: name })
       .then(function (res) {
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Pomyślnie zresetowano limit 5h dla konta "' + name + '"!');
+          note('ok', currentLang === 'pl' ? ('Pomyślnie zresetowano limit 5h dla konta "' + name + '"!') : ('Successfully reset 5h limit for account "' + name + '"!'));
           poll();
         } else {
-          note('error', 'Błąd resetowania: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd resetowania: ' : 'Reset error: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -3608,34 +4039,34 @@ ${SHARED_HELPERS}
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(a.href);
-        note('ok', 'Wyeksportowano konto "' + name + '"');
+        note('ok', currentLang === 'pl' ? ('Wyeksportowano konto "' + name + '"') : ('Exported account "' + name + '"'));
       })
       .catch(function (e) {
-        note('error', 'Błąd eksportu: ' + e.message);
+        note('error', (currentLang === 'pl' ? 'Błąd eksportu: ' : 'Export error: ') + e.message);
       });
   }
 
   function doTestFleet(btn) {
     if (btn) {
       btn.disabled = true;
-      btn.textContent = '⏳ Diagnozowanie...';
+      btn.textContent = currentLang === 'pl' ? '⏳ Diagnozowanie...' : '⏳ Diagnosing...';
     }
-    note('ok', 'Rozpoczęto diagnostykę floty (weryfikacja aktywnych kont)...');
+    note('ok', currentLang === 'pl' ? 'Rozpoczęto diagnostykę floty (weryfikacja aktywnych kont)...' : 'Started fleet diagnostics (checking active accounts)...');
     apiCall('/agent-lb/api/health-check/run', 'POST', { force: true })
       .then(function (res) {
         if (!res) return;
         var sum = res.summary || {};
-        var msg = 'Zakończono diagnostykę: ' + (sum.ok || 0) + ' sprawnych, ' + (sum.errors || 0) + ' z błędami, ' + (sum.skipped || 0) + ' pominiętych, zużyto łącznie ' + (sum.tokensUsed || 0) + ' tokenów.';
+        var msg = currentLang === 'pl' ? ('Zakończono diagnostykę: ' + (sum.ok || 0) + ' sprawnych, ' + (sum.errors || 0) + ' z błędami, ' + (sum.skipped || 0) + ' pominiętych, zużyto łącznie ' + (sum.tokensUsed || 0) + ' tokenów.') : ('Diagnostics finished: ' + (sum.ok || 0) + ' healthy, ' + (sum.errors || 0) + ' errors, ' + (sum.skipped || 0) + ' skipped, ' + (sum.tokensUsed || 0) + ' tokens used.');
         note(sum.errors > 0 ? 'warn' : 'ok', msg);
         poll();
       })
       .catch(function (e) {
-        note('error', 'Błąd podczas diagnostyki floty: ' + e.message);
+        note('error', (currentLang === 'pl' ? 'Błąd podczas diagnostyki floty: ' : 'Error during fleet diagnostics: ') + e.message);
       })
       .finally(function () {
         if (btn) {
           btn.disabled = false;
-          btn.textContent = '🩺 Testuj flotę';
+          btn.textContent = t('btnFleetDiagnostics') || (currentLang === 'pl' ? '🩺 Testuj flotę' : '🩺 Test Fleet');
         }
       });
   }
@@ -3648,10 +4079,10 @@ ${SHARED_HELPERS}
         if (btn) btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Przeładowano flotę kont z dysku (' + (res.added || 0) + ' nowych kont)');
+          note('ok', currentLang === 'pl' ? ('Przeładowano flotę kont z dysku (' + (res.added || 0) + ' nowych kont)') : ('Reloaded account fleet from disk (' + (res.added || 0) + ' new accounts)'));
           poll();
         } else {
-          note('error', 'Błąd przeładowania: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd przeładowania: ' : 'Reload error: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -3722,16 +4153,16 @@ ${SHARED_HELPERS}
 
   function doProbeQuota(btn) {
     if (btn) btn.disabled = true;
-    note('ok', 'Sprawdzanie sald i limitów kont w Anthropic...');
+    note('ok', currentLang === 'pl' ? 'Sprawdzanie sald i limitów kont w Anthropic...' : 'Checking quotas and balances in Anthropic...');
     apiCall('/agent-lb/probe', 'POST')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Pomyślnie zaktualizowano salda i limity floty kont');
+          note('ok', currentLang === 'pl' ? 'Pomyślnie zaktualizowano salda i limity floty kont' : 'Successfully updated fleet quotas and balances');
           poll();
         } else {
-          note('error', 'Błąd sprawdzania sald: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd sprawdzania sald: ' : 'Error checking quotas: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -3750,7 +4181,7 @@ ${SHARED_HELPERS}
     var name = document.getElementById('inApiKeyName').value.trim();
     var prio = parseInt(document.getElementById('inApiKeyPrio').value.trim(), 10) || 0;
     if (!key) {
-      note('error', 'Klucz API jest wymagany');
+      note('error', currentLang === 'pl' ? 'Klucz API jest wymagany' : 'API key is required');
       return;
     }
     btn.disabled = true;
@@ -3765,13 +4196,13 @@ ${SHARED_HELPERS}
         btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Dodano konto API "' + res.account + '"');
+          note('ok', currentLang === 'pl' ? ('Dodano konto API "' + res.account + '"') : ('Added API account "' + res.account + '"'));
           document.getElementById('inApiKey').value = '';
           document.getElementById('inApiKeyName').value = '';
           closeModal('modalAddAccount');
           poll();
         } else {
-          note('error', 'Błąd dodawania konta: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd dodawania konta: ' : 'Error adding account: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -3788,7 +4219,7 @@ ${SHARED_HELPERS}
     var prio = parseInt(document.getElementById('inOAuthPrio').value.trim(), 10) || 0;
 
     if (!jsonStr && !access) {
-      note('error', 'Podaj token AccessToken lub wklej JSON poświadczeń');
+      note('error', currentLang === 'pl' ? 'Podaj token AccessToken lub wklej JSON poświadczeń' : 'Provide AccessToken or paste credentials JSON');
       return;
     }
     btn.disabled = true;
@@ -3805,7 +4236,7 @@ ${SHARED_HELPERS}
         btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Dodano konto OAuth "' + res.account + '"');
+          note('ok', currentLang === 'pl' ? ('Dodano konto OAuth "' + res.account + '"') : ('Added OAuth account "' + res.account + '"'));
           document.getElementById('inOAuthJson').value = '';
           document.getElementById('inOAuthAccess').value = '';
           document.getElementById('inOAuthRefresh').value = '';
@@ -3827,7 +4258,7 @@ ${SHARED_HELPERS}
     var name = document.getElementById('inImportPathName').value.trim();
     var prio = parseInt(document.getElementById('inImportPathPrio').value.trim(), 10) || 0;
     if (!path) {
-      note('error', 'Ścieżka do pliku poświadczeń jest wymagana');
+      note('error', currentLang === 'pl' ? 'Ścieżka do pliku poświadczeń jest wymagana' : 'Credentials file path is required');
       return;
     }
     btn.disabled = true;
@@ -3842,12 +4273,12 @@ ${SHARED_HELPERS}
         btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Zaimportowano konto "' + res.account + '" z pliku ' + path);
+          note('ok', currentLang === 'pl' ? ('Zaimportowano konto "' + res.account + '" z pliku ' + path) : ('Imported account "' + res.account + '" from file ' + path));
           document.getElementById('inImportPathName').value = '';
           closeModal('modalAddAccount');
           poll();
         } else {
-          note('error', 'Błąd importu: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd importu: ' : 'Import error: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -3861,19 +4292,19 @@ ${SHARED_HELPERS}
 
     var titleEl = document.getElementById('modalAddAccountTitle');
     if (titleEl) {
-      titleEl.textContent = isCodex ? '➕ Dodaj konto OpenAI Codex' : '➕ Dodaj konto Claude (Anthropic)';
+      titleEl.textContent = isCodex ? (currentLang === 'pl' ? '➕ Dodaj konto OpenAI Codex' : '➕ Add OpenAI Codex Account') : (currentLang === 'pl' ? '➕ Dodaj konto Claude (Anthropic)' : '➕ Add Claude (Anthropic) Account');
     }
 
     var lblApiKey = document.getElementById('lblApiKey');
-    if (lblApiKey) lblApiKey.textContent = isCodex ? 'Klucz API OpenAI (sk-...) *' : 'Klucz API Anthropic Console (sk-ant-...) *';
+    if (lblApiKey) lblApiKey.textContent = isCodex ? (currentLang === 'pl' ? 'Klucz API OpenAI (sk-...) *' : 'OpenAI Platform API Key (sk-...) *') : (currentLang === 'pl' ? 'Klucz API Anthropic Console (sk-ant-...) *' : 'Anthropic Console API Key (sk-ant-...) *');
     var inApiKey = document.getElementById('inApiKey');
     if (inApiKey) inApiKey.placeholder = isCodex ? 'sk-proj-...' : 'sk-ant-api03-...';
 
     var pOAuth = document.getElementById('pOAuthHelp');
     if (pOAuth) {
       pOAuth.innerHTML = isCodex
-        ? 'Wklej zawartość pliku <code>~/.codex/auth.json</code> lub podaj tokeny z sesji OAuth:'
-        : 'Wklej zawartość pliku <code>~/.claude/.credentials.json</code> lub podaj tokeny z sesji OAuth:';
+        ? (currentLang === 'pl' ? 'Wklej zawartość pliku <code>~/.codex/auth.json</code> lub podaj tokeny z sesji OAuth:' : 'Paste content of <code>~/.codex/auth.json</code> or OAuth session tokens:')
+        : (currentLang === 'pl' ? 'Wklej zawartość pliku <code>~/.claude/.credentials.json</code> lub podaj tokeny z sesji OAuth:' : 'Paste content of <code>~/.claude/.credentials.json</code> or OAuth session tokens:');
     }
     var inOAuthJson = document.getElementById('inOAuthJson');
     if (inOAuthJson) {
@@ -3892,18 +4323,18 @@ ${SHARED_HELPERS}
     var pBrowser = document.getElementById('pBrowserOAuthHelp');
     if (pBrowser) {
       pBrowser.textContent = isCodex
-        ? 'Zaloguj się na konto OpenAI Codex / ChatGPT w przeglądarce za pomocą bezpiecznego przepływu PKCE.'
-        : 'Zaloguj się na konto Claude w przeglądarce za pomocą bezpiecznego przepływu PKCE.';
+        ? (currentLang === 'pl' ? 'Zaloguj się na konto OpenAI Codex / ChatGPT w przeglądarce za pomocą bezpiecznego przepływu PKCE.' : 'Sign in to OpenAI Codex / ChatGPT account in browser using PKCE flow.')
+        : (currentLang === 'pl' ? 'Zaloguj się na konto Claude w przeglądarce za pomocą bezpiecznego przepływu PKCE.' : 'Sign in to Claude account in browser using secure PKCE flow.');
     }
     var btnStart = document.getElementById('btnStartOAuth');
     if (btnStart) {
-      btnStart.textContent = isCodex ? 'Rozpocznij logowanie OpenAI Codex' : 'Rozpocznij logowanie Claude';
+      btnStart.textContent = isCodex ? (currentLang === 'pl' ? 'Rozpocznij logowanie OpenAI Codex' : 'Start OpenAI Codex Login') : (currentLang === 'pl' ? 'Rozpocznij logowanie Claude' : 'Start Claude Login');
     }
     var pStep2 = document.getElementById('pOAuthStep2Help');
     if (pStep2) {
       pStep2.textContent = isCodex
-        ? '2. Zaloguj się w OpenAI / ChatGPT i skopiuj kod autoryzacyjny lub adres URL (http://localhost:1455/auth/callback?code=...):'
-        : '2. Zaloguj się w Claude.ai i skopiuj kod autoryzacyjny lub pełny adres URL:';
+        ? (currentLang === 'pl' ? '2. Zaloguj się w OpenAI / ChatGPT i skopiuj kod autoryzacyjny lub adres URL (http://localhost:1455/auth/callback?code=...):' : '2. Sign in to OpenAI / ChatGPT and copy authorization code or callback URL:')
+        : (currentLang === 'pl' ? '2. Zaloguj się w Claude.ai i skopiuj kod autoryzacyjny lub pełny adres URL:' : '2. Sign in to Claude.ai and copy authorization code or callback URL:');
     }
 
     var dcBtn = document.getElementById('tabBtnDeviceCode');
@@ -3920,13 +4351,13 @@ ${SHARED_HELPERS}
     }
 
     var prov = getSelectedAddProvider();
-    note('ok', 'Inicjowanie logowania w przeglądarce (' + (prov === 'codex' ? 'OpenAI Codex' : 'Claude') + ')...');
+    note('ok', (currentLang === 'pl' ? 'Inicjowanie logowania w przeglądarce (' : 'Starting browser login (') + (prov === 'codex' ? 'OpenAI Codex' : 'Claude') + ')...');
     apiCall('/agent-lb/oauth/start?provider=' + encodeURIComponent(prov), 'GET')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res || !res.ok) {
           if (authWindow) authWindow.close();
-          note('error', 'Nie można zainicjować logowania: ' + (res ? res.error : 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Nie można zainicjować logowania: ' : 'Cannot initiate login: ') + (res ? res.error : (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
           return;
         }
         pendingOAuthState = res.state;
@@ -3937,12 +4368,12 @@ ${SHARED_HELPERS}
         if (link) link.href = res.authUrl;
         document.getElementById('oauthStep1').style.display = 'none';
         document.getElementById('oauthStep2').style.display = 'block';
-        note('ok', 'Otwarto stronę logowania ' + (prov === 'codex' ? 'OpenAI' : 'Claude') + '. Po zatwierdzeniu wklej kod poniżej.');
+        note('ok', (currentLang === 'pl' ? ('Otwarto stronę logowania ' + (prov === 'codex' ? 'OpenAI' : 'Claude') + '. Po zatwierdzeniu wklej kod poniżej.') : ('Opened ' + (prov === 'codex' ? 'OpenAI' : 'Claude') + ' login page. After approving, paste code below.')));
       })
       .catch(function (e) {
         if (btn) btn.disabled = false;
         if (authWindow) authWindow.close();
-        note('error', 'Błąd logowania OAuth: ' + e.message);
+        note('error', (currentLang === 'pl' ? 'Błąd logowania OAuth: ' : 'OAuth login error: ') + e.message);
       });
   }
   var doStartBrowserOAuth = doStartOAuth;
@@ -3952,7 +4383,7 @@ ${SHARED_HELPERS}
 
   function doStartDeviceCode(btn) {
     if (btn) btn.disabled = true;
-    note('ok', 'Inicjowanie logowania kodem urządzenia (Codex)...');
+    note('ok', currentLang === 'pl' ? 'Inicjowanie logowania kodem urządzenia (Codex)...' : 'Starting device code login (Codex)...');
     apiCall('/agent-lb/oauth/device-start', 'POST', { provider: 'codex' })
       .then(function (res) {
         if (btn) btn.disabled = false;
@@ -3967,8 +4398,8 @@ ${SHARED_HELPERS}
         document.getElementById('deviceCodeValue').textContent = res.userCode;
         document.getElementById('deviceCodeStep1').style.display = 'none';
         document.getElementById('deviceCodeStep2').style.display = 'block';
-        document.getElementById('deviceCodeStatus').textContent = '⏳ Oczekiwanie na zatwierdzenie kodu...';
-        note('ok', 'Kod urządzenia: ' + res.userCode + '. Otwórz link i wpisz kod.');
+        document.getElementById('deviceCodeStatus').textContent = currentLang === 'pl' ? '⏳ Oczekiwanie na zatwierdzenie kodu...' : '⏳ Waiting for code approval...';
+        note('ok', currentLang === 'pl' ? ('Kod urządzenia: ' + res.userCode + '. Otwórz link i wpisz kod.') : ('Device code: ' + res.userCode + '. Open link and enter the code.'));
 
         var interval = (res.interval || 5) * 1000;
         deviceCodePollTimer = setInterval(function () {
@@ -3985,7 +4416,7 @@ ${SHARED_HELPERS}
               if (pollRes.ok && pollRes.status === 'complete') {
                 clearInterval(deviceCodePollTimer);
                 deviceCodePollTimer = null;
-                note('ok', 'Zautoryzowano konto "' + pollRes.account + '"' + (pollRes.email ? ' (' + pollRes.email + ')' : ''));
+                note('ok', (currentLang === 'pl' ? 'Zautoryzowano konto "' : 'Authorized account "') + pollRes.account + '"' + (pollRes.email ? ' (' + pollRes.email + ')' : ''));
                 document.getElementById('deviceCodeStep1').style.display = 'block';
                 document.getElementById('deviceCodeStep2').style.display = 'none';
                 document.getElementById('inDeviceCodeName').value = '';
@@ -3995,8 +4426,8 @@ ${SHARED_HELPERS}
               } else if (!pollRes.ok) {
                 clearInterval(deviceCodePollTimer);
                 deviceCodePollTimer = null;
-                document.getElementById('deviceCodeStatus').textContent = '❌ ' + (pollRes.error || 'Błąd autoryzacji');
-                note('error', pollRes.error || 'Błąd autoryzacji kodem urządzenia');
+                document.getElementById('deviceCodeStatus').textContent = '❌ ' + (pollRes.error || (currentLang === 'pl' ? 'Błąd autoryzacji' : 'Authorization error'));
+                note('error', pollRes.error || (currentLang === 'pl' ? 'Błąd autoryzacji kodem urządzenia' : 'Device code authorization error'));
               }
               // else status === 'pending' — keep polling
             })
@@ -4007,7 +4438,7 @@ ${SHARED_HELPERS}
       })
       .catch(function (e) {
         if (btn) btn.disabled = false;
-        note('error', 'Błąd logowania kodem urządzenia: ' + e.message);
+        note('error', (currentLang === 'pl' ? 'Błąd logowania kodem urządzenia: ' : 'Device code login error: ') + e.message);
       });
   }
 
@@ -4017,11 +4448,11 @@ ${SHARED_HELPERS}
     var name = document.getElementById('inOAuthFlowName').value.trim();
     var prio = parseInt(document.getElementById('inOAuthFlowPrio').value.trim(), 10) || 0;
     if (!code) {
-      note('error', 'Wklej kod autoryzacyjny lub pełny adres URL');
+      note('error', currentLang === 'pl' ? 'Wklej kod autoryzacyjny lub pełny adres URL' : 'Paste authorization code or full callback URL');
       return;
     }
     if (!pendingOAuthState) {
-      note('error', 'Brak aktywnej sesji logowania. Rozpocznij logowanie ponownie.');
+      note('error', currentLang === 'pl' ? 'Brak aktywnej sesji logowania. Rozpocznij logowanie ponownie.' : 'No active login session. Start login again.');
       return;
     }
     btn.disabled = true;
@@ -4045,7 +4476,7 @@ ${SHARED_HELPERS}
           pendingOAuthState = null;
           poll();
         } else {
-          note('error', 'Błąd autoryzacji: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd autoryzacji: ' : 'Authorization error: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -4089,7 +4520,7 @@ ${SHARED_HELPERS}
     if (email2) email2.textContent = accountName;
 
     var s1Btn = document.getElementById('btnStartReloginOAuth');
-    if (s1Btn) s1Btn.textContent = isCodex ? '🌐 Otwórz logowanie OpenAI Codex w nowej karcie' : '🌐 Otwórz logowanie Claude.ai w nowej karcie';
+    if (s1Btn) s1Btn.textContent = isCodex ? (currentLang === 'pl' ? '🌐 Otwórz logowanie OpenAI Codex w nowej karcie' : '🌐 Open OpenAI Codex login in new tab') : (currentLang === 'pl' ? '🌐 Otwórz logowanie Claude.ai w nowej karcie' : '🌐 Open Claude.ai login in new tab');
 
     var inImportPath = document.getElementById('inReloginImportPath');
     if (inImportPath) inImportPath.value = isCodex ? '~/.codex/auth.json' : '~/.claude/.credentials.json';
@@ -4103,7 +4534,7 @@ ${SHARED_HELPERS}
     var inCode = document.getElementById('inReloginOAuthCode');
     if (inCode) {
       inCode.value = '';
-      inCode.placeholder = isCodex ? 'Wklej kod lub URL callback (http://localhost:1455/auth/callback?code=...)' : 'Wklej kod lub URL callback (https://claude.ai/oauth/callback?code=...)';
+      inCode.placeholder = isCodex ? (currentLang === 'pl' ? 'Wklej kod lub URL callback (http://localhost:1455/auth/callback?code=...)' : 'Paste code or callback URL (http://localhost:1455/auth/callback?code=...)') : (currentLang === 'pl' ? 'Wklej kod lub URL callback (https://claude.ai/oauth/callback?code=...)' : 'Paste code or callback URL (https://claude.ai/oauth/callback?code=...)');
     }
 
     var step1 = document.getElementById('reloginOAuthStep1');
@@ -4171,12 +4602,12 @@ ${SHARED_HELPERS}
         if (btn) btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Zalogowano pomyślnie! Sesja konta "' + res.account + '" została odnowiona.');
+          note('ok', currentLang === 'pl' ? ('Zalogowano pomyślnie! Sesja konta "' + res.account + '" została odnowiona.') : ('Logged in successfully! Session for account "' + res.account + '" has been renewed.'));
           closeModal('modalRelogin');
           pendingOAuthState = null;
           poll();
         } else {
-          note('error', 'Błąd logowania: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd logowania: ' : 'Login error: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -4188,7 +4619,7 @@ ${SHARED_HELPERS}
   function doSubmitReloginJson(btn) {
     var raw = document.getElementById('inReloginJson').value.trim();
     if (!raw) {
-      note('error', 'Wklej treść JSON poświadczeń');
+      note('error', currentLang === 'pl' ? 'Wklej treść JSON poświadczeń' : 'Paste credentials JSON content');
       return;
     }
     if (btn) btn.disabled = true;
@@ -4203,11 +4634,11 @@ ${SHARED_HELPERS}
         if (btn) btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Zaktualizowano poświadczenia dla konta "' + res.account + '"');
+          note('ok', currentLang === 'pl' ? ('Zaktualizowano poświadczenia dla konta "' + res.account + '"') : ('Updated credentials for account "' + res.account + '"'));
           closeModal('modalRelogin');
           poll();
         } else {
-          note('error', 'Błąd aktualizacji konta: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd aktualizacji konta: ' : 'Error updating account: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -4219,7 +4650,7 @@ ${SHARED_HELPERS}
   function doSubmitReloginImport(btn) {
     var path = document.getElementById('inReloginImportPath').value.trim();
     if (!path) {
-      note('error', 'Podaj ścieżkę do pliku na serwerze');
+      note('error', currentLang === 'pl' ? 'Podaj ścieżkę do pliku na serwerze' : 'Provide file path on server');
       return;
     }
     if (btn) btn.disabled = true;
@@ -4234,7 +4665,7 @@ ${SHARED_HELPERS}
         if (btn) btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Zaimportowano nowe poświadczenia dla konta "' + res.account + '"');
+          note('ok', currentLang === 'pl' ? ('Zaimportowano nowe poświadczenia dla konta "' + res.account + '"') : ('Imported new credentials for account "' + res.account + '"'));
           closeModal('modalRelogin');
           poll();
         } else {
@@ -4472,7 +4903,7 @@ ${SHARED_HELPERS}
     var allowedModelsStr = (document.getElementById('inClientAllowedModels')?.value || '').trim();
 
     if (!name) {
-      note('error', 'Nazwa klienta / urządzenia jest wymagana');
+      note('error', currentLang === 'pl' ? 'Nazwa klienta / urządzenia jest wymagana' : 'Workstation / device name is required');
       return;
     }
     var payload = { name: name, key: customKey };
@@ -4495,7 +4926,7 @@ ${SHARED_HELPERS}
         btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Utworzono klucz klienta dla "' + res.name + '"');
+          note('ok', currentLang === 'pl' ? ('Utworzono klucz klienta dla "' + res.name + '"') : ('Created workstation key for "' + res.name + '"'));
           if (res.key) cachedClientKeys[res.name] = res.key;
           closeModal('modalAddClientKey');
           document.getElementById('inClientName').value = '';
@@ -4507,7 +4938,7 @@ ${SHARED_HELPERS}
           showKeyModal(res.name, res.key);
           poll();
         } else {
-          note('error', 'Błąd tworzenia klucza: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd tworzenia klucza: ' : 'Error creating key: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -4517,18 +4948,18 @@ ${SHARED_HELPERS}
   }
 
   function doRemoveClientKey(name, btn) {
-    if (!confirm('Czy na pewno chcesz unieważnić klucz klienta dla "' + name + '"? Ruch z tego urządzenia zostanie natychmiast odrzucony.')) return;
+    if (!confirm(currentLang === 'pl' ? ('Czy na pewno chcesz unieważnić klucz klienta dla "' + name + '"? Ruch z tego urządzenia zostanie natychmiast odrzucony.') : ('Are you sure you want to revoke workstation key for "' + name + '"? Traffic from this device will be immediately rejected.'))) return;
     if (btn) btn.disabled = true;
     apiCall('/agent-lb/api/keys/delete', 'POST', { name: name })
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Unieważniono klucz klienta "' + name + '"');
+          note('ok', currentLang === 'pl' ? ('Unieważniono klucz klienta "' + name + '"') : ('Revoked workstation key "' + name + '"'));
           delete cachedClientKeys[name];
           poll();
         } else {
-          note('error', 'Błąd unieważniania klucza: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd unieważniania klucza: ' : 'Error revoking key: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
@@ -4765,7 +5196,7 @@ ${SHARED_HELPERS}
       btnPSetup.addEventListener('click', function () {
         currentQuickKey = primaryAdminKey;
         updateQuickCmd();
-        showKeyModal('Główny klucz (proxy.apiKey)', primaryAdminKey);
+        showKeyModal(currentLang === 'pl' ? 'Główny klucz (proxy.apiKey)' : 'Master key (proxy.apiKey)', primaryAdminKey);
       });
       pTopActs.appendChild(btnPSetup);
       pTop.appendChild(pTopActs);
@@ -4793,7 +5224,7 @@ ${SHARED_HELPERS}
 
       var btnPCopy = el('button', 'btn btn-xs', t('copyCmd'));
       btnPCopy.addEventListener('click', function () {
-        copyToClipboard(primaryAdminKey, 'Główny klucz administratora');
+        copyToClipboard(primaryAdminKey, currentLang === 'pl' ? 'Główny klucz administratora' : 'Master administrator key');
       });
       pKeyWrap.appendChild(btnPCopy);
       pBottom.appendChild(pKeyWrap);
@@ -4848,7 +5279,7 @@ ${SHARED_HELPERS}
         actBadge.title = (currentLang === 'pl' ? 'Ostatnia aktywność: ' : 'Last activity: ') + new Date(stat.lastUsed).toLocaleString();
         nameWrap.appendChild(actBadge);
       } else if (reqCount > 0) {
-        var actBadgeOld = el('span', 'workstation-badge-live', '● Aktywna');
+        var actBadgeOld = el('span', 'workstation-badge-live', currentLang === 'pl' ? '● Aktywna' : '● Active');
         nameWrap.appendChild(actBadgeOld);
       } else {
         var idleBadge = el('span', 'workstation-badge-idle', currentLang === 'pl' ? '⚪ Oczekuje na ruch' : '⚪ Idle (no requests)');
@@ -4961,14 +5392,14 @@ ${SHARED_HELPERS}
       btnCopy.addEventListener('click', function () {
         var toCopy = cachedClientKeys[k.name] || raw;
         if (toCopy) {
-          copyToClipboard(toCopy, 'Klucz stacji ' + k.name);
+          copyToClipboard(toCopy, (currentLang === 'pl' ? 'Klucz stacji ' : 'Station key ') + k.name);
         } else {
           apiCall('/agent-lb/api/keys/reveal', 'POST', { name: k.name })
             .then(function (rev) {
               if (rev && rev.ok && rev.key) {
                 cachedClientKeys[k.name] = rev.key;
                 saveCachedKeys();
-                copyToClipboard(rev.key, 'Klucz stacji ' + k.name);
+                copyToClipboard(rev.key, (currentLang === 'pl' ? 'Klucz stacji ' : 'Station key ') + k.name);
                 renderClientKeys(keys, clients);
               }
             });
@@ -5032,20 +5463,20 @@ ${SHARED_HELPERS}
 
   function doPullSetup(btn) {
     if (btn) btn.disabled = true;
-    note('ok', 'Pobieranie aktualizacji repozytorium agent-lb z GitHub...');
+    note('ok', currentLang === 'pl' ? 'Pobieranie aktualizacji repozytorium agent-lb z GitHub...' : 'Pulling agent-lb repository updates from GitHub...');
     apiCall('/agent-lb/api/setup/pull', 'POST')
       .then(function (res) {
         if (btn) btn.disabled = false;
         if (!res) return;
         if (res.ok) {
-          note('ok', 'Zaktualizowano repozytorium agent-lb: ' + (res.output || 'Już aktualne.'));
+          note('ok', (currentLang === 'pl' ? 'Zaktualizowano repozytorium agent-lb: ' : 'Updated agent-lb repository: ') + (res.output || (currentLang === 'pl' ? 'Już aktualne.' : 'Already up to date.')));
         } else {
-          note('error', 'Błąd git pull: ' + (res.error || 'nieznany błąd'));
+          note('error', (currentLang === 'pl' ? 'Błąd git pull: ' : 'git pull error: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
         }
       })
       .catch(function (e) {
         if (btn) btn.disabled = false;
-        note('error', 'Błąd aktualizacji repozytorium: ' + e.message);
+        note('error', (currentLang === 'pl' ? 'Błąd aktualizacji repozytorium: ' : 'Repository update error: ') + e.message);
       });
   }
 
@@ -5130,7 +5561,7 @@ ${SHARED_HELPERS}
         if (res.status === 401 || res.status === 403) {
           if (apiKey) {
             localStorage.removeItem(KEY);
-            showKeybox('Nieprawidłowy klucz proxy API. Upewnij się, że podajesz klucz administracyjny (proxy.apiKey).');
+            showKeybox(currentLang === 'pl' ? 'Nieprawidłowy klucz proxy API. Upewnij się, że podajesz klucz administracyjny (proxy.apiKey).' : 'Invalid proxy API key. Make sure you provide the master administrative key (proxy.apiKey).');
           } else {
             showKeybox();
           }
@@ -5215,9 +5646,9 @@ ${SHARED_HELPERS}
         } else {
           localStorage.removeItem(KEY);
           return res.json().then(function (errData) {
-            showKeybox(errData && errData.error ? errData.error : 'Sesja wygasła lub klucz API jest nieprawidłowy.');
+            showKeybox(errData && errData.error ? errData.error : (currentLang === 'pl' ? 'Sesja wygasła lub klucz API jest nieprawidłowy.' : 'Session expired or API key is invalid.'));
           }).catch(function () {
-            showKeybox('Sesja wygasła lub klucz API jest nieprawidłowy.');
+            showKeybox(currentLang === 'pl' ? 'Sesja wygasła lub klucz API jest nieprawidłowy.' : 'Session expired or API key is invalid.');
           });
         }
       })
@@ -5234,7 +5665,7 @@ ${SHARED_HELPERS}
          .replace(/^["']|["']$/g, '')
          .trim();
     if (!v) {
-      showKeybox('Wprowadź hasło lub klucz API przed połączeniem.');
+      showKeybox(currentLang === 'pl' ? 'Wprowadź hasło lub klucz API przed połączeniem.' : 'Enter password or API key before connecting.');
       return;
     }
     btn.disabled = true;
@@ -5251,18 +5682,18 @@ ${SHARED_HELPERS}
           start();
         } else {
           return res.json().then(function (errData) {
-            showKeybox(errData && errData.error ? errData.error : 'Nieprawidłowe hasło lub klucz administracyjny.');
+            showKeybox(errData && errData.error ? errData.error : (currentLang === 'pl' ? 'Nieprawidłowe hasło lub klucz administracyjny.' : 'Invalid password or administrative key.'));
           }).catch(function () {
-            showKeybox('Nieprawidłowe hasło lub klucz administracyjny.');
+            showKeybox(currentLang === 'pl' ? 'Nieprawidłowe hasło lub klucz administracyjny.' : 'Invalid password or administrative key.');
           });
         }
       })
       .catch(function (e) {
-        showKeybox('Błąd połączenia: ' + e.message);
+        showKeybox((currentLang === 'pl' ? 'Błąd połączenia: ' : 'Connection error: ') + e.message);
       })
       .finally(function () {
         btn.disabled = false;
-        btn.textContent = 'Zaloguj się';
+        btn.textContent = currentLang === 'pl' ? 'Zaloguj się' : 'Log In';
       });
   });
 
@@ -5399,7 +5830,7 @@ ${SHARED_HELPERS}
     table.textContent = '';
     var thead = el('tr');
     thead.style.background = 'rgba(255,255,255,0.03)';
-    ['Klient / Stacja', 'Żądania', 'Input tok', 'Output tok', 'Cache tok', 'Razem tok', 'Udział w koncie', 'Ostatnio aktywny'].forEach(function (h, i) {
+    (currentLang === 'pl' ? ['Klient / Stacja', 'Żądania', 'Input tok', 'Output tok', 'Cache tok', 'Razem tok', 'Udział w koncie', 'Ostatnio aktywny'] : ['Client / Station', 'Requests', 'Input tok', 'Output tok', 'Cache tok', 'Total tok', 'Account share', 'Last active']).forEach(function (h, i) {
       thead.appendChild(el('th', i >= 1 && i <= 5 ? 'num' : '', h));
     });
     table.appendChild(thead);
@@ -5407,7 +5838,7 @@ ${SHARED_HELPERS}
     var entries = Object.entries(byClient || {});
     if (!entries.length) {
       var trEmpty = el('tr');
-      var tdEmpty = el('td', '', 'Brak zarejestrowanego zużycia przez klientów na tym koncie.');
+      var tdEmpty = el('td', '', currentLang === 'pl' ? 'Brak zarejestrowanego zużycia przez klientów na tym koncie.' : 'No recorded client usage for this account.');
       tdEmpty.colSpan = 8;
       tdEmpty.style.textAlign = 'center';
       tdEmpty.style.color = 'var(--dim)';
@@ -5469,7 +5900,7 @@ ${SHARED_HELPERS}
     table.textContent = '';
     var thead = el('tr');
     thead.style.background = 'rgba(255,255,255,0.03)';
-    ['Zadanie / Cel / Sesja', 'Projekt', 'Model', 'Klient', 'Żądania', 'Razem tok', 'Ostatnio'].forEach(function (h, i) {
+    (currentLang === 'pl' ? ['Zadanie / Cel / Sesja', 'Projekt', 'Model', 'Klient', 'Żądania', 'Razem tok', 'Ostatnio'] : ['Task / Goal / Session', 'Project', 'Model', 'Client', 'Requests', 'Total tok', 'Last active']).forEach(function (h, i) {
       thead.appendChild(el('th', i === 4 || i === 5 ? 'num' : '', h));
     });
     table.appendChild(thead);
@@ -5477,7 +5908,7 @@ ${SHARED_HELPERS}
     var entries = Object.entries(bySession || {});
     if (!entries.length) {
       var trEmpty = el('tr');
-      var tdEmpty = el('td', '', 'Brak zarejestrowanych sesji dla tego konta.');
+      var tdEmpty = el('td', '', currentLang === 'pl' ? 'Brak zarejestrowanych sesji dla tego konta.' : 'No recorded sessions for this account.');
       tdEmpty.colSpan = 7;
       tdEmpty.style.textAlign = 'center';
       tdEmpty.style.color = 'var(--dim)';
@@ -5528,7 +5959,7 @@ ${SHARED_HELPERS}
     table.textContent = '';
     var thead = el('tr');
     thead.style.background = 'rgba(255,255,255,0.03)';
-    ['Czas', 'Klient', 'Zadanie / Cel', 'Model', 'Tokeny (In / Out / Cache / Suma)'].forEach(function (h, i) {
+    (currentLang === 'pl' ? ['Czas', 'Klient', 'Zadanie / Cel', 'Model', 'Tokeny (In / Out / Cache / Suma)'] : ['Time', 'Client', 'Task / Goal', 'Model', 'Tokens (In / Out / Cache / Total)']).forEach(function (h, i) {
       thead.appendChild(el('th', i === 4 ? 'num' : '', h));
     });
     table.appendChild(thead);
@@ -5536,7 +5967,7 @@ ${SHARED_HELPERS}
     var items = Array.isArray(recent) ? recent : [];
     if (!items.length) {
       var trEmpty = el('tr');
-      var tdEmpty = el('td', '', 'Brak historii ostatnich zapytań dla tego konta.');
+      var tdEmpty = el('td', '', currentLang === 'pl' ? 'Brak historii ostatnich zapytań dla tego konta.' : 'No recent request history for this account.');
       tdEmpty.colSpan = 5;
       tdEmpty.style.textAlign = 'center';
       tdEmpty.style.color = 'var(--dim)';
@@ -5662,7 +6093,7 @@ ${SHARED_HELPERS}
       tblAcc.textContent = '';
       var thead = el('tr');
       thead.style.background = 'rgba(255,255,255,0.03)';
-      ['Konto', 'Dostawca', 'Stan limitu', 'Żądania', 'Tokeny razem', 'Główni klienci', 'Akcja'].forEach(function (h, i) {
+      (currentLang === 'pl' ? ['Konto', 'Dostawca', 'Stan limitu', 'Żądania', 'Tokeny razem', 'Główni klienci', 'Akcja'] : ['Account', 'Provider', 'Quota Status', 'Requests', 'Total Tokens', 'Top Clients', 'Action']).forEach(function (h, i) {
         thead.appendChild(el('th', i === 3 || i === 4 ? 'num' : '', h));
       });
       tblAcc.appendChild(thead);
@@ -5694,7 +6125,7 @@ ${SHARED_HELPERS}
         tr.appendChild(tdCli);
 
         var tdAct = el('td');
-        var btnInspect = el('button', 'btn btn-xs btn-outline', '🔍 Podgląd');
+        var btnInspect = el('button', 'btn btn-xs btn-outline', currentLang === 'pl' ? '🔍 Podgląd' : '🔍 Inspect');
         btnInspect.type = 'button';
         btnInspect.addEventListener('click', function () {
           closeModal('modalFleetUsage');
@@ -5713,7 +6144,7 @@ ${SHARED_HELPERS}
       tblCli.textContent = '';
       var theadC = el('tr');
       theadC.style.background = 'rgba(255,255,255,0.03)';
-      ['Klient (Stacja)', 'Żądania', 'Łącznie tokenów', 'Udział we flocie', 'Używane konta'].forEach(function (h, i) {
+      (currentLang === 'pl' ? ['Klient (Stacja)', 'Żądania', 'Łącznie tokenów', 'Udział we flocie', 'Używane konta'] : ['Client (Station)', 'Requests', 'Total Tokens', 'Fleet Share', 'Used Accounts']).forEach(function (h, i) {
         theadC.appendChild(el('th', i === 1 || i === 2 ? 'num' : '', h));
       });
       tblCli.appendChild(theadC);
@@ -5721,7 +6152,7 @@ ${SHARED_HELPERS}
       var clientEntries = Object.entries(clientMap);
       if (!clientEntries.length) {
         var trE = el('tr');
-        var tdE = el('td', '', 'Brak aktywności klientów.');
+        var tdE = el('td', '', currentLang === 'pl' ? 'Brak aktywności klientów.' : 'No client activity recorded.');
         tdE.colSpan = 5;
         tdE.style.textAlign = 'center';
         trE.appendChild(tdE);
@@ -5763,7 +6194,7 @@ ${SHARED_HELPERS}
       tblMod.textContent = '';
       var theadM = el('tr');
       theadM.style.background = 'rgba(255,255,255,0.03)';
-      ['Model', 'Żądania', 'Łącznie tokenów', 'Udział %'].forEach(function (h, i) {
+      (currentLang === 'pl' ? ['Model', 'Żądania', 'Łącznie tokenów', 'Udział %'] : ['Model', 'Requests', 'Total Tokens', 'Share %']).forEach(function (h, i) {
         theadM.appendChild(el('th', i === 1 || i === 2 ? 'num' : '', h));
       });
       tblMod.appendChild(theadM);
@@ -5771,7 +6202,7 @@ ${SHARED_HELPERS}
       var modelEntries = Object.entries(modelMap);
       if (!modelEntries.length) {
         var trM = el('tr');
-        var tdM = el('td', '', 'Brak zarejestrowanych modeli.');
+        var tdM = el('td', '', currentLang === 'pl' ? 'Brak zarejestrowanych modeli.' : 'No recorded models.');
         tdM.colSpan = 4;
         tdM.style.textAlign = 'center';
         trM.appendChild(tdM);
@@ -5877,19 +6308,19 @@ ${SHARED_HELPERS}
   if (btnResetAccUsage) {
     btnResetAccUsage.addEventListener('click', function () {
       if (!currentUsageAccount) return;
-      if (!confirm('Czy na pewno chcesz zresetować statystyki zużycia dla konta "' + currentUsageAccount.name + '"?')) return;
+      if (!confirm(currentLang === 'pl' ? ('Czy na pewno chcesz zresetować statystyki zużycia dla konta "' + currentUsageAccount.name + '"?') : ('Are you sure you want to reset usage statistics for account "' + currentUsageAccount.name + '"?'))) return;
       apiCall('/api/accounts/usage/reset', 'POST', { account: currentUsageAccount.name })
         .then(function (res) {
           if (res && res.ok) {
-            note('ok', 'Zresetowano liczniki zużycia dla konta ' + currentUsageAccount.name);
+            note('ok', currentLang === 'pl' ? ('Zresetowano liczniki zużycia dla konta ' + currentUsageAccount.name) : ('Reset usage counters for account ' + currentUsageAccount.name));
             closeModal('modalAccountUsage');
             poll();
           } else {
-            note('bad', 'Błąd resetowania liczników: ' + (res && res.error ? res.error : 'błąd serwera'));
+            note('bad', (currentLang === 'pl' ? 'Błąd resetowania liczników: ' : 'Error resetting counters: ') + (res && res.error ? res.error : (currentLang === 'pl' ? 'błąd serwera' : 'server error')));
           }
         })
         .catch(function (err) {
-          note('bad', 'Błąd połączenia: ' + err.message);
+          note('bad', (currentLang === 'pl' ? 'Błąd połączenia: ' : 'Connection error: ') + err.message);
         });
     });
   }
@@ -6159,7 +6590,7 @@ ${SHARED_HELPERS}
           poll();
         })
         .catch(function (e) {
-          note('error', 'Błąd konfiguracji auto-diagnostyki: ' + e.message);
+          note('error', (currentLang === 'pl' ? 'Błąd konfiguracji auto-diagnostyki: ' : 'Auto-diagnostics config error: ') + e.message);
         });
     });
   }
@@ -6307,7 +6738,7 @@ ${SHARED_HELPERS}
     if (!testChatLog || testChatLog.length === 0) {
       var statusEl = document.getElementById('testChatStatus');
       if (statusEl) {
-        statusEl.textContent = 'Brak wiadomości do skopiowania.';
+        statusEl.textContent = currentLang === 'pl' ? 'Brak wiadomości do skopiowania.' : 'No messages to copy.';
         setTimeout(function () { statusEl.textContent = ''; }, 2000);
       }
       return;
@@ -6317,14 +6748,14 @@ ${SHARED_HELPERS}
     testChatLog.forEach(function (m) {
       var timeStr = m.time ? ('[' + m.time.toLocaleTimeString() + '] ') : '';
       if (m.role === 'user') {
-        lines.push(timeStr + 'Użytkownik:\\n' + m.text);
+        lines.push(timeStr + (currentLang === 'pl' ? 'Użytkownik:\\n' : 'User:\\n') + m.text);
       } else {
         var details = [];
         if (m.meta) {
           if (m.meta.account) details.push('Konto: ' + m.meta.account);
           if (m.meta.model) details.push('Model: ' + m.meta.model);
           if (m.meta.durationMs != null) details.push('Czas: ' + m.meta.durationMs + ' ms');
-          if (m.meta.error) details.push('Status: Błąd upstreamu');
+          if (m.meta.error) details.push(currentLang === 'pl' ? 'Status: Błąd upstreamu' : 'Status: Upstream error');
         }
         var detStr = details.length > 0 ? (' (' + details.join(', ') + ')') : '';
         lines.push(timeStr + 'Asystent' + detStr + ':\\n' + m.text);
@@ -6336,12 +6767,12 @@ ${SHARED_HELPERS}
     copyTextToClipboard(fullText, function (ok) {
       if (btn) {
         var orig = btn.textContent;
-        btn.textContent = ok ? '✓ Skopiowano!' : '⚠️ Błąd';
+        btn.textContent = ok ? (currentLang === 'pl' ? '✓ Skopiowano!' : '✓ Copied!') : (currentLang === 'pl' ? '⚠️ Błąd' : '⚠️ Error');
         setTimeout(function () { btn.textContent = orig; }, 2000);
       }
       var statusEl = document.getElementById('testChatStatus');
       if (statusEl) {
-        statusEl.textContent = ok ? '✓ Skopiowano historię do schowka' : 'Błąd dostępu do schowka';
+        statusEl.textContent = ok ? (currentLang === 'pl' ? '✓ Skopiowano historię do schowka' : '✓ Copied history to clipboard') : (currentLang === 'pl' ? 'Błąd dostępu do schowka' : 'Clipboard access error');
         setTimeout(function () { statusEl.textContent = ''; }, 2500);
       }
     });
@@ -6445,13 +6876,13 @@ ${SHARED_HELPERS}
       copySingleBtn.style.padding = '1px 7px';
       copySingleBtn.style.fontSize = '9.5px';
       copySingleBtn.style.marginLeft = 'auto';
-      copySingleBtn.textContent = '📋 Kopiuj';
-      copySingleBtn.title = 'Skopiuj tę odpowiedź do schowka';
+      copySingleBtn.textContent = currentLang === 'pl' ? '📋 Kopiuj' : '📋 Copy';
+      copySingleBtn.title = currentLang === 'pl' ? 'Skopiuj tę odpowiedź do schowka' : 'Copy this response to clipboard';
       copySingleBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         copyTextToClipboard(text, function (ok) {
-          copySingleBtn.textContent = ok ? '✓ Skopiowano' : 'Błąd';
-          setTimeout(function () { copySingleBtn.textContent = '📋 Kopiuj'; }, 1500);
+          copySingleBtn.textContent = ok ? (currentLang === 'pl' ? '✓ Skopiowano' : '✓ Copied') : (currentLang === 'pl' ? 'Błąd' : 'Error');
+          setTimeout(function () { copySingleBtn.textContent = currentLang === 'pl' ? '📋 Kopiuj' : '📋 Copy'; }, 1500);
         });
       });
       metaRow.appendChild(copySingleBtn);
@@ -6470,13 +6901,13 @@ ${SHARED_HELPERS}
       copyUserBtn.className = 'btn btn-xs';
       copyUserBtn.style.padding = '1px 7px';
       copyUserBtn.style.fontSize = '9.5px';
-      copyUserBtn.textContent = '📋 Kopiuj';
-      copyUserBtn.title = 'Skopiuj treść zapytania';
+      copyUserBtn.textContent = currentLang === 'pl' ? '📋 Kopiuj' : '📋 Copy';
+      copyUserBtn.title = currentLang === 'pl' ? 'Skopiuj treść zapytania' : 'Copy query text';
       copyUserBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         copyTextToClipboard(text, function (ok) {
-          copyUserBtn.textContent = ok ? '✓ Skopiowano' : 'Błąd';
-          setTimeout(function () { copyUserBtn.textContent = '📋 Kopiuj'; }, 1500);
+          copyUserBtn.textContent = ok ? (currentLang === 'pl' ? '✓ Skopiowano' : '✓ Copied') : (currentLang === 'pl' ? 'Błąd' : 'Error');
+          setTimeout(function () { copyUserBtn.textContent = currentLang === 'pl' ? '📋 Kopiuj' : '📋 Copy'; }, 1500);
         });
       });
       userMetaRow.appendChild(copyUserBtn);
@@ -6504,7 +6935,7 @@ ${SHARED_HELPERS}
     ta.value = '';
     ta.disabled = true;
     btnSend.disabled = true;
-    statusEl.textContent = '⏳ Łączenie z upstreamem (' + (prov === 'codex' ? 'Codex' : 'Claude') + ')...';
+    statusEl.textContent = (currentLang === 'pl' ? '⏳ Łączenie z upstreamem (' : '⏳ Connecting to upstream (') + (prov === 'codex' ? 'Codex' : 'Claude') + ')...';
 
     apiCall('/api/test/chat', 'POST', {
       provider: prov,
@@ -6519,12 +6950,12 @@ ${SHARED_HELPERS}
       ta.focus();
 
       if (!res) {
-        addTestChatBubble('assistant', 'Brak odpowiedzi z serwera lub błąd autoryzacji.', { error: true });
+        addTestChatBubble('assistant', currentLang === 'pl' ? 'Brak odpowiedzi z serwera lub błąd autoryzacji.' : 'No response from server or authorization error.', { error: true });
         return;
       }
 
       if (res.ok) {
-        addTestChatBubble('assistant', res.reply || '(Pusta odpowiedź)', {
+        addTestChatBubble('assistant', res.reply || (currentLang === 'pl' ? '(Pusta odpowiedź)' : '(Empty response)'), {
           account: res.account,
           model: res.model,
           effort: res.effort || effort,
@@ -6533,8 +6964,8 @@ ${SHARED_HELPERS}
           usage: res.usage,
         });
       } else {
-        var errText = res.error || ('Błąd HTTP ' + (res.status || '500'));
-        addTestChatBubble('assistant', '⚠️ Błąd upstreamu: ' + errText, {
+        var errText = res.error || ((currentLang === 'pl' ? 'Błąd HTTP ' : 'HTTP Error ') + (res.status || '500'));
+        addTestChatBubble('assistant', (currentLang === 'pl' ? '⚠️ Błąd upstreamu: ' : '⚠️ Upstream error: ') + errText, {
           error: true,
           account: res.account,
           model: res.model,
@@ -6546,7 +6977,7 @@ ${SHARED_HELPERS}
       btnSend.disabled = false;
       statusEl.textContent = '';
       ta.focus();
-      addTestChatBubble('assistant', 'Błąd sieciowy klienta: ' + err.message, { error: true });
+      addTestChatBubble('assistant', (currentLang === 'pl' ? 'Błąd sieciowy klienta: ' : 'Client network error: ') + err.message, { error: true });
     });
   }
 
@@ -6593,7 +7024,7 @@ ${SHARED_HELPERS}
       testChatLog = [];
       var history = document.getElementById('testChatHistory');
       if (history) {
-        history.innerHTML = '<div id="testChatPlaceholder" style="margin:auto; text-align:center; color:var(--dim); font-size:12px;"><div style="font-size:26px; margin-bottom:6px;">💬</div>Wybierz dostawcę i model, a następnie wpisz wiadomość lub kliknij szybki test.<br>Żądanie zostanie wysłane przez silnik Agent-LB bezpośrednio do wybranego upstreamu.</div>';
+        history.innerHTML = '<div id="testChatPlaceholder" style="margin:auto; text-align:center; color:var(--dim); font-size:12px;"><div style="font-size:26px; margin-bottom:6px;">💬</div>' + t('testChatPlaceholder') + '</div>';
       }
       var statusEl = document.getElementById('testChatStatus');
       if (statusEl) statusEl.textContent = '';

@@ -59,6 +59,16 @@ let skipEnv = false;
 let setupCodex = true;
 let skipInstall = false;
 let uninstall = false;
+let lang = (
+  process.env.AGENT_LB_LANG ||
+  process.env.LC_ALL ||
+  process.env.LANG ||
+  ""
+)
+  .toLowerCase()
+  .startsWith("pl")
+  ? "pl"
+  : "en";
 
 // Parsowanie argumentów
 const args = process.argv.slice(2);
@@ -68,6 +78,8 @@ for (let i = 0; i < args.length; i++) {
     targetUrl = args[++i].replace(/\/+$/, "");
   } else if (arg === "--key" && args[i + 1]) {
     apiKey = args[++i].trim();
+  } else if (arg === "--lang" && args[i + 1]) {
+    lang = args[++i].toLowerCase() === "pl" ? "pl" : "en";
   } else if (arg === "--test") {
     runTest = true;
   } else if (arg === "--codex") {
@@ -83,8 +95,9 @@ for (let i = 0; i < args.length; i++) {
   } else if (arg === "--uninstall") {
     uninstall = true;
   } else if (arg === "-h" || arg === "--help") {
-    console.log(`
-Agent-LB Client Setup (Universal: Windows / Linux / macOS)
+    if (lang === "pl") {
+      console.log(`
+Agent-LB Client Setup (Uniwersalny: Windows / Linux / macOS)
 
 Użycie:
   node setup.js [opcje]
@@ -92,13 +105,34 @@ Użycie:
 Opcje:
   --url URL        Adres serwera proxy (domyślnie: ${targetUrl})
   --key KLUCZ      Klucz API proxy (tc-...)
-  --codex          Skonfiguruj również klienta OpenAI Codex CLI (~/.codex/config.json)
-  --test           Wykonaj próbne uruchomienie claude po konfiguracji
-  --skip-vscode    Pomiń konfigurację oficjalnego rozszerzenia VS Code
+  --lang pl|en     Wybór języka (domyślnie: ${lang})
+  --codex          Skonfiguruj również klienta OpenAI Codex CLI
+  --test           Wykonaj próbne uruchomienie po konfiguracji
+  --no-install     Pomiń automatyczną instalację pakietów npm
+  --skip-vscode    Pomiń konfigurację rozszerzeń VS Code
   --skip-env       Pomiń konfigurację zmiennych powłoki / systemu
-  --uninstall      Usuń ustawienia Agent-LB z profilu klienta (bez kasowania sesji OAuth)
+  --uninstall      Usuń ustawienia Agent-LB z profilu klienta
   -h, --help       Pokaż ten ekran pomocy
 `);
+    } else {
+      console.log(`
+Agent-LB Client Setup (Universal: Windows / Linux / macOS)
+
+Usage:
+  node setup.js [options]
+
+Options:
+  --url URL        Proxy server URL (default: ${targetUrl})
+  --key KEY        Proxy client API key (tc-...)
+  --lang pl|en     Language selection (default: ${lang})
+  --codex          Also configure OpenAI Codex CLI
+  --test           Run connectivity and authentication test after setup
+  --no-install     Skip automatic npm package installation
+  --skip-vscode    Skip configuration of VS Code extensions
+  --skip-env       Skip shell / registry environment variables
+  --uninstall      Remove Agent-LB configurations and restore backups
+      `);
+    }
     process.exit(0);
   }
 }

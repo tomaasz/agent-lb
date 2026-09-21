@@ -1,3 +1,9 @@
+<div align="right">
+  <strong>🌐 Language:</strong>
+  <a href="README.md"><strong>English</strong></a> |
+  <a href="README.pl.md">Polski</a>
+</div>
+
 # ⚖️ agent-lb
 
 > **Universal Multi-Account Load Balancer, Quota Rotator & Modern Web Dashboard for Claude Code & OpenAI Codex CLI.**

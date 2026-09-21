@@ -32,6 +32,7 @@ SETUP_CODEX=0
 UNINSTALL=0
 NO_INSTALL=0
 KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${CLAUDE_LB_API_KEY:-${CODEX_LB_API_KEY:-${ANTHROPIC_API_KEY:-}}}}}"
+LANG_VAL="${AGENT_LB_LANG:-}"
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -41,17 +42,33 @@ while [ $# -gt 0 ]; do
 		--no-install|--skip-install) NO_INSTALL=1 ;;
 		--url) URL="${2%/}"; shift ;;
 		--key) KEY="$2"; shift ;;
+		--lang) LANG_VAL="$2"; shift ;;
 		-h|--help)
-			echo "Użycie: ./setup.sh [--url URL] [--key KEY] [--codex] [--test] [--no-install] [--uninstall]"
+			echo "Usage / Użycie: ./setup.sh [--url URL] [--key KEY] [--lang pl|en] [--codex] [--test] [--no-install] [--uninstall]"
 			exit 0
 			;;
-		*) echo "Nieznany argument: $1" >&2; exit 2 ;;
+		*) echo "Unknown argument / Nieznany argument: $1" >&2; exit 2 ;;
 	esac
 	shift
 done
 
+if [ -z "$LANG_VAL" ]; then
+	if [ "${LANG:-}" != "${LANG#pl}" ] || [ "${LC_ALL:-}" != "${LC_ALL#pl}" ]; then
+		LANG_VAL="pl"
+	else
+		LANG_VAL="en"
+	fi
+fi
+
 say() { printf '%s\n' "$*"; }
-die() { printf 'BLAD: %s\n' "$*" >&2; exit 1; }
+die() {
+	if [ "$LANG_VAL" = "pl" ]; then
+		printf 'BLAD: %s\n' "$*" >&2
+	else
+		printf 'ERROR: %s\n' "$*" >&2
+	fi
+	exit 1
+}
 backup_existing() {
 	local file="$1"
 	[ -f "$file" ] || return 0
