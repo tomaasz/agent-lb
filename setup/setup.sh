@@ -519,9 +519,9 @@ if [ "$WITH_AGY" -eq 1 ]; then
 		AGY_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/agy-setup.sh"
 	fi
 	if [ -n "$AGY_SETUP" ] && [ -f "$AGY_SETUP" ]; then
-		bash "$AGY_SETUP" || say "[Ostrzeżenie] Instalacja agybridge nie powiodła się (reszta konfiguracji jest gotowa)."
+		bash "$AGY_SETUP" --url "$URL" --key "$KEY" || say "[Ostrzeżenie] Instalacja agybridge nie powiodła się (reszta konfiguracji jest gotowa)."
 	else
-		curl -fsSL "$URL/agy-setup.sh" | bash || say "[Ostrzeżenie] Instalacja agybridge nie powiodła się (reszta konfiguracji jest gotowa)."
+		curl -fsSL "$URL/agy-setup.sh" | bash -s -- --url "$URL" --key "$KEY" || say "[Ostrzeżenie] Instalacja agybridge nie powiodła się (reszta konfiguracji jest gotowa)."
 	fi
 fi
 

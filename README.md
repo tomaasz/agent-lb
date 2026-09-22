@@ -215,6 +215,9 @@ curl -fsSL https://agentlb.yourdomain.com/setup.sh | bash -s -- --key <KEY> --wi
 
 The script checks Python 3.11+ and the `agy` CLI, installs agybridge into its own virtualenv (reusing an existing checkout in `~/projekty/agybridge` or `~/agybridge`, otherwise `~/.local/share/agybridge`), generates a local server token in `~/.config/agybridge/agybridge.env` (mode 600, never printed), starts `agybridge serve` on `127.0.0.1:8791` as a systemd user service, and wires up whatever is installed: the Hermes AGY plugin (symlink; run `hermes-setup.sh` afterwards to add the `agy` / `agy-fast` providers), an `agy` provider in OpenCode and OpenClaw, and an `agybridge` MCP server in Claude Code. It is idempotent; re-run it to update. Flags: `--dir`, `--ref`, `--port`, `--no-service`, `--no-hermes`, `--no-opencode`, `--no-claw`, `--no-claude`. Logging in to `agy` itself is a one-time manual step.
 
+
+**Google accounts pool.** Log AGY's Google accounts in from the dashboard (Accounts → AGY → *Log in a Google account*): the proxy runs `agy` in a throwaway home, shows Google's consent link with the account chooser, and takes the code from `antigravity.google` (AGY waits 60 s for it). Accounts are stored in `agent-lb.agy-accounts.json` next to the config (mode 600, tokens never shown in the dashboard). Stations running agybridge with a station key (`agy-setup.sh --key`) fetch their account from `GET /agy/credential` and report a spent quota to `POST /agy/quota`; the proxy then hands out the next account with free quota. Pin, disable, reorder or clear a quota from the dashboard. Credentials are only handed to unrestricted station keys.
+
 ---
 
 ## 🖥️ Web Dashboard

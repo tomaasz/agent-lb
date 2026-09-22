@@ -8,14 +8,15 @@
 #   - OpenClaw      — provider "agy" → lokalny serwer agybridge,
 #   - Claude Code   — serwer MCP "agybridge" (narzędzie agy_reason).
 #
-# AGY działa lokalnie, na koncie Google zalogowanym w `agy` na TYM komputerze.
-# Ruch AGY nie przechodzi przez serwer agent-lb, więc klucz agent-lb nie jest
-# tu potrzebny. Skrypt jest idempotentny — ponowne uruchomienie aktualizuje
-# agybridge i odświeża konfigurację.
+# AGY działa lokalnie na tym komputerze. Z kluczem stacji (--key) agybridge
+# pobiera konto Google z puli kont AGY w panelu agent-lb i sam przechodzi na
+# następne, gdy limit się wyczerpie. Bez klucza używa konta zalogowanego w
+# `agy` na tym komputerze. Skrypt jest idempotentny — ponowne uruchomienie
+# aktualizuje agybridge i odświeża konfigurację.
 #
 # Użycie:
-#   curl -fsSL https://agentlb.gotova.pl/agy-setup.sh | bash
-#   ./setup/agy-setup.sh [--dir KATALOG] [--ref GAŁĄŹ] [--port 8791]
+#   curl -fsSL https://agentlb.gotova.pl/agy-setup.sh | bash -s -- --key <KLUCZ_STACJI>
+#   ./setup/agy-setup.sh [--key KLUCZ] [--url URL] [--dir KATALOG] [--ref GAŁĄŹ] [--port 8791]
 #                        [--no-service] [--no-hermes] [--no-opencode]
 #                        [--no-claw] [--no-claude]
 
@@ -33,6 +34,8 @@ DO_HERMES=1
 DO_OPENCODE=1
 DO_CLAW=1
 DO_CLAUDE=1
+LB_URL="${AGENT_LB_URL:-${AGENTLB_URL:-https://agentlb.gotova.pl}}"
+LB_KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-}}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -44,10 +47,11 @@ while [ $# -gt 0 ]; do
     --no-opencode) DO_OPENCODE=0 ;;
     --no-claw) DO_CLAW=0 ;;
     --no-claude) DO_CLAUDE=0 ;;
-    # Przyjmowane dla zgodności z pozostałymi skryptami agent-lb (nieużywane).
-    --url|--key|--lang) shift ;;
+    --url) LB_URL="${2%/}"; shift ;;
+    --key) LB_KEY="$2"; shift ;;
+    --lang) shift ;;
     -h|--help)
-      echo "Użycie: $0 [--dir KATALOG] [--ref GAŁĄŹ] [--port 8791] [--no-service] [--no-hermes] [--no-opencode] [--no-claw] [--no-claude]"
+      echo "Użycie: $0 [--key KLUCZ_STACJI] [--url URL] [--dir KATALOG] [--ref GAŁĄŹ] [--port 8791] [--no-service] [--no-hermes] [--no-opencode] [--no-claw] [--no-claude]"
       exit 0
       ;;
     *) echo "Nieznany argument: $1" >&2; exit 2 ;;
@@ -209,6 +213,42 @@ if [ -n "$AGY_BIN" ]; then
   fi
 fi
 
+# Pula kont Google z agent-lb: klucz stacji z parametru, zmiennej albo z
+# konfiguracji zapisanej wcześniej przez instalator agent-lb.
+if [ -z "$LB_KEY" ]; then
+  for f in "$ENV_FILE" "$HOME/.config/agent-lb.env" "$HOME/.config/claude-lb.env"; do
+    [ -f "$f" ] || continue
+    LB_KEY="$(sed -n -E 's/^(export )?(AGENT_LB_API_KEY|CODEX_LB_API_KEY|ANTHROPIC_API_KEY)=["'"'"']?([^"'"'"' ]+).*/\3/p' "$f" | head -n 1)"
+    [ -n "$LB_KEY" ] && break
+  done
+fi
+set_env() {
+  if grep -q "^$1=" "$ENV_FILE"; then
+    grep -v "^$1=" "$ENV_FILE" > "$ENV_FILE.tmp" && cat "$ENV_FILE.tmp" > "$ENV_FILE" && rm -f "$ENV_FILE.tmp"
+  fi
+  printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"
+}
+POOL_ACCOUNT=""
+if [ -n "$LB_KEY" ]; then
+  set_env AGENT_LB_URL "$LB_URL"
+  set_env AGENT_LB_API_KEY "$LB_KEY"
+  chmod 600 "$ENV_FILE"
+  # Klucz w nagłówku przez stdin, nie w argumentach; tokenu konta nie wypisujemy.
+  POOL_REPLY="$(printf 'header = "x-api-key: %s"\n' "$LB_KEY" \
+    | curl -s -m 10 -K - -w '\n%{http_code}' "$LB_URL/agy/credential" 2>/dev/null || true)"
+  POOL_CODE="$(printf '%s' "$POOL_REPLY" | tail -n 1)"
+  case "$POOL_CODE" in
+    200) POOL_ACCOUNT="$(printf '%s' "$POOL_REPLY" | sed '$d' | "$VENV/bin/python" -c 'import json,sys; print(json.load(sys.stdin)["account"]["email"])' 2>/dev/null || true)"
+         echo "  Pula kont agent-lb: aktywne konto $POOL_ACCOUNT" ;;
+    404) warn "W agent-lb nie ma jeszcze kont AGY — dodaj je w panelu (Konta → AGY → Zaloguj konto Google). Do tego czasu używane jest konto z 'agy' na tym komputerze." ;;
+    403) warn "Klucz stacji jest ograniczony (modele/limity) — agent-lb nie wyda z nim konta Google. Użyj pełnego klucza stacji." ;;
+    401) warn "agent-lb odrzucił klucz stacji — sprawdź --key." ;;
+    *) warn "Nie udało się połączyć z $LB_URL (HTTP ${POOL_CODE:-brak}) — agybridge spróbuje ponownie przy pierwszym zapytaniu." ;;
+  esac
+else
+  echo "  Bez klucza stacji: agybridge używa konta zalogowanego w 'agy' na tym komputerze (pula kont agent-lb: --key)."
+fi
+
 BASE_URL="http://127.0.0.1:$PORT/v1"
 
 # ---------------------------------------------------------------------------
@@ -287,6 +327,22 @@ if [ "$DO_HERMES" = "0" ]; then
 elif [ -d "$HERMES_HOME_DIR" ] || command -v hermes >/dev/null 2>&1; then
   PLUG_PARENT="$HERMES_HOME_DIR/plugins/model-providers"
   PLUG="$PLUG_PARENT/agy"
+  HERMES_SRC="$HERMES_HOME_DIR/hermes-agent"
+  HERMES_OK=1
+  # Wtyczka wymaga Hermesa 0.21.2+ (moduł agent/acp_openai_bridge). Starszy
+  # Hermes wypisywałby błąd wtyczki przy każdym uruchomieniu.
+  if [ -d "$HERMES_SRC/agent" ] && [ ! -f "$HERMES_SRC/agent/acp_openai_bridge.py" ]; then
+    HERMES_OK=0
+  fi
+fi
+if [ "$DO_HERMES" = "1" ] && [ -n "${HERMES_OK:-}" ] && [ "$HERMES_OK" = "0" ]; then
+  HERMES_VER="$("$HERMES_SRC/venv/bin/hermes" --version 2>/dev/null | head -n 1 || true)"
+  warn "Hermes jest za stary dla wtyczki AGY (${HERMES_VER:-nieznana wersja}; wymagany 0.21.2+). Zaktualizuj Hermesa i uruchom ten skrypt ponownie."
+  if [ -L "$PLUG" ] && [ "$(readlink "$PLUG")" = "$DIR/plugins/model-providers/agy" ]; then
+    rm -f "$PLUG"
+    echo "  Odpięto wcześniej podpiętą wtyczkę AGY."
+  fi
+elif [ "$DO_HERMES" = "1" ] && [ -n "${HERMES_OK:-}" ]; then
   mkdir -p "$PLUG_PARENT"
   # Dowiązanie zamiast kopii: wtyczka szuka kodu agybridge względem swojej
   # prawdziwej lokalizacji w repozytorium, a aktualizacja repo od razu ją odświeża.
@@ -301,7 +357,7 @@ elif [ -d "$HERMES_HOME_DIR" ] || command -v hermes >/dev/null 2>&1; then
   fi
   echo "  Wtyczka AGY: $PLUG → $DIR/plugins/model-providers/agy"
   HERMES_DONE=1
-else
+elif [ "$DO_HERMES" = "1" ]; then
   echo "  Nie znaleziono Hermesa — pomijam."
 fi
 
@@ -425,6 +481,7 @@ echo "  Konfiguracja:  $ENV_FILE (token — nie udostępniaj)"
 [ "$OPENCODE_DONE" = "1" ] && echo "  OpenCode:      provider 'agy' (modele gemini-3.8-flash-high / -low)"
 [ "$CLAW_DONE" = "1" ] && echo "  OpenClaw:      provider 'agy'"
 [ "$CLAUDE_DONE" = "1" ] && echo "  Claude Code:   MCP 'agybridge'"
+[ -n "$POOL_ACCOUNT" ] && echo "  Konto Google:  $POOL_ACCOUNT (pula agent-lb, automatyczna zmiana po wyczerpaniu limitu)"
 
 if [ "$HERMES_DONE" = "1" ]; then
   echo

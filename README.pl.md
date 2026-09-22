@@ -212,6 +212,9 @@ curl -fsSL https://agentlb.twojadomena.pl/setup.sh | bash -s -- --key <KLUCZ> --
 
 Skrypt sprawdza Pythona 3.11+ i `agy`, instaluje agybridge we własnym virtualenvie (używa istniejącej kopii w `~/projekty/agybridge` lub `~/agybridge`, w przeciwnym razie `~/.local/share/agybridge`), generuje token lokalnego serwera w `~/.config/agybridge/agybridge.env` (uprawnienia 600, nigdy nie jest wypisywany), uruchamia `agybridge serve` na `127.0.0.1:8791` jako usługę systemd użytkownika i podłącza to, co jest zainstalowane: wtyczkę AGY Hermesa (dowiązanie; potem uruchom `hermes-setup.sh`, żeby dodać providery `agy` / `agy-fast`), provider `agy` w OpenCode i OpenClaw oraz serwer MCP `agybridge` w Claude Code. Jest idempotentny — ponowne uruchomienie aktualizuje. Opcje: `--dir`, `--ref`, `--port`, `--no-service`, `--no-hermes`, `--no-opencode`, `--no-claw`, `--no-claude`. Samo zalogowanie do `agy` to jednorazowy krok ręczny.
 
+
+**Pula kont Google.** Konta Google dla AGY logujesz w panelu (Konta → AGY → *Zaloguj konto Google*): proxy uruchamia `agy` w tymczasowym katalogu, pokazuje link zgody Google z wyborem konta i przyjmuje kod ze strony `antigravity.google` (AGY czeka na niego 60 s). Konta są zapisywane w `agent-lb.agy-accounts.json` obok konfiguracji (uprawnienia 600, tokeny nigdy nie trafiają do panelu). Stacje z agybridge i kluczem stacji (`agy-setup.sh --key`) pobierają konto z `GET /agy/credential` i zgłaszają wyczerpany limit do `POST /agy/quota`; proxy wydaje wtedy następne konto z wolnym limitem. W panelu można przypiąć, wyłączyć, przestawić kolejność albo wyczyścić limit. Dane logowania dostają tylko nieograniczone klucze stacji.
+
 ---
 
 ## 🖥️ Panel Webowy (Web Dashboard)

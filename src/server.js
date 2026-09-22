@@ -2,6 +2,7 @@ import { observeTokenStream } from './first-token.js';
 import { substitutedModel, substitutionAllowed } from './model-substitution.js';
 import { handleClientKeys } from './client-key-admin.js';
 import { readControlBody } from './control-body.js';
+import { AgyAccountStore, AgyLoginManager, getAgyAccountsPath, handleAgyRoute, resolveAgyCommand } from './agy-accounts.js';
 import { resolveBodyIdleTimeout, readWithIdleTimeout, idleBody, collectIdleBody } from './stream-lifecycle.js';
 export { readWithIdleTimeout, idleBody } from './stream-lifecycle.js';
 import { safeKeyEqual, maskSecret, isLoopbackAddr, isForwardedRequest, loopbackExempt, isTailnetAddr, isTailnetHostName, tailnetExempt, resolveClientAuth, relayPolicyAllowed, SENSITIVE_HEADER_NAMES } from './access-control.js';
@@ -183,6 +184,8 @@ const CONNECTION_SPECIFIC_HEADERS = new Set([
 ]);
 
 export function createProxyServer(accountManager, config, hooks = {}, sx = null, clientUsage = null, dimensionUsage = null) {
+  let agyStore = null;
+  let agyLogins = null;
   clientUsage ||= new ClientUsageTracker();
   const upstream = config.upstream || 'https://api.anthropic.com';
   const holdMs = (config.holdSeconds || 0) * 1000;
@@ -382,7 +385,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
       // Protect every management alias BEFORE dispatch (including reload,
       // switch and setup/pull). Provider identity endpoints remain data-plane.
-      const managementPath = /^\/(?:api\/(?:auth|keys|accounts|routing|drain|ready|system|reboot|restart|test|chat|health-check|setup|reload|probe|switch)(?:\/|$)|accounts(?:\/|$)|client-keys(?:\/|$)|oauth(?:\/|$)|routing(?:\/|$)|drain(?:\/|$)|health-check(?:\/|$)|reload$|probe$|switch$|reboot$|restart$|metrics$|alerts$)/.test(normApiPath);
+      const managementPath = /^\/(?:api\/(?:auth|keys|accounts|agy|routing|drain|ready|system|reboot|restart|test|chat|health-check|setup|reload|probe|switch)(?:\/|$)|accounts(?:\/|$)|client-keys(?:\/|$)|oauth(?:\/|$)|routing(?:\/|$)|drain(?:\/|$)|health-check(?:\/|$)|reload$|probe$|switch$|reboot$|restart$|metrics$|alerts$)/.test(normApiPath);
       const isAdmin = config.proxy?.apiKey
         ? safeKeyEqual(clientKey, config.proxy.apiKey)
         : (!config.proxy?.clientKeys?.length && isLoopbackAddr(req.socket.remoteAddress) && !isForwardedRequest(req.headers));
@@ -436,6 +439,15 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       if (/^https?:\/\//i.test(req.url || '')) {
         if (!relayPolicyAllowed(auth, clientUsage)) { denyClientPolicy(res, { error: 'restricted keys cannot use a general-purpose relay' }); return; }
         relayHttpForward(req, res); return;
+      }
+
+      // AGY (Google) accounts: dashboard management and station credentials.
+      if (normApiPath.startsWith('/api/agy/') || normApiPath.startsWith('/agy/')) {
+        if (!agyStore) {
+          agyStore = new AgyAccountStore(config.agy?.accountsPath || getAgyAccountsPath());
+          agyLogins = new AgyLoginManager({ command: resolveAgyCommand(config), store: agyStore });
+        }
+        if (await handleAgyRoute(req, res, { normApiPath, auth, clientKey, clientUsage, store: agyStore, logins: agyLogins })) return;
       }
 
       // A request admitted ONLY by the loopback exemption — no valid key — is

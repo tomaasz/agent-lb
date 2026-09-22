@@ -735,6 +735,19 @@ const PAGE = `<!doctype html>
     .grid-head-accounts, #colClaude, #colCodex { grid-column: 1 / 2; }
   }
 
+  .agy-section { margin-top: 18px; }
+  .col-title.agy { color: #4f9dff; }
+  .agy-hint { font-size: 11px; color: var(--dim); margin: 2px 0 8px; }
+  .agy-list { display: flex; flex-direction: column; gap: 6px; }
+  .agy-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--card, var(--bg)); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; font-size: 12px; }
+  .agy-row.off { opacity: 0.55; }
+  .agy-row .agy-email { font-weight: 600; color: var(--heading); min-width: 180px; word-break: break-all; }
+  .agy-row .agy-state { flex: 1; min-width: 160px; color: var(--dim); }
+  .agy-row .agy-state.spent { color: var(--warn, #d29922); }
+  .agy-row .agy-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+  .agy-steps { margin: 0 0 8px 18px; padding: 0; font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
+  .agy-countdown { font-size: 12px; color: var(--dim); }
+
   .workstations-pane {
     display: flex;
     flex-direction: column;
@@ -1224,6 +1237,19 @@ const PAGE = `<!doctype html>
           </div>
           <div class="account-list" id="listCodex" data-provider="codex"></div>
         </div>
+      </div>
+
+      <!-- AGY (Google Antigravity): accounts handed to agybridge on the stations -->
+      <div class="agy-section" id="colAgy">
+        <div class="col-head">
+          <div class="row" style="gap:6px; align-items:center;">
+            <span class="col-title agy" data-i18n="agyColTitle">🔷 AGY (Google Antigravity)</span>
+            <span class="col-hint" id="countAgy">0</span>
+          </div>
+          <button class="btn btn-sm btn-accent" id="btnAgyLogin" style="padding:2px 8px; font-size:11px;" data-i18n="agyLoginBtn">🔑 Zaloguj konto Google</button>
+        </div>
+        <div class="agy-hint" data-i18n="agyHint">Stacje z agybridge używają konta z góry listy (albo przypiętego). Po wyczerpaniu limitu przechodzą automatycznie na następne.</div>
+        <div id="listAgy" class="agy-list"></div>
       </div>
     </div>
 
@@ -1747,6 +1773,33 @@ const PAGE = `<!doctype html>
   </div>
 
   <!-- MODAL: ADD CLIENT KEY -->
+  <div id="modalAgyLogin" class="modal-backdrop" style="display:none;">
+    <div class="modal-box" style="max-width:620px;">
+      <div class="row" style="justify-content:space-between; margin-bottom:12px;">
+        <span style="font-weight:600; font-size:15px;" data-i18n="agyModalTitle">🔑 Logowanie konta Google do AGY</span>
+        <button class="btn btn-sm" id="btnCloseAgyLogin" data-i18n="btnClose">✕ Zamknij</button>
+      </div>
+      <div id="agyLoginWait" style="font-size:13px; color:var(--dim);" data-i18n="agyPreparing">Przygotowuję link logowania…</div>
+      <div id="agyLoginStep" style="display:none;">
+        <ol class="agy-steps">
+          <li><span data-i18n="agyStep1">Otwórz link i wybierz konto Google:</span>
+            <div style="margin-top:6px;"><a id="agyLoginLink" class="btn btn-sm btn-accent" href="#" target="_blank" rel="noopener noreferrer" data-i18n="agyOpenLink">↗ Otwórz logowanie Google</a></div></li>
+          <li data-i18n="agyStep2">Po zgodzie strona antigravity.google pokaże kod — skopiuj go.</li>
+          <li><span data-i18n="agyStep3">Wklej kod tutaj:</span>
+            <div class="row" style="gap:6px; margin-top:6px;">
+              <input id="agyLoginCode" type="text" autocomplete="off" spellcheck="false" style="flex:1;" placeholder="4/0A…">
+              <button class="btn btn-accent" id="btnAgySubmitCode" data-i18n="agySubmit">Zaloguj</button>
+            </div></li>
+        </ol>
+        <div class="agy-countdown"><span data-i18n="agyTimeLeft">Pozostało:</span> <b id="agyLoginCountdown">60</b> s</div>
+      </div>
+      <div id="agyLoginResult" style="display:none; margin-top:10px; font-size:13px;"></div>
+      <div id="agyLoginRetry" style="display:none; margin-top:10px;">
+        <button class="btn btn-sm" id="btnAgyNewLink" data-i18n="agyNewLink">🔄 Nowy link</button>
+      </div>
+    </div>
+  </div>
+
   <div id="modalAddClientKey" class="modal-backdrop" style="display:none;">
     <div class="modal-box">
       <div class="row" style="justify-content:space-between; margin-bottom:12px;">
@@ -2021,6 +2074,18 @@ const PAGE = `<!doctype html>
       colClaudeTitle: '🟣 Claude (Anthropic)',
       colCodexTitle: '🟢 OpenAI Codex',
       colClientsTitle: '💻 Stacje robocze',
+      agyColTitle: '🔷 AGY (Google Antigravity)',
+      agyLoginBtn: '🔑 Zaloguj konto Google',
+      agyHint: 'Stacje z agybridge używają konta z góry listy (albo przypiętego). Po wyczerpaniu limitu przechodzą automatycznie na następne.',
+      agyModalTitle: '🔑 Logowanie konta Google do AGY',
+      agyPreparing: 'Przygotowuję link logowania…',
+      agyStep1: 'Otwórz link i wybierz konto Google:',
+      agyOpenLink: '↗ Otwórz logowanie Google',
+      agyStep2: 'Po zgodzie strona antigravity.google pokaże kod — skopiuj go.',
+      agyStep3: 'Wklej kod tutaj:',
+      agySubmit: 'Zaloguj',
+      agyTimeLeft: 'Pozostało:',
+      agyNewLink: '🔄 Nowy link',
       btnAddAccount: '➕ Dodaj konto',
       btnNewKey: '➕ Podłącz stację',
       btnNewKeyTitle: 'Podłącz nową stację roboczą lub agenta CLI',
@@ -2278,6 +2343,18 @@ const PAGE = `<!doctype html>
       colClaudeTitle: '🟣 Claude (Anthropic)',
       colCodexTitle: '🟢 OpenAI Codex',
       colClientsTitle: '💻 Workstations',
+      agyColTitle: '🔷 AGY (Google Antigravity)',
+      agyLoginBtn: '🔑 Log in a Google account',
+      agyHint: 'Stations running agybridge use the top account (or the pinned one). When its quota runs out they move to the next one automatically.',
+      agyModalTitle: '🔑 Log a Google account in to AGY',
+      agyPreparing: 'Preparing the login link…',
+      agyStep1: 'Open the link and choose a Google account:',
+      agyOpenLink: '↗ Open Google login',
+      agyStep2: 'After consenting, antigravity.google shows a code — copy it.',
+      agyStep3: 'Paste the code here:',
+      agySubmit: 'Log in',
+      agyTimeLeft: 'Time left:',
+      agyNewLink: '🔄 New link',
       btnAddAccount: '➕ Add Account',
       btnNewKey: '➕ Connect Workstation',
       btnNewKeyTitle: 'Connect a new workstation or CLI agent',
@@ -5063,11 +5140,12 @@ ${SHARED_HELPERS}
         ? 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash -s -- --key ' + key
         : 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash';
     } else if (currentQuickTool === 'agy') {
-      // agybridge runs locally on the station's own AGY login; no proxy key needed.
-      // On Windows it runs inside WSL (agybridge needs Linux/macOS).
+      // The station key lets agybridge take its Google account from the AGY
+      // pool in this dashboard. On Windows it runs inside WSL (Linux/macOS only).
+      var agyArgs = withKey ? ' -s -- --key ' + key : '';
       cmd = currentQuickTab === 'ps'
-        ? 'wsl bash -lc "curl -fsSL ' + hostUrl + '/agy-setup.sh | bash"'
-        : 'curl -fsSL ' + hostUrl + '/agy-setup.sh | bash';
+        ? 'wsl bash -lc "curl -fsSL ' + hostUrl + '/agy-setup.sh | bash' + agyArgs + '"'
+        : 'curl -fsSL ' + hostUrl + '/agy-setup.sh | bash' + agyArgs;
     } else if (currentQuickTool === 'agent') {
       if (currentQuickTab === 'ps') {
         cmd = '$env:OPENAI_BASE_URL="' + hostUrl + '/v1"; $env:OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"; $env:ANTHROPIC_BASE_URL="' + hostUrl + '"; $env:ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
@@ -5776,6 +5854,180 @@ ${SHARED_HELPERS}
     var b = document.getElementById(id);
     if (b) b.addEventListener('click', function () { openAddAccountModal('codex'); });
   });
+
+  // --- AGY (Google Antigravity) accounts ------------------------------------
+  // Tokens never reach the page: the list carries e-mails and quota state only.
+  var agyLogin = null;
+  function agyT(pl, en) { return currentLang === 'pl' ? pl : en; }
+  function agyLeft(ms) {
+    var m = Math.max(1, Math.round(ms / 60000));
+    var h = Math.floor(m / 60);
+    return h ? (h + 'h ' + (m % 60) + 'm') : (m + 'm');
+  }
+  function loadAgyAccounts() {
+    var key = localStorage.getItem(KEY) || '';
+    var headers = {};
+    if (key) headers['x-api-key'] = key;
+    return fetch('/agent-lb/api/agy/accounts', { headers: headers })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d && d.ok) renderAgyAccounts(d.accounts || []); })
+      .catch(function () {});
+  }
+  function agyAction(path, body, okMsg) {
+    return apiCall('/agent-lb/api/agy/' + path, 'POST', body).then(function (d) {
+      if (d && d.ok) { if (okMsg) note('ok', okMsg); }
+      else if (d) note('error', d.error || 'error');
+      return loadAgyAccounts();
+    });
+  }
+  function agyButton(label, title, onClick) {
+    var b = document.createElement('button');
+    b.className = 'btn btn-xs';
+    b.type = 'button';
+    b.textContent = label;
+    if (title) b.title = title;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function renderAgyAccounts(list) {
+    var box = document.getElementById('listAgy');
+    if (!box) return;
+    var count = document.getElementById('countAgy');
+    if (count) count.textContent = list.length + ' ' + agyT('kont', 'accounts');
+    box.textContent = '';
+    if (!list.length) {
+      var empty = document.createElement('div');
+      empty.className = 'agy-hint';
+      empty.textContent = agyT('Brak kont. Zaloguj pierwsze konto Google przyciskiem powyżej.', 'No accounts yet. Log in the first Google account with the button above.');
+      box.appendChild(empty);
+      return;
+    }
+    var ids = list.map(function (a) { return a.id; });
+    list.forEach(function (a, i) {
+      var row = document.createElement('div');
+      row.className = 'agy-row' + (a.enabled ? '' : ' off');
+      var email = document.createElement('span');
+      email.className = 'agy-email';
+      email.textContent = (i + 1) + '. ' + a.email;
+      row.appendChild(email);
+      var state = document.createElement('span');
+      var parts = [];
+      if (!a.enabled) parts.push(agyT('⏸ wyłączone', '⏸ disabled'));
+      else if (a.quotaUntil) parts.push(agyT('⏳ limit wyczerpany, odnowienie za ', '⏳ quota spent, resets in ') + agyLeft(a.quotaUntil - Date.now()));
+      else parts.push(agyT('✅ dostępne', '✅ available'));
+      if (a.pinned) parts.push(agyT('📌 przypięte', '📌 pinned'));
+      if (a.usedBy && a.usedBy.length) parts.push(agyT('używa: ', 'used by: ') + a.usedBy.join(', '));
+      state.className = 'agy-state' + (a.quotaUntil ? ' spent' : '');
+      state.textContent = parts.join(' · ');
+      if (a.quotaMessage) state.title = a.quotaMessage;
+      row.appendChild(state);
+      var actions = document.createElement('span');
+      actions.className = 'agy-actions';
+      if (i > 0) actions.appendChild(agyButton('↑', agyT('Wyżej na liście', 'Move up'), function () {
+        var next = ids.slice(); next.splice(i - 1, 0, next.splice(i, 1)[0]);
+        agyAction('accounts/reorder', { ids: next });
+      }));
+      if (i < list.length - 1) actions.appendChild(agyButton('↓', agyT('Niżej na liście', 'Move down'), function () {
+        var next = ids.slice(); next.splice(i + 1, 0, next.splice(i, 1)[0]);
+        agyAction('accounts/reorder', { ids: next });
+      }));
+      actions.appendChild(a.pinned
+        ? agyButton(agyT('Odepnij', 'Unpin'), agyT('Wróć do automatycznego wyboru', 'Back to automatic choice'), function () { agyAction('accounts/pin', { id: null }); })
+        : agyButton(agyT('📌 Użyj', '📌 Use'), agyT('Wszystkie stacje używają tego konta, dopóki ma limit', 'All stations use this account while it has quota'), function () { agyAction('accounts/pin', { id: a.id }, agyT('Przypięto ', 'Pinned ') + a.email); }));
+      actions.appendChild(agyButton(a.enabled ? agyT('Wyłącz', 'Disable') : agyT('Włącz', 'Enable'), '', function () {
+        agyAction('accounts/enable', { id: a.id, enabled: !a.enabled });
+      }));
+      if (a.quotaUntil) actions.appendChild(agyButton(agyT('Wyczyść limit', 'Clear quota'), agyT('Uznaj, że limit wrócił (np. po zmianie planu)', 'Treat the quota as back (e.g. after a plan change)'), function () {
+        agyAction('accounts/clear-quota', { id: a.id });
+      }));
+      actions.appendChild(agyButton('🗑', agyT('Usuń konto', 'Remove account'), function () {
+        if (confirm(agyT('Usunąć konto ', 'Remove account ') + a.email + '?')) agyAction('accounts/remove', { id: a.id }, agyT('Usunięto ', 'Removed ') + a.email);
+      }));
+      row.appendChild(actions);
+      box.appendChild(row);
+    });
+  }
+  function agyEl(id) { return document.getElementById(id); }
+  function agyStopTimer() {
+    if (agyLogin && agyLogin.timer) clearInterval(agyLogin.timer);
+  }
+  function agyShowResult(ok, text) {
+    var r = agyEl('agyLoginResult');
+    r.style.display = 'block';
+    r.style.color = ok ? 'var(--ok)' : 'var(--err, #f85149)';
+    r.textContent = text;
+  }
+  function agyExpired(text) {
+    agyStopTimer();
+    agyEl('agyLoginStep').style.display = 'none';
+    agyShowResult(false, text);
+    agyEl('agyLoginRetry').style.display = 'block';
+  }
+  function agyStartLogin() {
+    agyStopTimer();
+    agyLogin = null;
+    agyEl('agyLoginWait').style.display = 'block';
+    agyEl('agyLoginStep').style.display = 'none';
+    agyEl('agyLoginResult').style.display = 'none';
+    agyEl('agyLoginRetry').style.display = 'none';
+    agyEl('agyLoginCode').value = '';
+    agyEl('btnAgySubmitCode').disabled = false;
+    openModal('modalAgyLogin');
+    apiCall('/agent-lb/api/agy/login/start', 'POST', {}).then(function (d) {
+      if (!d) return;
+      agyEl('agyLoginWait').style.display = 'none';
+      if (!d.ok) { agyExpired(d.error || 'error'); return; }
+      // The server's clock may differ from the browser's; count the window locally.
+      var deadline = Date.now() + (d.expiresInMs || 58000);
+      agyLogin = { loginId: d.loginId };
+      agyEl('agyLoginLink').href = d.url;
+      agyEl('agyLoginStep').style.display = 'block';
+      agyEl('agyLoginCountdown').textContent = Math.round((deadline - Date.now()) / 1000);
+      agyLogin.timer = setInterval(function () {
+        var left = Math.round((deadline - Date.now()) / 1000);
+        agyEl('agyLoginCountdown').textContent = Math.max(0, left);
+        if (left <= 0) agyExpired(agyT('Link wygasł — AGY czeka na kod tylko 60 s. Kliknij „Nowy link”.', 'The link expired — AGY waits for the code only 60 s. Click “New link”.'));
+      }, 1000);
+    });
+  }
+  function agySubmitCode() {
+    if (!agyLogin) return;
+    var code = agyEl('agyLoginCode').value.trim();
+    if (!code) return;
+    agyEl('btnAgySubmitCode').disabled = true;
+    apiCall('/agent-lb/api/agy/login/submit', 'POST', { loginId: agyLogin.loginId, code: code }).then(function (d) {
+      agyEl('btnAgySubmitCode').disabled = false;
+      if (!d) return;
+      agyStopTimer();
+      agyLogin = null;
+      agyEl('agyLoginStep').style.display = 'none';
+      if (d.ok) {
+        agyShowResult(true, agyT('✅ Zalogowano: ', '✅ Logged in: ') + d.account.email);
+        agyEl('agyLoginRetry').style.display = 'block';
+        loadAgyAccounts();
+      } else {
+        agyExpired((d.error || 'error') + agyT(' — kliknij „Nowy link”, aby spróbować ponownie.', ' — click “New link” to try again.'));
+      }
+    });
+  }
+  function agyCloseLogin() {
+    if (agyLogin) apiCall('/agent-lb/api/agy/login/cancel', 'POST', { loginId: agyLogin.loginId });
+    agyStopTimer();
+    agyLogin = null;
+    closeModal('modalAgyLogin');
+  }
+  var bAgyLogin = document.getElementById('btnAgyLogin');
+  if (bAgyLogin) bAgyLogin.addEventListener('click', agyStartLogin);
+  var bAgyNew = document.getElementById('btnAgyNewLink');
+  if (bAgyNew) bAgyNew.addEventListener('click', agyStartLogin);
+  var bAgySubmit = document.getElementById('btnAgySubmitCode');
+  if (bAgySubmit) bAgySubmit.addEventListener('click', agySubmitCode);
+  var inAgyCode = document.getElementById('agyLoginCode');
+  if (inAgyCode) inAgyCode.addEventListener('keydown', function (e) { if (e.key === 'Enter') agySubmitCode(); });
+  var bAgyClose = document.getElementById('btnCloseAgyLogin');
+  if (bAgyClose) bAgyClose.addEventListener('click', agyCloseLogin);
+  loadAgyAccounts();
+  setInterval(loadAgyAccounts, 15000);
 
   var bGenericAdd = document.getElementById('btnShowAddAccount');
   if (bGenericAdd) {

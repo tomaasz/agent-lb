@@ -658,11 +658,19 @@ function installAgyBridge() {
   const local = path.join(__dirname, "agy-setup.sh");
   try {
     if (fs.existsSync(local)) {
-      execFileSync("bash", [local], { stdio: "inherit" });
+      execFileSync("bash", [local, "--url", targetUrl, "--key", apiKey], {
+        stdio: "inherit",
+      });
     } else {
       execFileSync(
         "bash",
-        ["-c", 'curl -fsSL "$1/agy-setup.sh" | bash', "agy-setup", targetUrl],
+        [
+          "-c",
+          'curl -fsSL "$1/agy-setup.sh" | bash -s -- --url "$1" --key "$2"',
+          "agy-setup",
+          targetUrl,
+          apiKey,
+        ],
         { stdio: "inherit" },
       );
     }
