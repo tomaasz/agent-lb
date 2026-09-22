@@ -83,9 +83,9 @@ if [ "$HAS_AGY_PLUGIN" = "false" ]; then
 fi
 
 if [ "$HAS_AGY_PLUGIN" = "true" ]; then
-  echo "Wykryto wtyczkę hermes-agy-plugin na hoście — dodaję modele agy i agy-fast do listy AgentLB (All Models)..."
+  echo "Wykryto wtyczkę AGY (agybridge) na hoście — dodaję natywne providery agy i agy-fast..."
 else
-  echo "Nie wykryto wtyczki hermes-agy-plugin na hoście (modele agy nie zostaną dodane; użyj --with-agy aby wymusić)."
+  echo "Nie wykryto wtyczki AGY na hoście (providery agy nie zostaną dodane). Instalacja: curl -fsSL $URL/agy-setup.sh | bash"
 fi
 
 # Zapis/aktualizacja konfiguracji przez Python lub Node.js lub fallback
@@ -126,8 +126,9 @@ models = [
     "gpt-4o-mini"
 ]
 
-if has_agy:
-    models.extend(["agy", "agy-fast", "gemini-3.8-flash-high", "gemini-3.8-flash-low"])
+# AGY nie jest dopisywany do listy agentlb: agent-lb nie ma backendu AGY i po
+# cichu odpowiadałby Claude/GPT. Prawdziwy AGY to natywne providery agy/agy-fast
+# z wtyczki agybridge (poniżej) — instalacja: agy-setup.sh.
 
 models_yaml = "".join(f"      - \"{m}\"\n" for m in models)
 
@@ -235,7 +236,6 @@ const models = [
   "codex", "codex-mini", "gpt-5.6-sol", "gpt-6-astra", "gpt-5.6-terra",
   "gpt-5.6-luna", "gpt-5.5", "o3-mini", "o1", "gpt-4o", "gpt-4o-mini"
 ];
-if (hasAgy) models.push('agy', 'agy-fast', 'gemini-3.8-flash-high', 'gemini-3.8-flash-low');
 const modelsYaml = models.map(m => '      - "' + m + '"\n').join('');
 
 let modelAliasesBlock = '';

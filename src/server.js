@@ -498,11 +498,12 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           { id: 'o3-mini', name: 'o3-mini', display_name: 'o3-mini' },
           { id: 'o1', name: 'o1', display_name: 'o1' },
           { id: 'gpt-4o', name: 'GPT-4o', display_name: 'GPT-4o' },
-          { id: 'gpt-4o-mini', name: 'GPT-4o mini', display_name: 'GPT-4o mini' },
-          { id: 'agy', name: 'AGY (Antigravity)', display_name: 'AGY (Antigravity)' },
-          { id: 'agy-fast', name: 'AGY Fast', display_name: 'AGY Fast' },
-          { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash High (AGY)', display_name: 'Gemini 3.8 Flash High (AGY)' },
-          { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash Low (AGY Fast)', display_name: 'Gemini 3.8 Flash Low (AGY Fast)' }
+          { id: 'gpt-4o-mini', name: 'GPT-4o mini', display_name: 'GPT-4o mini' }
+          // agy / agy-fast / gemini-* are deliberately not advertised: this proxy
+          // has no AGY backend and would silently answer with Claude or GPT.
+          // Real AGY runs locally through agybridge (setup/agy-setup.sh). The
+          // names are still accepted and mapped, so a Hermes fallback from its
+          // native AGY provider to agentlb keeps working.
         ];
         const defaultReasoningLevels = [
           { effort: 'low', description: 'Fast responses with lighter reasoning' },

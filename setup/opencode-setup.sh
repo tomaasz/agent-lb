@@ -76,8 +76,6 @@ const models = {
   "gpt-5.6-sol": { name: "GPT-5.6 Sol" },
   "gpt-6-astra": { name: "GPT-6 Astra" },
   "gpt-5.6-terra": { name: "GPT-5.6 Terra" },
-  "agy": { name: "AGY (Gemini 3.8 Flash High)" },
-  "agy-fast": { name: "AGY Fast (Gemini 3.8 Flash Low)" },
   "gpt-4o": { name: "GPT-4o" },
   "o3-mini": { name: "o3-mini" }
 };
@@ -149,8 +147,6 @@ models = {
     "gpt-5.6-sol": { "name": "GPT-5.6 Sol" },
     "gpt-6-astra": { "name": "GPT-6 Astra" },
     "gpt-5.6-terra": { "name": "GPT-5.6 Terra" },
-    "agy": { "name": "AGY (Gemini 3.8 Flash High)" },
-    "agy-fast": { "name": "AGY Fast (Gemini 3.8 Flash Low)" },
     "gpt-4o": { "name": "GPT-4o" },
     "o3-mini": { "name": "o3-mini" }
 }
