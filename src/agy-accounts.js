@@ -245,6 +245,69 @@ function killTree(child) {
   }
 }
 
+// Where AGY put its token in the throwaway HOME. Normally
+// ~/.gemini/jetski-standalone-oauth-token, but look further down in case a
+// release moves it.
+function findTokenFile(home) {
+  const expected = join(home, '.gemini', TOKEN_FILE);
+  if (existsSync(expected)) return expected;
+  const stack = [[home, 0]];
+  while (stack.length) {
+    const [dir, depth] = stack.pop();
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isFile() && entry.name === TOKEN_FILE) return full;
+      if (entry.isDirectory() && depth < 4 && entry.name !== 'log' && entry.name !== 'bin') stack.push([full, depth + 1]);
+    }
+  }
+  return null;
+}
+
+// Text safe to show and log: no URLs, codes or long credential-like strings.
+function redactDiagnostics(text, code) {
+  let out = text;
+  if (code) out = out.split(code).join('[code]');
+  return out
+    .replace(/https?:\/\/\S+/g, '[url]')
+    .replace(/[A-Za-z0-9_\-./+=]{40,}/g, '[redacted]');
+}
+
+// What AGY said about the login: the end of its terminal output and the
+// OAuth/error lines from its own log in the throwaway HOME.
+function loginDiagnostics(login, outputBefore, code) {
+  const lines = login.output.slice(outputBefore).split('\n')
+    .map(l => l.trim())
+    .filter(l => l && l !== code && !/^Or, paste|^Waiting for authentication/.test(l));
+  const logDir = join(login.home, '.gemini', 'antigravity-cli', 'log');
+  let logLines = [];
+  try {
+    for (const name of readdirSync(logDir)) {
+      const text = readFileSync(join(logDir, name), 'utf8');
+      logLines.push(...text.split('\n').filter(l => /OAuth|keyring|token|onboard|not logged|ERROR|^E\d{4}/i.test(l) && !/file_watcher/.test(l)));
+    }
+  } catch { /* AGY wrote no log */ }
+  logLines = logLines.slice(-6).map(l => l.replace(/^[IWEF]\d{4} [\d:.]+\s+\d+ /, ''));
+  const files = [];
+  const stack = [[join(login.home, '.gemini'), '']];
+  while (stack.length && files.length < 40) {
+    const [dir, rel] = stack.pop();
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      if (['log', 'bin', 'crashes', 'updater'].includes(entry.name)) continue;
+      const name = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory() && name.split('/').length < 4) stack.push([join(dir, entry.name), name]);
+      else if (entry.isFile()) files.push(name);
+    }
+  }
+  // File names only (never contents), so a token stored under a new name shows up.
+  const fileNote = files.length ? `files: ${files.sort().join(', ')}` : '';
+  const said = redactDiagnostics([...lines.slice(-3), ...logLines].join(' | '), code);
+  return { short: redactDiagnostics(lines.slice(-2).join(' | '), code).slice(0, 300), full: [said, fileNote].filter(Boolean).join(' | ').slice(0, 2000) };
+}
+
 function shellQuote(s) {
   return `'${String(s).replace(/'/g, `'\\''`)}'`;
 }
@@ -357,7 +420,6 @@ export class AgyLoginManager {
     if (!CODE_RE.test(trimmed)) return Promise.reject(new Error('that does not look like an authorization code'));
     login.submitting = true;
     const outputBefore = login.output.length;
-    const tokenPath = join(login.home, '.gemini', TOKEN_FILE);
     login.child.stdin.write(trimmed + '\n');
 
     return new Promise((resolve, reject) => {
@@ -368,12 +430,21 @@ export class AgyLoginManager {
       const finish = (err, account) => {
         clearInterval(poll);
         clearTimeout(deadline);
+        if (err) {
+          // Read AGY's own account of the failure before its HOME is removed.
+          const detail = loginDiagnostics(login, outputBefore, trimmed);
+          console.warn(`[AgentLB] AGY login failed: ${err.message} — ${detail.full || 'no output'}`);
+          if (detail.short && !err.message.includes(detail.short) && !detail.short.includes(err.message)) {
+            err.message += ` (AGY: ${detail.short})`;
+          }
+        }
         this._cleanup(login);
         if (err) reject(err); else resolve(account);
       };
       const check = () => {
         if (login.done) return;
-        if (existsSync(tokenPath)) {
+        const tokenPath = findTokenFile(login.home);
+        if (tokenPath) {
           let raw;
           try { raw = readFileSync(tokenPath, 'utf8'); } catch { return; }
           try {
@@ -387,7 +458,10 @@ export class AgyLoginManager {
         const tail = login.output.slice(outputBefore);
         const failed = /Error: (authentication[^\n]*)/.exec(tail);
         if (failed) { finish(new Error(failed[1].trim())); return; }
-        if (login.exited) finish(new Error('AGY exited before finishing the login'));
+        if (login.exited) {
+          const said = /(?:^|\n)\s*(?:Error|error): ([^\n]+)/.exec(tail);
+          finish(new Error(said ? `AGY stopped: ${said[1].trim()}` : 'AGY exited before saving the login'));
+        }
       };
       login.waiters.push(check);
     });
