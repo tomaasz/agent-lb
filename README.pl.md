@@ -184,6 +184,7 @@ curl -fsSL http://twoj-serwer:3456/setup.sh | bash -s -- --key tc-KLUCZ_STACJI
 - `--lang <pl|en>` / `-Lang <pl|en>`: Wymuszenie języka komunikatów instalatora.
 - `--test` / `-Test`: Wykonanie testu diagnostycznego połączenia i autoryzacji bez modyfikacji plików.
 - `--no-install`: Pominięcie automatycznej instalacji pakietów npm (`@anthropic-ai/claude-code`, `@openai/codex`).
+- `--with-agy`: Dodatkowo instaluje agybridge (lokalny AGY, patrz niżej).
 - `--uninstall` / `-Uninstall`: Usunięcie zmiennych proxy ze środowiska i przywrócenie kopii zapasowych konfiguracji.
 
 ---
@@ -196,6 +197,20 @@ curl -fsSL http://twoj-serwer:3456/setup.sh | bash -s -- --key tc-KLUCZ_STACJI
 4. **Konfiguracja narzędzi**: Aktualizuje pliki `~/.claude/settings.json` oraz `~/.codex/config.json` / `config.toml`.
 5. **Wsparcie dla VS Code**: Automatycznie konfiguruje oficjalne rozszerzenia VS Code dla Claude Code i OpenAI Codex.
 6. **Trwałość konfiguracji**: Zapisuje zmienne proxy w profilach powłoki (`~/.bashrc`, `~/.zshrc`, `~/.config/agent-lb.env`) lub w Rejestrze Użytkownika Windows. W przypadku sesji OAuth w `~/.claude/.credentials.json`, instalator zachowuje tryb subskrypcji Claude Code, ustawiając nagłówek `ANTHROPIC_CUSTOM_HEADERS=x-api-key: <klucz-proxy>`. Proxy transparentnie przejmuje ten nagłówek i podmienia dane uwierzytelniające na aktywne konto z puli.
+
+---
+
+### AGY (Antigravity CLI) przez agybridge
+
+AGY nie jest obsługiwany przez proxy — agent-lb nie ma backendu AGY, dlatego nazwy `agy`, `agy-fast` i `gemini-3.8-flash-*` nie pojawiają się w `/v1/models` (są nadal przyjmowane i mapowane na Claude/GPT wyłącznie jako fallback). Prawdziwy AGY działa lokalnie na każdej stacji, na koncie Google zalogowanym tam w `agy`, przez [agybridge](https://github.com/tomaasz/agybridge):
+
+```bash
+curl -fsSL https://agentlb.twojadomena.pl/agy-setup.sh | bash
+# albo razem z głównym instalatorem:
+curl -fsSL https://agentlb.twojadomena.pl/setup.sh | bash -s -- --key <KLUCZ> --with-agy
+```
+
+Skrypt sprawdza Pythona 3.11+ i `agy`, instaluje agybridge we własnym virtualenvie (używa istniejącej kopii w `~/projekty/agybridge` lub `~/agybridge`, w przeciwnym razie `~/.local/share/agybridge`), generuje token lokalnego serwera w `~/.config/agybridge/agybridge.env` (uprawnienia 600, nigdy nie jest wypisywany), uruchamia `agybridge serve` na `127.0.0.1:8791` jako usługę systemd użytkownika i podłącza to, co jest zainstalowane: wtyczkę AGY Hermesa (dowiązanie; potem uruchom `hermes-setup.sh`, żeby dodać providery `agy` / `agy-fast`), provider `agy` w OpenCode i OpenClaw oraz serwer MCP `agybridge` w Claude Code. Jest idempotentny — ponowne uruchomienie aktualizuje. Opcje: `--dir`, `--ref`, `--port`, `--no-service`, `--no-hermes`, `--no-opencode`, `--no-claw`, `--no-claude`. Samo zalogowanie do `agy` to jednorazowy krok ręczny.
 
 ---
 

@@ -179,6 +179,7 @@ curl -fsSL http://your-server:3456/setup.sh | bash -s -- --key tc-YOUR_STATION_K
 - `--url <URL>` / `-Url <URL>`: Override the proxy server URL (e.g. `https://agentlb.yourdomain.com`).
 - `--test` / `-Test`: Run diagnostic connection and authentication tests without altering settings.
 - `--no-install`: Skip automatic installation/upgrade of npm packages (`@anthropic-ai/claude-code`, `@openai/codex`).
+- `--with-agy`: Also install agybridge (local AGY, see below).
 - `--uninstall` / `-Uninstall`: Remove proxy environment configurations and restore backed-up config files.
 
 ---
@@ -199,6 +200,20 @@ The proxy does not set a Claude token or context-window value. It forwards `max_
   "proxy": { "maxBodyBytes": 268435456 }
 }
 ```
+
+---
+
+### AGY (Antigravity CLI) via agybridge
+
+AGY is not served by the proxy — agent-lb has no AGY backend, so the model names `agy`, `agy-fast` and `gemini-3.8-flash-*` are not listed by `/v1/models` (they are still accepted and mapped to Claude/GPT only as a fallback). Real AGY runs locally on each workstation, on the Google account logged into `agy` there, through [agybridge](https://github.com/tomaasz/agybridge):
+
+```bash
+curl -fsSL https://agentlb.yourdomain.com/agy-setup.sh | bash
+# or together with the main installer:
+curl -fsSL https://agentlb.yourdomain.com/setup.sh | bash -s -- --key <KEY> --with-agy
+```
+
+The script checks Python 3.11+ and the `agy` CLI, installs agybridge into its own virtualenv (reusing an existing checkout in `~/projekty/agybridge` or `~/agybridge`, otherwise `~/.local/share/agybridge`), generates a local server token in `~/.config/agybridge/agybridge.env` (mode 600, never printed), starts `agybridge serve` on `127.0.0.1:8791` as a systemd user service, and wires up whatever is installed: the Hermes AGY plugin (symlink; run `hermes-setup.sh` afterwards to add the `agy` / `agy-fast` providers), an `agy` provider in OpenCode and OpenClaw, and an `agybridge` MCP server in Claude Code. It is idempotent; re-run it to update. Flags: `--dir`, `--ref`, `--port`, `--no-service`, `--no-hermes`, `--no-opencode`, `--no-claw`, `--no-claude`. Logging in to `agy` itself is a one-time manual step.
 
 ---
 

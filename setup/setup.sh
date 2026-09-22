@@ -30,6 +30,7 @@ BIN_DIR="${HOME}/bin"
 RUN_TEST=0
 SETUP_CODEX=0
 UNINSTALL=0
+WITH_AGY=0
 NO_INSTALL=0
 KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${CLAUDE_LB_API_KEY:-${CODEX_LB_API_KEY:-${ANTHROPIC_API_KEY:-}}}}}"
 LANG_VAL="${AGENT_LB_LANG:-}"
@@ -39,12 +40,13 @@ while [ $# -gt 0 ]; do
 		--test) RUN_TEST=1 ;;
 		--codex) SETUP_CODEX=1 ;;
 		--uninstall) UNINSTALL=1 ;;
+		--with-agy|--agy) WITH_AGY=1 ;;
 		--no-install|--skip-install) NO_INSTALL=1 ;;
 		--url) URL="${2%/}"; shift ;;
 		--key) KEY="$2"; shift ;;
 		--lang) LANG_VAL="$2"; shift ;;
 		-h|--help)
-			echo "Usage / Użycie: ./setup.sh [--url URL] [--key KEY] [--lang pl|en] [--codex] [--test] [--no-install] [--uninstall]"
+			echo "Usage / Użycie: ./setup.sh [--url URL] [--key KEY] [--lang pl|en] [--codex] [--with-agy] [--test] [--no-install] [--uninstall]"
 			exit 0
 			;;
 		*) echo "Unknown argument / Nieznany argument: $1" >&2; exit 2 ;;
@@ -505,6 +507,21 @@ if [ "$RUN_TEST" -eq 1 ] && command -v claude >/dev/null 2>&1; then
 		env -u ANTHROPIC_API_KEY ANTHROPIC_BASE_URL="$URL" ANTHROPIC_CUSTOM_HEADERS="x-api-key: $KEY" claude --version || true
 	else
 		env -u ANTHROPIC_CUSTOM_HEADERS ANTHROPIC_BASE_URL="$URL" ANTHROPIC_API_KEY="$KEY" claude --version || true
+	fi
+fi
+
+# Opcjonalnie: prawdziwy AGY lokalnie przez agybridge (Hermes, OpenCode, OpenClaw, Claude Code MCP)
+if [ "$WITH_AGY" -eq 1 ]; then
+	say ""
+	say "Instaluję agybridge (AGY)..."
+	AGY_SETUP=""
+	if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]:-}" ]; then
+		AGY_SETUP="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)/agy-setup.sh"
+	fi
+	if [ -n "$AGY_SETUP" ] && [ -f "$AGY_SETUP" ]; then
+		bash "$AGY_SETUP" || say "[Ostrzeżenie] Instalacja agybridge nie powiodła się (reszta konfiguracji jest gotowa)."
+	else
+		curl -fsSL "$URL/agy-setup.sh" | bash || say "[Ostrzeżenie] Instalacja agybridge nie powiodła się (reszta konfiguracji jest gotowa)."
 	fi
 fi
 

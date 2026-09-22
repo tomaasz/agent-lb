@@ -59,6 +59,7 @@ let skipEnv = false;
 let setupCodex = true;
 let skipInstall = false;
 let uninstall = false;
+let withAgy = false;
 let lang = (
   process.env.AGENT_LB_LANG ||
   process.env.LC_ALL ||
@@ -94,6 +95,8 @@ for (let i = 0; i < args.length; i++) {
     skipEnv = true;
   } else if (arg === "--uninstall") {
     uninstall = true;
+  } else if (arg === "--with-agy" || arg === "--agy") {
+    withAgy = true;
   } else if (arg === "-h" || arg === "--help") {
     if (lang === "pl") {
       console.log(`
@@ -111,6 +114,7 @@ Opcje:
   --no-install     Pomiń automatyczną instalację pakietów npm
   --skip-vscode    Pomiń konfigurację rozszerzeń VS Code
   --skip-env       Pomiń konfigurację zmiennych powłoki / systemu
+  --with-agy       Zainstaluj też agybridge (AGY lokalnie: Hermes, OpenCode, OpenClaw, Claude MCP)
   --uninstall      Usuń ustawienia Agent-LB z profilu klienta
   -h, --help       Pokaż ten ekran pomocy
 `);
@@ -130,6 +134,7 @@ Options:
   --no-install     Skip automatic npm package installation
   --skip-vscode    Skip configuration of VS Code extensions
   --skip-env       Skip shell / registry environment variables
+  --with-agy       Also install agybridge (local AGY: Hermes, OpenCode, OpenClaw, Claude MCP)
   --uninstall      Remove Agent-LB configurations and restore backups
       `);
     }
@@ -638,6 +643,36 @@ function ensureCliPackage(cmdName, pkgName, title) {
   }
 }
 
+// agybridge runs AGY on this machine (its own Google login), so it is set up by
+// a separate script; a failure there must not undo the proxy configuration.
+function installAgyBridge() {
+  console.log("\nInstaluję agybridge (AGY)...");
+  if (isWin) {
+    console.warn(
+      "[AGY] agybridge wymaga Linuksa, macOS lub WSL — uruchom w WSL: curl -fsSL " +
+        targetUrl +
+        "/agy-setup.sh | bash",
+    );
+    return;
+  }
+  const local = path.join(__dirname, "agy-setup.sh");
+  try {
+    if (fs.existsSync(local)) {
+      execFileSync("bash", [local], { stdio: "inherit" });
+    } else {
+      execFileSync(
+        "bash",
+        ["-c", 'curl -fsSL "$1/agy-setup.sh" | bash', "agy-setup", targetUrl],
+        { stdio: "inherit" },
+      );
+    }
+  } catch (err) {
+    console.warn(
+      `[AGY] Instalacja agybridge nie powiodła się (reszta konfiguracji jest gotowa): ${err.message}`,
+    );
+  }
+}
+
 async function main() {
   console.log(
     "=== Konfigurator klienta Agent-LB dla Claude Code, Codex i IDE ===\n",
@@ -1075,6 +1110,9 @@ async function main() {
       );
     }
   }
+
+  // 8. Opcjonalnie: prawdziwy AGY lokalnie przez agybridge
+  if (withAgy) installAgyBridge();
 
   console.log("\n=== Konfiguracja zakończona sukcesem! ===");
   console.log(

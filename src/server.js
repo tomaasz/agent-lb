@@ -261,7 +261,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Serve client setup scripts without auth (Claude Code, OpenAI Codex, OpenCode, Hermes, Claw, Orca)
-      const setupScriptMatch = normPath.match(/^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|claude-setup|setup-claude|codexlb-setup|codex-setup|setup-codex|agent-setup|opencode-setup|hermes-setup|claw-setup|openclaw-setup|orca-setup|aider-setup)(?:\.(sh|ps1|js))?$/);
+      const setupScriptMatch = normPath.match(/^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|claude-setup|setup-claude|codexlb-setup|codex-setup|setup-codex|agent-setup|opencode-setup|hermes-setup|claw-setup|openclaw-setup|orca-setup|aider-setup|agy-setup|agybridge-setup)(?:\.(sh|ps1|js))?$/);
       if ((req.method === 'GET' || req.method === 'HEAD') && setupScriptMatch) {
         const scriptBase = setupScriptMatch[1];
         let ext = setupScriptMatch[2];
@@ -270,7 +270,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           ext = (ua.includes('powershell') || ua.includes('pwsh')) ? 'ps1' : 'sh';
         }
         let possibleNames = [];
-        if (scriptBase.includes('hermes')) {
+        if (scriptBase.startsWith('agy')) {
+          // No generic fallback: serving setup.sh here would configure the wrong tool.
+          possibleNames = [`agy-setup.${ext}`];
+        } else if (scriptBase.includes('hermes')) {
           possibleNames = [`hermes-setup.${ext}`, `setup.${ext}`];
         } else if (scriptBase.includes('opencode')) {
           possibleNames = [`opencode-setup.${ext}`, `setup.${ext}`];

@@ -1276,6 +1276,7 @@ const PAGE = `<!doctype html>
               <button class="btn btn-xs" id="btnQuickToolOpenCode" type="button" style="padding:2px 8px; font-size:11px;" title="OpenCode">OpenCode</button>
               <button class="btn btn-xs" id="btnQuickToolClaw" type="button" style="padding:2px 8px; font-size:11px;" title="Claw / OpenClaw">Claw</button>
               <button class="btn btn-xs" id="btnQuickToolOrca" type="button" style="padding:2px 8px; font-size:11px;" title="Orca ADE">Orca</button>
+              <button class="btn btn-xs" id="btnQuickToolAgy" type="button" style="padding:2px 8px; font-size:11px;" title="AGY / Antigravity lokalnie przez agybridge (Hermes, OpenCode, OpenClaw, Claude MCP) — Linux / macOS / WSL">AGY</button>
               <button class="btn btn-xs" id="btnQuickToolAgent" type="button" style="padding:2px 8px; font-size:11px;" title="Zmienne środowiskowe OpenAI / Anthropic">ENV</button>
             </div>
           </details>
@@ -5061,6 +5062,12 @@ ${SHARED_HELPERS}
       cmd = withKey
         ? 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash -s -- --key ' + key
         : 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash';
+    } else if (currentQuickTool === 'agy') {
+      // agybridge runs locally on the station's own AGY login; no proxy key needed.
+      // On Windows it runs inside WSL (agybridge needs Linux/macOS).
+      cmd = currentQuickTab === 'ps'
+        ? 'wsl bash -lc "curl -fsSL ' + hostUrl + '/agy-setup.sh | bash"'
+        : 'curl -fsSL ' + hostUrl + '/agy-setup.sh | bash';
     } else if (currentQuickTool === 'agent') {
       if (currentQuickTab === 'ps') {
         cmd = '$env:OPENAI_BASE_URL="' + hostUrl + '/v1"; $env:OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"; $env:ANTHROPIC_BASE_URL="' + hostUrl + '"; $env:ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
@@ -5122,6 +5129,7 @@ ${SHARED_HELPERS}
       { id: 'btnQuickToolOpenCode', name: 'opencode' },
       { id: 'btnQuickToolClaw', name: 'claw' },
       { id: 'btnQuickToolOrca', name: 'orca' },
+      { id: 'btnQuickToolAgy', name: 'agy' },
       { id: 'btnQuickToolAgent', name: 'agent' }
     ];
     tools.forEach(function (t) {
@@ -6505,7 +6513,7 @@ ${SHARED_HELPERS}
       b.addEventListener('click', function () { setQuickTab(t.toLowerCase()); });
     }
   });
-  ['All', 'Claude', 'Codex', 'Hermes', 'OpenCode', 'Claw', 'Orca', 'Agent'].forEach(function (tool) {
+  ['All', 'Claude', 'Codex', 'Hermes', 'OpenCode', 'Claw', 'Orca', 'Agy', 'Agent'].forEach(function (tool) {
     var b = document.getElementById('btnQuickTool' + tool);
     if (b) {
       b.addEventListener('click', function () { setQuickTool(tool.toLowerCase()); });
