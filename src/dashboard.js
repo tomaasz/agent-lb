@@ -3663,6 +3663,7 @@ ${SHARED_HELPERS}
   function render(s) {
     if (draggedCard) return; // Prevent DOM replacement during drag
     lastStatus = s;
+    if (typeof routeRetryPending === 'function') routeRetryPending();
     var sess = s.sessions || {};
     var up = s.server && s.server.uptimeSeconds != null ? 'up ' + fmtIn(s.server.uptimeSeconds) : '';
     var sum = document.getElementById('summary');
@@ -3896,11 +3897,13 @@ ${SHARED_HELPERS}
   function openModal(id) {
     var m = document.getElementById(id);
     if (m) m.style.display = 'flex';
+    if (typeof routeModalOpened === 'function') routeModalOpened(id);
   }
 
   function closeModal(id) {
     var m = document.getElementById(id);
     if (m) m.style.display = 'none';
+    if (typeof routeModalClosed === 'function') routeModalClosed(id);
   }
 
   function doToggleDisabled(name, currentDisabled, btn) {
@@ -7379,6 +7382,7 @@ ${SHARED_HELPERS}
       if (btnWorkstations) btnWorkstations.classList.remove('active');
     }
     try { localStorage.setItem('agentlb-active-tab', tabId); } catch (e) {}
+    routeTo(tabId === 'tabWorkstations' ? 'workstations' : 'accounts');
   }
 
   var btnTabAccounts = document.getElementById('tabBtnAccounts');
@@ -7394,12 +7398,126 @@ ${SHARED_HELPERS}
     });
   }
 
-  try {
-    var savedTab = localStorage.getItem('agentlb-active-tab');
-    if (savedTab === 'tabWorkstations') {
-      switchMainTab('tabWorkstations');
+  // --- Addresses for every view ----------------------------------------------
+  // /dashboard/<view> opens that view directly; the address follows the tab or
+  // dialog on screen, so a view can be bookmarked, shared and reached with
+  // Back/Forward. The server answers every /dashboard/... path with this page.
+  var ROUTES = {
+    'accounts': { tab: 'tabAccounts', title: ['Konta & Flota', 'Accounts & Fleet'] },
+    'accounts/agy': { tab: 'tabAccounts', scroll: 'colAgy', title: ['Konta AGY', 'AGY accounts'] },
+    'accounts/add': { tab: 'tabAccounts', modal: 'modalAddAccount', open: 'btnAddClaudeCol', title: ['Dodaj konto', 'Add account'] },
+    'workstations': { tab: 'tabWorkstations', title: ['Stacje robocze', 'Workstations'] },
+    'workstations/new': { tab: 'tabWorkstations', modal: 'modalAddClientKey', open: 'btnShowAddClientKey', title: ['Podłącz stację', 'Connect workstation'] },
+    'usage': { tab: 'tabAccounts', modal: 'modalFleetUsage', open: 'btnOpenFleetUsage', title: ['Kto i na co?', 'Fleet usage'] },
+    'chat': { tab: 'tabAccounts', modal: 'modalTestChat', open: 'btnOpenTestChat', title: ['Test Chat', 'Test Chat'] }
+  };
+  var routeBase = (function () {
+    var m = /^(.*\\/dashboard)(?:\\/|$)/.exec(location.pathname);
+    return m ? m[1] : '/dashboard';
+  })();
+  var routeApplying = false;
+  var currentRoute = null;
+  var routePendingModal = null; // a view whose dialog needs the first status
+  var routeModalPushed = false; // the open dialog added its own history entry
+
+  function routeFromPath() {
+    var rest = location.pathname.slice(routeBase.length).replace(/^\\/+|\\/+$/g, '');
+    return ROUTES[rest] ? rest : null;
+  }
+  function routeTitle(name) {
+    var r = ROUTES[name];
+    document.title = r ? ('Agent LB · ' + r.title[currentLang === 'pl' ? 0 : 1]) : 'Agent LB';
+  }
+  function routeTo(name, replace) {
+    if (routeApplying || !ROUTES[name]) return;
+    currentRoute = name;
+    routeTitle(name);
+    var url = routeBase + '/' + name + location.search;
+    if (location.pathname + location.search === url) return;
+    try {
+      if (replace) history.replaceState({ route: name }, '', url);
+      else history.pushState({ route: name }, '', url);
+    } catch (e) {}
+  }
+  function tabRouteName() {
+    var ws = document.getElementById('tabWorkstations');
+    return ws && ws.style.display === 'block' ? 'workstations' : 'accounts';
+  }
+  function routeModalOpened(id) {
+    for (var name in ROUTES) {
+      if (ROUTES[name].modal === id) {
+        if (!routeApplying && currentRoute !== name) routeModalPushed = true;
+        routeTo(name);
+        return;
+      }
     }
-  } catch (e) {}
+  }
+  function routeModalClosed(id) {
+    if (routeApplying || !currentRoute || ROUTES[currentRoute].modal !== id) return;
+    if (routeModalPushed) {
+      // The dialog pushed its address: step back to the view underneath.
+      routeModalPushed = false;
+      history.back();
+    } else {
+      routeTo(tabRouteName(), true);
+    }
+  }
+  function routeRetryPending() {
+    var name = routePendingModal;
+    if (!name || currentRoute !== name) { routePendingModal = null; return; }
+    routePendingModal = null;
+    var r = ROUTES[name];
+    var btn = r.open && document.getElementById(r.open);
+    routeApplying = true;
+    try { if (btn) btn.click(); } finally { routeApplying = false; }
+  }
+  function applyRoute(name) {
+    var r = ROUTES[name];
+    if (!r) return;
+    routeApplying = true;
+    try {
+      // Dialogs of other views are closed so the screen matches the address.
+      for (var other in ROUTES) {
+        var mid = ROUTES[other].modal;
+        if (mid && mid !== r.modal) {
+          var el = document.getElementById(mid);
+          if (el) el.style.display = 'none';
+        }
+      }
+      switchMainTab(r.tab);
+      routeModalPushed = false;
+      if (r.modal) {
+        var dlg = document.getElementById(r.modal);
+        var btn = r.open && document.getElementById(r.open);
+        if (btn && (!dlg || dlg.style.display !== 'flex')) btn.click();
+        // Some dialogs (fleet usage) need data that the first poll brings.
+        if (dlg && dlg.style.display !== 'flex') routePendingModal = name;
+      }
+      if (r.scroll) {
+        var target = document.getElementById(r.scroll);
+        if (target && target.scrollIntoView) setTimeout(function () { target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 150);
+      }
+    } finally {
+      routeApplying = false;
+    }
+    currentRoute = name;
+    routeTitle(name);
+  }
+  window.addEventListener('popstate', function () {
+    applyRoute(routeFromPath() || tabRouteName());
+  });
+
+  (function startRouter() {
+    var initial = routeFromPath();
+    if (!initial) {
+      // Bare /dashboard (or an unknown view): the last tab, then its address.
+      var saved = null;
+      try { saved = localStorage.getItem('agentlb-active-tab'); } catch (e) {}
+      initial = saved === 'tabWorkstations' ? 'workstations' : 'accounts';
+    }
+    applyRoute(initial);
+    routeTo(initial, true);
+  })();
 
   checkAuthAndStart();
 })();

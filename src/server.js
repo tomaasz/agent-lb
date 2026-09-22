@@ -244,7 +244,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       const normPath = rawPath.replace(/\/+$/, '') || '/';
       const reqPath = rawPath;
       const normApiPath = reqPath.replace(/^\/(?:agent-lb|agentlb|claude-lb)/, '');
-      const isDashboardPath = normPath === '/' || normPath === '/dashboard' || normPath === '/agent-lb/dashboard' || normPath === '/claude-lb/dashboard' || normPath === '/agent-lb' || normPath === '/claude-lb';
+      // /dashboard/<view> (e.g. /dashboard/workstations, /dashboard/accounts/agy)
+      // serves the same page; its script opens the view named in the address.
+      const isDashboardPath = normPath === '/' || normPath === '/agent-lb' || normPath === '/claude-lb' ||
+        /^\/(?:agent-lb\/|claude-lb\/)?dashboard(?:\/[a-z0-9-]{1,32}){0,2}$/.test(normPath);
 
       if ((req.method === 'GET' || req.method === 'HEAD') && isDashboardPath) {
         // The page keeps the proxy key in localStorage; the policy is what
