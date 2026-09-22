@@ -15,7 +15,7 @@
 
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getConfigPath } from './config.js';
@@ -217,6 +217,34 @@ export class AgyAccountStore {
   }
 }
 
+// `script` starts AGY in a session of its own, so killing `script` (or its
+// process group) leaves AGY running, reparented to init. Walk the tree.
+function descendants(pid) {
+  const found = [];
+  const stack = [pid];
+  while (stack.length) {
+    const current = stack.pop();
+    let tasks = [];
+    try { tasks = readdirSync(`/proc/${current}/task`); } catch { continue; }
+    for (const task of tasks) {
+      let children = '';
+      try { children = readFileSync(`/proc/${current}/task/${task}/children`, 'utf8'); } catch { continue; }
+      for (const child of children.split(/\s+/).filter(Boolean).map(Number)) {
+        found.push(child);
+        stack.push(child);
+      }
+    }
+  }
+  return found;
+}
+
+function killTree(child) {
+  if (!child.pid) return;
+  for (const pid of [...descendants(child.pid).reverse(), child.pid]) {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+  }
+}
+
 function shellQuote(s) {
   return `'${String(s).replace(/'/g, `'\\''`)}'`;
 }
@@ -256,7 +284,7 @@ export class AgyLoginManager {
     if (login.done) return;
     login.done = true;
     clearTimeout(login.timer);
-    try { login.child.kill('SIGKILL'); } catch { /* already gone */ }
+    killTree(login.child);
     try { rmSync(login.home, { recursive: true, force: true }); } catch { /* best effort */ }
     setTimeout(() => this.logins.delete(login.id), 5 * 60_000).unref?.();
   }
@@ -324,14 +352,18 @@ export class AgyLoginManager {
       this._cleanup(login);
       return Promise.reject(new Error('the login link expired (AGY waits 60 s); start a new one'));
     }
+    if (login.submitting) return Promise.reject(new Error('a code for this login is already being checked'));
     const trimmed = typeof code === 'string' ? code.trim() : '';
     if (!CODE_RE.test(trimmed)) return Promise.reject(new Error('that does not look like an authorization code'));
+    login.submitting = true;
     const outputBefore = login.output.length;
     const tokenPath = join(login.home, '.gemini', TOKEN_FILE);
     login.child.stdin.write(trimmed + '\n');
 
     return new Promise((resolve, reject) => {
-      const poll = setInterval(() => check(), 250);
+      // Poll fast: once the token is written AGY goes on to run its prompt,
+      // which would spend a request on the new account.
+      const poll = setInterval(() => check(), 50);
       const deadline = setTimeout(() => finish(new Error('AGY did not finish the login in time')), SUBMIT_WAIT_MS);
       const finish = (err, account) => {
         clearInterval(poll);

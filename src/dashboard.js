@@ -5991,7 +5991,8 @@ ${SHARED_HELPERS}
     });
   }
   function agySubmitCode() {
-    if (!agyLogin) return;
+    // Enter and the button can both fire; one code per login.
+    if (!agyLogin || agyEl('btnAgySubmitCode').disabled) return;
     var code = agyEl('agyLoginCode').value.trim();
     if (!code) return;
     agyEl('btnAgySubmitCode').disabled = true;

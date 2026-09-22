@@ -228,11 +228,14 @@ set_env() {
   fi
   printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"
 }
+unset_env() {
+  if grep -q "^$1=" "$ENV_FILE"; then
+    grep -v "^$1=" "$ENV_FILE" > "$ENV_FILE.tmp" && cat "$ENV_FILE.tmp" > "$ENV_FILE" && rm -f "$ENV_FILE.tmp"
+  fi
+}
 POOL_ACCOUNT=""
+POOL_SAVE=1
 if [ -n "$LB_KEY" ]; then
-  set_env AGENT_LB_URL "$LB_URL"
-  set_env AGENT_LB_API_KEY "$LB_KEY"
-  chmod 600 "$ENV_FILE"
   # Klucz w nagłówku przez stdin, nie w argumentach; tokenu konta nie wypisujemy.
   POOL_REPLY="$(printf 'header = "x-api-key: %s"\n' "$LB_KEY" \
     | curl -s -m 10 -K - -w '\n%{http_code}' "$LB_URL/agy/credential" 2>/dev/null || true)"
@@ -241,10 +244,22 @@ if [ -n "$LB_KEY" ]; then
     200) POOL_ACCOUNT="$(printf '%s' "$POOL_REPLY" | sed '$d' | "$VENV/bin/python" -c 'import json,sys; print(json.load(sys.stdin)["account"]["email"])' 2>/dev/null || true)"
          echo "  Pula kont agent-lb: aktywne konto $POOL_ACCOUNT" ;;
     404) warn "W agent-lb nie ma jeszcze kont AGY — dodaj je w panelu (Konta → AGY → Zaloguj konto Google). Do tego czasu używane jest konto z 'agy' na tym komputerze." ;;
-    403) warn "Klucz stacji jest ograniczony (modele/limity) — agent-lb nie wyda z nim konta Google. Użyj pełnego klucza stacji." ;;
-    401) warn "agent-lb odrzucił klucz stacji — sprawdź --key." ;;
+    403) POOL_SAVE=0
+         warn "Klucz stacji jest ograniczony (modele/limity) — agent-lb nie wyda z nim konta Google. Użyj pełnego klucza stacji (--key)." ;;
+    401) POOL_SAVE=0
+         warn "agent-lb odrzucił klucz stacji — pula kont nie zostanie włączona. Sprawdź --key." ;;
     *) warn "Nie udało się połączyć z $LB_URL (HTTP ${POOL_CODE:-brak}) — agybridge spróbuje ponownie przy pierwszym zapytaniu." ;;
   esac
+  # Odrzucony klucz nie trafia do agybridge: inaczej pytałby agent-lb
+  # w kółko, a klucz znaleziony automatycznie mógł w ogóle nie być kluczem stacji.
+  if [ "$POOL_SAVE" = "1" ]; then
+    set_env AGENT_LB_URL "$LB_URL"
+    set_env AGENT_LB_API_KEY "$LB_KEY"
+  else
+    unset_env AGENT_LB_URL
+    unset_env AGENT_LB_API_KEY
+  fi
+  chmod 600 "$ENV_FILE"
 else
   echo "  Bez klucza stacji: agybridge używa konta zalogowanego w 'agy' na tym komputerze (pula kont agent-lb: --key)."
 fi

@@ -133,6 +133,32 @@ describe('AGY login through AGY itself', () => {
     assert.equal(store.list().length, 0);
   });
 
+  it('leaves no AGY process behind when a login is cancelled (pty)', async () => {
+    const dir = tmpDir();
+    const store = new AgyAccountStore(path.join(dir, 'agy.json'));
+    const command = fakeAgy(dir, 'z@example.com');
+    const logins = new AgyLoginManager({ command, store, usePty: true });
+    const started = await logins.start();
+    const { execFileSync } = await import('node:child_process');
+    const running = () => {
+      try { return execFileSync('pgrep', ['-f', command]).toString().trim().split('\n').filter(Boolean).length; } catch { return 0; }
+    };
+    assert.ok(running() >= 1, 'fake AGY runs under script');
+    logins.cancel(started.loginId);
+    await new Promise(resolve => setTimeout(resolve, 300));
+    assert.equal(running(), 0, 'AGY was killed with script, not orphaned');
+  });
+
+  it('checks one code per login at a time', async () => {
+    const dir = tmpDir();
+    const store = new AgyAccountStore(path.join(dir, 'agy.json'));
+    const logins = new AgyLoginManager({ command: fakeAgy(dir, 'w@example.com'), store, usePty: false });
+    const started = await logins.start();
+    const first = logins.submit(started.loginId, 'good-code-1234567890');
+    await assert.rejects(logins.submit(started.loginId, 'good-code-1234567890'), /already being checked/);
+    assert.equal((await first).email, 'w@example.com');
+  });
+
   it('removes the throwaway HOME after the login', async () => {
     const dir = tmpDir();
     const store = new AgyAccountStore(path.join(dir, 'agy.json'));
