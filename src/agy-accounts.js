@@ -1,7 +1,7 @@
 // Google accounts for AGY (Antigravity CLI), kept by the proxy and handed to
 // the agybridge running on each workstation.
 //
-// AGY stores its whole login in ~/.gemini/jetski-standalone-oauth-token (a
+// AGY stores its whole login in ~/.gemini/antigravity-cli/antigravity-oauth-token (a
 // Google OAuth token: access/refresh token + id_token). The proxy keeps one
 // such file per Google account, lets the operator log accounts in from the
 // dashboard, and picks the account a station should use: the pinned one, else
@@ -22,7 +22,10 @@ import { getConfigPath } from './config.js';
 import { readControlBody } from './control-body.js';
 import { relayPolicyAllowed } from './access-control.js';
 
-export const TOKEN_FILE = 'jetski-standalone-oauth-token';
+export const TOKEN_FILE = 'antigravity-oauth-token';
+// Relative to HOME. (~/.gemini/jetski-standalone-oauth-token has the same
+// format but belongs to the IDE; the CLI does not read it.)
+export const TOKEN_PATH = ['.gemini', 'antigravity-cli', TOKEN_FILE];
 const LOGIN_WINDOW_MS = 58_000; // AGY gives up after 60 s
 const SUBMIT_WAIT_MS = 30_000;
 const MAX_LOGINS = 2;
@@ -246,10 +249,10 @@ function killTree(child) {
 }
 
 // Where AGY put its token in the throwaway HOME. Normally
-// ~/.gemini/jetski-standalone-oauth-token, but look further down in case a
+// ~/.gemini/antigravity-cli/antigravity-oauth-token, but look further down in case a
 // release moves it.
 function findTokenFile(home) {
-  const expected = join(home, '.gemini', TOKEN_FILE);
+  const expected = join(home, ...TOKEN_PATH);
   if (existsSync(expected)) return expected;
   const stack = [[home, 0]];
   while (stack.length) {
@@ -399,7 +402,7 @@ export class AgyLoginManager {
         const m = /https:\/\/accounts\.google\.com\/o\/oauth2\/[^\s"']+/.exec(login.output);
         if (m) { login.url = m[0]; finish(); return; }
         if (login.error) { finish(new Error(`AGY could not be started: ${login.error}`)); return; }
-        if (existsSync(join(home, '.gemini', TOKEN_FILE))) { finish(new Error('AGY did not ask for a login')); return; }
+        if (existsSync(join(home, ...TOKEN_PATH))) { finish(new Error('AGY did not ask for a login')); return; }
         if (login.exited) { finish(new Error(`AGY exited without a login URL: ${login.output.trim().split('\n').pop() || 'no output'}`)); return; }
         login.waiters.push(check);
       };

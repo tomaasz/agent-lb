@@ -35,8 +35,8 @@ rl.on('line', (code) => {
     console.log('Error: authentication failed: token exchange failed: oauth2: "invalid_grant" "Malformed auth code."');
     process.exit(1);
   }
-  fs.mkdirSync(process.env.HOME + '/.gemini', { recursive: true });
-  fs.writeFileSync(process.env.HOME + '/.gemini/jetski-standalone-oauth-token', ${JSON.stringify(JSON.stringify(agyToken(email)))});
+  fs.mkdirSync(process.env.HOME + '/.gemini/antigravity-cli', { recursive: true });
+  fs.writeFileSync(process.env.HOME + '/.gemini/antigravity-cli/antigravity-oauth-token', ${JSON.stringify(JSON.stringify(agyToken(email)))});
   setTimeout(() => process.exit(0), 5000); // AGY goes on to run the prompt
 });
 `, { mode: 0o755 });
