@@ -17,6 +17,8 @@ export const DEFAULT_FALLBACK_ANTHROPIC_MODEL = 'claude-3-5-sonnet-20241022';
 export const MODEL_FALLBACK_MAP = {
   // Claude -> OpenAI
   'claude-sonnet-5': 'gpt-5.6-sol',
+  'claude-opus-5-5': 'gpt-6-astra',
+  'claude-opus-5.5': 'gpt-6-astra',
   'claude-opus-5': 'gpt-6-astra',
   'claude-opus-4-6': 'gpt-6-astra',
   'claude-sonnet-4-6': 'gpt-5.6-sol',

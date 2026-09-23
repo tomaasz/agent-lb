@@ -18,6 +18,8 @@ test('Claude 5 family ids route to their dedicated quota semantics', () => {
   assert.equal(modelFamily('claude-opus-5'), 'opus');
   assert.equal(modelFamily('claude-sonnet-5'), 'sonnet');
   assert.equal(weeklyBucketForModel('claude-opus-5'), 'unified7d');
+  assert.equal(modelFamily('claude-opus-5-5'), 'opus');
+  assert.equal(weeklyBucketForModel('claude-opus-5-5'), 'unified7d');
   assert.equal(weeklyBucketForModel('claude-sonnet-5'), 'unified7dSonnet');
 });
 
@@ -30,7 +32,7 @@ test('proxy body cap is a byte safety limit, not a token or max_tokens limit', (
   const body = Buffer.from(JSON.stringify({
     model: 'claude-opus-5',
     max_tokens: 32768,
-    system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.251.76b; cc_entrypoint=sdk-cli;' }],
+    system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.280.80a; cc_entrypoint=sdk-cli;' }],
     messages: [{ role: 'user', content: 'keep the complete context' }],
   }));
   const rewritten = rewriteRequestBody(body, { type: 'oauth', provider: 'anthropic' }, '/v1/messages', 'application/json');
@@ -119,7 +121,7 @@ test('proxy retries compaction on a healthy OAuth account after identity-verific
     const requestBody = JSON.stringify({
       model: 'claude-opus-5',
       max_tokens: 32768,
-      system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.251.76b; cc_entrypoint=sdk-cli;' }],
+      system: [{ type: 'text', text: 'x-anthropic-billing-header: cc_version=2.1.280.80a; cc_entrypoint=sdk-cli;' }],
       messages: [{ role: 'user', content: 'compact the complete conversation' }],
     });
     const response = await fetch(`http://127.0.0.1:${proxyServer.address().port}/v1/messages`, {

@@ -24,6 +24,7 @@ export function substitutedModel(policy, sourceModel, targetProvider) {
 export function substitutionAllowed(policy, sourceModel, targetProvider, finalModel) {
   if (!policy || policy.mode === 'legacy') return true;
   if (sourceModel === finalModel) return true;
+  if ((sourceModel === 'claude-opus-5.5' || sourceModel === 'claude-opus-5-5') && (finalModel === 'claude-opus-5.5' || finalModel === 'claude-opus-5-5')) return true;
   if ((sourceModel === 'agy' || sourceModel === 'agy-fast') && (finalModel === 'claude-sonnet-5' || finalModel === 'claude-haiku-4-5-20251001' || finalModel === 'gpt-5.6-sol' || finalModel === 'gpt-5.6-terra')) return true;
   return !!policy.rules?.some(r => r.fromModel === sourceModel && r.toProvider === targetProvider && r.toModel === finalModel);
 }

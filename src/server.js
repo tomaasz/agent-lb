@@ -494,6 +494,8 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         const rawModelsList = [
           { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', display_name: 'Claude Fable 5.1' },
           { id: 'claude-fable-5', name: 'Claude Fable 5', display_name: 'Claude Fable 5' },
+          { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', display_name: 'Claude Opus 5.5' },
+          { id: 'claude-opus-5.5', name: 'Claude Opus 5.5', display_name: 'Claude Opus 5.5' },
           { id: 'claude-opus-5', name: 'Claude Opus 5', display_name: 'Claude Opus 5' },
           { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', display_name: 'Claude Opus 4.8' },
           { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', display_name: 'Claude Opus 4.7' },
@@ -1467,7 +1469,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                 system: [
                   {
                     type: 'text',
-                    text: 'x-anthropic-billing-header: cc_version=2.1.251.76b; cc_entrypoint=sdk-cli;'
+                    text: 'x-anthropic-billing-header: cc_version=2.1.280.80a; cc_entrypoint=sdk-cli;'
                   }
                 ],
                 messages: [{ role: 'user', content: message }]
@@ -1476,7 +1478,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                 'content-type': 'application/json',
                 'anthropic-version': '2023-06-01',
                 'anthropic-beta': 'claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,effort-2025-11-24,afk-mode-2026-01-31',
-                'user-agent': 'claude-cli/2.1.251 (external, sdk-cli)',
+                'user-agent': 'claude-cli/2.1.280 (external, sdk-cli)',
                 'x-app': 'cli',
                 'accept': 'application/json'
               };
@@ -4587,7 +4589,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       headers['anthropic-beta'] = `${headers['anthropic-beta']},claude-code-20250219`;
     }
     if (!headers['user-agent'] || !headers['user-agent'].includes('claude-cli')) {
-      headers['user-agent'] = 'claude-cli/2.1.251 (external, sdk-cli)';
+      headers['user-agent'] = 'claude-cli/2.1.280 (external, sdk-cli)';
     }
     headers['x-app'] ??= 'cli';
     headers['anthropic-version'] ??= '2023-06-01';
@@ -5659,6 +5661,8 @@ export function normalizeAnthropicModelForOAuth(body) {
         target = 'claude-sonnet-4-6';
       } else if (trimmed.startsWith('claude-3-5-haiku') || trimmed.startsWith('claude-3-haiku') || trimmed === 'claude-haiku') {
         target = 'claude-haiku-4-5-20251001';
+      } else if (trimmed === 'claude-opus-5.5' || trimmed === 'claude-opus-5-5') {
+        target = 'claude-opus-5-5';
       } else if (trimmed.startsWith('claude-3-opus') || trimmed === 'claude-opus') {
         target = 'claude-opus-4-6';
       }
@@ -5678,7 +5682,7 @@ export function ensureAnthropicBillingHeader(body) {
     const obj = JSON.parse(body.toString('utf8'));
     if (!Array.isArray(obj.messages)) return body;
 
-    const billingText = 'x-anthropic-billing-header: cc_version=2.1.251.76b; cc_entrypoint=sdk-cli;';
+    const billingText = 'x-anthropic-billing-header: cc_version=2.1.280.80a; cc_entrypoint=sdk-cli;';
 
     if (typeof obj.system === 'string') {
       if (!obj.system.includes('x-anthropic-billing-header')) {

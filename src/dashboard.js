@@ -6869,6 +6869,7 @@ ${SHARED_HELPERS}
     return [
       { id: 'claude-fable-5-1', name: isEn ? 'Claude Fable 5.1 (Advanced Reasoning & Agents)' : 'Claude Fable 5.1 (Najbardziej zaawansowany / Agenty)' },
       { id: 'claude-fable-5', name: isEn ? 'Claude Fable 5 (Complex Reasoning)' : 'Claude Fable 5 (Złożone rozumowanie)' },
+      { id: 'claude-opus-5-5', name: isEn ? 'Claude Opus 5.5 (Flagship / Frontier Agentic)' : 'Claude Opus 5.5 (Flagowy / Zaawansowane kodowanie agentowe)' },
       { id: 'claude-opus-5', name: isEn ? 'Claude Opus 5 (Flagship / Agentic Coding)' : 'Claude Opus 5 (Flagowy / Kodowanie agentowe)' },
       { id: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
       { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },

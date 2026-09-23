@@ -270,6 +270,7 @@ if (fs.existsSync(p)) {
 const models = {
   "claude-fable-5-1": { name: "Claude Fable 5.1", modelID: "claude-fable-5-1" },
   "claude-fable-5": { name: "Claude Fable 5", modelID: "claude-fable-5" },
+  "claude-opus-5-5": { name: "Claude Opus 5.5", modelID: "claude-opus-5-5" },
   "claude-opus-5": { name: "Claude Opus 5", modelID: "claude-opus-5" },
   "claude-opus-4-8": { name: "Claude Opus 4.8", modelID: "claude-opus-4-8" },
   "claude-opus-4-7": { name: "Claude Opus 4.7", modelID: "claude-opus-4-7" },

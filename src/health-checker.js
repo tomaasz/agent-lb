@@ -228,7 +228,7 @@ export class FleetHealthChecker {
           system: [
             {
               type: 'text',
-              text: 'x-anthropic-billing-header: cc_version=2.1.251.76b; cc_entrypoint=sdk-cli;'
+              text: 'x-anthropic-billing-header: cc_version=2.1.280.80a; cc_entrypoint=sdk-cli;'
             }
           ],
           messages: [{ role: 'user', content: '1' }]
@@ -237,7 +237,7 @@ export class FleetHealthChecker {
           'content-type': 'application/json',
           'anthropic-version': '2023-06-01',
           'anthropic-beta': 'claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,effort-2025-11-24,afk-mode-2026-01-31',
-          'user-agent': 'claude-cli/2.1.251 (external, sdk-cli)',
+          'user-agent': 'claude-cli/2.1.280 (external, sdk-cli)',
           'x-app': 'cli',
           'accept': 'application/json'
         };
