@@ -6918,9 +6918,6 @@ ${SHARED_HELPERS}
       { id: 'gpt-6-luna', name: isEn ? 'GPT-6 Luna (Efficient / High-volume)' : 'GPT-6 Luna (Wydajny / Duży wolumen)' },
       // GPT-5.6 Family
       { id: 'gpt-5.6-sol', name: isEn ? 'GPT-5.6 Sol (Default / Recommended)' : 'GPT-5.6 Sol (Domyślny / Polecany)' },
-      { id: 'gpt-6-astra', name: 'GPT-6 Astra' },
-      { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra' },
-      { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna' },
       { id: 'gpt-5.6-terra', name: isEn ? 'GPT-5.6 Terra (Balanced cost & intelligence)' : 'GPT-5.6 Terra (Zrównoważony koszt i inteligencja)' },
       { id: 'gpt-5.6-luna', name: isEn ? 'GPT-5.6 Luna (Cost-sensitive)' : 'GPT-5.6 Luna (Niskokosztowy)' },
       { id: 'gpt-5.6-cyber', name: isEn ? 'GPT-5.6 Cyber (Security research)' : 'GPT-5.6 Cyber (Analiza bezpieczeństwa)' },

@@ -642,11 +642,29 @@ describe('Test Chat & Playground Support', () => {
       assert.ok(Array.isArray(modelsJson.data));
       assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.6-sol'));
       assert.ok(modelsJson.data.some(m => m.id === 'gpt-6-astra'));
+      assert.ok(modelsJson.data.some(m => m.id === 'gpt-6-sol'));
+      assert.ok(modelsJson.data.some(m => m.id === 'gpt-6-luna'));
       assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.6-terra'));
       assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.6-luna'));
+      assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.3-codex'));
+      assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.2-codex'));
+      assert.ok(modelsJson.data.some(m => m.id === 'codex-mini-latest'));
       assert.ok(modelsJson.data.some(m => m.id === 'gpt-5.5'));
       assert.ok(!modelsJson.data.some(m => m.id === 'gpt-6'), 'gpt-6 alias omitted from models list');
       assert.ok(!modelsJson.data.some(m => m.id === 'gpt-5.6'), 'gpt-5.6 alias omitted from models list');
+
+      const gpt6Astra = modelsJson.data.find(m => m.id === 'gpt-6-astra');
+      assert.equal(gpt6Astra.context_window, 1050000);
+      assert.equal(gpt6Astra.max_output_tokens, 128000);
+      assert.ok(gpt6Astra.supported_reasoning_levels.some(l => l.effort === 'max'));
+
+      const gpt53Codex = modelsJson.data.find(m => m.id === 'gpt-5.3-codex');
+      assert.equal(gpt53Codex.context_window, 400000);
+      assert.equal(gpt53Codex.max_output_tokens, 128000);
+
+      const codexMiniLatest = modelsJson.data.find(m => m.id === 'codex-mini-latest');
+      assert.equal(codexMiniLatest.context_window, 200000);
+      assert.equal(codexMiniLatest.max_output_tokens, 100000);
 
       // Test gpt-6 alias and reasoning effort forwarding
       const resGpt6 = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
@@ -670,6 +688,26 @@ describe('Test Chat & Playground Support', () => {
       assert.equal(jsonGpt6.effort, 'medium');
       assert.equal(capturedPayload.model, 'gpt-6-astra');
       assert.deepEqual(capturedPayload.reasoning, { effort: 'medium' });
+
+      // Test codex-mini alias forwarding to gpt-5.6-terra
+      const resMini = await fetch(`http://127.0.0.1:${proxyPort}/api/test/chat`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': 'tc-test-admin',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          provider: 'codex',
+          model: 'codex-mini',
+          effort: 'low',
+          message: 'Hello Mini'
+        })
+      });
+      assert.equal(resMini.status, 200);
+      const jsonMini = await resMini.json();
+      assert.equal(jsonMini.ok, true);
+      assert.equal(jsonMini.model, 'gpt-5.6-terra');
+      assert.equal(capturedPayload.model, 'gpt-5.6-terra');
     } finally {
       server.close();
       mockUpstream.close();

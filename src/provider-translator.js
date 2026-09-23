@@ -42,16 +42,35 @@ export const MODEL_FALLBACK_MAP = {
   'claude-3-haiku-20240307': 'gpt-4o-mini',
   // OpenAI -> Claude
   'gpt-6-astra': 'claude-opus-5-5',
+  'gpt-6-sol': 'claude-opus-5-5',
+  'gpt-6-luna': 'claude-haiku-4-5-20251001',
   'gpt-6': 'claude-opus-5-5',
   'gpt-5.6-sol': 'claude-sonnet-5',
   'gpt-5.6': 'claude-sonnet-5',
   'gpt-5.6-terra': 'claude-haiku-4-5-20251001',
   'gpt-5.6-luna': 'claude-haiku-4-5-20251001',
+  'gpt-5.6-cyber': 'claude-sonnet-5',
+  'gpt-5.3-codex': 'claude-sonnet-5',
+  'gpt-5.2-codex': 'claude-sonnet-5',
+  'gpt-5.1-codex': 'claude-sonnet-5',
+  'codex-mini-latest': 'claude-haiku-4-5-20251001',
+  'codex': 'claude-sonnet-5',
+  'codex-mini': 'claude-haiku-4-5-20251001',
   'gpt-5.5': 'claude-sonnet-4-6',
+  'gpt-5.5-pro': 'claude-opus-5-5',
+  'gpt-5.4': 'claude-sonnet-4-6',
+  'gpt-5.4-mini': 'claude-haiku-4-5-20251001',
+  'gpt-4.1': 'claude-3-5-sonnet-20241022',
+  'gpt-4.1-mini': 'claude-3-5-haiku-20241022',
   'gpt-4o': 'claude-3-5-sonnet-20241022',
   'gpt-4o-mini': 'claude-3-5-haiku-20241022',
-  'o1': 'claude-3-7-sonnet-20250219',
+  'o4-mini': 'claude-haiku-4-5-20251001',
+  'o3': 'claude-3-7-sonnet-20250219',
+  'o3-pro': 'claude-opus-5',
   'o3-mini': 'claude-3-5-sonnet-20241022',
+  'o1': 'claude-3-7-sonnet-20250219',
+  'o1-pro': 'claude-opus-5',
+  'o1-mini': 'claude-3-5-haiku-20241022',
   'agy': 'claude-sonnet-5',
   'agy-fast': 'claude-haiku-4-5-20251001',
   'gemini-3.8-flash-high': 'claude-sonnet-5',
@@ -64,9 +83,10 @@ export const MODEL_FALLBACK_MAP = {
 export function resolveTargetModel(sourceModel, targetProvider) {
   if (!sourceModel) return targetProvider === 'codex' ? DEFAULT_FALLBACK_OPENAI_MODEL : DEFAULT_FALLBACK_ANTHROPIC_MODEL;
   if (targetProvider === 'anthropic' && sourceModel.startsWith('claude-')) return sourceModel;
-  if (targetProvider === 'codex' && (sourceModel.startsWith('gpt-') || sourceModel.startsWith('o1') || sourceModel.startsWith('o3'))) return sourceModel;
+  if (targetProvider === 'codex' && (sourceModel.startsWith('gpt-') || sourceModel.startsWith('o1') || sourceModel.startsWith('o3') || sourceModel.startsWith('o4-'))) return sourceModel;
   if (targetProvider === 'codex' && (sourceModel === 'codex' || sourceModel === 'gpt-5.6' || sourceModel === 'gpt-5')) return 'gpt-5.6-sol';
   if (targetProvider === 'codex' && sourceModel === 'codex-mini') return 'gpt-5.6-terra';
+  if (targetProvider === 'codex' && sourceModel === 'codex-mini-latest') return 'codex-mini-latest';
   if (targetProvider === 'codex' && (sourceModel === 'agy' || (sourceModel.startsWith('gemini-') && !sourceModel.includes('low')))) return 'gpt-5.6-sol';
   if (targetProvider === 'codex' && (sourceModel === 'agy-fast' || (sourceModel.startsWith('gemini-') && sourceModel.includes('low')))) return 'gpt-5.6-terra';
   if (targetProvider === 'anthropic' && (sourceModel === 'agy' || (sourceModel.startsWith('gemini-') && !sourceModel.includes('low')))) return 'claude-sonnet-5';
