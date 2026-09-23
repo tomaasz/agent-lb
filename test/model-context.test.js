@@ -1,15 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { modelFamily, weeklyBucketForModel } from '../src/model.js';
+import { isFableModel, modelFamily, weeklyBucketForModel } from '../src/model.js';
 import {
   createProxyServer,
   DEFAULT_MAX_BODY_BYTES,
   exhaustedMessage,
   isOAuthIdentityVerificationRequired,
+  normalizeAnthropicModelForOAuth,
   resolveMaxBodyBytes,
   rewriteRequestBody,
 } from '../src/server.js';
+import { resolveTargetModel } from '../src/provider-translator.js';
 import { AccountManager } from '../src/account-manager.js';
 import { Prober } from '../src/prober.js';
 import { formatAccountStatus, UNAVAILABLE_TEXT } from '../src/status-renderer.js';
@@ -21,6 +23,14 @@ test('Claude 5 family ids route to their dedicated quota semantics', () => {
   assert.equal(modelFamily('claude-opus-5-5'), 'opus');
   assert.equal(weeklyBucketForModel('claude-opus-5-5'), 'unified7d');
   assert.equal(weeklyBucketForModel('claude-sonnet-5'), 'unified7dSonnet');
+  assert.equal(modelFamily('claude-fable-5-1'), 'fable');
+  assert.equal(weeklyBucketForModel('claude-fable-5-1'), 'unified7dFable');
+  assert.equal(isFableModel('claude-fable-5-1'), true);
+  assert.equal(modelFamily('claude-mythos-5-1'), 'fable');
+  assert.equal(weeklyBucketForModel('claude-mythos-5-1'), 'unified7dFable');
+  assert.equal(isFableModel('claude-mythos-5-1'), true);
+  assert.equal(modelFamily('claude-haiku-4-5-20251001'), 'haiku');
+  assert.equal(weeklyBucketForModel('claude-haiku-4-5-20251001'), 'unified7d');
 });
 
 test('proxy body cap is a byte safety limit, not a token or max_tokens limit', () => {
@@ -407,4 +417,98 @@ test('formatAccountStatus and UNAVAILABLE_TEXT clearly distinguish identity veri
   assert.doesNotMatch(entFormatted, /\[green\]/);
   assert.match(entFormatted, /\[yellow\]active\[\/yellow\]/);
   assert.match(entFormatted, /\[yellow\]entitlement cooldown/);
+});
+
+test('Claude models endpoint exposes accurate parameters matching documentation', async () => {
+  const am = new AccountManager([]);
+  const proxyServer = createProxyServer(am, {
+    upstream: 'http://127.0.0.1:9',
+    proxy: { apiKey: 'test-key', trustLoopback: false, trustTailnet: false },
+  });
+  await new Promise(resolve => proxyServer.listen(0, '127.0.0.1', resolve));
+
+  try {
+    const res = await fetch(`http://127.0.0.1:${proxyServer.address().port}/v1/models`, {
+      headers: { 'x-api-key': 'test-key' }
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.object, 'list');
+    assert.ok(Array.isArray(body.data));
+
+    const findModel = id => body.data.find(m => m.id === id);
+
+    // Fable 5.1
+    const fable = findModel('claude-fable-5-1');
+    assert.ok(fable, 'claude-fable-5-1 is present in catalog');
+    assert.equal(fable.context_window, 1000000);
+    assert.equal(fable.max_output_tokens, 128000);
+    assert.equal(fable.latency, 'slower');
+    assert.equal(fable.default_reasoning_level, 'high');
+    assert.equal(fable.reliable_knowledge_cutoff, '2026-06');
+    assert.equal(fable.pricing.input_per_mtok, 10);
+    assert.equal(fable.pricing.output_per_mtok, 50);
+    assert.equal(fable.capabilities.thinking.supported, true);
+
+    // Opus 5.5
+    const opus55 = findModel('claude-opus-5-5');
+    assert.ok(opus55, 'claude-opus-5-5 is present in catalog');
+    assert.equal(opus55.context_window, 1000000);
+    assert.equal(opus55.max_output_tokens, 128000);
+    assert.equal(opus55.latency, 'moderate');
+    assert.equal(opus55.default_reasoning_level, 'medium');
+    assert.equal(opus55.reliable_knowledge_cutoff, '2026-06');
+    assert.equal(opus55.pricing.input_per_mtok, 4);
+    assert.equal(opus55.pricing.output_per_mtok, 20);
+
+    // Sonnet 5
+    const sonnet5 = findModel('claude-sonnet-5');
+    assert.ok(sonnet5, 'claude-sonnet-5 is present in catalog');
+    assert.equal(sonnet5.context_window, 1000000);
+    assert.equal(sonnet5.max_output_tokens, 128000);
+    assert.equal(sonnet5.latency, 'fast');
+    assert.equal(sonnet5.default_reasoning_level, 'high');
+    assert.equal(sonnet5.reliable_knowledge_cutoff, '2026-01');
+    assert.equal(sonnet5.pricing.input_per_mtok, 2);
+    assert.equal(sonnet5.pricing.output_per_mtok, 10);
+
+    // Haiku 4.5
+    const haiku = findModel('claude-haiku-4-5-20251001');
+    assert.ok(haiku, 'claude-haiku-4-5-20251001 is present in catalog');
+    assert.equal(haiku.context_window, 200000);
+    assert.equal(haiku.max_output_tokens, 64000);
+    assert.equal(haiku.latency, 'fastest');
+    assert.equal(haiku.reliable_knowledge_cutoff, '2025-02');
+    assert.equal(haiku.pricing.input_per_mtok, 1);
+    assert.equal(haiku.pricing.output_per_mtok, 5);
+
+    // Specialized & Legacy
+    assert.ok(findModel('claude-mythos-5-1'), 'claude-mythos-5-1 is present');
+    assert.ok(findModel('claude-mythos-5'), 'claude-mythos-5 is present');
+    assert.ok(findModel('claude-opus-5'), 'claude-opus-5 is present');
+    assert.ok(findModel('claude-haiku-4-5'), 'claude-haiku-4-5 alias is present');
+  } finally {
+    await new Promise(resolve => proxyServer.close(resolve));
+  }
+});
+
+test('normalizeAnthropicModelForOAuth normalizes modern aliases to canonical IDs', () => {
+  const normHaiku = normalizeAnthropicModelForOAuth(Buffer.from(JSON.stringify({ model: 'claude-haiku-4-5' })));
+  assert.equal(JSON.parse(normHaiku.toString()).model, 'claude-haiku-4-5-20251001');
+
+  const normOpus55 = normalizeAnthropicModelForOAuth(Buffer.from(JSON.stringify({ model: 'claude-opus-5.5' })));
+  assert.equal(JSON.parse(normOpus55.toString()).model, 'claude-opus-5-5');
+
+  const normOpus45 = normalizeAnthropicModelForOAuth(Buffer.from(JSON.stringify({ model: 'claude-opus-4-5' })));
+  assert.equal(JSON.parse(normOpus45.toString()).model, 'claude-opus-4-5-20251101');
+
+  const normSonnet45 = normalizeAnthropicModelForOAuth(Buffer.from(JSON.stringify({ model: 'claude-sonnet-4-5' })));
+  assert.equal(JSON.parse(normSonnet45.toString()).model, 'claude-sonnet-4-5-20250929');
+});
+
+test('resolveTargetModel handles Fable, Mythos, and current Opus 5.5 fallbacks', () => {
+  assert.equal(resolveTargetModel('claude-fable-5-1', 'codex'), 'gpt-6-astra');
+  assert.equal(resolveTargetModel('claude-mythos-5-1', 'codex'), 'gpt-6-astra');
+  assert.equal(resolveTargetModel('gpt-6-astra', 'anthropic'), 'claude-opus-5-5');
+  assert.equal(resolveTargetModel('claude-haiku-4-5', 'codex'), 'gpt-5.6-terra');
 });

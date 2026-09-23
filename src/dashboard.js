@@ -1458,10 +1458,12 @@ const PAGE = `<!doctype html>
           <label for="selTestEffort" style="display:block; font-size:11px; font-weight:600; color:var(--dim); margin-bottom:4px;" data-i18n="lblTestEffort">Rozumowanie (Effort):</label>
           <select id="selTestEffort" class="btn btn-sm" style="width:100%; text-align:left; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:4px; padding:4px 8px;">
             <option value="" data-i18n="optEffortDefault">⚡ Domyślne (Default)</option>
+            <option value="none" data-i18n="optEffortNone">⚪ Wyłączone (none)</option>
             <option value="minimal" data-i18n="optEffortMinimal">🟢 Minimalne (Minimal)</option>
             <option value="low" data-i18n="optEffortLow">🟢 Niskie (Low)</option>
             <option value="medium" selected data-i18n="optEffortMedium">🟡 Średnie (Medium)</option>
             <option value="high" data-i18n="optEffortHigh">🔴 Wysokie (High)</option>
+            <option value="xhigh" data-i18n="optEffortXhigh">🟣 Bardzo wysokie (xhigh)</option>
             <option value="max" data-i18n="optEffortMax">🔥 Maksymalne (Max)</option>
           </select>
         </div>
@@ -2257,10 +2259,12 @@ const PAGE = `<!doctype html>
       lblTestModel: 'Model:',
       lblTestEffort: 'Rozumowanie (Effort):',
       optEffortDefault: '⚡ Domyślne (Default)',
+      optEffortNone: '⚪ Wyłączone (none)',
       optEffortMinimal: '🟢 Minimalne (Minimal)',
       optEffortLow: '🟢 Niskie (Low)',
       optEffortMedium: '🟡 Średnie (Medium)',
       optEffortHigh: '🔴 Wysokie (High)',
+      optEffortXhigh: '🟣 Bardzo wysokie (xhigh)',
       optEffortMax: '🔥 Maksymalne (Max)',
       lblTestAccount: 'Konto (Routing):',
       optTestAccountAuto: '⚡ Auto (Agent-LB Policy)',
@@ -2526,10 +2530,12 @@ const PAGE = `<!doctype html>
       lblTestModel: 'Model:',
       lblTestEffort: 'Reasoning Effort:',
       optEffortDefault: '⚡ Default',
+      optEffortNone: '⚪ Disabled (none)',
       optEffortMinimal: '🟢 Minimal',
       optEffortLow: '🟢 Low',
       optEffortMedium: '🟡 Medium',
       optEffortHigh: '🔴 High',
+      optEffortXhigh: '🟣 Extra high (xhigh)',
       optEffortMax: '🔥 Max',
       lblTestAccount: 'Account (Routing):',
       optTestAccountAuto: '⚡ Auto (Agent-LB Policy)',
@@ -6878,20 +6884,68 @@ ${SHARED_HELPERS}
       { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
       { id: 'claude-mythos-5-1', name: isEn ? 'Claude Mythos 5.1 (Specialized / Research)' : 'Claude Mythos 5.1 (Specjalistyczny / Eksperymentalny)' },
       { id: 'claude-haiku-4-5-20251001', name: isEn ? 'Claude Haiku 4.5 (Fast / Light tasks)' : 'Claude Haiku 4.5 (Szybki / Lekkie zadania)' },
+      // Current Lineup
+      { id: 'claude-fable-5-1', name: isEn ? 'Claude Fable 5.1 (Advanced Reasoning & Agents · 1M ctx)' : 'Claude Fable 5.1 (Najbardziej zaawansowany / Agenty · 1M ctx)' },
+      { id: 'claude-opus-5-5', name: isEn ? 'Claude Opus 5.5 (Flagship Agentic Coding · 1M ctx)' : 'Claude Opus 5.5 (Flagowy / Kodowanie agentowe · 1M ctx)' },
+      { id: 'claude-sonnet-5', name: isEn ? 'Claude Sonnet 5 (Default Claude Code / Balanced · 1M ctx)' : 'Claude Sonnet 5 (Domyślny Claude Code / Zrównoważony · 1M ctx)' },
+      { id: 'claude-haiku-4-5-20251001', name: isEn ? 'Claude Haiku 4.5 (Fastest / Near-frontier · 200K ctx)' : 'Claude Haiku 4.5 (Najszybszy / Lekkie zadania · 200K ctx)' },
+      // Specialized Models
+      { id: 'claude-mythos-5-1', name: isEn ? 'Claude Mythos 5.1 (Project Glasswing / Specialized · 1M ctx)' : 'Claude Mythos 5.1 (Specjalistyczny / Project Glasswing · 1M ctx)' },
+      { id: 'claude-mythos-5', name: isEn ? 'Claude Mythos 5 (Project Glasswing / Specialized · 1M ctx)' : 'Claude Mythos 5 (Specjalistyczny / Project Glasswing · 1M ctx)' },
+      // Legacy Models
+      { id: 'claude-opus-5', name: isEn ? 'Claude Opus 5 (Legacy Flagship · 1M ctx)' : 'Claude Opus 5 (Poprzedni flagowy · 1M ctx)' },
+      { id: 'claude-fable-5', name: isEn ? 'Claude Fable 5 (Legacy Reasoning · 1M ctx)' : 'Claude Fable 5 (Złożone rozumowanie · 1M ctx)' },
+      { id: 'claude-opus-4-8', name: 'Claude Opus 4.8 (Legacy · 1M ctx)' },
+      { id: 'claude-opus-4-7', name: 'Claude Opus 4.7 (Legacy · 1M ctx)' },
+      { id: 'claude-opus-4-6', name: 'Claude Opus 4.6 (Legacy · 1M ctx)' },
+      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6 (Legacy · 1M ctx)' },
+      { id: 'claude-opus-4-5-20251101', name: 'Claude Opus 4.5 (Legacy · 200K ctx)' },
+      { id: 'claude-sonnet-4-5-20250929', name: 'Claude Sonnet 4.5 (Legacy · 200K ctx)' },
+      // Previous Generations (Claude 3.x)
+      { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet (200K ctx)' },
+      { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet (200K ctx)' },
+      { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku (200K ctx)' },
+      { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus (200K ctx)' },
     ];
   }
 
   function getCodexModels() {
     var isEn = currentLang === 'en';
     return [
+      // GPT-6 Family
+      { id: 'gpt-6-astra', name: isEn ? 'GPT-6 Astra (Flagship / Complex reasoning)' : 'GPT-6 Astra (Flagowy / Złożone wnioskowanie)' },
+      { id: 'gpt-6-sol', name: isEn ? 'GPT-6 Sol (Coding & Agentic)' : 'GPT-6 Sol (Kodowanie i agenty)' },
+      { id: 'gpt-6-luna', name: isEn ? 'GPT-6 Luna (Efficient / High-volume)' : 'GPT-6 Luna (Wydajny / Duży wolumen)' },
+      // GPT-5.6 Family
       { id: 'gpt-5.6-sol', name: isEn ? 'GPT-5.6 Sol (Default / Recommended)' : 'GPT-5.6 Sol (Domyślny / Polecany)' },
       { id: 'gpt-6-astra', name: 'GPT-6 Astra' },
       { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra' },
       { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna' },
+      { id: 'gpt-5.6-terra', name: isEn ? 'GPT-5.6 Terra (Balanced cost & intelligence)' : 'GPT-5.6 Terra (Zrównoważony koszt i inteligencja)' },
+      { id: 'gpt-5.6-luna', name: isEn ? 'GPT-5.6 Luna (Cost-sensitive)' : 'GPT-5.6 Luna (Niskokosztowy)' },
+      { id: 'gpt-5.6-cyber', name: isEn ? 'GPT-5.6 Cyber (Security research)' : 'GPT-5.6 Cyber (Analiza bezpieczeństwa)' },
+      // Dedicated Codex / Agentic
+      { id: 'gpt-5.3-codex', name: isEn ? 'GPT-5.3-Codex (Advanced agentic coding)' : 'GPT-5.3-Codex (Zaawansowane kodowanie agentowe)' },
+      { id: 'gpt-5.2-codex', name: isEn ? 'GPT-5.2-Codex (Long-horizon coding)' : 'GPT-5.2-Codex (Złożone zadania kodowania)' },
+      { id: 'gpt-5.1-codex', name: 'GPT-5.1-Codex' },
+      { id: 'codex-mini-latest', name: isEn ? 'codex-mini-latest (Codex CLI fast reasoning)' : 'codex-mini-latest (Szybkie rozumowanie Codex CLI)' },
+      // GPT-5.5 / 5.4 / 4.1
       { id: 'gpt-5.5', name: 'GPT-5.5' },
+      { id: 'gpt-5.5-pro', name: 'GPT-5.5 Pro' },
+      { id: 'gpt-5.4', name: 'GPT-5.4' },
+      { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini' },
+      { id: 'gpt-4.1', name: isEn ? 'GPT-4.1 (Smartest non-reasoning)' : 'GPT-4.1 (Zaawansowany bez rozumowania)' },
+      { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini' },
+      // Reasoning Models (o-series)
+      { id: 'o4-mini', name: 'o4-mini' },
+      { id: 'o3', name: 'o3' },
+      { id: 'o3-pro', name: 'o3-pro' },
       { id: 'o3-mini', name: isEn ? 'o3-mini (OpenAI API key)' : 'o3-mini (Tylko klucz OpenAI API)' },
       { id: 'o1', name: isEn ? 'o1 (OpenAI API key)' : 'o1 (Tylko klucz OpenAI API)' },
+      { id: 'o1-pro', name: 'o1-pro' },
+      // General GPT-4o
       { id: 'gpt-4o', name: isEn ? 'GPT-4o (OpenAI API key)' : 'GPT-4o (Tylko klucz OpenAI API)' },
+      { id: 'gpt-4o-mini', name: 'GPT-4o mini' }
     ];
   }
 

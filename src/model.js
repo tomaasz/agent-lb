@@ -2,21 +2,22 @@
 // selection. Kept dependency-free so the low-level h2/h1 relay can peek a
 // request's model without pulling in the account-manager graph.
 
-// A request targets the Fable model family when its `model` id names Fable
-// (e.g. "claude-fable-5"). Account selection uses this to gate the Fable-only
+// A request targets the Fable model family when its `model` id names Fable or
+// Mythos (e.g. "claude-fable-5-1", "claude-mythos-5-1"). Anthropic meters Mythos
+// under Fable quota. Account selection uses this to gate the Fable-only
 // weekly bucket: a Fable-exhausted account still serves every other model.
 export function isFableModel(model) {
-  return typeof model === 'string' && /fable/i.test(model);
+  return typeof model === 'string' && (/fable/i.test(model) || /mythos/i.test(model));
 }
 
 // The model "family" a request belongs to. Anthropic meters some families with
-// their own weekly quota bucket (Fable, Sonnet) on top of the shared 5-hour and
+// their own weekly quota bucket (Fable/Mythos, Sonnet) on top of the shared 5-hour and
 // weekly buckets, so the family decides which bucket governs a given request —
 // letting an account whose Fable bucket is spent keep serving Opus/Sonnet.
 // Returns a stable lowercase tag; unknown ids fall back to 'other'.
 export function modelFamily(model) {
   if (typeof model !== 'string' || !model) return 'other';
-  if (/fable/i.test(model)) return 'fable';
+  if (/fable|mythos/i.test(model)) return 'fable';
   if (/sonnet/i.test(model)) return 'sonnet';
   if (/opus/i.test(model)) return 'opus';
   if (/haiku/i.test(model)) return 'haiku';

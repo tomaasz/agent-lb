@@ -1,50 +1,119 @@
-import { observeTokenStream } from './first-token.js';
-import { substitutedModel, substitutionAllowed } from './model-substitution.js';
-import { handleClientKeys } from './client-key-admin.js';
-import { readControlBody } from './control-body.js';
-import { AgyAccountStore, AgyLoginManager, getAgyAccountsPath, handleAgyRoute, resolveAgyCommand } from './agy-accounts.js';
-import { resolveBodyIdleTimeout, readWithIdleTimeout, idleBody, collectIdleBody } from './stream-lifecycle.js';
-export { readWithIdleTimeout, idleBody } from './stream-lifecycle.js';
-import { safeKeyEqual, maskSecret, isLoopbackAddr, isForwardedRequest, loopbackExempt, isTailnetAddr, isTailnetHostName, tailnetExempt, resolveClientAuth, relayPolicyAllowed, SENSITIVE_HEADER_NAMES } from './access-control.js';
-export { safeKeyEqual, maskSecret, isLoopbackAddr, isForwardedRequest, loopbackExempt, isTailnetAddr, tailnetExempt, resolveClientAuth, relayPolicyAllowed, SENSITIVE_HEADER_NAMES } from './access-control.js';
-import http from 'node:http';
-import https from 'node:https';
-import { randomBytes, createHash } from 'node:crypto';
-import { createWriteStream, mkdirSync, writeSync, existsSync, readFileSync } from 'node:fs';
-import { readdir, stat, unlink } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { observeTokenStream } from "./first-token.js";
+import { substitutedModel, substitutionAllowed } from "./model-substitution.js";
+import { handleClientKeys } from "./client-key-admin.js";
+import { readControlBody } from "./control-body.js";
+import {
+  AgyAccountStore,
+  AgyLoginManager,
+  getAgyAccountsPath,
+  handleAgyRoute,
+  resolveAgyCommand,
+} from "./agy-accounts.js";
+import {
+  resolveBodyIdleTimeout,
+  readWithIdleTimeout,
+  idleBody,
+  collectIdleBody,
+} from "./stream-lifecycle.js";
+export { readWithIdleTimeout, idleBody } from "./stream-lifecycle.js";
+import {
+  safeKeyEqual,
+  maskSecret,
+  isLoopbackAddr,
+  isForwardedRequest,
+  loopbackExempt,
+  isTailnetAddr,
+  isTailnetHostName,
+  tailnetExempt,
+  resolveClientAuth,
+  relayPolicyAllowed,
+  SENSITIVE_HEADER_NAMES,
+} from "./access-control.js";
+export {
+  safeKeyEqual,
+  maskSecret,
+  isLoopbackAddr,
+  isForwardedRequest,
+  loopbackExempt,
+  isTailnetAddr,
+  tailnetExempt,
+  resolveClientAuth,
+  relayPolicyAllowed,
+  SENSITIVE_HEADER_NAMES,
+} from "./access-control.js";
+import http from "node:http";
+import https from "node:https";
+import { randomBytes, createHash } from "node:crypto";
+import {
+  createWriteStream,
+  mkdirSync,
+  writeSync,
+  existsSync,
+  readFileSync,
+} from "node:fs";
+import { readdir, stat, unlink } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
-import { ensureCerts, createConnectHandler, mitmHosts } from './mitm.js';
-import { patchAccountUuid } from './account-uuid-rewrite.js';
-import { sanitizeToolPairs } from './tool-pair-sanitize.js';
-import { sanitizeCacheControl, cacheControlSubfieldsToStrip } from './cache-control-sanitize.js';
-import { parseRequestModel, parseAdvisorModel } from './account-manager.js';
-import { TopLevelFieldFinder, modelGlobMatches } from './model.js';
-import { BodyWriter, truncationNote } from './request-log.js';
-import { upstreamFetch, upstreamPoolStatus } from './upstream-fetch.js';
-import { applyAuthHeaders, upstreamFor, rewritesBody, providerForPath, providerOf, isSubscriptionAccount, DEFAULT_PROVIDER } from './provider.js';
-import { tunnelTls } from './sx.js';
-import { createEgressGuard } from './egress-guard.js';
-import { safeLine } from './safe-text.js';
-import { forwardRefusal, guardedLookup, FORBIDDEN_FORWARD } from './forward-target.js';
-import { homedir } from 'node:os';
-import { renderDashboardHtml, dashboardCsp } from './dashboard.js';
-import { createUsageRecorder, resolveUsageDimensions, usageDimensionHeaderNames } from './client-usage.js';
-import { atomicConfigUpdate } from './config.js';
+import { ensureCerts, createConnectHandler, mitmHosts } from "./mitm.js";
+import { patchAccountUuid } from "./account-uuid-rewrite.js";
+import { sanitizeToolPairs } from "./tool-pair-sanitize.js";
 import {
-  fetchProfile, parseAuthCode, exchangeCodeForTokens, importCredentials,
-  DEFAULT_CLIENT_ID, OAUTH_AUTHORIZE, OAUTH_SCOPES, MANUAL_LOGIN_REDIRECT_URI,
-} from './oauth.js';
+  sanitizeCacheControl,
+  cacheControlSubfieldsToStrip,
+} from "./cache-control-sanitize.js";
+import { parseRequestModel, parseAdvisorModel } from "./account-manager.js";
+import { TopLevelFieldFinder, modelGlobMatches } from "./model.js";
+import { BodyWriter, truncationNote } from "./request-log.js";
+import { upstreamFetch, upstreamPoolStatus } from "./upstream-fetch.js";
 import {
-  buildCodexAuthUrl, exchangeCodexCode, importCodexCredentials,
-  requestDeviceCode, pollDeviceCodeOnce, DEVICE_VERIFICATION_URL,
-} from './codex-auth.js';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
-import { ClientUsageTracker } from './client-usage.js';
-import { metricsFor } from './metrics.js';
-import { requestBudgetFor } from './request-budget.js';
+  applyAuthHeaders,
+  upstreamFor,
+  rewritesBody,
+  providerForPath,
+  providerOf,
+  isSubscriptionAccount,
+  DEFAULT_PROVIDER,
+} from "./provider.js";
+import { tunnelTls } from "./sx.js";
+import { createEgressGuard } from "./egress-guard.js";
+import { safeLine } from "./safe-text.js";
+import {
+  forwardRefusal,
+  guardedLookup,
+  FORBIDDEN_FORWARD,
+} from "./forward-target.js";
+import { homedir } from "node:os";
+import { renderDashboardHtml, dashboardCsp } from "./dashboard.js";
+import {
+  createUsageRecorder,
+  resolveUsageDimensions,
+  usageDimensionHeaderNames,
+} from "./client-usage.js";
+import { atomicConfigUpdate } from "./config.js";
+import {
+  fetchProfile,
+  parseAuthCode,
+  exchangeCodeForTokens,
+  importCredentials,
+  DEFAULT_CLIENT_ID,
+  OAUTH_AUTHORIZE,
+  OAUTH_SCOPES,
+  MANUAL_LOGIN_REDIRECT_URI,
+} from "./oauth.js";
+import {
+  buildCodexAuthUrl,
+  exchangeCodexCode,
+  importCodexCredentials,
+  requestDeviceCode,
+  pollDeviceCodeOnce,
+  DEVICE_VERIFICATION_URL,
+} from "./codex-auth.js";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { ClientUsageTracker } from "./client-usage.js";
+import { metricsFor } from "./metrics.js";
+import { requestBudgetFor } from "./request-budget.js";
 import {
   translateAnthropicToOpenAI,
   translateOpenAIToAnthropicResponse,
@@ -56,12 +125,12 @@ import {
   createCodexResponsesToOpenAITransformStream,
   translateCodexResponsesToOpenAIResponse,
   codexResponseFailure,
-} from './provider-translator.js';
-import { FairShareController } from './fair-share.js';
-import { ToolCallDedupeCache } from './tool-call-dedupe.js';
-import { sameIdentity, findUpsertTarget } from './identity.js';
-import { mintAccountId } from './account-id.js';
-import { FleetHealthChecker } from './health-checker.js';
+} from "./provider-translator.js";
+import { FairShareController } from "./fair-share.js";
+import { ToolCallDedupeCache } from "./tool-call-dedupe.js";
+import { sameIdentity, findUpsertTarget } from "./identity.js";
+import { mintAccountId } from "./account-id.js";
+import { FleetHealthChecker } from "./health-checker.js";
 
 const pendingOAuthStates = new Map();
 function cleanExpiredOAuthStates() {
@@ -71,13 +140,19 @@ function cleanExpiredOAuthStates() {
   }
 }
 
-
 export const HOP_BY_HOP_HEADERS = new Set([
-  'host', 'connection', 'keep-alive', 'transfer-encoding',
-  'te', 'trailer', 'upgrade', 'proxy-authorization', 'proxy-authenticate',
+  "host",
+  "connection",
+  "keep-alive",
+  "transfer-encoding",
+  "te",
+  "trailer",
+  "upgrade",
+  "proxy-authorization",
+  "proxy-authenticate",
 ]);
 // Path prefix for the deprecated URL-based account pin (superseded by TC_ACCT).
-const PIN_PREFIX = '/tc-acct/';
+const PIN_PREFIX = "/tc-acct/";
 
 /**
  * Does the request path carry a dot-segment (`.` or `..`, in any percent-encoded
@@ -95,13 +170,19 @@ const PIN_PREFIX = '/tc-acct/';
  * ours ever sends one; refusing the request is the whole fix.
  */
 export function hasDotSegment(url) {
-  const path = String(url || '').split('?')[0].split('#')[0];
+  const path = String(url || "")
+    .split("?")[0]
+    .split("#")[0];
   for (const seg of path.split(/[/\\]/)) {
     let s = seg;
     // An undecodable segment (`%`) is compared as sent: the URL parser leaves
     // it alone too, so it cannot become a dot-segment upstream.
-    try { s = decodeURIComponent(seg); } catch { /* keep raw */ }
-    if (s === '.' || s === '..') return true;
+    try {
+      s = decodeURIComponent(seg);
+    } catch {
+      /* keep raw */
+    }
+    if (s === "." || s === "..") return true;
   }
   return false;
 }
@@ -111,19 +192,24 @@ const INLINE_RETRY_AFTER_MAX_SECONDS = 15;
 // rate-limit 429 never rotates accounts (that just moves the burst); it pauses
 // the account so concurrent requests wait, then retries the same account.
 const RATE_LIMIT_ABSORB_MAX_SECONDS =
-  Number(process.env.AGENT_LB_RATE_LIMIT_ABSORB_MAX_SECONDS || process.env.AGENTLB_RATE_LIMIT_ABSORB_MAX_SECONDS) || 60;
-const OAUTH_ENTITLEMENT_ERROR_CODE = 'oauth_not_allowed_for_organization';
+  Number(
+    process.env.AGENT_LB_RATE_LIMIT_ABSORB_MAX_SECONDS ||
+      process.env.AGENTLB_RATE_LIMIT_ABSORB_MAX_SECONDS,
+  ) || 60;
+const OAUTH_ENTITLEMENT_ERROR_CODE = "oauth_not_allowed_for_organization";
 const ERROR_BODY_INSPECTION_LIMIT = 64 * 1024;
 
 // Anthropic can refuse a subscription account with a 400 when the account's
 // identity verification is pending. This is account-scoped, unlike a malformed
 // prompt, so it is safe for the balancer to try another OAuth account.
 export function isOAuthIdentityVerificationRequired(body) {
-  const text = Buffer.from(body || '').toString('utf8');
+  const text = Buffer.from(body || "").toString("utf8");
   try {
     const parsed = JSON.parse(text);
-    const message = parsed?.error?.message || parsed?.message || '';
-    return /identity verification\s+is\s+required\s+to\s+continue/i.test(String(message));
+    const message = parsed?.error?.message || parsed?.message || "";
+    return /identity verification\s+is\s+required\s+to\s+continue/i.test(
+      String(message),
+    );
   } catch {
     return /identity verification\s+is\s+required\s+to\s+continue/i.test(text);
   }
@@ -133,7 +219,7 @@ export function isOAuthIdentityVerificationRequired(body) {
  * Message text and generic permission errors are deliberately not enough. */
 export function isOAuthEntitlementDenied(body) {
   try {
-    const parsed = JSON.parse(Buffer.from(body).toString('utf8'));
+    const parsed = JSON.parse(Buffer.from(body).toString("utf8"));
     return parsed?.error?.details?.error_code === OAUTH_ENTITLEMENT_ERROR_CODE;
   } catch {
     return false;
@@ -158,7 +244,10 @@ async function readBodyBuffer(body, limit = Infinity) {
   let length = 0;
   try {
     while (true) {
-      const { done, value } = await readWithIdleTimeout(reader, resolveBodyIdleTimeout());
+      const { done, value } = await readWithIdleTimeout(
+        reader,
+        resolveBodyIdleTimeout(),
+      );
       if (done) return Buffer.concat(chunks, length);
       length += value.byteLength;
       if (length > limit) {
@@ -179,15 +268,27 @@ async function readBodyBuffer(body, limit = Infinity) {
 // HTTP/2 response (Node's Http2ServerResponse.writeHead rejects them). Also
 // hop-by-hop on h1, so stripping them is correct on both paths.
 const CONNECTION_SPECIFIC_HEADERS = new Set([
-  'connection', 'keep-alive', 'transfer-encoding', 'upgrade',
-  'proxy-connection', 'te', 'trailer',
+  "connection",
+  "keep-alive",
+  "transfer-encoding",
+  "upgrade",
+  "proxy-connection",
+  "te",
+  "trailer",
 ]);
 
-export function createProxyServer(accountManager, config, hooks = {}, sx = null, clientUsage = null, dimensionUsage = null) {
+export function createProxyServer(
+  accountManager,
+  config,
+  hooks = {},
+  sx = null,
+  clientUsage = null,
+  dimensionUsage = null,
+) {
   let agyStore = null;
   let agyLogins = null;
   clientUsage ||= new ClientUsageTracker();
-  const upstream = config.upstream || 'https://api.anthropic.com';
+  const upstream = config.upstream || "https://api.anthropic.com";
   const holdMs = (config.holdSeconds || 0) * 1000;
   const fairShare = new FairShareController({
     poolCapacity: config.poolCapacity || 32,
@@ -203,11 +304,14 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
   const healthChecker = new FleetHealthChecker(accountManager, {
     enabled: config.autoHealthCheck?.enabled ?? true,
     intervalMs: (config.autoHealthCheck?.intervalSeconds ?? 900) * 1000,
-    trafficGracePeriodMs: (config.autoHealthCheck?.trafficGracePeriodSeconds ?? 900) * 1000,
-    errorBackoffMs: (config.autoHealthCheck?.errorBackoffSeconds ?? 3600) * 1000,
+    trafficGracePeriodMs:
+      (config.autoHealthCheck?.trafficGracePeriodSeconds ?? 900) * 1000,
+    errorBackoffMs:
+      (config.autoHealthCheck?.errorBackoffSeconds ?? 3600) * 1000,
     configuredUpstream: upstream,
     fetchFn: async (url, opts) => {
-      if (egress && !(await egress.check()).ok) throw new Error('health check refused: egress does not match pin');
+      if (egress && !(await egress.check()).ok)
+        throw new Error("health check refused: egress does not match pin");
       opts.signal?.throwIfAborted();
       return upstreamFetch(url, opts, sx, !!sx?.useByDefault());
     },
@@ -227,7 +331,9 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
     try {
       mkdirSync(logDir, { recursive: true, mode: 0o700 });
     } catch (err) {
-      console.error(`[AgentLB] Request logging disabled: cannot create logDir ${logDir}: ${err.message}`);
+      console.error(
+        `[AgentLB] Request logging disabled: cannot create logDir ${logDir}: ${err.message}`,
+      );
       logDir = null;
     }
   }
@@ -240,25 +346,33 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // page's own script with the key. A browser address bar cannot send
       // x-api-key, so gating the asset would just 401 every remote browser
       // without protecting anything.
-      const rawPath = (req.url || '').split('?')[0];
-      const normPath = rawPath.replace(/\/+$/, '') || '/';
+      const rawPath = (req.url || "").split("?")[0];
+      const normPath = rawPath.replace(/\/+$/, "") || "/";
       const reqPath = rawPath;
-      const normApiPath = reqPath.replace(/^\/(?:agent-lb|agentlb|claude-lb)/, '');
+      const normApiPath = reqPath.replace(
+        /^\/(?:agent-lb|agentlb|claude-lb)/,
+        "",
+      );
       // /dashboard/<view> (e.g. /dashboard/workstations, /dashboard/accounts/agy)
       // serves the same page; its script opens the view named in the address.
-      const isDashboardPath = normPath === '/' || normPath === '/agent-lb' || normPath === '/claude-lb' ||
-        /^\/(?:agent-lb\/|claude-lb\/)?dashboard(?:\/[a-z0-9-]{1,32}){0,2}$/.test(normPath);
+      const isDashboardPath =
+        normPath === "/" ||
+        normPath === "/agent-lb" ||
+        normPath === "/claude-lb" ||
+        /^\/(?:agent-lb\/|claude-lb\/)?dashboard(?:\/[a-z0-9-]{1,32}){0,2}$/.test(
+          normPath,
+        );
 
-      if ((req.method === 'GET' || req.method === 'HEAD') && isDashboardPath) {
+      if ((req.method === "GET" || req.method === "HEAD") && isDashboardPath) {
         // The page keeps the proxy key in localStorage; the policy is what
         // stops any script but its own from ever running next to it.
         res.writeHead(200, {
-          'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-store',
-          'Content-Security-Policy': dashboardCsp(),
-          'X-Content-Type-Options': 'nosniff',
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Content-Security-Policy": dashboardCsp(),
+          "X-Content-Type-Options": "nosniff",
         });
-        if (req.method === 'HEAD') {
+        if (req.method === "HEAD") {
           res.end();
           return;
         }
@@ -267,77 +381,109 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Serve client setup scripts without auth (Claude Code, OpenAI Codex, OpenCode, Hermes, Claw, Orca)
-      const setupScriptMatch = normPath.match(/^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|claude-setup|setup-claude|codexlb-setup|codex-setup|setup-codex|agent-setup|opencode-setup|hermes-setup|claw-setup|openclaw-setup|orca-setup|aider-setup|agy-setup|agybridge-setup)(?:\.(sh|ps1|js))?$/);
-      if ((req.method === 'GET' || req.method === 'HEAD') && setupScriptMatch) {
+      const setupScriptMatch = normPath.match(
+        /^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|claude-setup|setup-claude|codexlb-setup|codex-setup|setup-codex|agent-setup|opencode-setup|hermes-setup|claw-setup|openclaw-setup|orca-setup|aider-setup|agy-setup|agybridge-setup)(?:\.(sh|ps1|js))?$/,
+      );
+      if ((req.method === "GET" || req.method === "HEAD") && setupScriptMatch) {
         const scriptBase = setupScriptMatch[1];
         let ext = setupScriptMatch[2];
         if (!ext) {
-          const ua = (req.headers['user-agent'] || '').toLowerCase();
-          ext = (ua.includes('powershell') || ua.includes('pwsh')) ? 'ps1' : 'sh';
+          const ua = (req.headers["user-agent"] || "").toLowerCase();
+          ext = ua.includes("powershell") || ua.includes("pwsh") ? "ps1" : "sh";
         }
         let possibleNames = [];
-        if (scriptBase.startsWith('agy')) {
+        if (scriptBase.startsWith("agy")) {
           // No generic fallback: serving setup.sh here would configure the wrong tool.
           possibleNames = [`agy-setup.${ext}`];
-        } else if (scriptBase.includes('hermes')) {
+        } else if (scriptBase.includes("hermes")) {
           possibleNames = [`hermes-setup.${ext}`, `setup.${ext}`];
-        } else if (scriptBase.includes('opencode')) {
+        } else if (scriptBase.includes("opencode")) {
           possibleNames = [`opencode-setup.${ext}`, `setup.${ext}`];
-        } else if (scriptBase.includes('claw')) {
-          possibleNames = [`claw-setup.${ext}`, `openclaw-setup.${ext}`, `setup.${ext}`];
-        } else if (scriptBase.includes('orca')) {
+        } else if (scriptBase.includes("claw")) {
+          possibleNames = [
+            `claw-setup.${ext}`,
+            `openclaw-setup.${ext}`,
+            `setup.${ext}`,
+          ];
+        } else if (scriptBase.includes("orca")) {
           possibleNames = [`orca-setup.${ext}`, `setup.${ext}`];
-        } else if (scriptBase.includes('codex')) {
+        } else if (scriptBase.includes("codex")) {
           possibleNames = [`codex-setup.${ext}`, `codexlb-setup.${ext}`];
         } else {
-          possibleNames = [`claude-setup.${ext}`, `setup.${ext}`, `agent-setup.${ext}`, `agent-lb-setup.${ext}`];
+          possibleNames = [
+            `claude-setup.${ext}`,
+            `setup.${ext}`,
+            `agent-setup.${ext}`,
+            `agent-lb-setup.${ext}`,
+          ];
         }
         const scriptDirs = [
-          join(__dirname, '..', 'setup'),
-          join(homedir(), 'agent-lb-setup'),
-          join(homedir(), 'bin'),
+          join(__dirname, "..", "setup"),
+          join(homedir(), "agent-lb-setup"),
+          join(homedir(), "bin"),
         ];
         let content = null;
         for (const dir of scriptDirs) {
           for (const name of possibleNames) {
             const p = join(dir, name);
             if (existsSync(p)) {
-              try { content = readFileSync(p, 'utf8'); break; } catch {}
+              try {
+                content = readFileSync(p, "utf8");
+                break;
+              } catch {}
             }
           }
           if (content) break;
         }
         if (!content) {
-          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.writeHead(404, { "Content-Type": "text/plain" });
           res.end(`setup script ${scriptBase}.${ext} not found on server`);
           return;
         }
 
         // Dynamically bake requesting server origin into script if requested over HTTP
-        const reqProto = req.headers['x-forwarded-proto'] || (req.socket.encrypted ? 'https' : 'http');
-        const reqHost = req.headers['x-forwarded-host'] || req.headers.host;
+        const reqProto =
+          req.headers["x-forwarded-proto"] ||
+          (req.socket.encrypted ? "https" : "http");
+        const reqHost = req.headers["x-forwarded-host"] || req.headers.host;
         if (reqHost) {
           const currentOrigin = `${reqProto}://${reqHost}`;
           content = content.replace(/http:\/\/localhost:3456/g, currentOrigin);
-          content = content.replace(/https:\/\/codexlb\.gotova\.pl/g, currentOrigin);
-          content = content.replace(/https:\/\/agentlb\.gotova\.pl/g, currentOrigin);
+          content = content.replace(
+            /https:\/\/codexlb\.gotova\.pl/g,
+            currentOrigin,
+          );
+          content = content.replace(
+            /https:\/\/agentlb\.gotova\.pl/g,
+            currentOrigin,
+          );
         }
 
         res.writeHead(200, {
-          'Content-Type': ext === 'ps1' ? 'text/plain; charset=utf-8' : (ext === 'js' ? 'application/javascript; charset=utf-8' : 'application/x-sh'),
-          'Cache-Control': 'no-cache',
+          "Content-Type":
+            ext === "ps1"
+              ? "text/plain; charset=utf-8"
+              : ext === "js"
+                ? "application/javascript; charset=utf-8"
+                : "application/x-sh",
+          "Cache-Control": "no-cache",
         });
         res.end(content);
         return;
       }
 
       // Friendly redirect to dashboard for legacy browser navigation
-      if ((req.method === 'GET' || req.method === 'HEAD') && (normPath === '/' || normPath === '/agent-lb' || normPath === '/claude-lb')) {
+      if (
+        (req.method === "GET" || req.method === "HEAD") &&
+        (normPath === "/" ||
+          normPath === "/agent-lb" ||
+          normPath === "/claude-lb")
+      ) {
         res.writeHead(307, {
-          'Location': '/dashboard',
-          'Content-Type': 'text/plain',
+          Location: "/dashboard",
+          "Content-Type": "text/plain",
         });
-        res.end('Redirecting to /dashboard');
+        res.end("Redirecting to /dashboard");
         return;
       }
 
@@ -345,13 +491,21 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // request (not captured at creation) so a reload that edits clientKeys
       // applies to a running server, matching how eventLogging/blockedModels
       // are read live further down the pipeline.
-      const rawAuth = req.headers['authorization'] || '';
+      const rawAuth = req.headers["authorization"] || "";
       const bearerMatch = /^Bearer\s+(\S+)$/i.exec(rawAuth);
-      const headerKey = req.headers['x-api-key'] || null;
+      const headerKey = req.headers["x-api-key"] || null;
       const bearerKey = bearerMatch ? bearerMatch[1] : null;
       let clientKey = headerKey || bearerKey;
-      const isLocal = loopbackExempt(req.headers, req.socket.remoteAddress, config.proxy);
-      const isTailnet = tailnetExempt(req.headers, req.socket.remoteAddress, config.proxy);
+      const isLocal = loopbackExempt(
+        req.headers,
+        req.socket.remoteAddress,
+        config.proxy,
+      );
+      const isTailnet = tailnetExempt(
+        req.headers,
+        req.socket.remoteAddress,
+        config.proxy,
+      );
       const isTrustedOrigin = isLocal || isTailnet;
       let auth = resolveClientAuth(config.proxy, clientKey);
       // From a trusted origin, a Bearer that is not one of our keys is the
@@ -367,19 +521,28 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         auth = { ok: false, client: null, entry: null };
       }
       if (!auth.ok && (clientKey || !isTrustedOrigin)) {
-        console.warn('[AgentLB Auth Rejection]', {
+        console.warn("[AgentLB Auth Rejection]", {
           method: req.method,
           url: req.url,
-          clientKey: clientKey ? (clientKey.length > 8 ? clientKey.slice(0, 4) + '...' + clientKey.slice(-4) : clientKey) : null,
+          clientKey: clientKey
+            ? clientKey.length > 8
+              ? clientKey.slice(0, 4) + "..." + clientKey.slice(-4)
+              : clientKey
+            : null,
           hasHeader: !!headerKey,
           hasBearer: !!bearerKey,
           remote: req.socket.remoteAddress,
         });
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          type: 'error',
-          error: { type: 'authentication_error', message: 'Invalid proxy API key' },
-        }));
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            type: "error",
+            error: {
+              type: "authentication_error",
+              message: "Invalid proxy API key",
+            },
+          }),
+        );
         return;
       }
       req.clientKey = clientKey;
@@ -388,24 +551,39 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
       // Protect every management alias BEFORE dispatch (including reload,
       // switch and setup/pull). Provider identity endpoints remain data-plane.
-      const managementPath = /^\/(?:api\/(?:auth|keys|accounts|agy|routing|drain|ready|system|reboot|restart|test|chat|health-check|setup|reload|probe|switch)(?:\/|$)|accounts(?:\/|$)|client-keys(?:\/|$)|oauth(?:\/|$)|routing(?:\/|$)|drain(?:\/|$)|health-check(?:\/|$)|reload$|probe$|switch$|reboot$|restart$|metrics$|alerts$)/.test(normApiPath);
+      const managementPath =
+        /^\/(?:api\/(?:auth|keys|accounts|agy|routing|drain|ready|system|reboot|restart|test|chat|health-check|setup|reload|probe|switch)(?:\/|$)|accounts(?:\/|$)|client-keys(?:\/|$)|oauth(?:\/|$)|routing(?:\/|$)|drain(?:\/|$)|health-check(?:\/|$)|reload$|probe$|switch$|reboot$|restart$|metrics$|alerts$)/.test(
+          normApiPath,
+        );
       const isAdmin = config.proxy?.apiKey
         ? safeKeyEqual(clientKey, config.proxy.apiKey)
-        : (!config.proxy?.clientKeys?.length && isLoopbackAddr(req.socket.remoteAddress) && !isForwardedRequest(req.headers));
+        : !config.proxy?.clientKeys?.length &&
+          isLoopbackAddr(req.socket.remoteAddress) &&
+          !isForwardedRequest(req.headers);
       if (managementPath && !isAdmin) {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: 'administrator key required' }));
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({ ok: false, error: "administrator key required" }),
+        );
         return;
       }
       if (managementPath && !isSameOriginControlRequest(req)) {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: 'cross-origin management request refused' }));
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: "cross-origin management request refused",
+          }),
+        );
         return;
       }
-      if (managementPath) res.setHeader('Cache-Control', 'no-store');
+      if (managementPath) res.setHeader("Cache-Control", "no-store");
       if (auth.entry) {
         const policy = clientUsage.checkQuota(auth.client, auth.entry);
-        if (!policy.allowed) { denyClientPolicy(res, policy); return; }
+        if (!policy.allowed) {
+          denyClientPolicy(res, policy);
+          return;
+        }
       }
 
       // Control-plane mutations are refused when the request was issued by a web
@@ -423,12 +601,19 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // requirement, which would also close the hole but would break the
       // documented `curl -X POST .../agentlb/reload` that sends no body.
       const crossOrigin = !isSameOriginControlRequest(req);
-      if (crossOrigin && req.method === 'POST' && (req.url || '').startsWith('/agent-lb/')) {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          ok: false,
-          error: 'cross-origin request refused: the control plane is not reachable from a web page',
-        }));
+      if (
+        crossOrigin &&
+        req.method === "POST" &&
+        (req.url || "").startsWith("/agent-lb/")
+      ) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error:
+              "cross-origin request refused: the control plane is not reachable from a web page",
+          }),
+        );
         return;
       }
 
@@ -439,18 +624,42 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // Dispatched BEFORE the loopback-only checks below: a page cannot make a
       // browser emit an absolute-form request line, the relay injects no fleet
       // credential, and its Host header names the TARGET, not this proxy.
-      if (/^https?:\/\//i.test(req.url || '')) {
-        if (!relayPolicyAllowed(auth, clientUsage)) { denyClientPolicy(res, { error: 'restricted keys cannot use a general-purpose relay' }); return; }
-        relayHttpForward(req, res); return;
+      if (/^https?:\/\//i.test(req.url || "")) {
+        if (!relayPolicyAllowed(auth, clientUsage)) {
+          denyClientPolicy(res, {
+            error: "restricted keys cannot use a general-purpose relay",
+          });
+          return;
+        }
+        relayHttpForward(req, res);
+        return;
       }
 
       // AGY (Google) accounts: dashboard management and station credentials.
-      if (normApiPath.startsWith('/api/agy/') || normApiPath.startsWith('/agy/')) {
+      if (
+        normApiPath.startsWith("/api/agy/") ||
+        normApiPath.startsWith("/agy/")
+      ) {
         if (!agyStore) {
-          agyStore = new AgyAccountStore(config.agy?.accountsPath || getAgyAccountsPath());
-          agyLogins = new AgyLoginManager({ command: resolveAgyCommand(config), store: agyStore });
+          agyStore = new AgyAccountStore(
+            config.agy?.accountsPath || getAgyAccountsPath(),
+          );
+          agyLogins = new AgyLoginManager({
+            command: resolveAgyCommand(config),
+            store: agyStore,
+          });
         }
-        if (await handleAgyRoute(req, res, { normApiPath, auth, clientKey, clientUsage, store: agyStore, logins: agyLogins })) return;
+        if (
+          await handleAgyRoute(req, res, {
+            normApiPath,
+            auth,
+            clientKey,
+            clientUsage,
+            store: agyStore,
+            logins: agyLogins,
+          })
+        )
+          return;
       }
 
       // A request admitted ONLY by the loopback exemption — no valid key — is
@@ -466,11 +675,17 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         // CORS header ever leaks. Same browser-set headers, same zero cost to
         // curl, the CLI and Node clients, which send neither.
         if (crossOrigin) {
-          res.writeHead(403, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            type: 'error',
-            error: { type: 'permission_error', message: 'cross-origin request refused: a web page cannot use the proxy without a key' },
-          }));
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              type: "error",
+              error: {
+                type: "permission_error",
+                message:
+                  "cross-origin request refused: a web page cannot use the proxy without a key",
+              },
+            }),
+          );
           return;
         }
         // DNS rebinding. A page at attacker.example whose name flips to
@@ -478,47 +693,907 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         // far as the browser can tell, and it can read the answers. What it
         // cannot forge is the Host header, which the browser derives from its
         // own URL bar — so a key-less loopback request must name this machine.
-        if (!isLocalHostHeader(req.headers.host ?? req.headers[':authority'], config.proxy?.host, [], config.proxy)) {
-          res.writeHead(403, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            type: 'error',
-            error: { type: 'permission_error', message: 'request refused: the Host header does not name this proxy' },
-          }));
+        if (
+          !isLocalHostHeader(
+            req.headers.host ?? req.headers[":authority"],
+            config.proxy?.host,
+            [],
+            config.proxy,
+          )
+        ) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              type: "error",
+              error: {
+                type: "permission_error",
+                message:
+                  "request refused: the Host header does not name this proxy",
+              },
+            }),
+          );
           return;
         }
       }
 
       // Codex models endpoint — live verification for Codex CLI & setup scripts
-      const codexPathname = req.url.split('?')[0];
-      if (req.method === 'GET' && (codexPathname === '/backend-api/codex/models' || codexPathname === '/backend-api/codex/v1/models' || codexPathname === '/v1/models' || codexPathname === '/models')) {
+      const codexPathname = req.url.split("?")[0];
+      if (
+        req.method === "GET" &&
+        (codexPathname === "/backend-api/codex/models" ||
+          codexPathname === "/backend-api/codex/v1/models" ||
+          codexPathname === "/v1/models" ||
+          codexPathname === "/models")
+      ) {
         const rawModelsList = [
-          { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', display_name: 'Claude Fable 5.1' },
-          { id: 'claude-fable-5', name: 'Claude Fable 5', display_name: 'Claude Fable 5' },
-          { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', display_name: 'Claude Opus 5.5' },
-          { id: 'claude-opus-5.5', name: 'Claude Opus 5.5', display_name: 'Claude Opus 5.5' },
-          { id: 'claude-opus-5', name: 'Claude Opus 5', display_name: 'Claude Opus 5' },
-          { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', display_name: 'Claude Opus 4.8' },
-          { id: 'claude-opus-4-7', name: 'Claude Opus 4.7', display_name: 'Claude Opus 4.7' },
-          { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', display_name: 'Claude Opus 4.6' },
-          { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', display_name: 'Claude Sonnet 5' },
-          { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', display_name: 'Claude Sonnet 4.6' },
-          { id: 'claude-mythos-5-1', name: 'Claude Mythos 5.1', display_name: 'Claude Mythos 5.1' },
-          { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5', display_name: 'Claude Haiku 4.5' },
-          { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet', display_name: 'Claude 3.7 Sonnet' },
-          { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', display_name: 'Claude 3.5 Sonnet' },
-          { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku', display_name: 'Claude 3.5 Haiku' },
-          { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus', display_name: 'Claude 3 Opus' },
-          { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', display_name: 'GPT-5.6 Sol' },
-          { id: 'codex', name: 'Codex (GPT-5.6 Sol)', display_name: 'Codex (GPT-5.6 Sol)' },
-          { id: 'gpt-6-astra', name: 'GPT-6 Astra', display_name: 'GPT-6 Astra' },
-          { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', display_name: 'GPT-5.6 Terra' },
-          { id: 'codex-mini', name: 'Codex Mini (GPT-5.6 Terra)', display_name: 'Codex Mini (GPT-5.6 Terra)' },
-          { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', display_name: 'GPT-5.6 Luna' },
-          { id: 'gpt-5.5', name: 'GPT-5.5', display_name: 'GPT-5.5' },
-          { id: 'o3-mini', name: 'o3-mini', display_name: 'o3-mini' },
-          { id: 'o1', name: 'o1', display_name: 'o1' },
-          { id: 'gpt-4o', name: 'GPT-4o', display_name: 'GPT-4o' },
-          { id: 'gpt-4o-mini', name: 'GPT-4o mini', display_name: 'GPT-4o mini' }
+          // Anthropic Claude — Current Lineup
+          {
+            id: "claude-fable-5-1",
+            name: "Claude Fable 5.1",
+            display_name: "Claude Fable 5.1",
+            description:
+              "For demanding reasoning and long-horizon agentic work",
+            context_window: 1000000,
+            max_tokens: 128000,
+            latency: "slower",
+            thinking: { extended: "no", adaptive: "always-on" },
+            default_effort: "high",
+            reliable_knowledge_cutoff: "2026-06",
+            pricing: {
+              input_per_mtok: 10,
+              output_per_mtok: 50,
+              cache_write_5m_per_mtok: 12.5,
+              cache_write_1h_per_mtok: 20,
+              cache_read_per_mtok: 0.25,
+            },
+          },
+          {
+            id: "claude-opus-5-5",
+            name: "Claude Opus 5.5",
+            display_name: "Claude Opus 5.5",
+            description: "For long-running agentic coding and knowledge work",
+            context_window: 1000000,
+            max_tokens: 128000,
+            batch_max_output_tokens: 300000,
+            latency: "moderate",
+            thinking: { extended: "no", adaptive: "always-on" },
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2026-06",
+            pricing: {
+              input_per_mtok: 4,
+              output_per_mtok: 20,
+              cache_write_5m_per_mtok: 5,
+              cache_write_1h_per_mtok: 8,
+              cache_read_per_mtok: 0.2,
+            },
+          },
+          {
+            id: "claude-opus-5.5",
+            name: "Claude Opus 5.5",
+            display_name: "Claude Opus 5.5",
+            description:
+              "For long-running agentic coding and knowledge work (compatibility alias)",
+            context_window: 1000000,
+            max_tokens: 128000,
+            batch_max_output_tokens: 300000,
+            latency: "moderate",
+            thinking: { extended: "no", adaptive: "always-on" },
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2026-06",
+            pricing: {
+              input_per_mtok: 4,
+              output_per_mtok: 20,
+              cache_write_5m_per_mtok: 5,
+              cache_write_1h_per_mtok: 8,
+              cache_read_per_mtok: 0.2,
+            },
+          },
+          {
+            id: "claude-sonnet-5",
+            name: "Claude Sonnet 5",
+            display_name: "Claude Sonnet 5",
+            description: "The best combination of speed and intelligence",
+            context_window: 1000000,
+            max_tokens: 128000,
+            batch_max_output_tokens: 300000,
+            latency: "fast",
+            thinking: { extended: "no", adaptive: "yes" },
+            default_effort: "high",
+            reliable_knowledge_cutoff: "2026-01",
+            pricing: {
+              input_per_mtok: 2,
+              output_per_mtok: 10,
+              cache_write_5m_per_mtok: 2.5,
+              cache_write_1h_per_mtok: 4,
+              cache_read_per_mtok: 0.2,
+            },
+          },
+          {
+            id: "claude-haiku-4-5-20251001",
+            name: "Claude Haiku 4.5",
+            display_name: "Claude Haiku 4.5",
+            description: "The fastest model with near-frontier intelligence",
+            context_window: 200000,
+            max_tokens: 64000,
+            latency: "fastest",
+            thinking: { extended: "yes", adaptive: "no" },
+            default_effort: null,
+            reliable_knowledge_cutoff: "2025-02",
+            pricing: {
+              input_per_mtok: 1,
+              output_per_mtok: 5,
+              cache_write_5m_per_mtok: 1.25,
+              cache_write_1h_per_mtok: 2,
+              cache_read_per_mtok: 0.1,
+            },
+          },
+          {
+            id: "claude-haiku-4-5",
+            name: "Claude Haiku 4.5",
+            display_name: "Claude Haiku 4.5",
+            description:
+              "The fastest model with near-frontier intelligence (canonical alias)",
+            context_window: 200000,
+            max_tokens: 64000,
+            latency: "fastest",
+            thinking: { extended: "yes", adaptive: "no" },
+            default_effort: null,
+            reliable_knowledge_cutoff: "2025-02",
+            pricing: {
+              input_per_mtok: 1,
+              output_per_mtok: 5,
+              cache_write_5m_per_mtok: 1.25,
+              cache_write_1h_per_mtok: 2,
+              cache_read_per_mtok: 0.1,
+            },
+          },
+
+          // Anthropic Claude — Specialized Models
+          {
+            id: "claude-mythos-5-1",
+            name: "Claude Mythos 5.1",
+            display_name: "Claude Mythos 5.1",
+            description:
+              "Claude Fable 5.1 for Project Glasswing participants (Invite only)",
+            context_window: 1000000,
+            max_tokens: 128000,
+            latency: "slower",
+            thinking: { extended: "no", adaptive: "always-on" },
+            default_effort: "high",
+            reliable_knowledge_cutoff: "2026-06",
+            pricing: {
+              input_per_mtok: 10,
+              output_per_mtok: 50,
+              cache_write_5m_per_mtok: 12.5,
+              cache_write_1h_per_mtok: 20,
+              cache_read_per_mtok: 0.25,
+            },
+          },
+          {
+            id: "claude-mythos-5",
+            name: "Claude Mythos 5",
+            display_name: "Claude Mythos 5",
+            description:
+              "Most capable model for cybersecurity and biology research (Project Glasswing / Invite only)",
+            context_window: 1000000,
+            max_tokens: 128000,
+            latency: "slower",
+            thinking: { extended: "no", adaptive: "always-on" },
+            default_effort: "high",
+            reliable_knowledge_cutoff: "2026-01",
+            pricing: { input_per_mtok: 10, output_per_mtok: 50 },
+          },
+
+          // Anthropic Claude — Legacy Models
+          {
+            id: "claude-opus-5",
+            name: "Claude Opus 5",
+            display_name: "Claude Opus 5",
+            description: "For complex agentic coding and enterprise work",
+            context_window: 1000000,
+            max_tokens: 128000,
+            latency: "moderate",
+            thinking: { extended: "no", adaptive: "always-on" },
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2026-01",
+            pricing: {
+              input_per_mtok: 5,
+              output_per_mtok: 25,
+              cache_write_5m_per_mtok: 6.25,
+              cache_write_1h_per_mtok: 10,
+              cache_read_per_mtok: 0.5,
+            },
+          },
+          {
+            id: "claude-fable-5",
+            name: "Claude Fable 5",
+            display_name: "Claude Fable 5",
+            description: "For complex reasoning and multi-day tasks",
+            context_window: 1000000,
+            max_tokens: 128000,
+            latency: "slower",
+            thinking: { extended: "no", adaptive: "always-on" },
+            default_effort: "high",
+            pricing: {
+              input_per_mtok: 10,
+              output_per_mtok: 50,
+              cache_write_5m_per_mtok: 12.5,
+              cache_write_1h_per_mtok: 20,
+              cache_read_per_mtok: 1,
+            },
+          },
+          {
+            id: "claude-opus-4-8",
+            name: "Claude Opus 4.8",
+            display_name: "Claude Opus 4.8",
+            context_window: 1000000,
+            max_tokens: 128000,
+            pricing: { input_per_mtok: 5, output_per_mtok: 25 },
+          },
+          {
+            id: "claude-opus-4-7",
+            name: "Claude Opus 4.7",
+            display_name: "Claude Opus 4.7",
+            context_window: 1000000,
+            max_tokens: 128000,
+            pricing: { input_per_mtok: 5, output_per_mtok: 25 },
+          },
+          {
+            id: "claude-opus-4-6",
+            name: "Claude Opus 4.6",
+            display_name: "Claude Opus 4.6",
+            context_window: 1000000,
+            max_tokens: 128000,
+            pricing: { input_per_mtok: 5, output_per_mtok: 25 },
+          },
+          {
+            id: "claude-sonnet-4-6",
+            name: "Claude Sonnet 4.6",
+            display_name: "Claude Sonnet 4.6",
+            context_window: 1000000,
+            max_tokens: 128000,
+            pricing: { input_per_mtok: 3, output_per_mtok: 15 },
+          },
+          {
+            id: "claude-opus-4-5-20251101",
+            name: "Claude Opus 4.5",
+            display_name: "Claude Opus 4.5",
+            context_window: 200000,
+            max_tokens: 64000,
+            pricing: { input_per_mtok: 5, output_per_mtok: 25 },
+          },
+          {
+            id: "claude-sonnet-4-5-20250929",
+            name: "Claude Sonnet 4.5",
+            display_name: "Claude Sonnet 4.5",
+            context_window: 200000,
+            max_tokens: 64000,
+            pricing: { input_per_mtok: 3, output_per_mtok: 15 },
+          },
+
+          // Anthropic Claude — Previous Generations (Claude 3.x)
+          {
+            id: "claude-3-7-sonnet-20250219",
+            name: "Claude 3.7 Sonnet",
+            display_name: "Claude 3.7 Sonnet",
+            context_window: 200000,
+            max_tokens: 64000,
+          },
+          {
+            id: "claude-3-5-sonnet-20241022",
+            name: "Claude 3.5 Sonnet",
+            display_name: "Claude 3.5 Sonnet",
+            context_window: 200000,
+            max_tokens: 8192,
+          },
+          {
+            id: "claude-3-5-haiku-20241022",
+            name: "Claude 3.5 Haiku",
+            display_name: "Claude 3.5 Haiku",
+            context_window: 200000,
+            max_tokens: 8192,
+          },
+          {
+            id: "claude-3-opus-20240229",
+            name: "Claude 3 Opus",
+            display_name: "Claude 3 Opus",
+            context_window: 200000,
+            max_tokens: 4096,
+          },
+
+          // OpenAI / Codex Models
+          {
+            id: "gpt-6-astra",
+            name: "GPT-6 Astra",
+            display_name: "GPT-6 Astra",
+            description:
+              "Our most capable model, built for the hardest end-to-end work",
+            context_window: 1050000,
+            max_input_tokens: 922000,
+            max_tokens: 128000,
+            latency: "moderate",
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2026-04",
+            pricing: {
+              input_per_mtok: 10,
+              cached_input_per_mtok: 1,
+              cache_write_per_mtok: 12.5,
+              output_per_mtok: 50,
+            },
+            supported_reasoning_levels: [
+              {
+                effort: "low",
+                description: "Fast responses with lighter reasoning",
+              },
+              {
+                effort: "medium",
+                description: "Balances speed with reasoning",
+              },
+              {
+                effort: "high",
+                description: "Deeper reasoning for complex problems",
+              },
+              { effort: "xhigh", description: "Maximum reasoning effort" },
+              {
+                effort: "max",
+                description:
+                  "Highest reasoning effort for the hardest problems",
+              },
+            ],
+          },
+          {
+            id: "gpt-6-sol",
+            name: "GPT-6 Sol",
+            display_name: "GPT-6 Sol",
+            description: "Built to power complex coding and agentic workflows",
+            context_window: 1050000,
+            max_input_tokens: 922000,
+            max_tokens: 128000,
+            latency: "fast",
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2026-04",
+            pricing: {
+              input_per_mtok: 2,
+              cached_input_per_mtok: 0.2,
+              cache_write_per_mtok: 2.5,
+              output_per_mtok: 10,
+            },
+            supported_reasoning_levels: [
+              { effort: "none", description: "Disable reasoning" },
+              {
+                effort: "low",
+                description: "Fast responses with lighter reasoning",
+              },
+              {
+                effort: "medium",
+                description: "Balances speed with reasoning",
+              },
+              {
+                effort: "high",
+                description: "Deeper reasoning for complex problems",
+              },
+              { effort: "xhigh", description: "Maximum reasoning effort" },
+              {
+                effort: "max",
+                description:
+                  "Highest reasoning effort for the hardest problems",
+              },
+            ],
+          },
+          {
+            id: "gpt-6-luna",
+            name: "GPT-6 Luna",
+            display_name: "GPT-6 Luna",
+            description:
+              "Our most efficient model for focused, high-volume tasks",
+            context_window: 1050000,
+            max_input_tokens: 922000,
+            max_tokens: 128000,
+            latency: "fastest",
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2026-05",
+            pricing: {
+              input_per_mtok: 0.1,
+              cached_input_per_mtok: 0.01,
+              output_per_mtok: 0.6,
+            },
+            supported_reasoning_levels: [
+              { effort: "none", description: "Disable reasoning" },
+              {
+                effort: "low",
+                description: "Fast responses with lighter reasoning",
+              },
+              {
+                effort: "medium",
+                description: "Balances speed with reasoning",
+              },
+              {
+                effort: "high",
+                description: "Deeper reasoning for complex problems",
+              },
+              { effort: "xhigh", description: "Maximum reasoning effort" },
+              {
+                effort: "max",
+                description:
+                  "Highest reasoning effort for the hardest problems",
+              },
+            ],
+          },
+          {
+            id: "gpt-5.6-sol",
+            name: "GPT-5.6 Sol",
+            display_name: "GPT-5.6 Sol",
+            description: "Flagship model for complex professional work",
+            context_window: 1050000,
+            max_input_tokens: 922000,
+            max_tokens: 128000,
+            latency: "fast",
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2026-02",
+            pricing: {
+              input_per_mtok: 4,
+              cached_input_per_mtok: 0.4,
+              output_per_mtok: 20,
+            },
+            supported_reasoning_levels: [
+              { effort: "none", description: "Disable reasoning" },
+              {
+                effort: "low",
+                description: "Fast responses with lighter reasoning",
+              },
+              {
+                effort: "medium",
+                description: "Balances speed with reasoning",
+              },
+              {
+                effort: "high",
+                description: "Deeper reasoning for complex problems",
+              },
+              { effort: "xhigh", description: "Maximum reasoning effort" },
+              {
+                effort: "max",
+                description:
+                  "Highest reasoning effort for the hardest problems",
+              },
+            ],
+          },
+          {
+            id: "codex",
+            name: "Codex (GPT-5.6 Sol)",
+            display_name: "Codex (GPT-5.6 Sol)",
+            description: "Codex CLI default alias routing to GPT-5.6 Sol",
+            context_window: 1050000,
+            max_input_tokens: 922000,
+            max_tokens: 128000,
+            latency: "fast",
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2026-02",
+            pricing: {
+              input_per_mtok: 4,
+              cached_input_per_mtok: 0.4,
+              output_per_mtok: 20,
+            },
+          },
+          {
+            id: "gpt-5.6-terra",
+            name: "GPT-5.6 Terra",
+            display_name: "GPT-5.6 Terra",
+            description: "GPT-5.6 model that balances intelligence and cost",
+            context_window: 1050000,
+            max_input_tokens: 922000,
+            max_tokens: 128000,
+            latency: "fast",
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2026-02",
+            pricing: {
+              input_per_mtok: 2,
+              cached_input_per_mtok: 0.2,
+              output_per_mtok: 12,
+            },
+            supported_reasoning_levels: [
+              { effort: "none", description: "Disable reasoning" },
+              {
+                effort: "low",
+                description: "Fast responses with lighter reasoning",
+              },
+              {
+                effort: "medium",
+                description: "Balances speed with reasoning",
+              },
+              {
+                effort: "high",
+                description: "Deeper reasoning for complex problems",
+              },
+              { effort: "xhigh", description: "Maximum reasoning effort" },
+              {
+                effort: "max",
+                description:
+                  "Highest reasoning effort for the hardest problems",
+              },
+            ],
+          },
+          {
+            id: "codex-mini",
+            name: "Codex Mini (GPT-5.6 Terra)",
+            display_name: "Codex Mini (GPT-5.6 Terra)",
+            description: "Codex Mini alias routing to GPT-5.6 Terra",
+            context_window: 1050000,
+            max_input_tokens: 922000,
+            max_tokens: 128000,
+            default_effort: "medium",
+          },
+          {
+            id: "gpt-5.6-luna",
+            name: "GPT-5.6 Luna",
+            display_name: "GPT-5.6 Luna",
+            description: "GPT-5.6 model optimized for cost-sensitive workloads",
+            context_window: 1050000,
+            max_input_tokens: 922000,
+            max_tokens: 128000,
+            latency: "fastest",
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2026-02",
+            pricing: {
+              input_per_mtok: 0.2,
+              cached_input_per_mtok: 0.02,
+              output_per_mtok: 1.2,
+            },
+            supported_reasoning_levels: [
+              { effort: "none", description: "Disable reasoning" },
+              {
+                effort: "low",
+                description: "Fast responses with lighter reasoning",
+              },
+              {
+                effort: "medium",
+                description: "Balances speed with reasoning",
+              },
+              {
+                effort: "high",
+                description: "Deeper reasoning for complex problems",
+              },
+              { effort: "xhigh", description: "Maximum reasoning effort" },
+              {
+                effort: "max",
+                description:
+                  "Highest reasoning effort for the hardest problems",
+              },
+            ],
+          },
+          {
+            id: "gpt-5.6-cyber",
+            name: "GPT-5.6 Cyber",
+            display_name: "GPT-5.6 Cyber",
+            description:
+              "Our most advanced cybersecurity model for authorized vulnerability research and security testing",
+            context_window: 1050000,
+            max_input_tokens: 922000,
+            max_tokens: 128000,
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2026-02",
+          },
+          {
+            id: "gpt-5.3-codex",
+            name: "GPT-5.3-Codex",
+            display_name: "GPT-5.3-Codex",
+            description: "The most capable agentic coding model to date",
+            context_window: 400000,
+            max_input_tokens: 272000,
+            max_tokens: 128000,
+            latency: "fast",
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2025-08",
+            pricing: {
+              input_per_mtok: 1.75,
+              cached_input_per_mtok: 0.175,
+              output_per_mtok: 14,
+            },
+            supported_reasoning_levels: [
+              {
+                effort: "low",
+                description: "Fast responses with lighter reasoning",
+              },
+              {
+                effort: "medium",
+                description: "Balances speed with reasoning",
+              },
+              {
+                effort: "high",
+                description: "Deeper reasoning for complex problems",
+              },
+              { effort: "xhigh", description: "Maximum reasoning effort" },
+            ],
+          },
+          {
+            id: "gpt-5.2-codex",
+            name: "GPT-5.2-Codex",
+            display_name: "GPT-5.2-Codex",
+            description:
+              "Our most intelligent coding model optimized for long-horizon, agentic coding tasks",
+            context_window: 400000,
+            max_input_tokens: 272000,
+            max_tokens: 128000,
+            latency: "moderate",
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2025-08",
+            pricing: {
+              input_per_mtok: 1.75,
+              cached_input_per_mtok: 0.175,
+              output_per_mtok: 14,
+            },
+            supported_reasoning_levels: [
+              {
+                effort: "low",
+                description: "Fast responses with lighter reasoning",
+              },
+              {
+                effort: "medium",
+                description: "Balances speed with reasoning",
+              },
+              {
+                effort: "high",
+                description: "Deeper reasoning for complex problems",
+              },
+              { effort: "xhigh", description: "Maximum reasoning effort" },
+            ],
+          },
+          {
+            id: "gpt-5.1-codex",
+            name: "GPT-5.1-Codex",
+            display_name: "GPT-5.1-Codex",
+            description:
+              "A version of GPT-5.1 optimized for agentic coding in Codex",
+            context_window: 400000,
+            max_input_tokens: 272000,
+            max_tokens: 128000,
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2025-08",
+          },
+          {
+            id: "gpt-5.1-codex-mini",
+            name: "GPT-5.1-Codex Mini",
+            display_name: "GPT-5.1-Codex Mini",
+            description:
+              "Smaller, more cost-effective version of GPT-5.1-Codex",
+            context_window: 400000,
+            max_tokens: 128000,
+            default_effort: "medium",
+          },
+          {
+            id: "gpt-5.1-codex-max",
+            name: "GPT-5.1-Codex-Max",
+            display_name: "GPT-5.1-Codex-Max",
+            description:
+              "A version of GPT-5.1-codex optimized for long running tasks",
+            context_window: 400000,
+            max_tokens: 128000,
+            default_effort: "medium",
+          },
+          {
+            id: "gpt-5-codex",
+            name: "GPT-5-Codex",
+            display_name: "GPT-5-Codex",
+            description:
+              "A version of GPT-5 optimized for agentic coding in Codex",
+            context_window: 400000,
+            max_tokens: 128000,
+            default_effort: "medium",
+          },
+          {
+            id: "codex-mini-latest",
+            name: "codex-mini-latest",
+            display_name: "codex-mini-latest",
+            description: "Fast reasoning model optimized for the Codex CLI",
+            context_window: 200000,
+            max_tokens: 100000,
+            latency: "fastest",
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2024-06",
+            pricing: {
+              input_per_mtok: 1.5,
+              cached_input_per_mtok: 0.375,
+              output_per_mtok: 6,
+            },
+          },
+          {
+            id: "gpt-5.5",
+            name: "GPT-5.5",
+            display_name: "GPT-5.5",
+            description:
+              "A new class of intelligence for coding and professional work",
+            context_window: 1050000,
+            max_tokens: 128000,
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2025-12",
+            pricing: {
+              input_per_mtok: 5,
+              cached_input_per_mtok: 0.5,
+              output_per_mtok: 30,
+            },
+            supported_reasoning_levels: [
+              { effort: "none", description: "Disable reasoning" },
+              {
+                effort: "low",
+                description: "Fast responses with lighter reasoning",
+              },
+              {
+                effort: "medium",
+                description: "Balances speed with reasoning",
+              },
+              {
+                effort: "high",
+                description: "Deeper reasoning for complex problems",
+              },
+              { effort: "xhigh", description: "Maximum reasoning effort" },
+            ],
+          },
+          {
+            id: "gpt-5.5-pro",
+            name: "GPT-5.5 Pro",
+            display_name: "GPT-5.5 Pro",
+            description:
+              "Version of GPT-5.5 that produces smarter and more precise responses",
+            context_window: 1050000,
+            max_tokens: 128000,
+            default_effort: "high",
+          },
+          {
+            id: "gpt-5.4",
+            name: "GPT-5.4",
+            display_name: "GPT-5.4",
+            description:
+              "A more affordable model for coding and professional work",
+            context_window: 1050000,
+            max_tokens: 128000,
+            default_effort: "medium",
+          },
+          {
+            id: "gpt-5.4-mini",
+            name: "GPT-5.4 Mini",
+            display_name: "GPT-5.4 Mini",
+            description:
+              "Our strongest mini model yet for coding, computer use, and subagents",
+            context_window: 1050000,
+            max_tokens: 128000,
+            default_effort: "medium",
+          },
+          {
+            id: "gpt-5.4-nano",
+            name: "GPT-5.4 nano",
+            display_name: "GPT-5.4 nano",
+            description:
+              "Our cheapest GPT-5.4-class model for simple high-volume tasks",
+            context_window: 1050000,
+            max_tokens: 128000,
+            default_effort: "medium",
+          },
+          {
+            id: "gpt-5.4-pro",
+            name: "GPT-5.4 Pro",
+            display_name: "GPT-5.4 Pro",
+            description:
+              "Version of GPT-5.4 that produces smarter and more precise responses",
+            context_window: 1050000,
+            max_tokens: 128000,
+            default_effort: "high",
+          },
+          {
+            id: "gpt-4.1",
+            name: "GPT-4.1",
+            display_name: "GPT-4.1",
+            description: "Smartest non-reasoning model",
+            context_window: 1050000,
+            max_tokens: 32768,
+            default_effort: null,
+          },
+          {
+            id: "gpt-4.1-mini",
+            name: "GPT-4.1 Mini",
+            display_name: "GPT-4.1 Mini",
+            description: "Smaller, faster version of GPT-4.1",
+            context_window: 1050000,
+            max_tokens: 32768,
+            default_effort: null,
+          },
+          {
+            id: "gpt-4.1-nano",
+            name: "GPT-4.1 nano",
+            display_name: "GPT-4.1 nano",
+            description: "Fastest, most cost-efficient version of GPT-4.1",
+            context_window: 1050000,
+            max_tokens: 32768,
+            default_effort: null,
+          },
+          {
+            id: "o4-mini",
+            name: "o4-mini",
+            display_name: "o4-mini",
+            description: "Fast, cost-efficient reasoning model",
+            context_window: 200000,
+            max_tokens: 100000,
+            default_effort: "medium",
+          },
+          {
+            id: "o3",
+            name: "o3",
+            display_name: "o3",
+            description: "Reasoning model for complex tasks",
+            context_window: 200000,
+            max_tokens: 100000,
+            default_effort: "medium",
+          },
+          {
+            id: "o3-pro",
+            name: "o3-pro",
+            display_name: "o3-pro",
+            description: "Version of o3 with more compute for better responses",
+            context_window: 200000,
+            max_tokens: 100000,
+            default_effort: "high",
+          },
+          {
+            id: "o3-mini",
+            name: "o3-mini",
+            display_name: "o3-mini",
+            description: "A small model alternative to o3",
+            context_window: 200000,
+            max_tokens: 100000,
+            default_effort: "medium",
+          },
+          {
+            id: "o1",
+            name: "o1",
+            display_name: "o1",
+            description: "Previous full o-series reasoning model",
+            context_window: 200000,
+            max_tokens: 100000,
+            default_effort: "medium",
+          },
+          {
+            id: "o1-pro",
+            name: "o1-pro",
+            display_name: "o1-pro",
+            description: "Version of o1 with more compute for better responses",
+            context_window: 200000,
+            max_tokens: 100000,
+            default_effort: "high",
+          },
+          {
+            id: "o1-mini",
+            name: "o1-mini",
+            display_name: "o1-mini",
+            description: "A small model alternative to o1",
+            context_window: 128000,
+            max_tokens: 65536,
+            default_effort: "medium",
+          },
+          {
+            id: "gpt-4o",
+            name: "GPT-4o",
+            display_name: "GPT-4o",
+            description: "Fast, intelligent, flexible GPT model",
+            context_window: 128000,
+            max_tokens: 16384,
+            default_effort: null,
+          },
+          {
+            id: "gpt-4o-mini",
+            name: "GPT-4o mini",
+            display_name: "GPT-4o mini",
+            description: "Fast, affordable small model for focused tasks",
+            context_window: 128000,
+            max_tokens: 16384,
+            default_effort: null,
+          },
+          {
+            id: "chatgpt-4o-latest",
+            name: "ChatGPT-4o",
+            display_name: "ChatGPT-4o",
+            description: "GPT-4o model used in ChatGPT",
+            context_window: 128000,
+            max_tokens: 16384,
+            default_effort: null,
+          },
           // agy / agy-fast / gemini-* are deliberately not advertised: this proxy
           // has no AGY backend and would silently answer with Claude or GPT.
           // Real AGY runs locally through agybridge (setup/agy-setup.sh). The
@@ -526,60 +1601,151 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           // native AGY provider to agentlb keeps working.
         ];
         const defaultReasoningLevels = [
-          { effort: 'low', description: 'Fast responses with lighter reasoning' },
-          { effort: 'medium', description: 'Balances speed with reasoning' },
-          { effort: 'high', description: 'Deeper reasoning for complex problems' },
-          { effort: 'xhigh', description: 'Maximum reasoning effort' }
+          {
+            effort: "low",
+            description: "Fast responses with lighter reasoning",
+          },
+          { effort: "medium", description: "Balances speed with reasoning" },
+          {
+            effort: "high",
+            description: "Deeper reasoning for complex problems",
+          },
+          { effort: "xhigh", description: "Maximum reasoning effort" },
+          {
+            effort: "max",
+            description: "Highest reasoning effort for the hardest problems",
+          },
         ];
-        const modelsList = rawModelsList.map(m => ({
-          id: m.id,
-          object: 'model',
-          type: 'model',
-          name: m.name,
-          display_name: m.display_name,
-          slug: m.id,
-          description: m.name,
-          default_reasoning_level: 'medium',
-          supported_reasoning_levels: defaultReasoningLevels,
-          shell_type: 'unified_exec',
-          visibility: 'list',
-          supported_in_api: true
-        }));
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          object: 'list',
-          data: modelsList,
-          models: modelsList,
-          has_more: false
-        }));
+        const modelsList = rawModelsList.map((m) => {
+          const maxInput = m.max_input_tokens || m.context_window || 1000000;
+          const maxOutput = m.max_tokens || m.max_output_tokens || 128000;
+          return {
+            id: m.id,
+            object: "model",
+            type: "model",
+            name: m.name,
+            display_name: m.display_name || m.name,
+            slug: m.id,
+            description: m.description || m.name,
+            context_window: m.context_window || maxInput,
+            max_input_tokens: m.max_input_tokens || m.context_window || 1000000,
+            max_tokens: maxOutput,
+            max_output_tokens: maxOutput,
+            default_reasoning_level:
+              m.default_effort !== undefined ? m.default_effort : "medium",
+            supported_reasoning_levels:
+              m.supported_reasoning_levels ||
+              (m.default_effort === null ? [] : defaultReasoningLevels),
+            latency: m.latency || null,
+            reliable_knowledge_cutoff: m.reliable_knowledge_cutoff || null,
+            pricing: m.pricing || null,
+            shell_type: "unified_exec",
+            visibility: "list",
+            supported_in_api: true,
+            capabilities: {
+              batch: { supported: m.batch_max_output_tokens !== "unsupported" },
+              citations: { supported: true },
+              code_execution: { supported: true },
+              context_management: {
+                supported: true,
+                compact_20260112: { supported: true },
+                clear_thinking_20251015: { supported: true },
+              },
+              effort: {
+                supported: m.default_effort !== null,
+                low: { supported: true },
+                medium: { supported: true },
+                high: { supported: true },
+                xhigh: { supported: true },
+                max: { supported: true },
+              },
+              image_input: { supported: true },
+              pdf_input: { supported: true },
+              structured_outputs: { supported: true },
+              thinking: {
+                supported: !(
+                  m.thinking &&
+                  m.thinking.adaptive === "no" &&
+                  m.thinking.extended === "no"
+                ),
+                types: {
+                  adaptive: {
+                    supported: !(m.thinking && m.thinking.adaptive === "no"),
+                  },
+                  extended: {
+                    supported: !!(m.thinking && m.thinking.extended === "yes"),
+                  },
+                },
+              },
+            },
+          };
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            object: "list",
+            data: modelsList,
+            models: modelsList,
+            has_more: false,
+          }),
+        );
         return;
       }
 
-      if (req.method === 'GET' && normApiPath === '/alerts') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ alerts: metricsFor(config).alerts() })); return;
+      if (req.method === "GET" && normApiPath === "/alerts") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ alerts: metricsFor(config).alerts() }));
+        return;
       }
-      if (req.method === 'GET' && normApiPath === '/metrics') {
-        res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4' });
-        res.end(metricsFor(config).render()); return;
+      if (req.method === "GET" && normApiPath === "/metrics") {
+        res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4" });
+        res.end(metricsFor(config).render());
+        return;
       }
       // Ready endpoint (liveness & drain readiness probe)
-      if (req.method === 'GET' && (normApiPath === '/ready' || normApiPath === '/api/ready' || req.url === '/ready')) {
+      if (
+        req.method === "GET" &&
+        (normApiPath === "/ready" ||
+          normApiPath === "/api/ready" ||
+          req.url === "/ready")
+      ) {
         if (drainState.isDraining) {
-          res.writeHead(503, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, ready: false, draining: true, activeRequests: drainState.activeRequests }));
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              ready: false,
+              draining: true,
+              activeRequests: drainState.activeRequests,
+            }),
+          );
           return;
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, ready: true, draining: false, activeRequests: drainState.activeRequests }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            ready: true,
+            draining: false,
+            activeRequests: drainState.activeRequests,
+          }),
+        );
         return;
       }
 
       // Status endpoint
-      if (req.method === 'GET' && (req.url === '/agent-lb/status' || req.url === '/claude-lb/status' || req.url === '/status' || req.url === '/api/status')) {
-        const status = accountManager.getStatus({ sessionDetail: config.proxy?.sessionDetail === true });
+      if (
+        req.method === "GET" &&
+        (req.url === "/agent-lb/status" ||
+          req.url === "/claude-lb/status" ||
+          req.url === "/status" ||
+          req.url === "/api/status")
+      ) {
+        const status = accountManager.getStatus({
+          sessionDetail: config.proxy?.sessionDetail === true,
+        });
         const extra = hooks.getStatusExtra?.() || {};
-        const clientKeys = (config.proxy?.clientKeys || []).map(k => ({
+        const clientKeys = (config.proxy?.clientKeys || []).map((k) => ({
           name: k.name,
           // Never include the credential itself in a status snapshot.  The
           // administrator-only key-management endpoint returns the same
@@ -588,76 +1754,136 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           key: maskSecret(k.key),
           created: k.created || null,
         }));
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { "Content-Type": "application/json" });
         // Counters only: how full the upstream admission gate is (see
         // upstream-fetch.js), never which origins or requests.
-        res.end(JSON.stringify({ ...extra, ...status, clientKeys, draining: drainState.isDraining, activeRequests: drainState.activeRequests, upstreamPool: upstreamPoolStatus(), autoHealthCheck: healthChecker.getStatus() }, null, 2));
+        res.end(
+          JSON.stringify(
+            {
+              ...extra,
+              ...status,
+              clientKeys,
+              draining: drainState.isDraining,
+              activeRequests: drainState.activeRequests,
+              upstreamPool: upstreamPoolStatus(),
+              autoHealthCheck: healthChecker.getStatus(),
+            },
+            null,
+            2,
+          ),
+        );
         return;
       }
 
       // Tier-weighted fleet quota for lightweight consumers such as a shell or
       // Claude Code status line. Unlike /agentlb/status this omits routing,
       // usage counters and server diagnostics, and never reaches upstream.
-      if (req.method === 'GET' && (req.url === '/agent-lb/quota' || req.url === '/claude-lb/quota' || req.url === '/quota' || req.url === '/api/quota')) {
+      if (
+        req.method === "GET" &&
+        (req.url === "/agent-lb/quota" ||
+          req.url === "/claude-lb/quota" ||
+          req.url === "/quota" ||
+          req.url === "/api/quota")
+      ) {
         const extra = hooks.getQuotaExtra?.() || {};
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ...accountManager.getQuotaSummary(), ...extra }, null, 2));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify(
+            { ...accountManager.getQuotaSummary(), ...extra },
+            null,
+            2,
+          ),
+        );
         return;
       }
 
       // Reload endpoint — re-sync accounts from config without a restart. This
       // is the headless equivalent of pressing 'R' in the TUI. Local control
       // only (no upstream calls); the auth gate above already applies.
-      if (req.method === 'POST' && (req.url === '/agent-lb/reload' || req.url === '/claude-lb/reload' || req.url === '/reload' || req.url === '/api/reload')) {
+      if (
+        req.method === "POST" &&
+        (req.url === "/agent-lb/reload" ||
+          req.url === "/claude-lb/reload" ||
+          req.url === "/reload" ||
+          req.url === "/api/reload")
+      ) {
         if (!hooks.reload) {
-          res.writeHead(501, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'reload not supported' }));
+          res.writeHead(501, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "reload not supported" }));
           return;
         }
         try {
           const added = await hooks.reload();
-          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true, added: added || 0 }));
         } catch (err) {
           // The reason belongs in the log, not the reply: a reload failure
           // names config paths and account details, and this endpoint is
           // reachable by anyone holding a client key.
-          console.error('[AgentLB] Reload failed:', err.message);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'reload failed; see the proxy log' }));
+          console.error("[AgentLB] Reload failed:", err.message);
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: "reload failed; see the proxy log",
+            }),
+          );
         }
         return;
       }
 
       // Probe endpoint — force a fleet-wide quota and spend probe on demand.
-      if (req.method === 'POST' && (req.url === '/agent-lb/probe' || req.url === '/agent-lb/api/probe' || req.url === '/claude-lb/probe' || req.url === '/claude-lb/api/probe' || req.url === '/probe' || req.url === '/api/probe')) {
+      if (
+        req.method === "POST" &&
+        (req.url === "/agent-lb/probe" ||
+          req.url === "/agent-lb/api/probe" ||
+          req.url === "/claude-lb/probe" ||
+          req.url === "/claude-lb/api/probe" ||
+          req.url === "/probe" ||
+          req.url === "/api/probe")
+      ) {
         if (!hooks.probeQuota) {
-          res.writeHead(501, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'probe not supported' }));
+          res.writeHead(501, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "probe not supported" }));
           return;
         }
         try {
           await hooks.probeQuota();
-          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true }));
         } catch (err) {
-          console.error('[AgentLB] Probe failed:', err.message);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'probe failed; see the proxy log' }));
+          console.error("[AgentLB] Probe failed:", err.message);
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: "probe failed; see the proxy log",
+            }),
+          );
         }
         return;
       }
 
       // Pull latest agent-lb code and scripts from GitHub repo
-      if (req.method === 'POST' && (req.url === '/agent-lb/api/setup/pull' || req.url === '/claude-lb/api/setup/pull' || req.url === '/api/setup/pull')) {
-        const { exec } = await import('node:child_process');
-        const repoDir = join(__dirname, '..');
-        exec('git pull', { cwd: repoDir }, (err, stdout, stderr) => {
+      if (
+        req.method === "POST" &&
+        (req.url === "/agent-lb/api/setup/pull" ||
+          req.url === "/claude-lb/api/setup/pull" ||
+          req.url === "/api/setup/pull")
+      ) {
+        const { exec } = await import("node:child_process");
+        const repoDir = join(__dirname, "..");
+        exec("git pull", { cwd: repoDir }, (err, stdout, stderr) => {
           if (err) {
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, error: (stderr || err.message).trim() }));
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: (stderr || err.message).trim(),
+              }),
+            );
           } else {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ ok: true, output: stdout.trim() }));
           }
         });
@@ -673,29 +1899,56 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // that it was recorded. Body:
       // {"account": "<name|email|accountUuid|accountUuid/orgUuid|orgUuid>"}.
       // Local control only (no upstream calls); the auth gate above applies.
-      if (req.method === 'POST' && (req.url === '/agent-lb/switch' || req.url === '/claude-lb/switch' || req.url === '/switch' || req.url === '/api/switch')) {
-        const names = () => (accountManager.accounts || []).map(a => a.name);
+      if (
+        req.method === "POST" &&
+        (req.url === "/agent-lb/switch" ||
+          req.url === "/claude-lb/switch" ||
+          req.url === "/switch" ||
+          req.url === "/api/switch")
+      ) {
+        const names = () => (accountManager.accounts || []).map((a) => a.name);
         let target;
         try {
           const raw = await readControlBody(req);
-          target = JSON.parse(raw || '{}')?.account;
+          target = JSON.parse(raw || "{}")?.account;
         } catch (err) {
           // Say which of the two it was, but never echo the parser's own message
           // back to a caller — that is our internals, not their input.
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
-        if (typeof target !== 'string' || !target.trim()) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'missing "account"', accounts: names() }));
+        if (typeof target !== "string" || !target.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: 'missing "account"',
+              accounts: names(),
+            }),
+          );
           return;
         }
         const index = resolveAccountPin(accountManager, target);
         if (index == null) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"`, accounts: names() }));
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: `no such account "${target}"`,
+              accounts: names(),
+            }),
+          );
           return;
         }
 
@@ -704,15 +1957,22 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
         // Under list-order primacy, switching to an account sets it as #1 in its provider
         if (Array.isArray(accountManager.accounts)) {
-          const siblings = accountManager.accounts.filter(a => providerOf(a) === targetProv);
+          const siblings = accountManager.accounts.filter(
+            (a) => providerOf(a) === targetProv,
+          );
           siblings.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
-          const newOrder = [targetAcct.name, ...siblings.filter(a => a.name !== targetAcct.name).map(a => a.name)];
+          const newOrder = [
+            targetAcct.name,
+            ...siblings
+              .filter((a) => a.name !== targetAcct.name)
+              .map((a) => a.name),
+          ];
           newOrder.forEach((n, prio) => {
-            const acc = accountManager.accounts.find(a => a.name === n);
+            const acc = accountManager.accounts.find((a) => a.name === n);
             if (acc) acc.priority = prio;
           });
 
-          await atomicConfigUpdate(disk => {
+          await atomicConfigUpdate((disk) => {
             if (!disk.accounts) return;
             for (const dAcct of disk.accounts) {
               const idx = newOrder.indexOf(dAcct.name);
@@ -726,14 +1986,20 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
               const idx = newOrder.indexOf(cAcct.name);
               if (idx !== -1) cAcct.priority = idx;
             }
-            config.accounts.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+            config.accounts.sort(
+              (a, b) => (a.priority ?? 0) - (b.priority ?? 0),
+            );
           }
 
-          accountManager.accounts.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
-          accountManager.accounts.forEach((a, i) => { a.index = i; });
+          accountManager.accounts.sort(
+            (a, b) => (a.priority ?? 0) - (b.priority ?? 0),
+          );
+          accountManager.accounts.forEach((a, i) => {
+            a.index = i;
+          });
         }
 
-        if (typeof accountManager.selectActiveAccount === 'function') {
+        if (typeof accountManager.selectActiveAccount === "function") {
           accountManager.routeCursors?.clear();
           accountManager.providerCursors?.clear();
           accountManager.selectActiveAccount();
@@ -741,194 +2007,357 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           accountManager.setCurrentAccount(0);
         }
 
-        const newIdx = accountManager.accounts.findIndex(a => a.name === targetAcct.name);
+        const newIdx = accountManager.accounts.findIndex(
+          (a) => a.name === targetAcct.name,
+        );
         const effectiveIdx = newIdx !== -1 ? newIdx : index;
         const name = accountManager.accounts[effectiveIdx].name;
         const { eligible, reason } = accountManager.eligibility(effectiveIdx);
-        console.log(`[AgentLB] Switched to account "${name}" (promoted to #1 in list)`
-          + (eligible ? '' : ` — ${reason}, so rotation will not use it`));
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, account: name, eligible, ...(reason ? { reason } : {}) }));
+        console.log(
+          `[AgentLB] Switched to account "${name}" (promoted to #1 in list)` +
+            (eligible ? "" : ` — ${reason}, so rotation will not use it`),
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            account: name,
+            eligible,
+            ...(reason ? { reason } : {}),
+          }),
+        );
         return;
       }
 
       // Auth verification & session endpoints for dashboard
-      if (req.method === 'GET' && (normApiPath === '/api/auth/verify' || normApiPath === '/api/auth/session')) {
+      if (
+        req.method === "GET" &&
+        (normApiPath === "/api/auth/verify" ||
+          normApiPath === "/api/auth/session")
+      ) {
         const hasAdminKey = Boolean(config.proxy?.apiKey);
         if (!hasAdminKey) {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, authenticated: true, passwordRequired: false, role: 'admin' }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              authenticated: true,
+              passwordRequired: false,
+              role: "admin",
+            }),
+          );
           return;
         }
-        const isMaster = clientKey && safeKeyEqual(clientKey, config.proxy.apiKey);
-        const clientAuth = clientKey ? resolveClientAuth(config.proxy, clientKey) : null;
+        const isMaster =
+          clientKey && safeKeyEqual(clientKey, config.proxy.apiKey);
+        const clientAuth = clientKey
+          ? resolveClientAuth(config.proxy, clientKey)
+          : null;
         if (isMaster) {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            ok: true,
-            authenticated: true,
-            passwordRequired: true,
-            role: 'admin',
-            isPrimary: Boolean(isMaster),
-            clientName: clientAuth?.client || (isMaster ? 'admin' : null)
-          }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              authenticated: true,
+              passwordRequired: true,
+              role: "admin",
+              isPrimary: Boolean(isMaster),
+              clientName: clientAuth?.client || (isMaster ? "admin" : null),
+            }),
+          );
           return;
         }
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, authenticated: false, passwordRequired: true, error: 'Wymagana autoryzacja (podaj klucz administracyjny lub klucz stacji roboczej)' }));
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            authenticated: false,
+            passwordRequired: true,
+            error:
+              "Wymagana autoryzacja (podaj klucz administracyjny lub klucz stacji roboczej)",
+          }),
+        );
         return;
       }
 
-      if (req.method === 'POST' && normApiPath === '/api/auth/login') {
+      if (req.method === "POST" && normApiPath === "/api/auth/login") {
         let body = {};
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch {}
-        const candidate = (body.key || body.password || clientKey || '').trim();
+        const candidate = (body.key || body.password || clientKey || "").trim();
         const hasAdminKey = Boolean(config.proxy?.apiKey);
-        const isMaster = candidate && hasAdminKey && safeKeyEqual(candidate, config.proxy.apiKey);
-        const clientAuth = candidate ? resolveClientAuth(config.proxy, candidate) : null;
+        const isMaster =
+          candidate &&
+          hasAdminKey &&
+          safeKeyEqual(candidate, config.proxy.apiKey);
+        const clientAuth = candidate
+          ? resolveClientAuth(config.proxy, candidate)
+          : null;
         if (!hasAdminKey || isMaster) {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            ok: true,
-            authenticated: true,
-            role: 'admin',
-            isPrimary: Boolean(isMaster),
-            clientName: clientAuth?.client || (isMaster ? 'admin' : null)
-          }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              authenticated: true,
+              role: "admin",
+              isPrimary: Boolean(isMaster),
+              clientName: clientAuth?.client || (isMaster ? "admin" : null),
+            }),
+          );
           return;
         }
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, authenticated: false, error: 'Nieprawidłowe hasło lub klucz API' }));
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            authenticated: false,
+            error: "Nieprawidłowe hasło lub klucz API",
+          }),
+        );
         return;
       }
 
-      if (await handleClientKeys({ req, res, normApiPath, config, hooks, clientUsage })) return;
+      if (
+        await handleClientKeys({
+          req,
+          res,
+          normApiPath,
+          config,
+          hooks,
+          clientUsage,
+        })
+      )
+        return;
 
       // Accounts: Toggle disable/enable (POST /agentlb/api/accounts/toggle & POST /agentlb/accounts/toggle)
-      if (req.method === 'POST' && (normApiPath === '/api/accounts/toggle' || normApiPath === '/accounts/toggle')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/accounts/toggle" ||
+          normApiPath === "/accounts/toggle")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch (err) {
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
 
         const target = body?.id || body?.name || body?.account;
-        if (typeof target !== 'string' || !target.trim()) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'missing "id", "name" or "account"' }));
+        if (typeof target !== "string" || !target.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: 'missing "id", "name" or "account"',
+            }),
+          );
           return;
         }
 
         const index = resolveAccountPin(accountManager, target);
         if (index == null) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ ok: false, error: `no such account "${target}"` }),
+          );
           return;
         }
 
         const mgr = accountManager.accounts[index];
-        const newDisabled = typeof body.disabled === 'boolean' ? body.disabled : !mgr.disabled;
+        const newDisabled =
+          typeof body.disabled === "boolean" ? body.disabled : !mgr.disabled;
         accountManager.setDisabled(index, newDisabled);
 
-        await atomicConfigUpdate(disk => {
-          const dAcct = (disk.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === mgr.name);
+        await atomicConfigUpdate((disk) => {
+          const dAcct = (disk.accounts || []).find(
+            (a) =>
+              (mgr.id && a.id === mgr.id) ||
+              sameIdentity(a, mgr) ||
+              a.name === mgr.name,
+          );
           if (dAcct) {
             if (newDisabled) dAcct.disabled = true;
             else delete dAcct.disabled;
           }
         });
 
-        const cAcct = (config.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === mgr.name);
+        const cAcct = (config.accounts || []).find(
+          (a) =>
+            (mgr.id && a.id === mgr.id) ||
+            sameIdentity(a, mgr) ||
+            a.name === mgr.name,
+        );
         if (cAcct) {
           if (newDisabled) cAcct.disabled = true;
           else delete cAcct.disabled;
         }
 
-        console.log(`[AgentLB] Account "${mgr.name}" ${newDisabled ? 'disabled' : 'enabled'} (web control)`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, account: mgr.name, id: mgr.id, disabled: newDisabled }));
+        console.log(
+          `[AgentLB] Account "${mgr.name}" ${newDisabled ? "disabled" : "enabled"} (web control)`,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            account: mgr.name,
+            id: mgr.id,
+            disabled: newDisabled,
+          }),
+        );
         return;
       }
 
       // Accounts: Set priority
-      if (req.method === 'POST' && (normApiPath === '/api/accounts/priority' || normApiPath === '/accounts/priority')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/accounts/priority" ||
+          normApiPath === "/accounts/priority")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch (err) {
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
 
         const target = body?.account || body?.id || body?.name;
         const prio = parseInt(body?.priority, 10);
-        if (typeof target !== 'string' || !target.trim() || isNaN(prio)) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'missing "account" or invalid "priority" (must be an integer)' }));
+        if (typeof target !== "string" || !target.trim() || isNaN(prio)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error:
+                'missing "account" or invalid "priority" (must be an integer)',
+            }),
+          );
           return;
         }
 
         const index = resolveAccountPin(accountManager, target);
         if (index == null) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ ok: false, error: `no such account "${target}"` }),
+          );
           return;
         }
 
         const mgr = accountManager.accounts[index];
         mgr.priority = prio;
 
-        await atomicConfigUpdate(disk => {
-          const dAcct = (disk.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === mgr.name);
+        await atomicConfigUpdate((disk) => {
+          const dAcct = (disk.accounts || []).find(
+            (a) =>
+              (mgr.id && a.id === mgr.id) ||
+              sameIdentity(a, mgr) ||
+              a.name === mgr.name,
+          );
           if (dAcct) dAcct.priority = prio;
         });
 
-        const cAcct = (config.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === mgr.name);
+        const cAcct = (config.accounts || []).find(
+          (a) =>
+            (mgr.id && a.id === mgr.id) ||
+            sameIdentity(a, mgr) ||
+            a.name === mgr.name,
+        );
         if (cAcct) cAcct.priority = prio;
 
-        console.log(`[AgentLB] Set priority of "${mgr.name}" to ${prio} (web control)`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, account: mgr.name, id: mgr.id, priority: prio }));
+        console.log(
+          `[AgentLB] Set priority of "${mgr.name}" to ${prio} (web control)`,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            account: mgr.name,
+            id: mgr.id,
+            priority: prio,
+          }),
+        );
         return;
       }
 
       // Accounts: Rename (POST /agentlb/api/accounts/rename & POST /api/accounts/rename & POST /accounts/rename)
-      if (req.method === 'POST' && (normApiPath === '/api/accounts/rename' || normApiPath === '/accounts/rename')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/accounts/rename" ||
+          normApiPath === "/accounts/rename")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch (err) {
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
 
         const target = body?.oldName || body?.account || body?.id;
-        const newName = typeof body?.newName === 'string' ? body.newName.trim() : (typeof body?.name === 'string' ? body.name.trim() : '');
+        const newName =
+          typeof body?.newName === "string"
+            ? body.newName.trim()
+            : typeof body?.name === "string"
+              ? body.name.trim()
+              : "";
 
-        if (typeof target !== 'string' || !target.trim() || !newName) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'missing "account" (or "oldName") or "newName"' }));
+        if (typeof target !== "string" || !target.trim() || !newName) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: 'missing "account" (or "oldName") or "newName"',
+            }),
+          );
           return;
         }
 
         const index = resolveAccountPin(accountManager, target);
         if (index == null) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ ok: false, error: `no such account "${target}"` }),
+          );
           return;
         }
 
@@ -936,57 +2365,96 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         const oldName = mgr.name;
 
         if (oldName === newName) {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, oldName, newName, unchanged: true }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ ok: true, oldName, newName, unchanged: true }),
+          );
           return;
         }
 
-        const duplicate = accountManager.accounts.find(a => a.name.toLowerCase() === newName.toLowerCase() && a !== mgr);
+        const duplicate = accountManager.accounts.find(
+          (a) => a.name.toLowerCase() === newName.toLowerCase() && a !== mgr,
+        );
         if (duplicate) {
-          res.writeHead(409, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: `account with name "${newName}" already exists` }));
+          res.writeHead(409, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: `account with name "${newName}" already exists`,
+            }),
+          );
           return;
         }
 
         mgr.name = newName;
 
-        await atomicConfigUpdate(disk => {
-          const dAcct = (disk.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === oldName);
+        await atomicConfigUpdate((disk) => {
+          const dAcct = (disk.accounts || []).find(
+            (a) =>
+              (mgr.id && a.id === mgr.id) ||
+              sameIdentity(a, mgr) ||
+              a.name === oldName,
+          );
           if (dAcct) dAcct.name = newName;
         });
 
-        const cAcct = (config.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === oldName);
+        const cAcct = (config.accounts || []).find(
+          (a) =>
+            (mgr.id && a.id === mgr.id) ||
+            sameIdentity(a, mgr) ||
+            a.name === oldName,
+        );
         if (cAcct) cAcct.name = newName;
 
-        console.log(`[Agent-LB] Renamed account "${oldName}" to "${newName}" (web control)`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        console.log(
+          `[Agent-LB] Renamed account "${oldName}" to "${newName}" (web control)`,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, oldName, newName }));
         return;
       }
 
       // Accounts: Reorder and assign priorities (POST /api/accounts/reorder & POST /accounts/reorder)
-      if (req.method === 'POST' && (normApiPath === '/api/accounts/reorder' || normApiPath === '/accounts/reorder')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/accounts/reorder" ||
+          normApiPath === "/accounts/reorder")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch (err) {
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
 
         const order = Array.isArray(body?.order) ? body.order : null;
         if (!order || !order.length) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'missing "order" array of account names' }));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: 'missing "order" array of account names',
+            }),
+          );
           return;
         }
 
         const nameToPrio = new Map();
         order.forEach((name, idx) => {
-          if (typeof name === 'string' && name.trim()) {
+          if (typeof name === "string" && name.trim()) {
             nameToPrio.set(name.trim(), idx);
           }
         });
@@ -999,7 +2467,7 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
 
         // Update disk config atomically
-        await atomicConfigUpdate(disk => {
+        await atomicConfigUpdate((disk) => {
           if (!disk.accounts) return;
           for (const dAcct of disk.accounts) {
             if (nameToPrio.has(dAcct.name)) {
@@ -1020,45 +2488,76 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
 
         if (Array.isArray(accountManager.accounts)) {
-          accountManager.accounts.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
-          accountManager.accounts.forEach((a, i) => { a.index = i; });
+          accountManager.accounts.sort(
+            (a, b) => (a.priority ?? 0) - (b.priority ?? 0),
+          );
+          accountManager.accounts.forEach((a, i) => {
+            a.index = i;
+          });
         }
-        if (typeof accountManager.selectActiveAccount === 'function') {
+        if (typeof accountManager.selectActiveAccount === "function") {
           accountManager.routeCursors?.clear();
           accountManager.providerCursors?.clear();
           accountManager.selectActiveAccount();
         }
 
-        console.log(`[Agent-LB] Reordered ${nameToPrio.size} accounts (web control)`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, reordered: Array.from(nameToPrio.keys()) }));
+        console.log(
+          `[Agent-LB] Reordered ${nameToPrio.size} accounts (web control)`,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            reordered: Array.from(nameToPrio.keys()),
+          }),
+        );
         return;
       }
 
       // Accounts: Remove (POST /agentlb/api/accounts/remove & POST /agentlb/accounts/remove)
-      if (req.method === 'POST' && (normApiPath === '/api/accounts/remove' || normApiPath === '/accounts/remove')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/accounts/remove" ||
+          normApiPath === "/accounts/remove")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch (err) {
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
 
         const target = body?.id || body?.name || body?.account;
-        if (typeof target !== 'string' || !target.trim()) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'missing "id", "name" or "account"' }));
+        if (typeof target !== "string" || !target.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: 'missing "id", "name" or "account"',
+            }),
+          );
           return;
         }
 
         const index = resolveAccountPin(accountManager, target);
         if (index == null) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ ok: false, error: `no such account "${target}"` }),
+          );
           return;
         }
 
@@ -1068,53 +2567,70 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
         accountManager.removeAccount(index);
 
-        await atomicConfigUpdate(disk => {
-          disk.accounts = (disk.accounts || []).filter(a => {
+        await atomicConfigUpdate((disk) => {
+          disk.accounts = (disk.accounts || []).filter((a) => {
             if (id && a.id) return a.id !== id;
-            if (mgr.accountUuid && a.accountUuid) return a.accountUuid !== mgr.accountUuid;
+            if (mgr.accountUuid && a.accountUuid)
+              return a.accountUuid !== mgr.accountUuid;
             return a.name !== name;
           });
         });
 
         if (Array.isArray(config.accounts)) {
-          config.accounts = config.accounts.filter(a => {
+          config.accounts = config.accounts.filter((a) => {
             if (id && a.id) return a.id !== id;
-            if (mgr.accountUuid && a.accountUuid) return a.accountUuid !== mgr.accountUuid;
+            if (mgr.accountUuid && a.accountUuid)
+              return a.accountUuid !== mgr.accountUuid;
             return a.name !== name;
           });
         }
 
         if (hooks.reload) await hooks.reload();
         console.log(`[AgentLB] Removed account "${name}" (web control)`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, account: name, id }));
         return;
       }
 
       // Accounts: Probe single account (POST /api/accounts/probe-single & POST /accounts/probe-single)
-      if (req.method === 'POST' && (normApiPath === '/api/accounts/probe-single' || normApiPath === '/accounts/probe-single')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/accounts/probe-single" ||
+          normApiPath === "/accounts/probe-single")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch (err) {
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
 
         const target = body?.account || body?.id || body?.name;
-        if (typeof target !== 'string' || !target.trim()) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
+        if (typeof target !== "string" || !target.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: false, error: 'missing "account"' }));
           return;
         }
 
         const index = resolveAccountPin(accountManager, target);
         if (index == null) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ ok: false, error: `no such account "${target}"` }),
+          );
           return;
         }
 
@@ -1124,155 +2640,267 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         } else if (hooks.probeQuota) {
           await hooks.probeQuota();
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { "Content-Type": "application/json" });
 
-        res.end(JSON.stringify({ ok: true, account: mgr.name, quota: mgr.quota }));
+        res.end(
+          JSON.stringify({ ok: true, account: mgr.name, quota: mgr.quota }),
+        );
         return;
       }
 
       // Accounts: Usage breakdown (GET /api/accounts/usage & GET /agentlb/api/accounts/usage)
-      if (req.method === 'GET' && (normApiPath === '/api/accounts/usage' || normApiPath === '/accounts/usage')) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, ...accountManager.getUsageBreakdown() }));
+      if (
+        req.method === "GET" &&
+        (normApiPath === "/api/accounts/usage" ||
+          normApiPath === "/accounts/usage")
+      ) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({ ok: true, ...accountManager.getUsageBreakdown() }),
+        );
         return;
       }
 
       // Accounts: Reset usage (POST /api/accounts/usage/reset & POST /agentlb/api/accounts/usage/reset)
-      if (req.method === 'POST' && (normApiPath === '/api/accounts/usage/reset' || normApiPath === '/accounts/usage/reset')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/accounts/usage/reset" ||
+          normApiPath === "/accounts/usage/reset")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
-        } catch { body = {}; }
+          body = JSON.parse(raw || "{}");
+        } catch {
+          body = {};
+        }
         const target = body?.account || body?.name || null;
         accountManager.resetUsage(target);
         hooks.saveState?.();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, message: 'Statystyki zużycia zostały zresetowane.' }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            message: "Statystyki zużycia zostały zresetowane.",
+          }),
+        );
         return;
       }
 
       // Accounts: Consume reset credit (POST /api/accounts/consume-reset-credit & POST /accounts/consume-reset-credit)
-      if (req.method === 'POST' && (normApiPath === '/api/accounts/consume-reset-credit' || normApiPath === '/accounts/consume-reset-credit')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/accounts/consume-reset-credit" ||
+          normApiPath === "/accounts/consume-reset-credit")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch (err) {
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
 
         const target = body?.account || body?.id || body?.name;
-        if (typeof target !== 'string' || !target.trim()) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
+        if (typeof target !== "string" || !target.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: false, error: 'missing "account"' }));
           return;
         }
 
         const index = resolveAccountPin(accountManager, target);
         if (index == null) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ ok: false, error: `no such account "${target}"` }),
+          );
           return;
         }
 
-        const result = await accountManager.consumeResetCredit(index, body.credit_id);
+        const result = await accountManager.consumeResetCredit(
+          index,
+          body.credit_id,
+        );
         if (!result.ok) {
-          res.writeHead(result.status || 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: result.error || 'Nie udało się zużyć kredytu resetu' }));
+          res.writeHead(result.status || 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: result.error || "Nie udało się zużyć kredytu resetu",
+            }),
+          );
           return;
         }
 
-        console.log(`[AgentLB] Consumed reset credit for account "${accountManager.accounts[index].name}"`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, account: accountManager.accounts[index].name, result }));
+        console.log(
+          `[AgentLB] Consumed reset credit for account "${accountManager.accounts[index].name}"`,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            account: accountManager.accounts[index].name,
+            result,
+          }),
+        );
         return;
       }
 
       // Accounts: Set routing policy (POST /api/accounts/policy & POST /accounts/policy)
-      if (req.method === 'POST' && (normApiPath === '/api/accounts/policy' || normApiPath === '/accounts/policy')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/accounts/policy" ||
+          normApiPath === "/accounts/policy")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch (err) {
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
 
         const target = body?.account || body?.id || body?.name;
-        const policy = body?.policy === 'burn-first' ? 'burn-first' : 'normal';
-        if (typeof target !== 'string' || !target.trim()) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
+        const policy = body?.policy === "burn-first" ? "burn-first" : "normal";
+        if (typeof target !== "string" || !target.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: false, error: 'missing "account"' }));
           return;
         }
 
         const index = resolveAccountPin(accountManager, target);
         if (index == null) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ ok: false, error: `no such account "${target}"` }),
+          );
           return;
         }
 
         const mgr = accountManager.accounts[index];
         accountManager.setRoutingPolicy(index, policy);
 
-        await atomicConfigUpdate(disk => {
-          const dAcct = (disk.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === mgr.name);
+        await atomicConfigUpdate((disk) => {
+          const dAcct = (disk.accounts || []).find(
+            (a) =>
+              (mgr.id && a.id === mgr.id) ||
+              sameIdentity(a, mgr) ||
+              a.name === mgr.name,
+          );
           if (dAcct) {
             dAcct.routingPolicy = policy;
           }
         });
 
-        const cAcct = (config.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === mgr.name);
+        const cAcct = (config.accounts || []).find(
+          (a) =>
+            (mgr.id && a.id === mgr.id) ||
+            sameIdentity(a, mgr) ||
+            a.name === mgr.name,
+        );
         if (cAcct) {
           cAcct.routingPolicy = policy;
         }
 
-        console.log(`[AgentLB] Account "${mgr.name}" routing policy set to "${policy}" (web control)`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, account: mgr.name, routingPolicy: policy }));
+        console.log(
+          `[AgentLB] Account "${mgr.name}" routing policy set to "${policy}" (web control)`,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            account: mgr.name,
+            routingPolicy: policy,
+          }),
+        );
         return;
       }
 
       // Fleet Policy: Routing & Sessions Configuration (GET & POST /api/routing)
-      if (req.method === 'GET' && (normApiPath === '/api/routing' || normApiPath === '/routing')) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          ok: true,
-          distributeSessions: accountManager.distributionMode,
-          distributeSessionsEnabled: accountManager.distributeSessions,
-          expiryRouting: accountManager.expiryRouting,
-          crossProviderFallback: accountManager.crossProviderFallback,
-        }));
+      if (
+        req.method === "GET" &&
+        (normApiPath === "/api/routing" || normApiPath === "/routing")
+      ) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            distributeSessions: accountManager.distributionMode,
+            distributeSessionsEnabled: accountManager.distributeSessions,
+            expiryRouting: accountManager.expiryRouting,
+            crossProviderFallback: accountManager.crossProviderFallback,
+          }),
+        );
         return;
       }
 
-      if (req.method === 'POST' && (normApiPath === '/api/routing' || normApiPath === '/routing')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/routing" || normApiPath === "/routing")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch (err) {
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
 
         if (body?.resetDefaults) {
-          body.distributeSessions = 'adaptive';
+          body.distributeSessions = "adaptive";
           body.expiryRouting = { enabled: true, tolerance: 1.5, preempt: true };
           body.crossProviderFallback = true;
           if (healthChecker) {
-            healthChecker.reschedule({ enabled: true, intervalMs: 900000, trafficGracePeriodMs: 900000, errorBackoffMs: 3600000 });
-            config.autoHealthCheck = { enabled: true, intervalSeconds: 900, trafficGracePeriodSeconds: 900, errorBackoffSeconds: 3600 };
+            healthChecker.reschedule({
+              enabled: true,
+              intervalMs: 900000,
+              trafficGracePeriodMs: 900000,
+              errorBackoffMs: 3600000,
+            });
+            config.autoHealthCheck = {
+              enabled: true,
+              intervalSeconds: 900,
+              trafficGracePeriodSeconds: 900,
+              errorBackoffSeconds: 3600,
+            };
           }
         }
 
@@ -1289,83 +2917,148 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           config.crossProviderFallback = !!body.crossProviderFallback;
         }
 
-        await atomicConfigUpdate(disk => {
-          if (body?.distributeSessions !== undefined) disk.distributeSessions = body.distributeSessions;
-          if (body?.expiryRouting !== undefined) disk.expiryRouting = body.expiryRouting;
-          if (body?.crossProviderFallback !== undefined) disk.crossProviderFallback = body.crossProviderFallback;
+        await atomicConfigUpdate((disk) => {
+          if (body?.distributeSessions !== undefined)
+            disk.distributeSessions = body.distributeSessions;
+          if (body?.expiryRouting !== undefined)
+            disk.expiryRouting = body.expiryRouting;
+          if (body?.crossProviderFallback !== undefined)
+            disk.crossProviderFallback = body.crossProviderFallback;
           if (body?.resetDefaults) {
-            disk.autoHealthCheck = { enabled: true, intervalSeconds: 900, trafficGracePeriodSeconds: 900, errorBackoffSeconds: 3600 };
+            disk.autoHealthCheck = {
+              enabled: true,
+              intervalSeconds: 900,
+              trafficGracePeriodSeconds: 900,
+              errorBackoffSeconds: 3600,
+            };
           }
         });
 
-        console.log(`[Agent-LB] Fleet routing policy updated: distributeSessions=${accountManager.distributionMode}, expiryRouting=${accountManager.expiryRouting?.enabled}, fallback=${accountManager.crossProviderFallback}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          ok: true,
-          distributeSessions: accountManager.distributionMode,
-          distributeSessionsEnabled: accountManager.distributeSessions,
-          expiryRouting: accountManager.expiryRouting,
-          crossProviderFallback: accountManager.crossProviderFallback,
-          autoHealthCheck: healthChecker ? healthChecker.getStatus() : undefined,
-        }));
+        console.log(
+          `[Agent-LB] Fleet routing policy updated: distributeSessions=${accountManager.distributionMode}, expiryRouting=${accountManager.expiryRouting?.enabled}, fallback=${accountManager.crossProviderFallback}`,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            distributeSessions: accountManager.distributionMode,
+            distributeSessionsEnabled: accountManager.distributeSessions,
+            expiryRouting: accountManager.expiryRouting,
+            crossProviderFallback: accountManager.crossProviderFallback,
+            autoHealthCheck: healthChecker
+              ? healthChecker.getStatus()
+              : undefined,
+          }),
+        );
         return;
       }
 
       // Drain control endpoints (POST /api/drain, POST /api/drain/cancel, GET /api/drain/status)
-      if (req.method === 'POST' && (normApiPath === '/api/drain' || normApiPath === '/drain')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/drain" || normApiPath === "/drain")
+      ) {
         drainState.isDraining = true;
         drainState.drainStartedAt = Date.now();
         accountManager.setDistributeSessions(false, { drain: true });
-        console.log(`[Agent-LB] Drain initiated (web control). Active requests: ${drainState.activeRequests}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, draining: true, activeRequests: drainState.activeRequests, startedAt: drainState.drainStartedAt }));
+        console.log(
+          `[Agent-LB] Drain initiated (web control). Active requests: ${drainState.activeRequests}`,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            draining: true,
+            activeRequests: drainState.activeRequests,
+            startedAt: drainState.drainStartedAt,
+          }),
+        );
         return;
       }
 
-      if (req.method === 'POST' && (normApiPath === '/api/drain/cancel' || normApiPath === '/drain/cancel')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/drain/cancel" || normApiPath === "/drain/cancel")
+      ) {
         drainState.isDraining = false;
         drainState.drainStartedAt = null;
-        accountManager.setDistributeSessions(config.distributeSessions || 'adaptive', { drain: false });
-        console.log(`[Agent-LB] Drain cancelled (web control). Active requests: ${drainState.activeRequests}`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, draining: false, activeRequests: drainState.activeRequests }));
+        accountManager.setDistributeSessions(
+          config.distributeSessions || "adaptive",
+          { drain: false },
+        );
+        console.log(
+          `[Agent-LB] Drain cancelled (web control). Active requests: ${drainState.activeRequests}`,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            draining: false,
+            activeRequests: drainState.activeRequests,
+          }),
+        );
         return;
       }
 
-      if (req.method === 'GET' && (normApiPath === '/api/drain/status' || normApiPath === '/drain/status')) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, draining: drainState.isDraining, activeRequests: drainState.activeRequests, startedAt: drainState.drainStartedAt }));
+      if (
+        req.method === "GET" &&
+        (normApiPath === "/api/drain/status" || normApiPath === "/drain/status")
+      ) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            draining: drainState.isDraining,
+            activeRequests: drainState.activeRequests,
+            startedAt: drainState.drainStartedAt,
+          }),
+        );
         return;
       }
 
       // System Reboot / Restart endpoint (POST /api/system/reboot, POST /api/system/restart, POST /api/reboot)
-      if (req.method === 'POST' && (
-        normApiPath === '/api/system/reboot' ||
-        normApiPath === '/api/system/restart' ||
-        normApiPath === '/api/reboot' ||
-        normApiPath === '/api/restart' ||
-        normApiPath === '/reboot' ||
-        normApiPath === '/restart'
-      )) {
-        console.log('[AgentLB] Server reboot requested by authorized client');
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, message: 'Server reboot initiated. Restarting process...' }));
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/system/reboot" ||
+          normApiPath === "/api/system/restart" ||
+          normApiPath === "/api/reboot" ||
+          normApiPath === "/api/restart" ||
+          normApiPath === "/reboot" ||
+          normApiPath === "/restart")
+      ) {
+        console.log("[AgentLB] Server reboot requested by authorized client");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            message: "Server reboot initiated. Restarting process...",
+          }),
+        );
 
         if (hooks.reboot) {
-          try { hooks.reboot(); } catch (err) { console.error('[AgentLB] hooks.reboot failed:', err.message); }
+          try {
+            hooks.reboot();
+          } catch (err) {
+            console.error("[AgentLB] hooks.reboot failed:", err.message);
+          }
           return;
         }
 
         setTimeout(async () => {
           try {
-            const { exec } = await import('node:child_process');
-            exec('systemctl --user restart agentlb.service', (err) => {
+            const { exec } = await import("node:child_process");
+            exec("systemctl --user restart agentlb.service", (err) => {
               if (err) {
-                console.log('[AgentLB] systemctl restart error or not running under systemd, exiting process directly:', err.message);
+                console.log(
+                  "[AgentLB] systemctl restart error or not running under systemd, exiting process directly:",
+                  err.message,
+                );
                 process.exit(0);
               }
             });
-            setTimeout(() => { process.exit(0); }, 2500);
+            setTimeout(() => {
+              process.exit(0);
+            }, 2500);
           } catch {
             process.exit(0);
           }
@@ -1374,60 +3067,104 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       }
 
       // Test Chat Endpoint (POST /api/test/chat & POST /api/chat/test)
-      if (req.method === 'POST' && (normApiPath === '/api/test/chat' || normApiPath === '/api/chat/test')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/test/chat" || normApiPath === "/api/chat/test")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch (err) {
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
 
-        let provider = (body?.provider || 'anthropic').toLowerCase();
-        if (provider === 'claude') provider = 'anthropic';
-        if (provider === 'openai') provider = 'codex';
-        const model = typeof body?.model === 'string' && body.model.trim() ? body.model.trim() : (provider === 'codex' ? 'gpt-5.6-sol' : 'claude-haiku-4-5-20251001');
-        const message = typeof body?.message === 'string' && body.message.trim() ? body.message.trim() : 'Test połączenia z Agent-LB. Odpowiedz krótko w jednym zdaniu kim jesteś.';
-        const targetAccount = typeof body?.account === 'string' && body.account.trim() ? body.account.trim() : null;
+        let provider = (body?.provider || "anthropic").toLowerCase();
+        if (provider === "claude") provider = "anthropic";
+        if (provider === "openai") provider = "codex";
+        const model =
+          typeof body?.model === "string" && body.model.trim()
+            ? body.model.trim()
+            : provider === "codex"
+              ? "gpt-5.6-sol"
+              : "claude-haiku-4-5-20251001";
+        const message =
+          typeof body?.message === "string" && body.message.trim()
+            ? body.message.trim()
+            : "Test połączenia z Agent-LB. Odpowiedz krótko w jednym zdaniu kim jesteś.";
+        const targetAccount =
+          typeof body?.account === "string" && body.account.trim()
+            ? body.account.trim()
+            : null;
 
         // Build list of candidate accounts to try
         let candidates = [];
         if (targetAccount) {
-          const acc = accountManager.accounts.find(a => a.name === targetAccount);
+          const acc = accountManager.accounts.find(
+            (a) => a.name === targetAccount,
+          );
           if (!acc) {
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, error: `Konto "${targetAccount}" nie zostało znalezione.` }));
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: `Konto "${targetAccount}" nie zostało znalezione.`,
+              }),
+            );
             return;
           }
           candidates = [acc];
         } else {
           // Auto mode: find all non-disabled accounts matching provider
-          const matching = accountManager.accounts.filter(a => !a.disabled && providerOf(a) === provider);
+          const matching = accountManager.accounts.filter(
+            (a) => !a.disabled && providerOf(a) === provider,
+          );
           // Sort:
           // 1. Healthy first (unavailableReason === null)
           // 2. Lower priority number first (0 before 1)
           // 3. Lower utilization first
           candidates = [...matching].sort((a, b) => {
-            const unavailA = accountManager.unavailableReason(a, model) === null ? 0 : 1;
-            const unavailB = accountManager.unavailableReason(b, model) === null ? 0 : 1;
+            const unavailA =
+              accountManager.unavailableReason(a, model) === null ? 0 : 1;
+            const unavailB =
+              accountManager.unavailableReason(b, model) === null ? 0 : 1;
             if (unavailA !== unavailB) return unavailA - unavailB;
             const prioA = a.priority || 0;
             const prioB = b.priority || 0;
             if (prioA !== prioB) return prioA - prioB;
-            const utilA = Math.max(a.quota?.unified5hUtilization || 0, a.quota?.unified7dUtilization || 0);
-            const utilB = Math.max(b.quota?.unified5hUtilization || 0, b.quota?.unified7dUtilization || 0);
+            const utilA = Math.max(
+              a.quota?.unified5hUtilization || 0,
+              a.quota?.unified7dUtilization || 0,
+            );
+            const utilB = Math.max(
+              b.quota?.unified5hUtilization || 0,
+              b.quota?.unified7dUtilization || 0,
+            );
             return utilA - utilB;
           });
 
           // Cross-provider fallback if no matching accounts
           if (candidates.length === 0 && accountManager.crossProviderFallback) {
-            const fallbackMatching = accountManager.accounts.filter(a => !a.disabled && providerOf(a) !== provider);
+            const fallbackMatching = accountManager.accounts.filter(
+              (a) => !a.disabled && providerOf(a) !== provider,
+            );
             candidates = [...fallbackMatching].sort((a, b) => {
-              const unavailA = accountManager.unavailableReason(a, model) === null ? 0 : 1;
-              const unavailB = accountManager.unavailableReason(b, model) === null ? 0 : 1;
+              const unavailA =
+                accountManager.unavailableReason(a, model) === null ? 0 : 1;
+              const unavailB =
+                accountManager.unavailableReason(b, model) === null ? 0 : 1;
               if (unavailA !== unavailB) return unavailA - unavailB;
               return (a.priority || 0) - (b.priority || 0);
             });
@@ -1435,11 +3172,15 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         }
 
         if (candidates.length === 0) {
-          res.writeHead(503, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            ok: false,
-            error: exhaustedMessage(accountManager, model, 0, provider) || `Brak dostępnych aktywnych kont dla dostawcy ${provider}. Wszystkie konta wyczerpały limity lub są w trybie cooldown.`
-          }));
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error:
+                exhaustedMessage(accountManager, model, 0, provider) ||
+                `Brak dostępnych aktywnych kont dla dostawcy ${provider}. Wszystkie konta wyczerpały limity lub są w trybie cooldown.`,
+            }),
+          );
           return;
         }
 
@@ -1457,37 +3198,38 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
           try {
             let upstreamRes;
-            let replyText = '';
+            let replyText = "";
             let usage = null;
             let responseModel = model;
 
-            if (servingProvider === 'anthropic') {
+            if (servingProvider === "anthropic") {
               const upstreamUrl = `${upstreamFor(account, upstream)}/v1/messages`;
               const payload = {
                 model,
                 max_tokens: 512,
                 system: [
                   {
-                    type: 'text',
-                    text: 'x-anthropic-billing-header: cc_version=2.1.280.80a; cc_entrypoint=sdk-cli;'
-                  }
+                    type: "text",
+                    text: "x-anthropic-billing-header: cc_version=2.1.280.80a; cc_entrypoint=sdk-cli;",
+                  },
                 ],
-                messages: [{ role: 'user', content: message }]
+                messages: [{ role: "user", content: message }],
               };
               const reqHeaders = {
-                'content-type': 'application/json',
-                'anthropic-version': '2023-06-01',
-                'anthropic-beta': 'claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,effort-2025-11-24,afk-mode-2026-01-31',
-                'user-agent': 'claude-cli/2.1.280 (external, sdk-cli)',
-                'x-app': 'cli',
-                'accept': 'application/json'
+                "content-type": "application/json",
+                "anthropic-version": "2023-06-01",
+                "anthropic-beta":
+                  "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,effort-2025-11-24,afk-mode-2026-01-31",
+                "user-agent": "claude-cli/2.1.280 (external, sdk-cli)",
+                "x-app": "cli",
+                accept: "application/json",
               };
               applyAuthHeaders(reqHeaders, account);
 
               upstreamRes = await fetch(upstreamUrl, {
-                method: 'POST',
+                method: "POST",
                 headers: reqHeaders,
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
               });
 
               const durationMs = Date.now() - startTime;
@@ -1495,40 +3237,58 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                 const data = await upstreamRes.json();
                 responseModel = data.model || model;
                 replyText = Array.isArray(data.content)
-                  ? (data.content.filter(c => c.type === 'text').map(c => c.text || '').join('').trim() ||
-                     data.content.map(c => c.text || c.thinking || '').join('').trim())
-                  : (data.text || JSON.stringify(data));
+                  ? data.content
+                      .filter((c) => c.type === "text")
+                      .map((c) => c.text || "")
+                      .join("")
+                      .trim() ||
+                    data.content
+                      .map((c) => c.text || c.thinking || "")
+                      .join("")
+                      .trim()
+                  : data.text || JSON.stringify(data);
                 usage = data.usage || null;
                 accountManager.clearRateLimited(account.index);
                 accountManager.recordAccountSuccess(account);
-                account.lastTest = { ok: true, durationMs, model: responseModel, timestamp: Date.now() };
+                account.lastTest = {
+                  ok: true,
+                  durationMs,
+                  model: responseModel,
+                  timestamp: Date.now(),
+                };
                 if (usage && auth.client) {
                   clientUsage?.record(auth.client, {
                     requests: 1,
                     inputTokens: usage.input_tokens || 0,
-                    outputTokens: usage.output_tokens || 0
+                    outputTokens: usage.output_tokens || 0,
                   });
                 }
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({
-                  ok: true,
-                  provider,
-                  servingProvider,
-                  isFallback,
-                  account: account.name,
-                  model: responseModel,
-                  reply: replyText,
-                  usage,
-                  durationMs,
-                  triedAccounts: triedAccounts.length > 1 ? triedAccounts : undefined
-                }));
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(
+                  JSON.stringify({
+                    ok: true,
+                    provider,
+                    servingProvider,
+                    isFallback,
+                    account: account.name,
+                    model: responseModel,
+                    reply: replyText,
+                    usage,
+                    durationMs,
+                    triedAccounts:
+                      triedAccounts.length > 1 ? triedAccounts : undefined,
+                  }),
+                );
                 return;
               } else {
                 let errorMsg = `HTTP ${upstreamRes.status}`;
-                let errorReason = 'http_' + upstreamRes.status;
+                let errorReason = "http_" + upstreamRes.status;
                 try {
                   const errData = await upstreamRes.json();
-                  errorMsg = errData.error?.message || errData.message || JSON.stringify(errData);
+                  errorMsg =
+                    errData.error?.message ||
+                    errData.message ||
+                    JSON.stringify(errData);
                 } catch {
                   errorMsg = await upstreamRes.text().catch(() => errorMsg);
                 }
@@ -1536,24 +3296,39 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                 const rateLimitHeaders = {};
                 for (const [key, value] of upstreamRes.headers.entries()) {
                   const k = key.toLowerCase();
-                  if (k.startsWith('anthropic-ratelimit-') || k === 'retry-after') {
+                  if (
+                    k.startsWith("anthropic-ratelimit-") ||
+                    k === "retry-after"
+                  ) {
                     rateLimitHeaders[k] = value;
                   }
                 }
                 accountManager.updateQuota(account.index, rateLimitHeaders);
 
                 if (upstreamRes.status === 429) {
-                  const generalRejected = rateLimitHeaders['anthropic-ratelimit-unified-5h-status'] === 'rejected'
-                    || rateLimitHeaders['anthropic-ratelimit-unified-7d-status'] === 'rejected';
+                  const generalRejected =
+                    rateLimitHeaders[
+                      "anthropic-ratelimit-unified-5h-status"
+                    ] === "rejected" ||
+                    rateLimitHeaders[
+                      "anthropic-ratelimit-unified-7d-status"
+                    ] === "rejected";
 
                   let hold = 60;
-                  const retryAfterHeader = upstreamRes.headers.get('retry-after');
+                  const retryAfterHeader =
+                    upstreamRes.headers.get("retry-after");
                   const parsedRetryAfter = parseInt(retryAfterHeader, 10);
-                  const requestScoped = retryAfterHeader == null && Object.keys(rateLimitHeaders).length === 0;
-                  errorReason = requestScoped ? 'upstream-refusal' : 'rate-limit';
+                  const requestScoped =
+                    retryAfterHeader == null &&
+                    Object.keys(rateLimitHeaders).length === 0;
+                  errorReason = requestScoped
+                    ? "upstream-refusal"
+                    : "rate-limit";
 
                   if (generalRejected) {
-                    const resetTime = account?.quota?.unified5hReset || account?.quota?.unified7dReset;
+                    const resetTime =
+                      account?.quota?.unified5hReset ||
+                      account?.quota?.unified7dReset;
                     if (resetTime && resetTime > Date.now()) {
                       hold = Math.ceil((resetTime - Date.now()) / 1000);
                     } else {
@@ -1561,10 +3336,18 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                     }
                     hold = Math.min(Math.max(hold, 60), 86400);
                     accountManager.markRateLimited(account.index, hold);
-                    const resetTimeStr = resetTime ? new Date(resetTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
-                    errorMsg = `Limit zapytań (Quota 100% / rejected) osiągnięty w Anthropic dla konta "${account.name}" (${model}). Reset ok. ${resetTimeStr || 'nieznany'}.`;
+                    const resetTimeStr = resetTime
+                      ? new Date(resetTime).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })
+                      : null;
+                    errorMsg = `Limit zapytań (Quota 100% / rejected) osiągnięty w Anthropic dla konta "${account.name}" (${model}). Reset ok. ${resetTimeStr || "nieznany"}.`;
                   } else if (!requestScoped) {
-                    if (!Number.isNaN(parsedRetryAfter) && parsedRetryAfter > 0) {
+                    if (
+                      !Number.isNaN(parsedRetryAfter) &&
+                      parsedRetryAfter > 0
+                    ) {
                       hold = parsedRetryAfter;
                     } else {
                       hold = 60;
@@ -1580,36 +3363,41 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                     reason: errorReason,
                     status: 429,
                     error: errorMsg,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
                   };
-                } else if (upstreamRes.status === 400 && /identity\s*verification/i.test(errorMsg)) {
-                  errorReason = 'identity-verification';
-                  accountManager.markIdentityVerificationRequired(account.index);
+                } else if (
+                  upstreamRes.status === 400 &&
+                  /identity\s*verification/i.test(errorMsg)
+                ) {
+                  errorReason = "identity-verification";
+                  accountManager.markIdentityVerificationRequired(
+                    account.index,
+                  );
                   errorMsg = `Wymagana weryfikacja tożsamości (400 Identity Verification) na koncie "${account.name}". Zaloguj się na claude.ai i potwierdź numer telefonu/SMS.`;
                   account.lastError = {
-                    reason: 'identity-verification',
+                    reason: "identity-verification",
                     status: 400,
                     error: errorMsg,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
                   };
                 } else if (upstreamRes.status === 403) {
-                  errorReason = 'entitlement';
+                  errorReason = "entitlement";
                   accountManager.markEntitlementDenied(account.index);
                   errorMsg = `Odmowa dostępu OAuth (403 Organization Block). Anthropic zablokował użycie tokenów OAuth dla organizacji konta "${account.name}".`;
                   account.lastError = {
-                    reason: 'entitlement',
+                    reason: "entitlement",
                     status: 403,
                     error: errorMsg,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
                   };
                 } else if (upstreamRes.status >= 500) {
-                  errorReason = 'server_error';
+                  errorReason = "server_error";
                   accountManager.recordAccountFailure(account);
                   account.lastError = {
-                    reason: 'server_error',
+                    reason: "server_error",
                     status: upstreamRes.status,
                     error: `Błąd serwera upstream (${upstreamRes.status}): ${errorMsg}`,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
                   };
                 }
                 account.lastTest = {
@@ -1617,145 +3405,208 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   status: upstreamRes.status,
                   reason: errorReason,
                   error: errorMsg,
-                  timestamp: Date.now()
+                  timestamp: Date.now(),
                 };
                 lastError = errorMsg;
                 lastStatus = upstreamRes.status;
 
                 if (targetAccount) {
-                  res.writeHead(200, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify({
-                    ok: false,
-                    status: upstreamRes.status,
-                    provider,
-                    servingProvider,
-                    isFallback,
-                    account: account.name,
-                    model,
-                    error: errorMsg,
-                    durationMs
-                  }));
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(
+                    JSON.stringify({
+                      ok: false,
+                      status: upstreamRes.status,
+                      provider,
+                      servingProvider,
+                      isFallback,
+                      account: account.name,
+                      model,
+                      error: errorMsg,
+                      durationMs,
+                    }),
+                  );
                   return;
                 }
-                console.warn(`[AgentLB] Test chat failed on "${account.name}" (${upstreamRes.status}): ${errorMsg}. Sprawdzanie kolejnego konta...`);
+                console.warn(
+                  `[AgentLB] Test chat failed on "${account.name}" (${upstreamRes.status}): ${errorMsg}. Sprawdzanie kolejnego konta...`,
+                );
                 continue;
               }
             } else {
               // Codex / OpenAI
-              const isOauth = account.type === 'oauth';
+              const isOauth = account.type === "oauth";
               const upstreamUrl = isOauth
                 ? `${upstreamFor(account)}/backend-api/codex/responses`
                 : `${upstreamFor(account)}/v1/chat/completions`;
 
               const reqHeaders = {
-                'content-type': 'application/json',
-                'accept': isOauth ? 'text/event-stream, application/json;q=0.9, */*;q=0.8' : 'application/json'
+                "content-type": "application/json",
+                accept: isOauth
+                  ? "text/event-stream, application/json;q=0.9, */*;q=0.8"
+                  : "application/json",
               };
               applyAuthHeaders(reqHeaders, account);
 
               let effectiveModel = model;
               if (isOauth) {
-                if (effectiveModel === 'gpt-6') {
-                  effectiveModel = 'gpt-6-astra';
-                } else if (effectiveModel === 'gpt-5.6' || effectiveModel === 'gpt-5' || effectiveModel === 'codex') {
-                  effectiveModel = 'gpt-5.6-sol';
+                if (effectiveModel === "gpt-6") {
+                  effectiveModel = "gpt-6-astra";
+                } else if (
+                  effectiveModel === "gpt-5.6" ||
+                  effectiveModel === "gpt-5" ||
+                  effectiveModel === "codex"
+                ) {
+                  effectiveModel = "gpt-5.6-sol";
+                } else if (effectiveModel === "codex-mini") {
+                  effectiveModel = "gpt-5.6-terra";
                 }
               }
               responseModel = effectiveModel;
 
-              const reasoningEffort = typeof body?.effort === 'string' && body.effort.trim()
-                ? body.effort.trim().toLowerCase()
-                : (typeof body?.reasoningEffort === 'string' && body.reasoningEffort.trim() ? body.reasoningEffort.trim().toLowerCase() : null);
+              const reasoningEffort =
+                typeof body?.effort === "string" && body.effort.trim()
+                  ? body.effort.trim().toLowerCase()
+                  : typeof body?.reasoningEffort === "string" &&
+                      body.reasoningEffort.trim()
+                    ? body.reasoningEffort.trim().toLowerCase()
+                    : null;
 
               const payload = isOauth
                 ? {
                     model: effectiveModel,
                     store: false,
                     stream: true,
-                    ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
-                    input: [{ role: 'user', content: [{ type: 'input_text', text: message }] }]
+                    ...(reasoningEffort
+                      ? { reasoning: { effort: reasoningEffort } }
+                      : {}),
+                    input: [
+                      {
+                        role: "user",
+                        content: [{ type: "input_text", text: message }],
+                      },
+                    ],
                   }
                 : {
                     model: effectiveModel,
-                    messages: [{ role: 'user', content: message }]
+                    messages: [{ role: "user", content: message }],
                   };
 
               upstreamRes = await fetch(upstreamUrl, {
-                method: 'POST',
+                method: "POST",
                 headers: reqHeaders,
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
               });
 
               const durationMs = Date.now() - startTime;
               if (upstreamRes.ok) {
-                const cType = upstreamRes.headers.get('content-type') || '';
-                if (cType.includes('text/event-stream') && upstreamRes.body && typeof upstreamRes.body.getReader === 'function') {
+                const cType = upstreamRes.headers.get("content-type") || "";
+                if (
+                  cType.includes("text/event-stream") &&
+                  upstreamRes.body &&
+                  typeof upstreamRes.body.getReader === "function"
+                ) {
                   const reader = upstreamRes.body.getReader();
-                  const decoder = new TextDecoder('utf-8');
-                  let streamBuf = '';
+                  const decoder = new TextDecoder("utf-8");
+                  let streamBuf = "";
                   while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
                     streamBuf += decoder.decode(value, { stream: true });
-                    const lines = streamBuf.split('\n');
-                    streamBuf = lines.pop() || '';
+                    const lines = streamBuf.split("\n");
+                    streamBuf = lines.pop() || "";
                     for (const line of lines) {
                       const trimmed = line.trim();
-                      if (!trimmed.startsWith('data:')) continue;
+                      if (!trimmed.startsWith("data:")) continue;
                       const dataStr = trimmed.slice(5).trim();
-                      if (dataStr === '[DONE]') continue;
+                      if (dataStr === "[DONE]") continue;
                       try {
                         const item = JSON.parse(dataStr);
-                        const deltaText = (typeof item.delta === 'string' ? item.delta : null)
-                          || (item.type === 'response.output_text.delta' && typeof item.delta === 'string' ? item.delta : null)
-                          || (item.type === 'response.text.delta' && typeof item.delta === 'string' ? item.delta : null)
-                          || item.delta?.text
-                          || item.choices?.[0]?.delta?.content
-                          || item.output?.[0]?.content?.[0]?.text
-                          || (item.type === 'response.output_item.added' && item.item?.content?.[0]?.text)
-                          || '';
+                        const deltaText =
+                          (typeof item.delta === "string"
+                            ? item.delta
+                            : null) ||
+                          (item.type === "response.output_text.delta" &&
+                          typeof item.delta === "string"
+                            ? item.delta
+                            : null) ||
+                          (item.type === "response.text.delta" &&
+                          typeof item.delta === "string"
+                            ? item.delta
+                            : null) ||
+                          item.delta?.text ||
+                          item.choices?.[0]?.delta?.content ||
+                          item.output?.[0]?.content?.[0]?.text ||
+                          (item.type === "response.output_item.added" &&
+                            item.item?.content?.[0]?.text) ||
+                          "";
                         if (deltaText) replyText += deltaText;
                         if (!replyText && item.text) replyText = item.text;
-                        if (!replyText && item.part?.text) replyText = item.part.text;
-                        if (!replyText && item.item?.content?.[0]?.text) replyText = item.item.content[0].text;
+                        if (!replyText && item.part?.text)
+                          replyText = item.part.text;
+                        if (!replyText && item.item?.content?.[0]?.text)
+                          replyText = item.item.content[0].text;
                         if (item.usage) usage = item.usage;
                         if (item.response?.usage) usage = item.response.usage;
                         if (item.model) responseModel = item.model;
-                        if (item.response?.model) responseModel = item.response.model;
-                      } catch { /* skip non-JSON stream lines */ }
+                        if (item.response?.model)
+                          responseModel = item.response.model;
+                      } catch {
+                        /* skip non-JSON stream lines */
+                      }
                     }
                   }
-                  if (!replyText.trim()) replyText = '(Odpowiedź strumieniowa zakończona pomyślnie)';
+                  if (!replyText.trim())
+                    replyText = "(Odpowiedź strumieniowa zakończona pomyślnie)";
                 } else {
                   const rawText = await upstreamRes.text();
-                  if (rawText.includes('data:') || rawText.trim().startsWith('event:')) {
-                    const lines = rawText.split('\n');
+                  if (
+                    rawText.includes("data:") ||
+                    rawText.trim().startsWith("event:")
+                  ) {
+                    const lines = rawText.split("\n");
                     for (const line of lines) {
                       const trimmed = line.trim();
-                      if (!trimmed.startsWith('data:')) continue;
+                      if (!trimmed.startsWith("data:")) continue;
                       const dataStr = trimmed.slice(5).trim();
-                      if (dataStr === '[DONE]') continue;
+                      if (dataStr === "[DONE]") continue;
                       try {
                         const item = JSON.parse(dataStr);
-                        const deltaText = (typeof item.delta === 'string' ? item.delta : null)
-                          || (item.type === 'response.output_text.delta' && typeof item.delta === 'string' ? item.delta : null)
-                          || (item.type === 'response.text.delta' && typeof item.delta === 'string' ? item.delta : null)
-                          || item.delta?.text
-                          || item.choices?.[0]?.delta?.content
-                          || item.output?.[0]?.content?.[0]?.text
-                          || (item.type === 'response.output_item.added' && item.item?.content?.[0]?.text)
-                          || '';
+                        const deltaText =
+                          (typeof item.delta === "string"
+                            ? item.delta
+                            : null) ||
+                          (item.type === "response.output_text.delta" &&
+                          typeof item.delta === "string"
+                            ? item.delta
+                            : null) ||
+                          (item.type === "response.text.delta" &&
+                          typeof item.delta === "string"
+                            ? item.delta
+                            : null) ||
+                          item.delta?.text ||
+                          item.choices?.[0]?.delta?.content ||
+                          item.output?.[0]?.content?.[0]?.text ||
+                          (item.type === "response.output_item.added" &&
+                            item.item?.content?.[0]?.text) ||
+                          "";
                         if (deltaText) replyText += deltaText;
                         if (!replyText && item.text) replyText = item.text;
-                        if (!replyText && item.part?.text) replyText = item.part.text;
-                        if (!replyText && item.item?.content?.[0]?.text) replyText = item.item.content[0].text;
+                        if (!replyText && item.part?.text)
+                          replyText = item.part.text;
+                        if (!replyText && item.item?.content?.[0]?.text)
+                          replyText = item.item.content[0].text;
                         if (item.usage) usage = item.usage;
                         if (item.response?.usage) usage = item.response.usage;
                         if (item.model) responseModel = item.model;
-                        if (item.response?.model) responseModel = item.response.model;
-                      } catch { /* skip non-JSON stream lines */ }
+                        if (item.response?.model)
+                          responseModel = item.response.model;
+                      } catch {
+                        /* skip non-JSON stream lines */
+                      }
                     }
-                    if (!replyText.trim()) replyText = '(Odpowiedź strumieniowa zakończona pomyślnie)';
+                    if (!replyText.trim())
+                      replyText =
+                        "(Odpowiedź strumieniowa zakończona pomyślnie)";
                   } else {
                     let data = {};
                     try {
@@ -1765,112 +3616,156 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                     }
                     responseModel = data.model || model;
                     if (isOauth) {
-                      replyText = data.output?.[0]?.content?.[0]?.text
-                        || data.message?.content?.parts?.[0]
-                        || (typeof data.response === 'string' ? data.response : '')
-                        || (data.choices?.[0]?.message?.content)
-                        || JSON.stringify(data);
+                      replyText =
+                        data.output?.[0]?.content?.[0]?.text ||
+                        data.message?.content?.parts?.[0] ||
+                        (typeof data.response === "string"
+                          ? data.response
+                          : "") ||
+                        data.choices?.[0]?.message?.content ||
+                        JSON.stringify(data);
                     } else {
-                      replyText = data.choices?.[0]?.message?.content || rawText;
+                      replyText =
+                        data.choices?.[0]?.message?.content || rawText;
                     }
                     usage = data.usage || null;
                   }
                 }
                 accountManager.clearRateLimited(account.index);
                 accountManager.recordAccountSuccess(account);
-                account.lastTest = { ok: true, durationMs, model: responseModel, timestamp: Date.now() };
+                account.lastTest = {
+                  ok: true,
+                  durationMs,
+                  model: responseModel,
+                  timestamp: Date.now(),
+                };
                 if (usage && auth.client) {
                   clientUsage?.record(auth.client, {
                     requests: 1,
                     inputTokens: usage.prompt_tokens || usage.input_tokens || 0,
-                    outputTokens: usage.completion_tokens || usage.output_tokens || 0
+                    outputTokens:
+                      usage.completion_tokens || usage.output_tokens || 0,
                   });
                 }
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({
-                  ok: true,
-                  provider,
-                  servingProvider,
-                  isFallback,
-                  account: account.name,
-                  model: responseModel,
-                  effort: reasoningEffort || undefined,
-                  reply: replyText,
-                  usage,
-                  durationMs,
-                  triedAccounts: triedAccounts.length > 1 ? triedAccounts : undefined
-                }));
+                res.writeHead(200, { "Content-Type": "application/json" });
+                res.end(
+                  JSON.stringify({
+                    ok: true,
+                    provider,
+                    servingProvider,
+                    isFallback,
+                    account: account.name,
+                    model: responseModel,
+                    effort: reasoningEffort || undefined,
+                    reply: replyText,
+                    usage,
+                    durationMs,
+                    triedAccounts:
+                      triedAccounts.length > 1 ? triedAccounts : undefined,
+                  }),
+                );
                 return;
               } else {
                 let errorMsg = `HTTP ${upstreamRes.status}`;
-                let errorReason = 'http_' + upstreamRes.status;
+                let errorReason = "http_" + upstreamRes.status;
                 let errData = null;
                 try {
                   errData = await upstreamRes.json();
-                  errorMsg = errData.error?.message || errData.detail || errData.message || JSON.stringify(errData);
+                  errorMsg =
+                    errData.error?.message ||
+                    errData.detail ||
+                    errData.message ||
+                    JSON.stringify(errData);
                 } catch {
                   errorMsg = await upstreamRes.text().catch(() => errorMsg);
                 }
 
-                if (isOauth && upstreamRes.status === 400 && typeof errorMsg === 'string' && errorMsg.includes('not supported when using Codex with a ChatGPT account')) {
+                if (
+                  isOauth &&
+                  upstreamRes.status === 400 &&
+                  typeof errorMsg === "string" &&
+                  errorMsg.includes(
+                    "not supported when using Codex with a ChatGPT account",
+                  )
+                ) {
                   errorMsg += ` (Wskazówka: backend ChatGPT Codex dla kont subskrypcyjnych OAuth obsługuje model 'gpt-5.6-sol' lub alias 'gpt-5.6'. Modele OpenAI API o3-mini/o1/gpt-4o wymagają konta z kluczem OpenAI API).`;
                 }
 
                 const codexRateLimitHeaders = {};
                 for (const [key, value] of upstreamRes.headers.entries()) {
                   const k = key.toLowerCase();
-                  if (k.startsWith('x-codex-') || k === 'retry-after') {
+                  if (k.startsWith("x-codex-") || k === "retry-after") {
                     codexRateLimitHeaders[k] = value;
                   }
                 }
-                accountManager.updateQuota(account.index, codexRateLimitHeaders);
+                accountManager.updateQuota(
+                  account.index,
+                  codexRateLimitHeaders,
+                );
 
                 if (upstreamRes.status === 429) {
-                  const isUsageLimit = isOauth && (errData?.error?.type === 'usage_limit_reached' || codexRateLimitHeaders['x-codex-primary-used-percent'] === '100');
+                  const isUsageLimit =
+                    isOauth &&
+                    (errData?.error?.type === "usage_limit_reached" ||
+                      codexRateLimitHeaders["x-codex-primary-used-percent"] ===
+                        "100");
                   if (isUsageLimit) {
-                    errorReason = 'quota';
-                    account.status = 'exhausted';
-                    const resetSec = errData?.error?.resets_in_seconds || parseInt(codexRateLimitHeaders['x-codex-primary-reset-after-seconds'], 10) || 3600;
+                    errorReason = "quota";
+                    account.status = "exhausted";
+                    const resetSec =
+                      errData?.error?.resets_in_seconds ||
+                      parseInt(
+                        codexRateLimitHeaders[
+                          "x-codex-primary-reset-after-seconds"
+                        ],
+                        10,
+                      ) ||
+                      3600;
                     account.exhaustedUntil = Date.now() + resetSec * 1000;
                     const resetMin = Math.ceil(resetSec / 60);
                     errorMsg = `Limit zapytań ChatGPT Plus wyczerpany (100% quota / reset za ok. ${resetMin} min) dla konta "${account.name}".`;
                     account.lastError = {
-                      reason: 'quota',
+                      reason: "quota",
                       status: 429,
                       error: errorMsg,
-                      timestamp: Date.now()
+                      timestamp: Date.now(),
                     };
                   } else {
-                    errorReason = 'rate-limit';
-                    const retryAfterHeader = upstreamRes.headers.get('retry-after');
+                    errorReason = "rate-limit";
+                    const retryAfterHeader =
+                      upstreamRes.headers.get("retry-after");
                     let retryAfter = parseInt(retryAfterHeader, 10);
-                    if (Number.isNaN(retryAfter) || retryAfter <= 0) retryAfter = 60;
+                    if (Number.isNaN(retryAfter) || retryAfter <= 0)
+                      retryAfter = 60;
                     retryAfter = Math.min(Math.max(retryAfter, 1), 300);
                     accountManager.markRateLimited(account.index, retryAfter);
                     errorMsg = `Limit zapytań (429 Rate Limit / cooldown ${retryAfter}s) w ChatGPT/Codex dla konta "${account.name}".`;
                     account.lastError = {
-                      reason: 'rate-limit',
+                      reason: "rate-limit",
                       status: 429,
                       error: errorMsg,
-                      timestamp: Date.now()
+                      timestamp: Date.now(),
                     };
                   }
-                } else if (upstreamRes.status === 401 || upstreamRes.status === 403) {
-                  errorReason = 'auth';
+                } else if (
+                  upstreamRes.status === 401 ||
+                  upstreamRes.status === 403
+                ) {
+                  errorReason = "auth";
                   account.lastError = {
-                    reason: 'auth',
+                    reason: "auth",
                     status: upstreamRes.status,
                     error: `Błąd autoryzacji (${upstreamRes.status}): ${errorMsg}`,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
                   };
                 } else if (upstreamRes.status >= 500) {
-                  errorReason = 'server_error';
+                  errorReason = "server_error";
                   accountManager.recordAccountFailure(account);
                   account.lastError = {
-                    reason: 'server_error',
+                    reason: "server_error",
                     status: upstreamRes.status,
                     error: `Błąd serwera upstream Codex (${upstreamRes.status}): ${errorMsg}`,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
                   };
                 }
                 account.lastTest = {
@@ -1878,27 +3773,31 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
                   status: upstreamRes.status,
                   reason: errorReason,
                   error: errorMsg,
-                  timestamp: Date.now()
+                  timestamp: Date.now(),
                 };
                 lastError = errorMsg;
                 lastStatus = upstreamRes.status;
 
                 if (targetAccount) {
-                  res.writeHead(200, { 'Content-Type': 'application/json' });
-                  res.end(JSON.stringify({
-                    ok: false,
-                    status: upstreamRes.status,
-                    provider,
-                    servingProvider,
-                    isFallback,
-                    account: account.name,
-                    model,
-                    error: errorMsg,
-                    durationMs
-                  }));
+                  res.writeHead(200, { "Content-Type": "application/json" });
+                  res.end(
+                    JSON.stringify({
+                      ok: false,
+                      status: upstreamRes.status,
+                      provider,
+                      servingProvider,
+                      isFallback,
+                      account: account.name,
+                      model,
+                      error: errorMsg,
+                      durationMs,
+                    }),
+                  );
                   return;
                 }
-                console.warn(`[AgentLB] Test chat failed on "${account.name}" (${upstreamRes.status}): ${errorMsg}. Sprawdzanie kolejnego konta...`);
+                console.warn(
+                  `[AgentLB] Test chat failed on "${account.name}" (${upstreamRes.status}): ${errorMsg}. Sprawdzanie kolejnego konta...`,
+                );
                 continue;
               }
             }
@@ -1908,105 +3807,170 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             lastStatus = 502;
             if (targetAccount) {
               const durationMs = Date.now() - startTime;
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({
-                ok: false,
-                status: 502,
-                provider,
-                servingProvider,
-                account: account.name,
-                model,
-                error: lastError,
-                durationMs
-              }));
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(
+                JSON.stringify({
+                  ok: false,
+                  status: 502,
+                  provider,
+                  servingProvider,
+                  account: account.name,
+                  model,
+                  error: lastError,
+                  durationMs,
+                }),
+              );
               return;
             }
-            console.warn(`[AgentLB] Test chat network error on "${account.name}": ${netErr.message}. Sprawdzanie kolejnego konta...`);
+            console.warn(
+              `[AgentLB] Test chat network error on "${account.name}": ${netErr.message}. Sprawdzanie kolejnego konta...`,
+            );
             continue;
           }
         }
 
         // All candidates failed in Auto mode
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          ok: false,
-          status: lastStatus,
-          provider,
-          error: `Wszystkie wypróbowane konta (${triedAccounts.join(', ')}) zgłosiły błąd. Ostatni błąd: ${lastError}`,
-          triedAccounts
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            status: lastStatus,
+            provider,
+            error: `Wszystkie wypróbowane konta (${triedAccounts.join(", ")}) zgłosiły błąd. Ostatni błąd: ${lastError}`,
+            triedAccounts,
+          }),
+        );
         return;
       }
 
       // Health-Check: Status (GET /api/health-check/status)
-      if (req.method === 'GET' && (normApiPath === '/api/health-check/status' || normApiPath === '/health-check/status')) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, healthCheck: healthChecker.getStatus() }));
+      if (
+        req.method === "GET" &&
+        (normApiPath === "/api/health-check/status" ||
+          normApiPath === "/health-check/status")
+      ) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({ ok: true, healthCheck: healthChecker.getStatus() }),
+        );
         return;
       }
 
       // Health-Check: Run cycle (POST /api/health-check/run)
-      if (req.method === 'POST' && (normApiPath === '/api/health-check/run' || normApiPath === '/health-check/run')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/health-check/run" ||
+          normApiPath === "/health-check/run")
+      ) {
         let bodyObj = {};
         try {
           const raw = await readControlBody(req);
           if (raw) bodyObj = JSON.parse(raw);
         } catch {}
-        const urlObj = new URL(req.url, 'http://127.0.0.1');
-        const force = bodyObj.force != null ? !!bodyObj.force : (urlObj.searchParams.get('force') === 'true');
+        const urlObj = new URL(req.url, "http://127.0.0.1");
+        const force =
+          bodyObj.force != null
+            ? !!bodyObj.force
+            : urlObj.searchParams.get("force") === "true";
         const summary = await healthChecker.runCheckCycle({ force });
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, summary }));
         return;
       }
 
       // Health-Check: Configure (POST /api/health-check/config)
-      if (req.method === 'POST' && (normApiPath === '/api/health-check/config' || normApiPath === '/health-check/config')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/health-check/config" ||
+          normApiPath === "/health-check/config")
+      ) {
         let bodyObj = {};
         try {
           const raw = await readControlBody(req);
           if (raw) bodyObj = JSON.parse(raw);
         } catch {}
-        const enabled = bodyObj.enabled != null ? !!bodyObj.enabled : healthChecker.enabled;
-        const intervalMs = bodyObj.intervalSeconds != null ? Number(bodyObj.intervalSeconds) * 1000 : healthChecker.intervalMs;
-        const trafficGracePeriodMs = bodyObj.trafficGracePeriodSeconds != null ? Number(bodyObj.trafficGracePeriodSeconds) * 1000 : healthChecker.trafficGracePeriodMs;
-        const errorBackoffMs = bodyObj.errorBackoffSeconds != null ? Number(bodyObj.errorBackoffSeconds) * 1000 : healthChecker.errorBackoffMs;
+        const enabled =
+          bodyObj.enabled != null ? !!bodyObj.enabled : healthChecker.enabled;
+        const intervalMs =
+          bodyObj.intervalSeconds != null
+            ? Number(bodyObj.intervalSeconds) * 1000
+            : healthChecker.intervalMs;
+        const trafficGracePeriodMs =
+          bodyObj.trafficGracePeriodSeconds != null
+            ? Number(bodyObj.trafficGracePeriodSeconds) * 1000
+            : healthChecker.trafficGracePeriodMs;
+        const errorBackoffMs =
+          bodyObj.errorBackoffSeconds != null
+            ? Number(bodyObj.errorBackoffSeconds) * 1000
+            : healthChecker.errorBackoffMs;
 
-        healthChecker.reschedule({ enabled, intervalMs, trafficGracePeriodMs, errorBackoffMs });
+        healthChecker.reschedule({
+          enabled,
+          intervalMs,
+          trafficGracePeriodMs,
+          errorBackoffMs,
+        });
 
         config.autoHealthCheck = {
           enabled: healthChecker.enabled,
           intervalSeconds: Math.round(healthChecker.intervalMs / 1000),
-          trafficGracePeriodSeconds: Math.round(healthChecker.trafficGracePeriodMs / 1000),
+          trafficGracePeriodSeconds: Math.round(
+            healthChecker.trafficGracePeriodMs / 1000,
+          ),
           errorBackoffSeconds: Math.round(healthChecker.errorBackoffMs / 1000),
         };
 
-        atomicConfigUpdate(cfg => {
+        atomicConfigUpdate((cfg) => {
           cfg.autoHealthCheck = { ...config.autoHealthCheck };
         }).catch(() => {});
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, healthCheck: healthChecker.getStatus() }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({ ok: true, healthCheck: healthChecker.getStatus() }),
+        );
         return;
       }
 
       // Accounts: Export (GET /api/accounts/export & GET /accounts/export)
-      if (req.method === 'GET' && (normApiPath === '/api/accounts/export' || normApiPath === '/accounts/export')) {
-        const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-        const target = urlObj.searchParams.get('account') || urlObj.searchParams.get('name') || urlObj.searchParams.get('id');
+      if (
+        req.method === "GET" &&
+        (normApiPath === "/api/accounts/export" ||
+          normApiPath === "/accounts/export")
+      ) {
+        const urlObj = new URL(
+          req.url,
+          `http://${req.headers.host || "localhost"}`,
+        );
+        const target =
+          urlObj.searchParams.get("account") ||
+          urlObj.searchParams.get("name") ||
+          urlObj.searchParams.get("id");
         if (!target) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'missing "account" query parameter' }));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: 'missing "account" query parameter',
+            }),
+          );
           return;
         }
         const index = resolveAccountPin(accountManager, target);
         if (index == null) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: `no such account "${target}"` }));
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({ ok: false, error: `no such account "${target}"` }),
+          );
           return;
         }
         const mgr = accountManager.accounts[index];
-        const raw = (config.accounts || []).find(a => (mgr.id && a.id === mgr.id) || sameIdentity(a, mgr) || a.name === mgr.name) || mgr;
+        const raw =
+          (config.accounts || []).find(
+            (a) =>
+              (mgr.id && a.id === mgr.id) ||
+              sameIdentity(a, mgr) ||
+              a.name === mgr.name,
+          ) || mgr;
         const exportData = {
           name: mgr.name,
           provider: mgr.provider,
@@ -2015,15 +3979,15 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           email: mgr.email,
           accountId: mgr.accountId,
           priority: mgr.priority,
-          routingPolicy: mgr.routingPolicy || 'normal',
+          routingPolicy: mgr.routingPolicy || "normal",
           accessToken: raw.accessToken || raw.credential || mgr.credential,
           refreshToken: raw.refreshToken || mgr.refreshToken,
           expiresAt: raw.expiresAt || mgr.expiresAt,
           exportedAt: new Date().toISOString(),
         };
         res.writeHead(200, {
-          'Content-Type': 'application/json',
-          'Content-Disposition': `attachment; filename="${encodeURIComponent(mgr.name)}-export.json"`,
+          "Content-Type": "application/json",
+          "Content-Disposition": `attachment; filename="${encodeURIComponent(mgr.name)}-export.json"`,
         });
         res.end(JSON.stringify(exportData, null, 2));
         return;
@@ -2031,86 +3995,127 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
       // Accounts: Add (POST /agentlb/api/accounts/add & POST /agentlb/accounts/add)
 
-      if (req.method === 'POST' && (normApiPath === '/api/accounts/add' || normApiPath === '/accounts/add')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/api/accounts/add" || normApiPath === "/accounts/add")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch (err) {
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
 
-        const rawType = (body?.type || '').toLowerCase();
-        const type = rawType || (body?.importFrom ? 'import' : (body?.apiKey ? 'api' : 'oauth'));
-        const priority = Number.isInteger(body?.priority) ? body.priority : (parseInt(body?.priority, 10) || 0);
+        const rawType = (body?.type || "").toLowerCase();
+        const type =
+          rawType ||
+          (body?.importFrom ? "import" : body?.apiKey ? "api" : "oauth");
+        const priority = Number.isInteger(body?.priority)
+          ? body.priority
+          : parseInt(body?.priority, 10) || 0;
 
         // 1. Anthropic API Key (type: "api" or "apikey")
-        if (type === 'api' || type === 'apikey') {
-          const apiKey = typeof body?.apiKey === 'string' ? body.apiKey.trim() : '';
+        if (type === "api" || type === "apikey") {
+          const apiKey =
+            typeof body?.apiKey === "string" ? body.apiKey.trim() : "";
           if (!apiKey) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ ok: false, error: 'missing "apiKey"' }));
             return;
           }
 
-          let name = typeof body?.name === 'string' ? body.name.trim() : '';
+          let name = typeof body?.name === "string" ? body.name.trim() : "";
           if (!name) {
-            const count = (config.accounts || []).filter(a => a.name.startsWith('api-')).length + 1;
+            const count =
+              (config.accounts || []).filter((a) => a.name.startsWith("api-"))
+                .length + 1;
             name = `api-${count}`;
           }
 
           const newAccount = {
             id: mintAccountId(),
             name,
-            type: 'apikey',
+            type: "apikey",
             apiKey,
             priority,
           };
 
-          await atomicConfigUpdate(disk => {
+          await atomicConfigUpdate((disk) => {
             if (!Array.isArray(disk.accounts)) disk.accounts = [];
             disk.accounts.push(newAccount);
           });
 
           if (hooks.reload) await hooks.reload();
-          console.log(`[AgentLB] Added API key account "${name}" (web control)`);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'api' }));
+          console.log(
+            `[AgentLB] Added API key account "${name}" (web control)`,
+          );
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              account: name,
+              id: newAccount.id,
+              type: "api",
+            }),
+          );
           return;
         }
 
         // 3. Import from file path on server (importFrom or type: "import")
-        if (type === 'import' || body?.importFrom) {
-          const fromPath = (typeof body?.importFrom === 'string' ? body.importFrom : (body?.fromPath || '~/.claude/.credentials.json')).trim();
-          const reqProvider = body?.provider || (fromPath.toLowerCase().includes('codex') ? 'codex' : 'anthropic');
+        if (type === "import" || body?.importFrom) {
+          const fromPath = (
+            typeof body?.importFrom === "string"
+              ? body.importFrom
+              : body?.fromPath || "~/.claude/.credentials.json"
+          ).trim();
+          const reqProvider =
+            body?.provider ||
+            (fromPath.toLowerCase().includes("codex") ? "codex" : "anthropic");
 
-          if (reqProvider === 'codex') {
+          if (reqProvider === "codex") {
             let codexCreds = null;
             try {
               codexCreds = await importCodexCredentials(fromPath);
             } catch (err) {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ ok: false, error: `Failed to import Codex credentials from "${fromPath}": ${err.message}` }));
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(
+                JSON.stringify({
+                  ok: false,
+                  error: `Failed to import Codex credentials from "${fromPath}": ${err.message}`,
+                }),
+              );
               return;
             }
 
-            let name = typeof body?.name === 'string' ? body.name.trim() : '';
+            let name = typeof body?.name === "string" ? body.name.trim() : "";
             if (!name && codexCreds?.email) name = codexCreds.email;
             if (!name) {
-              const count = (config.accounts || []).filter(a => a.provider === 'codex').length + 1;
+              const count =
+                (config.accounts || []).filter((a) => a.provider === "codex")
+                  .length + 1;
               name = `codex-${count}`;
             }
 
             const newAccount = {
               id: mintAccountId(),
               name,
-              type: 'oauth',
-              provider: 'codex',
+              type: "oauth",
+              provider: "codex",
               importFrom: fromPath,
-              source: 'import',
+              source: "import",
               accessToken: codexCreds.accessToken,
               refreshToken: codexCreds.refreshToken || null,
               accountId: codexCreds.accountId || null,
@@ -2119,15 +4124,27 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
               priority,
             };
 
-            await atomicConfigUpdate(disk => {
+            await atomicConfigUpdate((disk) => {
               if (!Array.isArray(disk.accounts)) disk.accounts = [];
               disk.accounts.push(newAccount);
             });
 
             if (hooks.reload) await hooks.reload();
-            console.log(`[AgentLB] Imported Codex account "${name}" from ${fromPath} (web control)`);
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'oauth', provider: 'codex', importFrom: fromPath, email: codexCreds?.email }));
+            console.log(
+              `[AgentLB] Imported Codex account "${name}" from ${fromPath} (web control)`,
+            );
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                ok: true,
+                account: name,
+                id: newAccount.id,
+                type: "oauth",
+                provider: "codex",
+                importFrom: fromPath,
+                email: codexCreds?.email,
+              }),
+            );
             return;
           }
 
@@ -2135,8 +4152,13 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           try {
             creds = await importCredentials(fromPath);
           } catch (err) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, error: `Failed to import credentials from "${fromPath}": ${err.message}` }));
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: `Failed to import credentials from "${fromPath}": ${err.message}`,
+              }),
+            );
             return;
           }
 
@@ -2144,22 +4166,27 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           if (creds?.accessToken) {
             try {
               profile = await fetchProfile(creds.accessToken);
-            } catch { /* best effort */ }
+            } catch {
+              /* best effort */
+            }
           }
 
-          let name = typeof body?.name === 'string' ? body.name.trim() : '';
+          let name = typeof body?.name === "string" ? body.name.trim() : "";
           if (!name && profile?.email) name = profile.email;
           if (!name) {
-            const count = (config.accounts || []).filter(a => a.name.startsWith('account-')).length + 1;
+            const count =
+              (config.accounts || []).filter((a) =>
+                a.name.startsWith("account-"),
+              ).length + 1;
             name = `account-${count}`;
           }
 
           const newAccount = {
             id: mintAccountId(),
             name,
-            type: 'oauth',
+            type: "oauth",
             importFrom: fromPath,
-            source: 'import',
+            source: "import",
             accessToken: creds?.accessToken,
             refreshToken: creds?.refreshToken || null,
             expiresAt: creds?.expiresAt || null,
@@ -2174,62 +4201,100 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             priority,
           };
 
-          await atomicConfigUpdate(disk => {
+          await atomicConfigUpdate((disk) => {
             if (!Array.isArray(disk.accounts)) disk.accounts = [];
             disk.accounts.push(newAccount);
           });
 
           if (hooks.reload) await hooks.reload();
-          console.log(`[AgentLB] Imported account "${name}" from ${fromPath} (web control)`);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'oauth', importFrom: fromPath }));
+          console.log(
+            `[AgentLB] Imported account "${name}" from ${fromPath} (web control)`,
+          );
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              account: name,
+              id: newAccount.id,
+              type: "oauth",
+              importFrom: fromPath,
+            }),
+          );
           return;
         }
 
         // 2. OAuth session (pasted tokens or credentials JSON)
-        if (type === 'oauth') {
-          let accessToken = typeof body?.accessToken === 'string' ? body.accessToken.trim() : '';
-          let refreshToken = typeof body?.refreshToken === 'string' ? body.refreshToken.trim() : null;
-          let expiresAt = typeof body?.expiresAt === 'number' ? body.expiresAt : null;
-          let name = typeof body?.name === 'string' ? body.name.trim() : '';
+        if (type === "oauth") {
+          let accessToken =
+            typeof body?.accessToken === "string"
+              ? body.accessToken.trim()
+              : "";
+          let refreshToken =
+            typeof body?.refreshToken === "string"
+              ? body.refreshToken.trim()
+              : null;
+          let expiresAt =
+            typeof body?.expiresAt === "number" ? body.expiresAt : null;
+          let name = typeof body?.name === "string" ? body.name.trim() : "";
 
           const jsonInput = body?.credentialsJson || body?.credentials;
           if (jsonInput) {
             try {
-              const parsed = typeof jsonInput === 'string' ? JSON.parse(jsonInput) : jsonInput;
+              const parsed =
+                typeof jsonInput === "string"
+                  ? JSON.parse(jsonInput)
+                  : jsonInput;
               const data = parsed.claudeAiOauth || parsed;
               if (data.accessToken) accessToken = data.accessToken;
               if (data.refreshToken) refreshToken = data.refreshToken;
-              if (data.expiresAt) expiresAt = typeof data.expiresAt === 'number' ? data.expiresAt : (typeof data.expiresAt === 'string' ? new Date(data.expiresAt).getTime() : null);
+              if (data.expiresAt)
+                expiresAt =
+                  typeof data.expiresAt === "number"
+                    ? data.expiresAt
+                    : typeof data.expiresAt === "string"
+                      ? new Date(data.expiresAt).getTime()
+                      : null;
             } catch (e) {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ ok: false, error: 'invalid credentials JSON: ' + e.message }));
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(
+                JSON.stringify({
+                  ok: false,
+                  error: "invalid credentials JSON: " + e.message,
+                }),
+              );
               return;
             }
           }
 
           if (!accessToken) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, error: 'missing accessToken' }));
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({ ok: false, error: "missing accessToken" }),
+            );
             return;
           }
 
           let profile = null;
           try {
             profile = await fetchProfile(accessToken);
-          } catch { /* best effort */ }
+          } catch {
+            /* best effort */
+          }
 
           if (!name && profile?.email) name = profile.email;
           if (!name) {
-            const count = (config.accounts || []).filter(a => a.name.startsWith('account-')).length + 1;
+            const count =
+              (config.accounts || []).filter((a) =>
+                a.name.startsWith("account-"),
+              ).length + 1;
             name = `account-${count}`;
           }
 
           const newAccount = {
             id: mintAccountId(),
             name,
-            type: 'oauth',
-            source: 'web',
+            type: "oauth",
+            source: "web",
             accessToken,
             refreshToken,
             expiresAt,
@@ -2244,15 +4309,20 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             priority,
           };
 
-          await atomicConfigUpdate(disk => {
+          await atomicConfigUpdate((disk) => {
             if (!Array.isArray(disk.accounts)) disk.accounts = [];
             let idx = findUpsertTarget(disk.accounts, newAccount);
             if (idx < 0 && name) {
-              idx = disk.accounts.findIndex(a => a.name === name);
+              idx = disk.accounts.findIndex((a) => a.name === name);
             }
             if (idx >= 0) {
               const prev = disk.accounts[idx];
-              disk.accounts[idx] = { ...prev, ...newAccount, id: prev.id || newAccount.id, name: prev.name };
+              disk.accounts[idx] = {
+                ...prev,
+                ...newAccount,
+                id: prev.id || newAccount.id,
+                name: prev.name,
+              };
               name = prev.name;
             } else {
               disk.accounts.push(newAccount);
@@ -2260,87 +4330,129 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           });
 
           if (hooks.reload) await hooks.reload();
-          const reloaded = accountManager.accounts.find(a => a.name === name);
+          const reloaded = accountManager.accounts.find((a) => a.name === name);
           if (reloaded) {
             reloaded.lastError = null;
             reloaded.entitlementDeniedUntil = null;
             reloaded.identityVerificationUntil = null;
             reloaded.unavailable = null;
-            reloaded.status = 'active';
+            reloaded.status = "active";
           }
-          console.log(`[AgentLB] Added/updated OAuth account "${name}" (web control)`);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, account: name, id: newAccount.id, type: 'oauth', email: profile?.email }));
+          console.log(
+            `[AgentLB] Added/updated OAuth account "${name}" (web control)`,
+          );
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              account: name,
+              id: newAccount.id,
+              type: "oauth",
+              email: profile?.email,
+            }),
+          );
           return;
         }
 
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: `unsupported account type "${type}"` }));
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: `unsupported account type "${type}"`,
+          }),
+        );
         return;
       }
 
       // OAuth Flow: Start
-      if (req.method === 'GET' && (normApiPath === '/oauth/start' || reqPath === '/agent-lb/oauth/start')) {
+      if (
+        req.method === "GET" &&
+        (normApiPath === "/oauth/start" || reqPath === "/agent-lb/oauth/start")
+      ) {
         cleanExpiredOAuthStates();
-        const reqUrl = new URL(req.url, 'http://localhost');
-        const provider = reqUrl.searchParams.get('provider') || 'anthropic';
-        const codeVerifier = randomBytes(32).toString('base64url');
-        const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
-        const state = randomBytes(32).toString('base64url');
+        const reqUrl = new URL(req.url, "http://localhost");
+        const provider = reqUrl.searchParams.get("provider") || "anthropic";
+        const codeVerifier = randomBytes(32).toString("base64url");
+        const codeChallenge = createHash("sha256")
+          .update(codeVerifier)
+          .digest("base64url");
+        const state = randomBytes(32).toString("base64url");
 
-        if (provider === 'codex') {
+        if (provider === "codex") {
           const authUrl = buildCodexAuthUrl({ state, codeChallenge });
-          pendingOAuthStates.set(state, { codeVerifier, createdAt: Date.now(), provider: 'codex' });
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            ok: true,
-            authUrl,
-            state,
-            provider: 'codex',
-          }));
+          pendingOAuthStates.set(state, {
+            codeVerifier,
+            createdAt: Date.now(),
+            provider: "codex",
+          });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              authUrl,
+              state,
+              provider: "codex",
+            }),
+          );
           return;
         }
 
         const redirectUri = MANUAL_LOGIN_REDIRECT_URI;
 
         const authUrl = new URL(OAUTH_AUTHORIZE);
-        authUrl.searchParams.set('code', 'true');
-        authUrl.searchParams.set('client_id', DEFAULT_CLIENT_ID);
-        authUrl.searchParams.set('response_type', 'code');
-        authUrl.searchParams.set('redirect_uri', redirectUri);
-        authUrl.searchParams.set('scope', OAUTH_SCOPES);
-        authUrl.searchParams.set('code_challenge', codeChallenge);
-        authUrl.searchParams.set('code_challenge_method', 'S256');
-        authUrl.searchParams.set('state', state);
+        authUrl.searchParams.set("code", "true");
+        authUrl.searchParams.set("client_id", DEFAULT_CLIENT_ID);
+        authUrl.searchParams.set("response_type", "code");
+        authUrl.searchParams.set("redirect_uri", redirectUri);
+        authUrl.searchParams.set("scope", OAUTH_SCOPES);
+        authUrl.searchParams.set("code_challenge", codeChallenge);
+        authUrl.searchParams.set("code_challenge_method", "S256");
+        authUrl.searchParams.set("state", state);
 
-        pendingOAuthStates.set(state, { codeVerifier, createdAt: Date.now(), provider: 'anthropic' });
+        pendingOAuthStates.set(state, {
+          codeVerifier,
+          createdAt: Date.now(),
+          provider: "anthropic",
+        });
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          ok: true,
-          authUrl: authUrl.toString(),
-          state,
-          provider: 'anthropic',
-        }));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            authUrl: authUrl.toString(),
+            state,
+            provider: "anthropic",
+          }),
+        );
         return;
       }
 
       // Device Code Flow: Start — request a device code from OpenAI
-      if (req.method === 'POST' && (normApiPath === '/oauth/device-start' || reqPath === '/agent-lb/oauth/device-start')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/oauth/device-start" ||
+          reqPath === "/agent-lb/oauth/device-start")
+      ) {
         cleanExpiredOAuthStates();
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'invalid request body' }));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "invalid request body" }));
           return;
         }
-        const provider = body?.provider || 'codex';
-        if (provider !== 'codex') {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'Device code flow is only supported for the codex provider' }));
+        const provider = body?.provider || "codex";
+        if (provider !== "codex") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error:
+                "Device code flow is only supported for the codex provider",
+            }),
+          );
           return;
         }
         try {
@@ -2348,50 +4460,71 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           // Store the pending device auth so device-poll can look it up.
           pendingOAuthStates.set(dc.deviceAuthId, {
             createdAt: Date.now(),
-            provider: 'codex',
-            type: 'device-code',
+            provider: "codex",
+            type: "device-code",
             userCode: dc.userCode,
             interval: dc.interval,
             expiresAt: dc.expiresAt,
           });
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            ok: true,
-            deviceAuthId: dc.deviceAuthId,
-            userCode: dc.userCode,
-            verificationUrl: DEVICE_VERIFICATION_URL,
-            interval: dc.interval,
-            expiresAt: dc.expiresAt,
-          }));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              deviceAuthId: dc.deviceAuthId,
+              userCode: dc.userCode,
+              verificationUrl: DEVICE_VERIFICATION_URL,
+              interval: dc.interval,
+              expiresAt: dc.expiresAt,
+            }),
+          );
         } catch (err) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'Device code request failed: ' + err.message }));
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: "Device code request failed: " + err.message,
+            }),
+          );
         }
         return;
       }
 
       // Device Code Flow: Poll — check whether the user has approved the code
-      if (req.method === 'POST' && (normApiPath === '/oauth/device-poll' || reqPath === '/agent-lb/oauth/device-poll')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/oauth/device-poll" ||
+          reqPath === "/agent-lb/oauth/device-poll")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'invalid request body' }));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "invalid request body" }));
           return;
         }
         const deviceAuthId = body?.deviceAuthId;
         const userCode = body?.userCode;
         if (!deviceAuthId || !userCode) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'deviceAuthId and userCode are required' }));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: "deviceAuthId and userCode are required",
+            }),
+          );
           return;
         }
         const stored = pendingOAuthStates.get(deviceAuthId);
-        if (!stored || stored.type !== 'device-code') {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'unknown or expired device auth session' }));
+        if (!stored || stored.type !== "device-code") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: "unknown or expired device auth session",
+            }),
+          );
           return;
         }
 
@@ -2399,36 +4532,49 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         try {
           let result;
           try {
-            result = await pollDeviceCodeOnce({ deviceAuthId, userCode, signal: AbortSignal.timeout(15_000) });
+            result = await pollDeviceCodeOnce({
+              deviceAuthId,
+              userCode,
+              signal: AbortSignal.timeout(15_000),
+            });
           } catch (err) {
             pendingOAuthStates.delete(deviceAuthId);
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, error: err.message || 'device code rejected' }));
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: err.message || "device code rejected",
+              }),
+            );
             return;
           }
-          if (result.status === 'pending') {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: true, status: 'pending' }));
+          if (result.status === "pending") {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, status: "pending" }));
             return;
           }
           const codexCreds = result.credentials;
 
           pendingOAuthStates.delete(deviceAuthId);
 
-          const priority = Number.isInteger(body?.priority) ? body.priority : (parseInt(body?.priority, 10) || 0);
-          let name = typeof body?.name === 'string' ? body.name.trim() : '';
+          const priority = Number.isInteger(body?.priority)
+            ? body.priority
+            : parseInt(body?.priority, 10) || 0;
+          let name = typeof body?.name === "string" ? body.name.trim() : "";
           if (!name && codexCreds?.email) name = codexCreds.email;
           if (!name) {
-            const count = (config.accounts || []).filter(a => a.provider === 'codex').length + 1;
+            const count =
+              (config.accounts || []).filter((a) => a.provider === "codex")
+                .length + 1;
             name = `codex-${count}`;
           }
 
           const newAccount = {
             id: mintAccountId(),
             name,
-            type: 'oauth',
-            provider: 'codex',
-            source: 'web-device-code',
+            type: "oauth",
+            provider: "codex",
+            source: "web-device-code",
             accessToken: codexCreds.accessToken,
             refreshToken: codexCreds.refreshToken || null,
             accountId: codexCreds.accountId || null,
@@ -2438,12 +4584,17 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             priority,
           };
 
-          await atomicConfigUpdate(disk => {
+          await atomicConfigUpdate((disk) => {
             if (!Array.isArray(disk.accounts)) disk.accounts = [];
             const idx = findUpsertTarget(disk.accounts, newAccount);
             if (idx >= 0) {
               const prev = disk.accounts[idx];
-              disk.accounts[idx] = { ...prev, ...newAccount, id: prev.id || newAccount.id, name: prev.name };
+              disk.accounts[idx] = {
+                ...prev,
+                ...newAccount,
+                id: prev.id || newAccount.id,
+                name: prev.name,
+              };
               name = prev.name;
             } else {
               disk.accounts.push(newAccount);
@@ -2451,75 +4602,124 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           });
 
           if (hooks.reload) await hooks.reload();
-          console.log(`[AgentLB] Successfully authenticated Codex account "${name}" via device code (web control)`);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, status: 'complete', account: name, email: codexCreds?.email }));
+          console.log(
+            `[AgentLB] Successfully authenticated Codex account "${name}" via device code (web control)`,
+          );
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              status: "complete",
+              account: name,
+              email: codexCreds?.email,
+            }),
+          );
         } catch (err) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'Device code poll error: ' + err.message }));
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: "Device code poll error: " + err.message,
+            }),
+          );
         }
         return;
       }
 
       // OAuth Flow: Complete
-      if (req.method === 'POST' && (normApiPath === '/oauth/complete' || reqPath === '/agent-lb/oauth/complete')) {
+      if (
+        req.method === "POST" &&
+        (normApiPath === "/oauth/complete" ||
+          reqPath === "/agent-lb/oauth/complete")
+      ) {
         let body;
         try {
           const raw = await readControlBody(req);
-          body = JSON.parse(raw || '{}');
+          body = JSON.parse(raw || "{}");
         } catch (err) {
-          const tooLarge = err.message === 'body too large';
-          res.writeHead(tooLarge ? 413 : 400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: tooLarge ? 'request body too large' : 'invalid request body' }));
+          const tooLarge = err.message === "body too large";
+          res.writeHead(tooLarge ? 413 : 400, {
+            "Content-Type": "application/json",
+          });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: tooLarge
+                ? "request body too large"
+                : "invalid request body",
+            }),
+          );
           return;
         }
 
-        const rawCode = typeof body?.code === 'string' ? body.code.trim() : '';
-        const state = typeof body?.state === 'string' ? body.state.trim() : '';
-        const priority = Number.isInteger(body?.priority) ? body.priority : (parseInt(body?.priority, 10) || 0);
-        let name = typeof body?.name === 'string' ? body.name.trim() : '';
+        const rawCode = typeof body?.code === "string" ? body.code.trim() : "";
+        const state = typeof body?.state === "string" ? body.state.trim() : "";
+        const priority = Number.isInteger(body?.priority)
+          ? body.priority
+          : parseInt(body?.priority, 10) || 0;
+        let name = typeof body?.name === "string" ? body.name.trim() : "";
 
         if (!state || !pendingOAuthStates.has(state)) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'invalid or expired OAuth state — please start login again' }));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error:
+                "invalid or expired OAuth state — please start login again",
+            }),
+          );
           return;
         }
 
         const stored = pendingOAuthStates.get(state);
         const { codeVerifier } = stored;
-        const provider = stored.provider || 'anthropic';
+        const provider = stored.provider || "anthropic";
         pendingOAuthStates.delete(state);
 
-        if (provider === 'codex') {
+        if (provider === "codex") {
           let codeToExchange = rawCode;
-          if (rawCode.includes('code=')) {
+          if (rawCode.includes("code=")) {
             try {
-              const u = new URL(rawCode.startsWith('http') ? rawCode : `http://localhost/${rawCode}`);
-              codeToExchange = u.searchParams.get('code') || rawCode;
+              const u = new URL(
+                rawCode.startsWith("http")
+                  ? rawCode
+                  : `http://localhost/${rawCode}`,
+              );
+              codeToExchange = u.searchParams.get("code") || rawCode;
             } catch {}
           }
 
           let codexCreds;
           try {
-            codexCreds = await exchangeCodexCode({ code: codeToExchange, codeVerifier });
+            codexCreds = await exchangeCodexCode({
+              code: codeToExchange,
+              codeVerifier,
+            });
           } catch (err) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ok: false, error: 'Codex token exchange failed: ' + err.message }));
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: "Codex token exchange failed: " + err.message,
+              }),
+            );
             return;
           }
 
           if (!name && codexCreds?.email) name = codexCreds.email;
           if (!name) {
-            const count = (config.accounts || []).filter(a => a.provider === 'codex').length + 1;
+            const count =
+              (config.accounts || []).filter((a) => a.provider === "codex")
+                .length + 1;
             name = `codex-${count}`;
           }
 
           const newAccount = {
             id: mintAccountId(),
             name,
-            type: 'oauth',
-            provider: 'codex',
-            source: 'web-oauth',
+            type: "oauth",
+            provider: "codex",
+            source: "web-oauth",
             accessToken: codexCreds.accessToken,
             refreshToken: codexCreds.refreshToken || null,
             accountId: codexCreds.accountId || null,
@@ -2529,15 +4729,20 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
             priority,
           };
 
-          await atomicConfigUpdate(disk => {
+          await atomicConfigUpdate((disk) => {
             if (!Array.isArray(disk.accounts)) disk.accounts = [];
             let idx = findUpsertTarget(disk.accounts, newAccount);
             if (idx < 0 && name) {
-              idx = disk.accounts.findIndex(a => a.name === name);
+              idx = disk.accounts.findIndex((a) => a.name === name);
             }
             if (idx >= 0) {
               const prev = disk.accounts[idx];
-              disk.accounts[idx] = { ...prev, ...newAccount, id: prev.id || newAccount.id, name: prev.name };
+              disk.accounts[idx] = {
+                ...prev,
+                ...newAccount,
+                id: prev.id || newAccount.id,
+                name: prev.name,
+              };
               name = prev.name;
             } else {
               disk.accounts.push(newAccount);
@@ -2545,17 +4750,26 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           });
 
           if (hooks.reload) await hooks.reload();
-          const reloaded = accountManager.accounts.find(a => a.name === name);
+          const reloaded = accountManager.accounts.find((a) => a.name === name);
           if (reloaded) {
             reloaded.lastError = null;
             reloaded.entitlementDeniedUntil = null;
             reloaded.identityVerificationUntil = null;
             reloaded.unavailable = null;
-            reloaded.status = 'active';
+            reloaded.status = "active";
           }
-          console.log(`[AgentLB] Successfully authenticated Codex OAuth account "${name}" (web control)`);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: true, account: name, provider: 'codex', email: codexCreds?.email }));
+          console.log(
+            `[AgentLB] Successfully authenticated Codex OAuth account "${name}" (web control)`,
+          );
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              account: name,
+              provider: "codex",
+              email: codexCreds?.email,
+            }),
+          );
           return;
         }
 
@@ -2563,42 +4777,66 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         try {
           parsed = parseAuthCode(rawCode, state);
         } catch (err) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'could not parse authorization code: ' + err.message }));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: "could not parse authorization code: " + err.message,
+            }),
+          );
           return;
         }
 
         if (!parsed || !parsed.code) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'no authorization code found in input' }));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: "no authorization code found in input",
+            }),
+          );
           return;
         }
 
         let tokenPair;
         try {
-          tokenPair = await exchangeCodeForTokens(parsed.code, parsed.state, codeVerifier, MANUAL_LOGIN_REDIRECT_URI);
+          tokenPair = await exchangeCodeForTokens(
+            parsed.code,
+            parsed.state,
+            codeVerifier,
+            MANUAL_LOGIN_REDIRECT_URI,
+          );
         } catch (err) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'token exchange failed: ' + err.message }));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: "token exchange failed: " + err.message,
+            }),
+          );
           return;
         }
 
         let profile = null;
         try {
           profile = await fetchProfile(tokenPair.accessToken);
-        } catch { /* best effort */ }
+        } catch {
+          /* best effort */
+        }
 
         if (!name && profile?.email) name = profile.email;
         if (!name) {
-          const count = (config.accounts || []).filter(a => a.name.startsWith('account-')).length + 1;
+          const count =
+            (config.accounts || []).filter((a) => a.name.startsWith("account-"))
+              .length + 1;
           name = `account-${count}`;
         }
 
         const newAccount = {
           id: mintAccountId(),
           name,
-          type: 'oauth',
-          source: 'web-oauth',
+          type: "oauth",
+          source: "web-oauth",
           accountUuid: profile?.accountUuid || null,
           orgUuid: profile?.orgUuid || null,
           orgName: profile?.orgName || null,
@@ -2613,15 +4851,20 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
           priority,
         };
 
-        await atomicConfigUpdate(disk => {
+        await atomicConfigUpdate((disk) => {
           if (!Array.isArray(disk.accounts)) disk.accounts = [];
           let idx = findUpsertTarget(disk.accounts, newAccount);
           if (idx < 0 && name) {
-            idx = disk.accounts.findIndex(a => a.name === name);
+            idx = disk.accounts.findIndex((a) => a.name === name);
           }
           if (idx >= 0) {
             const prev = disk.accounts[idx];
-            disk.accounts[idx] = { ...prev, ...newAccount, id: prev.id || newAccount.id, name: prev.name };
+            disk.accounts[idx] = {
+              ...prev,
+              ...newAccount,
+              id: prev.id || newAccount.id,
+              name: prev.name,
+            };
             name = prev.name;
           } else {
             disk.accounts.push(newAccount);
@@ -2629,23 +4872,29 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
         });
 
         if (hooks.reload) await hooks.reload();
-        const reloadedAnthropic = accountManager.accounts.find(a => a.name === name);
+        const reloadedAnthropic = accountManager.accounts.find(
+          (a) => a.name === name,
+        );
         if (reloadedAnthropic) {
           reloadedAnthropic.lastError = null;
           reloadedAnthropic.entitlementDeniedUntil = null;
           reloadedAnthropic.identityVerificationUntil = null;
           reloadedAnthropic.unavailable = null;
-          reloadedAnthropic.status = 'active';
+          reloadedAnthropic.status = "active";
         }
-        console.log(`[AgentLB] Successfully authenticated OAuth account "${name}" (web control)`);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, account: name, email: profile?.email }));
+        console.log(
+          `[AgentLB] Successfully authenticated OAuth account "${name}" (web control)`,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({ ok: true, account: name, email: profile?.email }),
+        );
         return;
       }
 
       return forward(req, res);
     } catch (err) {
-      reportFailure('[AgentLB] Unhandled error:', err);
+      reportFailure("[AgentLB] Unhandled error:", err);
       // The window above throws for real: `getStatusExtra` is a hook the
       // application installs, and reload/switch reach the account manager.
       answerUnhandled(res);
@@ -2654,10 +4903,24 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
 
   // Opt-in egress pin: null unless config.egress.pin is set, and then shared by
   // the base listener and the MITM one so both honour the same hold.
-  const forward = createProxyRequestListener({ accountManager, upstream, logDir, hooks, sx, holdMs, config, egress, clientUsage, dimensionUsage, fairShare, toolDedupe, drainState });
+  const forward = createProxyRequestListener({
+    accountManager,
+    upstream,
+    logDir,
+    hooks,
+    sx,
+    holdMs,
+    config,
+    egress,
+    clientUsage,
+    dimensionUsage,
+    fairShare,
+    toolDedupe,
+    drainState,
+  });
   const server = http.createServer(requestHandler);
   server.healthChecker = healthChecker;
-  server.on('close', () => {
+  server.on("close", () => {
     healthChecker.stop();
   });
 
@@ -2672,14 +4935,17 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       const hours = resolveLogRetentionHours(config);
       return sweepRequestLogs(logDir, hours)
         .then((n) => {
-          if (n) console.log(`[AgentLB] Removed ${n} expired request log(s) from ${logDir} (logRetentionHours=${hours}, set 0 to keep them)`);
+          if (n)
+            console.log(
+              `[AgentLB] Removed ${n} expired request log(s) from ${logDir} (logRetentionHours=${hours}, set 0 to keep them)`,
+            );
         })
         .catch(() => {});
     };
     sweep();
     const sweepTimer = setInterval(sweep, LOG_SWEEP_INTERVAL_MS);
     sweepTimer.unref();
-    server.on('close', () => clearInterval(sweepTimer));
+    server.on("close", () => clearInterval(sweepTimer));
   }
 
   // Forward-proxy support (always on, so multiple claude instances can use
@@ -2695,16 +4961,33 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
   const ensureLeaf = async () => {
     // Reset the memo on failure so a transient cert error doesn't wedge the MITM
     // path permanently (a cached rejected promise would re-throw on every CONNECT).
-    certsPromise ||= ensureCerts(mitmHostList).catch((err) => { certsPromise = null; throw err; });
+    certsPromise ||= ensureCerts(mitmHostList).catch((err) => {
+      certsPromise = null;
+      throw err;
+    });
     const c = await certsPromise;
     return { key: c.leafKeyPem, cert: c.leafCertPem };
   };
-  server.on('connect', createConnectHandler({ config, accountManager, ensureLeaf, logDir, hooks, log: console.error, sx, egress, clientUsage, dimensionUsage }));
+  server.on(
+    "connect",
+    createConnectHandler({
+      config,
+      accountManager,
+      ensureLeaf,
+      logDir,
+      hooks,
+      log: console.error,
+      sx,
+      egress,
+      clientUsage,
+      dimensionUsage,
+    }),
+  );
   // Remote Control's real-time channel is a WebSocket, not a request/response
   // call — Node fires 'upgrade' for that handshake, never 'request', so it
   // needs its own listener (base-URL routing path; the MITM path wires the
   // same relayUpgrade onto its own terminating server in mitm.js).
-  server.on('upgrade', (req, socket, head) => {
+  server.on("upgrade", (req, socket, head) => {
     // Checked before the key gate: the Codex CLI authenticates with a Bearer
     // only, and answering its handshake 401 would read as an auth failure
     // rather than "use HTTP". See refuseCodexWebSocket.
@@ -2722,8 +5005,14 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
       // line, so the 401 alone leaves an operator with a channel that is
       // silently dead — the same shape as the outage this gate could cause if
       // a client turns out not to send the key.
-      console.log(`[AgentLB] WebSocket upgrade refused (no proxy key) from ${safeLine(socket?.remoteAddress || 'unknown')} for ${safeLine(req.url)}`);
-      try { socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n'); } catch { /* already gone */ }
+      console.log(
+        `[AgentLB] WebSocket upgrade refused (no proxy key) from ${safeLine(socket?.remoteAddress || "unknown")} for ${safeLine(req.url)}`,
+      );
+      try {
+        socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+      } catch {
+        /* already gone */
+      }
       socket.destroy();
       return;
     }
@@ -2731,7 +5020,10 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
     // path (req.tcClient): a handshake authenticated with a client key is
     // attributed to that client, or it is a channel the operator cannot see
     // under `clients` at all (#325).
-    relayUpgrade(req, socket, head, upstream, sx, { client: auth.client, clientUsage });
+    relayUpgrade(req, socket, head, upstream, sx, {
+      client: auth.client,
+      clientUsage,
+    });
   });
 
   return server;
@@ -2759,31 +5051,36 @@ export function createProxyServer(accountManager, config, hooks = {}, sx = null,
  * unaffected.
  */
 export function isSameOriginControlRequest(req) {
-  const site = req.headers['sec-fetch-site'];
-  if (site) return site === 'same-origin' || site === 'none';
+  const site = req.headers["sec-fetch-site"];
+  if (site) return site === "same-origin" || site === "none";
   return !req.headers.origin;
 }
 
 // Names a browser can reach this machine by. `::ffff:127.0.0.1` is how a
 // dual-stack listener reports loopback and is accepted for symmetry with
 // isLoopbackAddr, though no browser writes it in a URL.
-const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const LOCAL_HOSTNAMES = new Set([
+  "localhost",
+  "127.0.0.1",
+  "::1",
+  "::ffff:127.0.0.1",
+]);
 // Binding to a wildcard says nothing about what name reaches us, so it does
 // not widen the set.
-const WILDCARD_BINDS = new Set(['0.0.0.0', '::', '']);
+const WILDCARD_BINDS = new Set(["0.0.0.0", "::", ""]);
 
 // The hostname part of a Host header (or a bind address): port stripped, IPv6
 // brackets removed, lowercased. null when the value cannot be one.
 function hostnameOf(host) {
   const h = String(host).trim().toLowerCase();
-  if (h.startsWith('[')) {
-    const end = h.indexOf(']');
+  if (h.startsWith("[")) {
+    const end = h.indexOf("]");
     return end < 0 ? null : h.slice(1, end);
   }
   // A bare IPv6 address (how config.proxy.host spells one) has several colons
   // and no port to strip; a `name:port` has exactly one.
-  const colon = h.indexOf(':');
-  if (colon >= 0 && h.indexOf(':', colon + 1) >= 0) return h;
+  const colon = h.indexOf(":");
+  if (colon >= 0 && h.indexOf(":", colon + 1) >= 0) return h;
   return colon >= 0 ? h.slice(0, colon) : h;
 }
 
@@ -2800,8 +5097,13 @@ function hostnameOf(host) {
  * browser speaks HTTP/1.0 — while a hand-rolled local tool might. Refusing it
  * would break that tool without closing anything.
  */
-export function isLocalHostHeader(host, bindHost = null, allowedHosts = [], proxyConfig = null) {
-  if (host == null || host === '') return true;
+export function isLocalHostHeader(
+  host,
+  bindHost = null,
+  allowedHosts = [],
+  proxyConfig = null,
+) {
+  if (host == null || host === "") return true;
   const name = hostnameOf(host);
   if (name == null) return false;
   if (LOCAL_HOSTNAMES.has(name)) return true;
@@ -2812,12 +5114,27 @@ export function isLocalHostHeader(host, bindHost = null, allowedHosts = [], prox
     process.env.AGENT_LB_HOST,
     process.env.AGENTLB_HOST,
     process.env.CLAUDE_LB_HOST,
-    'agentlb.gotova.pl',
-    'agent-lb.gotova.pl',
-  ].filter(Boolean).flatMap(h => typeof h === 'string' ? h.split(',').map(s => s.trim()) : []);
-  if (rawEnvHosts.some(h => name === hostnameOf(h) || name.endsWith('.' + hostnameOf(h)))) return true;
-  if (Array.isArray(allowedHosts) && allowedHosts.some(h => name === hostnameOf(h) || name.endsWith('.' + hostnameOf(h)))) return true;
-  const bound = typeof bindHost === 'string' ? hostnameOf(bindHost) : null;
+    "agentlb.gotova.pl",
+    "agent-lb.gotova.pl",
+  ]
+    .filter(Boolean)
+    .flatMap((h) =>
+      typeof h === "string" ? h.split(",").map((s) => s.trim()) : [],
+    );
+  if (
+    rawEnvHosts.some(
+      (h) => name === hostnameOf(h) || name.endsWith("." + hostnameOf(h)),
+    )
+  )
+    return true;
+  if (
+    Array.isArray(allowedHosts) &&
+    allowedHosts.some(
+      (h) => name === hostnameOf(h) || name.endsWith("." + hostnameOf(h)),
+    )
+  )
+    return true;
+  const bound = typeof bindHost === "string" ? hostnameOf(bindHost) : null;
   return bound != null && !WILDCARD_BINDS.has(bound) && bound === name;
 }
 
@@ -2845,22 +5162,27 @@ export function isLocalHostHeader(host, bindHost = null, allowedHosts = [], prox
  */
 export function resolveAccountPin(accountManager, token) {
   const accounts = accountManager.accounts || [];
-  const norm = (s) => (s || '').trim().toLowerCase();
+  const norm = (s) => (s || "").trim().toLowerCase();
   const t = norm(token);
   if (!t) return null;
 
-  const at = (pick) => accounts.findIndex(a => norm(pick(a)) === t);
-  const qualified = accounts.findIndex(a => a.accountUuid && a.orgUuid
-    && `${norm(a.accountUuid)}/${norm(a.orgUuid)}` === t);
+  const at = (pick) => accounts.findIndex((a) => norm(pick(a)) === t);
+  const qualified = accounts.findIndex(
+    (a) =>
+      a.accountUuid &&
+      a.orgUuid &&
+      `${norm(a.accountUuid)}/${norm(a.orgUuid)}` === t,
+  );
 
   for (const i of [
     qualified,
-    at(a => a.id),
-    at(a => a.accountUuid),
-    at(a => a.orgUuid),
-    at(a => a.name),
-    at(a => (a.name || '').split(' (')[0]), // display name minus the org suffix
-  ]) if (i >= 0) return i;
+    at((a) => a.id),
+    at((a) => a.accountUuid),
+    at((a) => a.orgUuid),
+    at((a) => a.name),
+    at((a) => (a.name || "").split(" (")[0]), // display name minus the org suffix
+  ])
+    if (i >= 0) return i;
 
   return null;
 }
@@ -2884,12 +5206,19 @@ export function resolveAccountPin(accountManager, token) {
  * `message`. It also covers a wrapper whose `.cause` carries no reasons.
  */
 export function describeConnectError(err) {
-  const reasons = (e) => (Array.isArray(e?.errors) ? e.errors.map(c => c?.message).filter(Boolean) : []);
+  const reasons = (e) =>
+    Array.isArray(e?.errors)
+      ? e.errors.map((c) => c?.message).filter(Boolean)
+      : [];
   const own = reasons(err);
   // A wrapper with a non-aggregated cause (global fetch's TypeError('fetch
   // failed') around a single-address connect error) still says only 'fetch
   // failed' by itself; the cause's message is the reason.
-  return (own.length ? own : reasons(err?.cause)).join('; ') || err?.cause?.message || err?.message;
+  return (
+    (own.length ? own : reasons(err?.cause)).join("; ") ||
+    err?.cause?.message ||
+    err?.message
+  );
 }
 
 // Paths that must reach upstream with the client's own credential (never a
@@ -2906,9 +5235,19 @@ export function describeConnectError(err) {
 // HTTPS-only, so in practice this only ever sees third-party hosts.
 export function relayHttpForward(req, res) {
   let target;
-  try { target = new URL(req.url); } catch {
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'Malformed forward-proxy URL' } }));
+  try {
+    target = new URL(req.url);
+  } catch {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          message: "Malformed forward-proxy URL",
+        },
+      }),
+    );
     return;
   }
   // Destination policy, same as the CONNECT tunnel's (forward-target.js): a
@@ -2919,53 +5258,87 @@ export function relayHttpForward(req, res) {
   // lookup below refuses by resolved address, so a DNS alias for 127.0.0.1 does
   // not get past either. Launched clients carry NO_PROXY for loopback, so no
   // legitimate request is lost.
-  const hostname = target.hostname.replace(/^\[|\]$/g, '');
+  const hostname = target.hostname.replace(/^\[|\]$/g, "");
   const refuse = (why) => {
     console.error(`[AgentLB] HTTP forward to ${target.host} refused: ${why}`);
-    if (res.headersSent) { res.destroy(); return; }
-    res.writeHead(403, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ type: 'error', error: { type: 'permission_error', message: `Forward to ${target.host} refused: ${why}` } }));
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    res.writeHead(403, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        type: "error",
+        error: {
+          type: "permission_error",
+          message: `Forward to ${target.host} refused: ${why}`,
+        },
+      }),
+    );
   };
   const refused = forwardRefusal(hostname, null, req.socket);
-  if (refused) { refuse(refused); return; }
+  if (refused) {
+    refuse(refused);
+    return;
+  }
 
-  const transport = target.protocol === 'http:' ? http : https;
+  const transport = target.protocol === "http:" ? http : https;
   const headers = {};
   for (const [key, value] of Object.entries(req.headers)) {
     const lk = key.toLowerCase();
     // Drop hop-by-hop + proxy-control headers; `host` is reset from the target.
-    if (lk.startsWith(':') || HOP_BY_HOP_HEADERS.has(lk) || lk === 'proxy-connection') continue;
+    if (
+      lk.startsWith(":") ||
+      HOP_BY_HOP_HEADERS.has(lk) ||
+      lk === "proxy-connection"
+    )
+      continue;
     // The proxy key authenticates this hop and must never be forwarded to an
     // arbitrary absolute-form target.  A caller's Authorization header is
     // target-facing and is intentionally preserved; x-api-key is ours.
-    if (lk === 'x-api-key' || lk === 'proxy-authorization') continue;
+    if (lk === "x-api-key" || lk === "proxy-authorization") continue;
     headers[key] = value;
   }
 
-  const upstreamReq = transport.request(target, { method: req.method, headers, lookup: guardedLookup(req.socket) }, (upstreamRes) => {
-    const responseHeaders = {};
-    for (const [key, value] of Object.entries(upstreamRes.headers)) {
-      if (CONNECTION_SPECIFIC_HEADERS.has(key)) continue;
-      responseHeaders[key] = value;
+  const upstreamReq = transport.request(
+    target,
+    { method: req.method, headers, lookup: guardedLookup(req.socket) },
+    (upstreamRes) => {
+      const responseHeaders = {};
+      for (const [key, value] of Object.entries(upstreamRes.headers)) {
+        if (CONNECTION_SPECIFIC_HEADERS.has(key)) continue;
+        responseHeaders[key] = value;
+      }
+      res.writeHead(upstreamRes.statusCode, responseHeaders);
+      upstreamRes.pipe(res);
+      // A transparent HTTP relay has no retry layer.  If the upstream socket
+      // dies after headers, close the client side so callers can reconnect
+      // instead of waiting forever on a half-open response.
+      upstreamRes.on("aborted", () => res.destroy());
+      upstreamRes.on("error", () => res.destroy());
+    },
+  );
+  upstreamReq.on("error", (err) => {
+    if (err.code === FORBIDDEN_FORWARD) {
+      refuse(err.message);
+      return;
     }
-    res.writeHead(upstreamRes.statusCode, responseHeaders);
-    upstreamRes.pipe(res);
-    // A transparent HTTP relay has no retry layer.  If the upstream socket
-    // dies after headers, close the client side so callers can reconnect
-    // instead of waiting forever on a half-open response.
-    upstreamRes.on('aborted', () => res.destroy());
-    upstreamRes.on('error', () => res.destroy());
-  });
-  upstreamReq.on('error', (err) => {
-    if (err.code === FORBIDDEN_FORWARD) { refuse(err.message); return; }
-    console.error(`[AgentLB] HTTP forward to ${target.host} failed:`, describeConnectError(err));
+    console.error(
+      `[AgentLB] HTTP forward to ${target.host} failed:`,
+      describeConnectError(err),
+    );
     if (!res.headersSent) {
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ type: 'error', error: { type: 'proxy_error', message: 'Upstream unreachable' } }));
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          type: "error",
+          error: { type: "proxy_error", message: "Upstream unreachable" },
+        }),
+      );
     }
   });
-  res.on('close', () => upstreamReq.destroy());
-  if (['GET', 'HEAD'].includes(req.method)) upstreamReq.end();
+  res.on("close", () => upstreamReq.destroy());
+  if (["GET", "HEAD"].includes(req.method)) upstreamReq.end();
   else req.pipe(upstreamReq);
 }
 
@@ -2978,7 +5351,7 @@ export function relayHttpForward(req, res) {
 // different account than the one you're logged in as"), Remote Control binds to
 // the wrong account, and artifacts get published under it. Observed on a live
 // fleet; the whole prefix is the fix, not a growing allowlist of sub-paths.
-const CLIENT_CREDENTIAL_PATHS = ['/v1/code/', '/api/oauth/'];
+const CLIENT_CREDENTIAL_PATHS = ["/v1/code/", "/api/oauth/"];
 
 // Claude Code's session id is a UUID, but other clients tag sessions too, so
 // the shape is a conservative charset rather than the UUID grammar: wide enough
@@ -2993,29 +5366,31 @@ const SESSION_ID_SHAPE = /^[A-Za-z0-9._-]{1,128}$/;
  */
 export function extractPromptSummary(parsedBody) {
   if (!parsedBody) return null;
-  const messages = Array.isArray(parsedBody.messages) ? parsedBody.messages : null;
+  const messages = Array.isArray(parsedBody.messages)
+    ? parsedBody.messages
+    : null;
   if (messages && messages.length > 0) {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
-      if (m && m.role === 'user') {
-        let text = '';
-        if (typeof m.content === 'string') {
+      if (m && m.role === "user") {
+        let text = "";
+        if (typeof m.content === "string") {
           text = m.content;
         } else if (Array.isArray(m.content)) {
           for (const part of m.content) {
-            if (part?.type === 'text' && typeof part.text === 'string') {
-              text += (text ? ' ' : '') + part.text;
+            if (part?.type === "text" && typeof part.text === "string") {
+              text += (text ? " " : "") + part.text;
             }
           }
         }
-        text = text.trim().replace(/\s+/g, ' ');
-        if (text) return text.length > 80 ? text.slice(0, 77) + '...' : text;
+        text = text.trim().replace(/\s+/g, " ");
+        if (text) return text.length > 80 ? text.slice(0, 77) + "..." : text;
       }
     }
   }
-  if (typeof parsedBody.prompt === 'string') {
-    const p = parsedBody.prompt.trim().replace(/\s+/g, ' ');
-    if (p) return p.length > 80 ? p.slice(0, 77) + '...' : p;
+  if (typeof parsedBody.prompt === "string") {
+    const p = parsedBody.prompt.trim().replace(/\s+/g, " ");
+    if (p) return p.length > 80 ? p.slice(0, 77) + "..." : p;
   }
   return null;
 }
@@ -3023,8 +5398,11 @@ export function extractPromptSummary(parsedBody) {
 /** The session id a request carries, or null when the header is absent or
  *  malformed — a malformed one is treated as no session, not rejected. */
 export function clientSessionId(headers) {
-  const raw = headers['x-claude-code-session-id'] || headers['x-session-id'] || headers['session-id'];
-  return typeof raw === 'string' && SESSION_ID_SHAPE.test(raw) ? raw : null;
+  const raw =
+    headers["x-claude-code-session-id"] ||
+    headers["x-session-id"] ||
+    headers["session-id"];
+  return typeof raw === "string" && SESSION_ID_SHAPE.test(raw) ? raw : null;
 }
 
 /**
@@ -3035,15 +5413,29 @@ export function clientSessionId(headers) {
  * and the proxy-API-key gate live in the base server's wrapper, not here.
  */
 export function createProxyRequestListener({
-  accountManager, upstream, logDir = null, hooks = {}, sx = null, holdMs = 0,
-  config = {}, forcedPin = null, egress = null, clientUsage = null,
-  forcedClient = null, forcedCredential = null, dimensionUsage = null, fairShare: injectedFairShare = null,
-  toolDedupe: injectedToolDedupe = null, drainState = null,
+  accountManager,
+  upstream,
+  logDir = null,
+  hooks = {},
+  sx = null,
+  holdMs = 0,
+  config = {},
+  forcedPin = null,
+  egress = null,
+  clientUsage = null,
+  forcedClient = null,
+  forcedCredential = null,
+  dimensionUsage = null,
+  fairShare: injectedFairShare = null,
+  toolDedupe: injectedToolDedupe = null,
+  drainState = null,
 }) {
-  const fairShare = injectedFairShare || new FairShareController({
-    poolCapacity: config?.poolCapacity || 32,
-    congestionThreshold: config?.congestionThreshold || 0.75,
-  });
+  const fairShare =
+    injectedFairShare ||
+    new FairShareController({
+      poolCapacity: config?.poolCapacity || 32,
+      congestionThreshold: config?.congestionThreshold || 0.75,
+    });
   clientUsage ||= new ClientUsageTracker();
   const requestBudget = requestBudgetFor(config);
   const toolDedupe = injectedToolDedupe || new ToolCallDedupeCache();
@@ -3063,7 +5455,10 @@ export function createProxyRequestListener({
     try {
       if (forcedCredential != null) {
         const currentAuth = resolveClientAuth(config.proxy, forcedCredential);
-        if (!currentAuth.ok) { denyClientPolicy(res, { status: 401, error: 'proxy key revoked' }); return; }
+        if (!currentAuth.ok) {
+          denyClientPolicy(res, { status: 401, error: "proxy key revoked" });
+          return;
+        }
         req.tcClient = currentAuth.client;
         req.tcClientEntry = currentAuth.entry;
       }
@@ -3071,7 +5466,10 @@ export function createProxyRequestListener({
       const clientName = req.tcClient ?? forcedClient;
       if (entry) {
         const policy = clientUsage.checkQuota(clientName, entry);
-        if (!policy.allowed) { denyClientPolicy(res, policy); return; }
+        if (!policy.allowed) {
+          denyClientPolicy(res, policy);
+          return;
+        }
       }
 
       // Refused before any path-prefix classification below, so each of those
@@ -3079,10 +5477,26 @@ export function createProxyRequestListener({
       // unknown-pin 404: an operator should see a client probing the boundary.
       if (hasDotSegment(req.url)) {
         const reqId = ++counter;
-        const sessionId = req.headers['x-claude-code-session-id'] || null;
-        hooks.onRequestEnd?.(reqId, { method: req.method, path: safeLine(req.url), account: '(refused: dot-segment in path)', status: 400, model: null, sessionId, pinned: false });
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'Request path must not contain dot-segments' } }));
+        const sessionId = req.headers["x-claude-code-session-id"] || null;
+        hooks.onRequestEnd?.(reqId, {
+          method: req.method,
+          path: safeLine(req.url),
+          account: "(refused: dot-segment in path)",
+          status: 400,
+          model: null,
+          sessionId,
+          pinned: false,
+        });
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            type: "error",
+            error: {
+              type: "invalid_request_error",
+              message: "Request path must not contain dot-segments",
+            },
+          }),
+        );
         recordEarlyOutcome(accountManager, sessionId, req.url, true);
         return;
       }
@@ -3092,14 +5506,14 @@ export function createProxyRequestListener({
       // effect immediately): 'show' forwards + displays; 'hide' (default) forwards
       // but suppresses the activity entry; 'block' answers 200 locally without
       // forwarding (no upstream round-trip, no account/token spent).
-      const eventLogging = config?.eventLogging || 'hide';
-      const isEventLog = (req.url || '').startsWith('/api/event_logging');
-      if (isEventLog && eventLogging === 'block') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end('{}');
+      const eventLogging = config?.eventLogging || "hide";
+      const isEventLog = (req.url || "").startsWith("/api/event_logging");
+      if (isEventLog && eventLogging === "block") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end("{}");
         return;
       }
-      const hideActivity = isEventLog && eventLogging !== 'show';
+      const hideActivity = isEventLog && eventLogging !== "show";
       // Egress pin (opt-in): with the exit IP off the pinned one — a VPN that
       // dropped — hold rather than send. Upstream answers a request from an
       // unexpected region with a 403 that Claude Code reports as a dead session,
@@ -3107,27 +5521,59 @@ export function createProxyRequestListener({
       // rather than per-account: it is a property of the connection, and this is
       // the one path every request takes, MITM included.
       if (egress?.enabled()) {
-        const state = await egress.waitUntilPinned({ isAborted: () => clientGone(res) });
+        const state = await egress.waitUntilPinned({
+          isAborted: () => clientGone(res),
+        });
         if (clientGone(res)) return;
         if (!state.ok) {
-          recordEarlyOutcome(accountManager, req.headers['x-claude-code-session-id'] || null, req.url, false);
-          res.writeHead(503, { 'Content-Type': 'application/json', 'retry-after': '30' });
-          res.end(JSON.stringify({
-            type: 'error',
-            error: {
-              type: 'proxy_error',
-              message: `Egress is ${state.ip || 'unknown'}, not the pinned ${state.expected.join(', ')} — not sending this request. Check the VPN.`,
-            },
-          }));
+          recordEarlyOutcome(
+            accountManager,
+            req.headers["x-claude-code-session-id"] || null,
+            req.url,
+            false,
+          );
+          res.writeHead(503, {
+            "Content-Type": "application/json",
+            "retry-after": "30",
+          });
+          res.end(
+            JSON.stringify({
+              type: "error",
+              error: {
+                type: "proxy_error",
+                message: `Egress is ${state.ip || "unknown"}, not the pinned ${state.expected.join(", ")} — not sending this request. Check the VPN.`,
+              },
+            }),
+          );
           return;
         }
       }
-      if (entry && CLIENT_CREDENTIAL_PATHS.some(p => (req.url || '').startsWith(p)) && !relayPolicyAllowed({ ok: true, entry, client: clientName }, clientUsage)) {
-        denyClientPolicy(res, { error: 'restricted keys cannot use an unmetered relay' }); return;
+      if (
+        entry &&
+        CLIENT_CREDENTIAL_PATHS.some((p) => (req.url || "").startsWith(p)) &&
+        !relayPolicyAllowed(
+          { ok: true, entry, client: clientName },
+          clientUsage,
+        )
+      ) {
+        denyClientPolicy(res, {
+          error: "restricted keys cannot use an unmetered relay",
+        });
+        return;
       }
       // Client token refresh: pass through untouched (the proxy manages its own
       // tokens via ensureTokenFresh; rewriting client refreshes would conflict).
-      if (req.method === 'POST' && req.url === '/v1/oauth/token') { await relayRaw(req, res, upstream, sx, Math.min(resolveMaxBodyBytes(config), 1024 * 1024), requestBudget); return; }
+      if (req.method === "POST" && req.url === "/v1/oauth/token") {
+        await relayRaw(
+          req,
+          res,
+          upstream,
+          sx,
+          Math.min(resolveMaxBodyBytes(config), 1024 * 1024),
+          requestBudget,
+        );
+        return;
+      }
       // Remote Control (/v1/code/*) is bound to the session's paired claude.ai
       // identity — forward with the client's OWN credential (streamed), never a
       // rotated account token, which would 403 the worker event stream.
@@ -3135,7 +5581,10 @@ export function createProxyRequestListener({
       // likewise account-bound: files uploaded from claude.ai belong to the
       // paired identity, so fetching them with a rotated token 403s and Claude
       // Code silently drops the image from the message.
-      if (CLIENT_CREDENTIAL_PATHS.some((p) => (req.url || '').startsWith(p))) { await relayStream(req, res, upstream, sx); return; }
+      if (CLIENT_CREDENTIAL_PATHS.some((p) => (req.url || "").startsWith(p))) {
+        await relayStream(req, res, upstream, sx);
+        return;
+      }
 
       // Account pin: a request to `/tc-acct/<name-or-index>/...` (e.g. via
       // ANTHROPIC_BASE_URL=http://host:port/tc-acct/deepseek) is forced onto that
@@ -3147,10 +5596,12 @@ export function createProxyRequestListener({
       // the real upstream one). Kept for the warmer and for direct API callers.
       // One segment only, so the fully-qualified `accountUuid/orgUuid` form is
       // not expressible here; use TC_ACCT for that.
-      const url = req.url || '';
-      const afterPrefix = url.startsWith(PIN_PREFIX) ? url.slice(PIN_PREFIX.length) : null;
+      const url = req.url || "";
+      const afterPrefix = url.startsWith(PIN_PREFIX)
+        ? url.slice(PIN_PREFIX.length)
+        : null;
       // The token runs to the next '/', which also begins the real request path.
-      const tokenEnd = afterPrefix == null ? -1 : afterPrefix.indexOf('/');
+      const tokenEnd = afterPrefix == null ? -1 : afterPrefix.indexOf("/");
       if (tokenEnd > 0) {
         // The escaping of this segment is the CLIENT's, so a malformed one
         // ("/tc-acct/%/v1/messages") makes decodeURIComponent throw URIError.
@@ -3160,17 +5611,39 @@ export function createProxyRequestListener({
         // reported as it arrived, since there is no decoded form to name.
         const raw = afterPrefix.slice(0, tokenEnd);
         let token = null;
-        try { token = decodeURIComponent(raw); } catch { token = null; }
-        pinnedIndex = token == null ? null : resolveAccountPin(accountManager, token);
+        try {
+          token = decodeURIComponent(raw);
+        } catch {
+          token = null;
+        }
+        pinnedIndex =
+          token == null ? null : resolveAccountPin(accountManager, token);
         if (pinnedIndex == null) {
           // Client-supplied and already percent-decoded, so this is the one
           // value on the path that can carry raw control bytes.
           const shown = safeLine(token ?? raw);
           const reqId = ++counter;
           const sessionId = clientSessionId(req.headers);
-          if (!hideActivity) hooks.onRequestEnd?.(reqId, { method: req.method, path: req.url, account: `(unknown pin: "${shown}")`, status: 404, model: null, sessionId, pinned: false });
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ type: 'error', error: { type: 'not_found_error', message: `Unknown account pin "${shown}"` } }));
+          if (!hideActivity)
+            hooks.onRequestEnd?.(reqId, {
+              method: req.method,
+              path: req.url,
+              account: `(unknown pin: "${shown}")`,
+              status: 404,
+              model: null,
+              sessionId,
+              pinned: false,
+            });
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              type: "error",
+              error: {
+                type: "not_found_error",
+                message: `Unknown account pin "${shown}"`,
+              },
+            }),
+          );
           recordEarlyOutcome(accountManager, sessionId, req.url, true);
           return;
         }
@@ -3188,9 +5661,26 @@ export function createProxyRequestListener({
         if (pinnedIndex == null) {
           const reqId = ++counter;
           const sessionId = clientSessionId(req.headers);
-          if (!hideActivity) hooks.onRequestEnd?.(reqId, { method: req.method, path: req.url, account: `(unknown pin: "${safeLine(forcedPin)}")`, status: 404, model: null, sessionId, pinned: false });
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ type: 'error', error: { type: 'not_found_error', message: `Unknown account pin "${forcedPin}" (from TC_ACCT)` } }));
+          if (!hideActivity)
+            hooks.onRequestEnd?.(reqId, {
+              method: req.method,
+              path: req.url,
+              account: `(unknown pin: "${safeLine(forcedPin)}")`,
+              status: 404,
+              model: null,
+              sessionId,
+              pinned: false,
+            });
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              type: "error",
+              error: {
+                type: "not_found_error",
+                message: `Unknown account pin "${forcedPin}" (from TC_ACCT)`,
+              },
+            }),
+          );
           recordEarlyOutcome(accountManager, sessionId, req.url, true);
           return;
         }
@@ -3208,7 +5698,13 @@ export function createProxyRequestListener({
         // close. The cost of this order is one spurious close if the hook threw
         // before registering anything, which every consumer already tolerates.
         openEntry = { reqId, sessionId };
-        hooks.onRequestStart?.(reqId, { method: req.method, path: req.url, sessionId, pinned: pinnedIndex != null, client: req.tcClient ?? forcedClient ?? null });
+        hooks.onRequestStart?.(reqId, {
+          method: req.method,
+          path: req.url,
+          sessionId,
+          pinned: pinnedIndex != null,
+          client: req.tcClient ?? forcedClient ?? null,
+        });
       }
 
       // Buffer request body (needed to resend on a different account after a 429).
@@ -3217,14 +5713,27 @@ export function createProxyRequestListener({
       // frame — rather than waiting for the whole body and the request to finish.
       releaseBudget = requestBudget.acquire();
       if (!releaseBudget) {
-        res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '1' });
-        res.end(JSON.stringify({ error: { type: 'overloaded_error', message: 'Request buffer capacity exhausted' } }));
+        res.writeHead(503, {
+          "Content-Type": "application/json",
+          "Retry-After": "1",
+        });
+        res.end(
+          JSON.stringify({
+            error: {
+              type: "overloaded_error",
+              message: "Request buffer capacity exhausted",
+            },
+          }),
+        );
         return;
       }
-      uploadTimer = setTimeout(() => req.destroy(new Error('request body deadline exceeded')), 30_000);
+      uploadTimer = setTimeout(
+        () => req.destroy(new Error("request body deadline exceeded")),
+        30_000,
+      );
       uploadTimer.unref?.();
       const bodyChunks = [];
-      const modelFinder = new TopLevelFieldFinder('model');
+      const modelFinder = new TopLevelFieldFinder("model");
       const maxBodyBytes = resolveMaxBodyBytes(config);
       let bodyBytes = 0;
       for await (const chunk of req) {
@@ -3234,32 +5743,57 @@ export function createProxyRequestListener({
         // and say so; the request is torn down once the answer is out.
         if (bodyBytes > maxBodyBytes || !releaseBudget.reserve(chunk.length)) {
           await refuseOversizedBody(req, res);
-          openEntry = null;   // this path owns the close below; the outer catch must not repeat it
-          if (!hideActivity) hooks.onRequestEnd?.(reqId, { method: req.method, path: req.url, account: '(too large)', status: 413, model: modelFinder.done ? modelFinder.value : null, sessionId, pinned: pinnedIndex != null });
+          openEntry = null; // this path owns the close below; the outer catch must not repeat it
+          if (!hideActivity)
+            hooks.onRequestEnd?.(reqId, {
+              method: req.method,
+              path: req.url,
+              account: "(too large)",
+              status: 413,
+              model: modelFinder.done ? modelFinder.value : null,
+              sessionId,
+              pinned: pinnedIndex != null,
+            });
           return;
         }
         bodyChunks.push(chunk);
         if (!modelFinder.done) {
           const found = modelFinder.push(chunk);
-          if (found && !hideActivity) hooks.onRequestModel?.(reqId, { model: found });
+          if (found && !hideActivity)
+            hooks.onRequestModel?.(reqId, { model: found });
         }
       }
       clearTimeout(uploadTimer);
       const body = Buffer.concat(bodyChunks);
 
-      const model = modelFinder.done ? modelFinder.value : parseRequestModel(body);
+      const model = modelFinder.done
+        ? modelFinder.value
+        : parseRequestModel(body);
       if (entry?.allowedModels?.length && !model) {
-        denyClientPolicy(res, { error: 'model required for a model-restricted key' }); return;
+        denyClientPolicy(res, {
+          error: "model required for a model-restricted key",
+        });
+        return;
       }
       const requestedPolicy = clientUsage.checkQuota(clientName, entry, model);
-      if (!requestedPolicy.allowed) { denyClientPolicy(res, requestedPolicy); return; }
+      if (!requestedPolicy.allowed) {
+        denyClientPolicy(res, requestedPolicy);
+        return;
+      }
       // An advisor request (Claude Code's advisor tool) carries a SECOND model
       // nested in tools[]; the advisor sub-inference runs on the selected
       // account, so selection must be eligible for it too (issue #98).
       const advisorModel = parseAdvisorModel(body);
       if (advisorModel) {
-        const advisorPolicy = clientUsage.checkQuota(clientName, entry, advisorModel);
-        if (!advisorPolicy.allowed) { denyClientPolicy(res, advisorPolicy); return; }
+        const advisorPolicy = clientUsage.checkQuota(
+          clientName,
+          entry,
+          advisorModel,
+        );
+        if (!advisorPolicy.allowed) {
+          denyClientPolicy(res, advisorPolicy);
+          return;
+        }
       }
 
       // Model blocklist (issue #116): reject a request for a blocked model right
@@ -3267,15 +5801,32 @@ export function createProxyRequestListener({
       // once it left base plans) otherwise gets rate-limited upstream and hangs
       // the pipeline; a fast, non-retryable 400 lets the client move on. Read
       // live from the shared config so the TUI editor takes effect immediately.
-      const blockedBy = model ? (config?.blockedModels || []).find((p) => modelGlobMatches(p, model)) : null;
+      const blockedBy = model
+        ? (config?.blockedModels || []).find((p) => modelGlobMatches(p, model))
+        : null;
       if (blockedBy) {
         if (!res.headersSent) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: `Model "${model}" is blocked by agent-lb (matched "${blockedBy}").` } }));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              type: "error",
+              error: {
+                type: "invalid_request_error",
+                message: `Model "${model}" is blocked by agent-lb (matched "${blockedBy}").`,
+              },
+            }),
+          );
         }
         recordEarlyOutcome(accountManager, sessionId, req.url, true);
-        openEntry = null;   // this path owns the close below; the outer catch must not repeat it
-        hooks.onRequestEnd?.(reqId, { method: req.method, path: req.url, account: '(blocked)', status: 400, model, sessionId });
+        openEntry = null; // this path owns the close below; the outer catch must not repeat it
+        hooks.onRequestEnd?.(reqId, {
+          method: req.method,
+          path: req.url,
+          account: "(blocked)",
+          status: 400,
+          model,
+          sessionId,
+        });
         return;
       }
 
@@ -3291,7 +5842,12 @@ export function createProxyRequestListener({
       // tokens are booked against, so one CI key can still be split by project.
       const client = req.tcClient ?? forcedClient ?? null;
       const usageDimensions = resolveUsageDimensions(config.proxy, req.headers);
-      const usageRecorder = createUsageRecorder({ client, clientUsage, dimensions: usageDimensions, dimensionUsage });
+      const usageRecorder = createUsageRecorder({
+        client,
+        clientUsage,
+        dimensions: usageDimensions,
+        dimensionUsage,
+      });
       usageRecorder.recordRequest();
 
       // The dimension headers are ours, not upstream's: they exist to label
@@ -3301,34 +5857,95 @@ export function createProxyRequestListener({
       const stripHeaders = usageDimensionHeaderNames(config.proxy);
 
       const requestProvider = providerForPath(req.url);
-      const isClaudeModel = typeof model === 'string' && (model.startsWith('claude-') || model.startsWith('claude/'));
-      const isOpenAIModel = typeof model === 'string' && (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('codex'));
-      const isAgyModel = typeof model === 'string' && (model === 'agy' || model === 'agy-fast' || model.startsWith('gemini-'));
+      const isClaudeModel =
+        typeof model === "string" &&
+        (model.startsWith("claude-") || model.startsWith("claude/"));
+      const isOpenAIModel =
+        typeof model === "string" &&
+        (model.startsWith("gpt-") ||
+          model.startsWith("o1") ||
+          model.startsWith("o3") ||
+          model.startsWith("codex"));
+      const isAgyModel =
+        typeof model === "string" &&
+        (model === "agy" ||
+          model === "agy-fast" ||
+          model.startsWith("gemini-"));
       const targetProvider = isClaudeModel
-        ? 'anthropic'
-        : (isOpenAIModel
-            ? 'codex'
-            : (isAgyModel
-                ? (accountManager.getActiveCount?.('codex') > 0 ? 'codex' : (accountManager.getActiveCount?.('anthropic') > 0 ? 'anthropic' : requestProvider))
-                : requestProvider));
+        ? "anthropic"
+        : isOpenAIModel
+          ? "codex"
+          : isAgyModel
+            ? accountManager.getActiveCount?.("codex") > 0
+              ? "codex"
+              : accountManager.getActiveCount?.("anthropic") > 0
+                ? "anthropic"
+                : requestProvider
+            : requestProvider;
 
-      const project = usageDimensions.find(d => d.name === 'project')?.key || null;
-      const isLocal = loopbackExempt(req.headers, req.socket?.remoteAddress, config.proxy);
-      const isTailnet = tailnetExempt(req.headers, req.socket?.remoteAddress, config.proxy);
-      const clientLabel = client || (isLocal ? 'Lokalny / Loopback' : (isTailnet ? 'Tailnet' : (req.headers?.['x-api-key'] ? 'Master Key' : 'Bez klucza')));
+      const project =
+        usageDimensions.find((d) => d.name === "project")?.key || null;
+      const isLocal = loopbackExempt(
+        req.headers,
+        req.socket?.remoteAddress,
+        config.proxy,
+      );
+      const isTailnet = tailnetExempt(
+        req.headers,
+        req.socket?.remoteAddress,
+        config.proxy,
+      );
+      const clientLabel =
+        client ||
+        (isLocal
+          ? "Lokalny / Loopback"
+          : isTailnet
+            ? "Tailnet"
+            : req.headers?.["x-api-key"]
+              ? "Master Key"
+              : "Bez klucza");
       const usageDetails = {
         client: clientLabel,
         project,
-        sessionTitle: (sessionId && hooks.sessionTitles?.get?.(sessionId)) || null,
+        sessionTitle:
+          (sessionId && hooks.sessionTitles?.get?.(sessionId)) || null,
       };
 
-      const ctx = { account: null, status: null, tried: new Set(), reauthed: new Set(), model, advisorModel, pinnedIndex, provider: targetProvider, requestProvider, requestedModel: model, fallbackPolicy: config.fallbackPolicy, clientEntry: req.tcClientEntry, clientUsage, metrics: metricsFor(config), onFirstToken, holdBudgetMs: holdMs, sessionId, client, usageDetails, delivered: false, abandoned: false, onUsage: usageRecorder.onUsage, stripHeaders, logLevel: resolveLogLevel(config), logMaxBodyBytes: resolveLogMaxBodyBytes(config) };
+      const ctx = {
+        account: null,
+        status: null,
+        tried: new Set(),
+        reauthed: new Set(),
+        model,
+        advisorModel,
+        pinnedIndex,
+        provider: targetProvider,
+        requestProvider,
+        requestedModel: model,
+        fallbackPolicy: config.fallbackPolicy,
+        clientEntry: req.tcClientEntry,
+        clientUsage,
+        metrics: metricsFor(config),
+        onFirstToken,
+        holdBudgetMs: holdMs,
+        sessionId,
+        client,
+        usageDetails,
+        delivered: false,
+        abandoned: false,
+        onUsage: usageRecorder.onUsage,
+        stripHeaders,
+        logLevel: resolveLogLevel(config),
+        logMaxBodyBytes: resolveLogMaxBodyBytes(config),
+      };
       // Hold the session "in flight" across the WHOLE request (incl. retries and
       // a multi-minute streaming completion) so it stays counted as active and
       // never expires mid-request.
       accountManager.beginSession(sessionId, {
         client,
-        dimensions: Object.fromEntries(usageDimensions.map(d => [d.name, d.key])),
+        dimensions: Object.fromEntries(
+          usageDimensions.map((d) => [d.name, d.key]),
+        ),
       });
       // Everything forwardRequest waits on — the upstream admission queue, the
       // upstream request itself, a quota-hold or rate-limit timer, a silent SSE
@@ -3339,33 +5956,42 @@ export function createProxyRequestListener({
       // destroys the socket on a dead stream (ctx.proxyClosed) — that is the
       // worst failure, not "the user left".
       const requestAbort = new AbortController();
-      const onRequestClose = () => { if (!res.writableEnded && !ctx.proxyClosed) requestAbort.abort(clientGoneError()); };
+      const onRequestClose = () => {
+        if (!res.writableEnded && !ctx.proxyClosed)
+          requestAbort.abort(clientGoneError());
+      };
       ctx.signal = requestAbort.signal;
       const requestSeconds = Number(config.proxy?.maxRequestSeconds) || 600;
-      requestTimer = setTimeout(() => {
-        ctx.proxyClosed = true;
-        requestAbort.abort(new Error('request deadline exceeded'));
-        res.destroy();
-      }, Math.max(1, requestSeconds) * 1000);
+      requestTimer = setTimeout(
+        () => {
+          ctx.proxyClosed = true;
+          requestAbort.abort(new Error("request deadline exceeded"));
+          res.destroy();
+        },
+        Math.max(1, requestSeconds) * 1000,
+      );
       requestTimer.unref?.();
-      res.once('close', onRequestClose);
+      res.once("close", onRequestClose);
       if (clientGone(res)) onRequestClose();
 
-      const keyId = client || (req.clientKey ? req.clientKey.slice(0, 12) : 'anonymous');
+      const keyId =
+        client || (req.clientKey ? req.clientKey.slice(0, 12) : "anonymous");
       const fsAdmission = fairShare.admit(keyId);
       if (!fsAdmission.admitted) {
         if (!res.headersSent) {
           res.writeHead(429, {
-            'Content-Type': 'application/json',
-            'Retry-After': '2',
+            "Content-Type": "application/json",
+            "Retry-After": "2",
           });
-          res.end(JSON.stringify({
-            type: 'error',
-            error: {
-              type: 'rate_limit_error',
-              message: `Stream pool congested (active: ${fairShare.totalStreams}, fair share: ${fsAdmission.fairShare}). Please retry shortly.`,
-            },
-          }));
+          res.end(
+            JSON.stringify({
+              type: "error",
+              error: {
+                type: "rate_limit_error",
+                message: `Stream pool congested (active: ${fairShare.totalStreams}, fair share: ${fsAdmission.fairShare}). Please retry shortly.`,
+              },
+            }),
+          );
         }
         accountManager.endSession(sessionId, null);
         openEntry = null;
@@ -3375,7 +6001,8 @@ export function createProxyRequestListener({
 
       let parsedBody = null;
       try {
-        if (body && body.length > 0) parsedBody = JSON.parse(body.toString('utf8'));
+        if (body && body.length > 0)
+          parsedBody = JSON.parse(body.toString("utf8"));
       } catch {}
 
       if (parsedBody) {
@@ -3388,22 +6015,45 @@ export function createProxyRequestListener({
         ctx.clientStream = parsedBody.stream === true;
         const dedupeResult = toolDedupe.inspectRequest(parsedBody, sessionId);
         if (dedupeResult.hasDuplicate) {
-          console.warn(`[AgentLB] [ToolDedupe] Warning: detected replayed side-effect tool calls in session "${sessionId}": ${dedupeResult.duplicates.map(d => d.name).join(', ')}`);
+          console.warn(
+            `[AgentLB] [ToolDedupe] Warning: detected replayed side-effect tool calls in session "${sessionId}": ${dedupeResult.duplicates.map((d) => d.name).join(", ")}`,
+          );
         }
         const clientEntry = req.tcClientEntry || null;
-        if (parsedBody.model && clientEntry?.allowedModels && clientUsage && client) {
-          const modelCheck = clientUsage.checkQuota(client, clientEntry, parsedBody.model);
+        if (
+          parsedBody.model &&
+          clientEntry?.allowedModels &&
+          clientUsage &&
+          client
+        ) {
+          const modelCheck = clientUsage.checkQuota(
+            client,
+            clientEntry,
+            parsedBody.model,
+          );
           if (!modelCheck.allowed) {
             fairShare.release(keyId);
-            res.off('close', onRequestClose);
+            res.off("close", onRequestClose);
             accountManager.endSession(sessionId, true);
-            if (openEntry) hooks.onRequestEnd?.(reqId, { method: req.method, path: req.url, status: 403, model, sessionId, client });
+            if (openEntry)
+              hooks.onRequestEnd?.(reqId, {
+                method: req.method,
+                path: req.url,
+                status: 403,
+                model,
+                sessionId,
+                client,
+              });
             openEntry = null;
-            res.writeHead(modelCheck.status || 403, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              type: 'error',
-              error: { type: 'permission_error', message: modelCheck.error },
-            }));
+            res.writeHead(modelCheck.status || 403, {
+              "Content-Type": "application/json",
+            });
+            res.end(
+              JSON.stringify({
+                type: "error",
+                error: { type: "permission_error", message: modelCheck.error },
+              }),
+            );
             return;
           }
         }
@@ -3411,25 +6061,45 @@ export function createProxyRequestListener({
 
       drainTracker.activeRequests++;
       try {
-        await forwardRequest(req, res, body, accountManager, upstream, 0, hooks, reqId, ctx, logDir, sx);
+        await forwardRequest(
+          req,
+          res,
+          body,
+          accountManager,
+          upstream,
+          0,
+          hooks,
+          reqId,
+          ctx,
+          logDir,
+          sx,
+        );
       } catch (err) {
         ctx.status = ctx.status || 502;
         // Same rule as the two outer catches: a recovery path does not report
         // through a console that may be the thing that failed. Here it also
         // decides which error gets reported at all, since a throw from the
         // report would carry the render failure outward in place of this one.
-        reportFailure('[AgentLB] Unhandled error:', err);
+        reportFailure("[AgentLB] Unhandled error:", err);
         if (!res.headersSent) {
-          res.writeHead(502, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ type: 'error', error: { type: 'proxy_error', message: 'Internal proxy error' } }));
+          res.writeHead(502, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              type: "error",
+              error: { type: "proxy_error", message: "Internal proxy error" },
+            }),
+          );
         }
       } finally {
-        drainTracker.activeRequests = Math.max(0, drainTracker.activeRequests - 1);
+        drainTracker.activeRequests = Math.max(
+          0,
+          drainTracker.activeRequests - 1,
+        );
         fairShare.release(keyId);
         if (parsedBody && ctx.status >= 200 && ctx.status < 300) {
           toolDedupe.recordRequest(parsedBody, sessionId);
         }
-        res.off('close', onRequestClose);
+        res.off("close", onRequestClose);
         // The signal fires only for a departure (see above), so this is the
         // status of a row whose client will never read anything. It says
         // nothing about abandonment: that is still marked where it is observed.
@@ -3439,16 +6109,34 @@ export function createProxyRequestListener({
         // observed where it happens, never inferred here: the proxy destroys the
         // socket itself on a dead stream, so a clientGone check at this point
         // would reclassify the worst failure as "the user left".
-        accountManager.endSession(sessionId,
-          !isCompletionPath(req.url) ? null : (ctx.delivered ? true : (ctx.abandoned ? null : false)));
+        accountManager.endSession(
+          sessionId,
+          !isCompletionPath(req.url)
+            ? null
+            : ctx.delivered
+              ? true
+              : ctx.abandoned
+                ? null
+                : false,
+        );
         // Cleared BEFORE the hook, because the hook can throw: leaving the entry
         // marked open would send the outer catch to call that same throwing hook
         // a second time for one request.
         openEntry = null;
-        if (!hideActivity) hooks.onRequestEnd?.(reqId, { method: req.method, path: req.url, account: ctx.account, status: ctx.status, model: ctx.model, sessionId, pinned: ctx.pinnedIndex != null, client });
+        if (!hideActivity)
+          hooks.onRequestEnd?.(reqId, {
+            method: req.method,
+            path: req.url,
+            account: ctx.account,
+            status: ctx.status,
+            model: ctx.model,
+            sessionId,
+            pinned: ctx.pinnedIndex != null,
+            client,
+          });
       }
     } catch (err) {
-      reportFailure('[AgentLB] Unhandled error:', err);
+      reportFailure("[AgentLB] Unhandled error:", err);
       // Close the activity entry. Only the inner path has a `finally`, so a
       // throw above it opens a row that nothing else will ever close, and every
       // consumer holds an open row indefinitely: the TUI keeps it in `active`
@@ -3470,11 +6158,19 @@ export function createProxyRequestListener({
         // must not cost the socket its answer below either.
         try {
           hooks.onRequestEnd?.(entry.reqId, {
-            method: req.method, path: req.url, account: null, status,
-            model: null, sessionId: entry.sessionId, pinned: false,
+            method: req.method,
+            path: req.url,
+            account: null,
+            status,
+            model: null,
+            sessionId: entry.sessionId,
+            pinned: false,
           });
         } catch (hookErr) {
-          reportFailure('[AgentLB] activity hook failed while closing a request:', hookErr);
+          reportFailure(
+            "[AgentLB] activity hook failed while closing a request:",
+            hookErr,
+          );
         }
       }
       // The code above the inner try (the egress hold, the pin parsing, body
@@ -3513,8 +6209,10 @@ function reportFailure(...args) {
     console.error(...args);
   } catch {
     try {
-      writeSync(2, `${args.map(a => a?.stack || String(a)).join(' ')}\n`);
-    } catch { /* nothing left to report with */ }
+      writeSync(2, `${args.map((a) => a?.stack || String(a)).join(" ")}\n`);
+    } catch {
+      /* nothing left to report with */
+    }
   }
 }
 
@@ -3537,8 +6235,8 @@ function answeredStatus(status) {
 // nothing. Measured before this guard: ten failed completions interleaved with
 // their count_tokens calls reported a streak of one.
 function isCompletionPath(url) {
-  const path = String(url || '').split('?')[0];
-  return path.endsWith('/v1/messages') || path.endsWith('/responses');
+  const path = String(url || "").split("?")[0];
+  return path.endsWith("/v1/messages") || path.endsWith("/responses");
 }
 
 // Outcomes for the exits that return BEFORE beginSession. They never open an
@@ -3549,7 +6247,8 @@ function isCompletionPath(url) {
 // a stale streak, and one the proxy refuses to send at all (egress unpinned)
 // must still count as getting nothing.
 function recordEarlyOutcome(accountManager, sessionId, url, usable) {
-  if (sessionId && isCompletionPath(url)) accountManager.recordOutcome(sessionId, usable);
+  if (sessionId && isCompletionPath(url))
+    accountManager.recordOutcome(sessionId, usable);
 }
 
 /**
@@ -3578,8 +6277,8 @@ function recordEarlyOutcome(accountManager, sessionId, url, usable) {
 // wait in forwardRequest either resolves to a clientGone check or rejects with
 // this, and the catch recognises it by code.
 function clientGoneError() {
-  const err = new Error('client disconnected');
-  err.code = 'AGENTLB_CLIENT_GONE';
+  const err = new Error("client disconnected");
+  err.code = "AGENTLB_CLIENT_GONE";
   return err;
 }
 
@@ -3589,11 +6288,18 @@ function clientGoneError() {
 function waitForRetry(ms, signal) {
   // Positive jitter never retries before the upstream Retry-After deadline.
   ms += Math.floor(Math.random() * Math.min(1000, ms * 0.1));
-  return new Promise(resolve => {
-    if (signal?.aborted) { resolve(); return; }
-    const finish = () => { clearTimeout(timer); signal?.removeEventListener('abort', finish); resolve(); };
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    };
     const timer = setTimeout(finish, ms);
-    signal?.addEventListener('abort', finish, { once: true });
+    signal?.addEventListener("abort", finish, { once: true });
   });
 }
 
@@ -3614,8 +6320,13 @@ function clientGone(res) {
  */
 function answerUnhandled(res) {
   if (!res.headersSent && !clientGone(res)) {
-    res.writeHead(502, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ type: 'error', error: { type: 'proxy_error', message: 'Internal proxy error' } }));
+    res.writeHead(502, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        type: "error",
+        error: { type: "proxy_error", message: "Internal proxy error" },
+      }),
+    );
   } else if (!res.writableEnded) {
     res.destroy();
   }
@@ -3628,7 +6339,12 @@ function sxAgent(sx, targetHost) {
   const proxy = sx.getProxy();
   const agent = new https.Agent({ keepAlive: false });
   agent.createConnection = (_options, cb) => {
-    tunnelTls({ proxy, targetHost, targetPort: 443, tlsOptions: sx.tlsOptions || {} })
+    tunnelTls({
+      proxy,
+      targetHost,
+      targetPort: 443,
+      tlsOptions: sx.tlsOptions || {},
+    })
       .then((sock) => cb(null, sock))
       .catch((err) => cb(err));
     return undefined;
@@ -3649,41 +6365,63 @@ function relayStream(req, res, upstream, sx) {
   const headers = {};
   for (const [key, value] of Object.entries(req.headers)) {
     const lk = key.toLowerCase();
-    if (lk.startsWith(':') || HOP_BY_HOP_HEADERS.has(lk) || lk === 'accept-encoding') continue;
+    if (
+      lk.startsWith(":") ||
+      HOP_BY_HOP_HEADERS.has(lk) ||
+      lk === "accept-encoding"
+    )
+      continue;
     // The client's identity on this path is its bearer; x-api-key is how it
     // authenticated to THIS proxy, so relaying it would hand the operator's
     // proxy key to upstream.
-    if (lk === 'x-api-key' || lk === 'proxy-authorization') continue;
+    if (lk === "x-api-key" || lk === "proxy-authorization") continue;
     headers[key] = value;
   }
 
   const useProxy = !!(sx?.useByDefault() && sx.isProvisioned());
   const agent = useProxy ? sxAgent(sx, target.hostname) : undefined;
-  const transport = target.protocol === 'http:' ? http : https;
+  const transport = target.protocol === "http:" ? http : https;
 
-  const upstreamReq = transport.request(target, { method: req.method, headers, agent }, (upstreamRes) => {
-    const responseHeaders = {};
-    for (const [key, value] of Object.entries(upstreamRes.headers)) {
-      if (CONNECTION_SPECIFIC_HEADERS.has(key) || key === 'content-encoding' || key === 'content-length') continue;
-      responseHeaders[key] = value;
-    }
-    res.writeHead(upstreamRes.statusCode, responseHeaders);
-    upstreamRes.pipe(res);
-    // pipe() only propagates 'end'. If the upstream leg dies mid-response
-    // (network blip, upstream restart), upstreamRes emits 'aborted'/'error'
-    // and the pipe just stops — the client's long-poll stays open forever and
-    // the CLI keeps waiting on a channel that can no longer deliver events.
-    // Destroying res closes the client socket, which is the one signal its
-    // reconnect logic reacts to.
-    upstreamRes.on('aborted', () => res.destroy());
-    upstreamRes.on('error', () => res.destroy());
-  });
+  const upstreamReq = transport.request(
+    target,
+    { method: req.method, headers, agent },
+    (upstreamRes) => {
+      const responseHeaders = {};
+      for (const [key, value] of Object.entries(upstreamRes.headers)) {
+        if (
+          CONNECTION_SPECIFIC_HEADERS.has(key) ||
+          key === "content-encoding" ||
+          key === "content-length"
+        )
+          continue;
+        responseHeaders[key] = value;
+      }
+      res.writeHead(upstreamRes.statusCode, responseHeaders);
+      upstreamRes.pipe(res);
+      // pipe() only propagates 'end'. If the upstream leg dies mid-response
+      // (network blip, upstream restart), upstreamRes emits 'aborted'/'error'
+      // and the pipe just stops — the client's long-poll stays open forever and
+      // the CLI keeps waiting on a channel that can no longer deliver events.
+      // Destroying res closes the client socket, which is the one signal its
+      // reconnect logic reacts to.
+      upstreamRes.on("aborted", () => res.destroy());
+      upstreamRes.on("error", () => res.destroy());
+    },
+  );
 
-  upstreamReq.on('error', (err) => {
-    console.error('[AgentLB] Remote Control relay error:', describeConnectError(err));
+  upstreamReq.on("error", (err) => {
+    console.error(
+      "[AgentLB] Remote Control relay error:",
+      describeConnectError(err),
+    );
     if (!res.headersSent) {
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ type: 'error', error: { type: 'proxy_error', message: 'Upstream unreachable' } }));
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          type: "error",
+          error: { type: "proxy_error", message: "Upstream unreachable" },
+        }),
+      );
     } else {
       // Headers already went out (the long-poll was live), so a 502 body can't
       // be written anymore. Close the client socket instead of leaving it
@@ -3694,9 +6432,9 @@ function relayStream(req, res, upstream, sx) {
   });
   // Client disconnected (e.g. Claude Code closed the channel): tear down the
   // upstream side too instead of leaking an open connection.
-  res.on('close', () => upstreamReq.destroy());
+  res.on("close", () => upstreamReq.destroy());
 
-  if (['GET', 'HEAD'].includes(req.method)) upstreamReq.end();
+  if (["GET", "HEAD"].includes(req.method)) upstreamReq.end();
   else req.pipe(upstreamReq);
 }
 
@@ -3719,8 +6457,8 @@ function relayStream(req, res, upstream, sx) {
  * rather than answering it.
  */
 export function resolveUpgradeAuth(req, socket, proxyConfig) {
-  const auth = resolveClientAuth(proxyConfig, req?.headers?.['x-api-key']);
-  if (auth.ok || req?.headers?.['x-api-key']) return auth;
+  const auth = resolveClientAuth(proxyConfig, req?.headers?.["x-api-key"]);
+  if (auth.ok || req?.headers?.["x-api-key"]) return auth;
   // Loopback is exempt from the key requirement, exactly as the HTTP and
   // CONNECT gates are — with the request path's two conditions on top, for
   // the same actor: a web page in the operator's browser. A page can open a
@@ -3728,16 +6466,24 @@ export function resolveUpgradeAuth(req, socket, proxyConfig) {
   // loopback-sourced too. What it cannot forge is `Origin`, which a browser
   // sets on every handshake and a CLI never sends, nor `Host`, which a
   // rebound name (attacker.example → 127.0.0.1) leaves naming the attacker.
-  if (!loopbackExempt(req?.headers, socket?.remoteAddress, proxyConfig) &&
-      !tailnetExempt(req?.headers, socket?.remoteAddress, proxyConfig)) return auth;
+  if (
+    !loopbackExempt(req?.headers, socket?.remoteAddress, proxyConfig) &&
+    !tailnetExempt(req?.headers, socket?.remoteAddress, proxyConfig)
+  )
+    return auth;
   const bindHost = proxyConfig?.host;
   const origin = req?.headers?.origin;
   if (origin) {
     let originHost;
-    try { originHost = new URL(origin).host; } catch { return auth; }
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      return auth;
+    }
     if (!isLocalHostHeader(originHost, bindHost, [], proxyConfig)) return auth;
   }
-  if (!isLocalHostHeader(req?.headers?.host, bindHost, [], proxyConfig)) return auth;
+  if (!isLocalHostHeader(req?.headers?.host, bindHost, [], proxyConfig))
+    return auth;
   return { ok: true, client: null };
 }
 
@@ -3756,10 +6502,22 @@ export function resolveUpgradeAuth(req, socket, proxyConfig) {
  */
 export function refuseCodexWebSocket(req, socket, log = console.log) {
   let path;
-  try { path = new URL(req?.url || '/', 'http://proxy.invalid').pathname; } catch { path = req?.url || ''; }
-  if (providerForPath(path) !== 'codex') return false;
-  log(`[AgentLB] Codex WebSocket ${safeLine(path)} refused (426) — Codex is served over HTTP; set supports_websockets = false`);
-  try { socket.write('HTTP/1.1 426 Upgrade Required\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'); } catch { /* client already gone */ }
+  try {
+    path = new URL(req?.url || "/", "http://proxy.invalid").pathname;
+  } catch {
+    path = req?.url || "";
+  }
+  if (providerForPath(path) !== "codex") return false;
+  log(
+    `[AgentLB] Codex WebSocket ${safeLine(path)} refused (426) — Codex is served over HTTP; set supports_websockets = false`,
+  );
+  try {
+    socket.write(
+      "HTTP/1.1 426 Upgrade Required\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+    );
+  } catch {
+    /* client already gone */
+  }
   socket.destroy();
   return true;
 }
@@ -3774,13 +6532,20 @@ export function refuseCodexWebSocket(req, socket, log = console.log) {
  * handshake (emits its own 'upgrade' event on a 101); once that fires it's
  * just two raw sockets spliced together.
  */
-export function relayUpgrade(req, socket, head, upstream, sx, { client = null, clientUsage = null, log = console.log } = {}) {
+export function relayUpgrade(
+  req,
+  socket,
+  head,
+  upstream,
+  sx,
+  { client = null, clientUsage = null, log = console.log } = {},
+) {
   const target = new URL(`${upstream}${req.url}`);
   // The channel's log lines, prefixed `[name]` like a request line when a
   // client key authenticated the handshake, so an operator reading per-client
   // activity sees the channel beside the requests. Booked only once upstream
   // accepts: a handshake it refuses opened nothing.
-  const tag = client ? `[${safeLine(client, 64)}] ` : '';
+  const tag = client ? `[${safeLine(client, 64)}] ` : "";
   const path = safeLine(req.url);
   const headers = {};
   for (const [key, value] of Object.entries(req.headers)) {
@@ -3789,20 +6554,33 @@ export function relayUpgrade(req, socket, head, upstream, sx, { client = null, c
     // the handshake. Only 'host' (the client transport reconstructs it from
     // `target`), h2 pseudo-headers and the proxy's own x-api-key (the client's
     // credential to us, not to upstream) are dropped.
-    if (lk.startsWith(':') || lk === 'host' || lk === 'x-api-key' || lk === 'proxy-authorization') continue;
+    if (
+      lk.startsWith(":") ||
+      lk === "host" ||
+      lk === "x-api-key" ||
+      lk === "proxy-authorization"
+    )
+      continue;
     headers[key] = value;
   }
 
   const useProxy = !!(sx?.useByDefault() && sx.isProvisioned());
   const agent = useProxy ? sxAgent(sx, target.hostname) : undefined;
-  const transport = target.protocol === 'http:' ? http : https;
+  const transport = target.protocol === "http:" ? http : https;
 
-  const upstreamReq = transport.request(target, { method: req.method, headers, agent });
+  const upstreamReq = transport.request(target, {
+    method: req.method,
+    headers,
+    agent,
+  });
 
-  upstreamReq.on('upgrade', (upstreamRes, upstreamSocket, upstreamHead) => {
+  upstreamReq.on("upgrade", (upstreamRes, upstreamSocket, upstreamHead) => {
     const headerLines = Object.entries(upstreamRes.headers)
-      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('\r\n');
-    socket.write(`HTTP/1.1 ${upstreamRes.statusCode} ${upstreamRes.statusMessage}\r\n${headerLines}\r\n\r\n`);
+      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
+      .join("\r\n");
+    socket.write(
+      `HTTP/1.1 ${upstreamRes.statusCode} ${upstreamRes.statusMessage}\r\n${headerLines}\r\n\r\n`,
+    );
     if (upstreamHead?.length) socket.write(upstreamHead);
     if (head?.length) upstreamSocket.write(head);
     socket.pipe(upstreamSocket);
@@ -3810,45 +6588,63 @@ export function relayUpgrade(req, socket, head, upstream, sx, { client = null, c
     clientUsage?.record(client, { connections: 1 });
     const opened = Date.now();
     log(`[AgentLB] ${tag}WebSocket ${path} connected`);
-    socket.once('close', () => log(`[AgentLB] ${tag}WebSocket ${path} closed (${((Date.now() - opened) / 1000).toFixed(1)}s)`));
+    socket.once("close", () =>
+      log(
+        `[AgentLB] ${tag}WebSocket ${path} closed (${((Date.now() - opened) / 1000).toFixed(1)}s)`,
+      ),
+    );
     // An upgraded socket defaults to half-open: the peer's FIN only ends the
     // READABLE side ('end'), it does NOT destroy the socket or fire 'close' —
     // so without this, one side hanging up (dropped wifi, killed CLI) leaves
     // the other socket open forever. destroy() is idempotent, so reacting to
     // both 'end' and 'close' on each side is a safe, redundant backstop.
-    socket.on('end', () => upstreamSocket.destroy());
-    upstreamSocket.on('end', () => socket.destroy());
-    socket.on('close', () => upstreamSocket.destroy());
-    upstreamSocket.on('close', () => socket.destroy());
+    socket.on("end", () => upstreamSocket.destroy());
+    upstreamSocket.on("end", () => socket.destroy());
+    socket.on("close", () => upstreamSocket.destroy());
+    upstreamSocket.on("close", () => socket.destroy());
     // The 101 detaches this socket from upstreamReq, so the request's 'error'
     // listener no longer covers it. A link that flaps mid-session then raises
     // 'error' (write EPIPE / read ECONNRESET) on a socket nobody listens to,
     // which Node escalates to an uncaught exception — one dropped WebSocket
     // would kill the proxy for every other session. Close the pair instead.
-    upstreamSocket.on('error', () => socket.destroy());
+    upstreamSocket.on("error", () => socket.destroy());
   });
 
   // Upstream answered with a plain response instead of the 101: the handshake
   // was refused (an expired credential, an unknown session). Without this the
   // client socket hung with no answer until it timed out, and nothing was
   // logged. Relay the status so the client sees the refusal it was given.
-  upstreamReq.on('response', (upstreamRes) => {
-    log(`[AgentLB] ${tag}WebSocket ${path} refused by upstream (${upstreamRes.statusCode})`);
+  upstreamReq.on("response", (upstreamRes) => {
+    log(
+      `[AgentLB] ${tag}WebSocket ${path} refused by upstream (${upstreamRes.statusCode})`,
+    );
     const headerLines = Object.entries(upstreamRes.headers)
-      .filter(([k]) => !CONNECTION_SPECIFIC_HEADERS.has(k.toLowerCase()) && k.toLowerCase() !== 'content-length')
-      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('\r\n');
+      .filter(
+        ([k]) =>
+          !CONNECTION_SPECIFIC_HEADERS.has(k.toLowerCase()) &&
+          k.toLowerCase() !== "content-length",
+      )
+      .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`)
+      .join("\r\n");
     try {
-      socket.write(`HTTP/1.1 ${upstreamRes.statusCode} ${upstreamRes.statusMessage}\r\n${headerLines}\r\nConnection: close\r\n\r\n`);
-    } catch { /* already gone */ }
+      socket.write(
+        `HTTP/1.1 ${upstreamRes.statusCode} ${upstreamRes.statusMessage}\r\n${headerLines}\r\nConnection: close\r\n\r\n`,
+      );
+    } catch {
+      /* already gone */
+    }
     upstreamRes.resume();
     socket.destroy();
   });
 
-  upstreamReq.on('error', (err) => {
-    console.error('[AgentLB] Remote Control WebSocket relay error:', describeConnectError(err));
+  upstreamReq.on("error", (err) => {
+    console.error(
+      "[AgentLB] Remote Control WebSocket relay error:",
+      describeConnectError(err),
+    );
     socket.destroy();
   });
-  socket.on('error', () => upstreamReq.destroy());
+  socket.on("error", () => upstreamReq.destroy());
 
   upstreamReq.end();
 }
@@ -3866,13 +6662,19 @@ export function relayUpgrade(req, socket, head, upstream, sx, { client = null, c
  */
 async function refuseOversizedBody(req, res) {
   if (!res.headersSent) {
-    res.writeHead(413, { 'Content-Type': 'application/json' });
+    res.writeHead(413, { "Content-Type": "application/json" });
     await new Promise((resolve) => {
-      res.once('close', resolve);
-      res.end(JSON.stringify({
-        type: 'error',
-        error: { type: 'invalid_request_error', message: 'Request body too large' },
-      }), resolve);
+      res.once("close", resolve);
+      res.end(
+        JSON.stringify({
+          type: "error",
+          error: {
+            type: "invalid_request_error",
+            message: "Request body too large",
+          },
+        }),
+        resolve,
+      );
     });
   }
   req.destroy();
@@ -3883,70 +6685,101 @@ async function refuseOversizedBody(req, res) {
  */
 async function relayRaw(req, res, upstream, sx, maxBodyBytes, budget) {
   const release = budget.acquire();
-  if (!release) { res.writeHead(503, { 'Retry-After': '1' }); res.end(); return; }
+  if (!release) {
+    res.writeHead(503, { "Retry-After": "1" });
+    res.end();
+    return;
+  }
   const ctrl = new AbortController();
-  const onClose = () => { if (!res.writableEnded) ctrl.abort(new Error('client disconnected')); };
-  const timer = setTimeout(() => { ctrl.abort(new Error('token relay deadline')); req.destroy(); res.destroy(); }, 30_000);
-  timer.unref?.(); res.once('close', onClose);
+  const onClose = () => {
+    if (!res.writableEnded) ctrl.abort(new Error("client disconnected"));
+  };
+  const timer = setTimeout(() => {
+    ctrl.abort(new Error("token relay deadline"));
+    req.destroy();
+    res.destroy();
+  }, 30_000);
+  timer.unref?.();
+  res.once("close", onClose);
   try {
-  const bodyChunks = [];
-  let bodyBytes = 0;
-  for await (const chunk of req) {
-    bodyBytes += chunk.length;
-    // Same cap as the forward path: this buffers too, and a token exchange is
-    // a few hundred bytes.
-    if (bodyBytes > maxBodyBytes || !release.reserve(chunk.length)) { await refuseOversizedBody(req, res); return; }
-    bodyChunks.push(chunk);
-  }
-  const body = Buffer.concat(bodyChunks);
-
-  try {
-    const upstreamRes = await upstreamFetch(`${upstream}${req.url}`, {
-      signal: ctrl.signal,
-      method: req.method,
-      headers: {
-        'content-type': req.headers['content-type'] || 'application/json',
-        'accept': req.headers['accept'] || 'application/json',
-        'user-agent': req.headers['user-agent'] || 'node',
-      },
-      body: body.length > 0 ? body : undefined,
-    }, sx, sx?.useByDefault());
-
-    const responseBody = await collectIdleBody(upstreamRes.body);
-    const responseHeaders = {};
-    for (const [key, value] of upstreamRes.headers.entries()) {
-      // `.text()` already decompressed the body, so drop content-encoding and
-      // the now-stale content-length (both refer to the compressed bytes) — else
-      // a gzip'd upstream response reaches the client mis-framed / truncated.
-      if (key === 'transfer-encoding' || key === 'connection' ||
-          key === 'content-encoding' || key === 'content-length') continue;
-      responseHeaders[key] = value;
+    const bodyChunks = [];
+    let bodyBytes = 0;
+    for await (const chunk of req) {
+      bodyBytes += chunk.length;
+      // Same cap as the forward path: this buffers too, and a token exchange is
+      // a few hundred bytes.
+      if (bodyBytes > maxBodyBytes || !release.reserve(chunk.length)) {
+        await refuseOversizedBody(req, res);
+        return;
+      }
+      bodyChunks.push(chunk);
     }
-    res.writeHead(upstreamRes.status, responseHeaders);
-    res.end(responseBody);
-  } catch (err) {
-    console.error('[AgentLB] Raw relay error:', describeConnectError(err));
-    if (!res.headersSent) {
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ type: 'error', error: { type: 'proxy_error', message: 'Upstream unreachable' } }));
-    }
-  }
-  } finally { clearTimeout(timer); res.off('close', onClose); release(); }
+    const body = Buffer.concat(bodyChunks);
 
+    try {
+      const upstreamRes = await upstreamFetch(
+        `${upstream}${req.url}`,
+        {
+          signal: ctrl.signal,
+          method: req.method,
+          headers: {
+            "content-type": req.headers["content-type"] || "application/json",
+            accept: req.headers["accept"] || "application/json",
+            "user-agent": req.headers["user-agent"] || "node",
+          },
+          body: body.length > 0 ? body : undefined,
+        },
+        sx,
+        sx?.useByDefault(),
+      );
+
+      const responseBody = await collectIdleBody(upstreamRes.body);
+      const responseHeaders = {};
+      for (const [key, value] of upstreamRes.headers.entries()) {
+        // `.text()` already decompressed the body, so drop content-encoding and
+        // the now-stale content-length (both refer to the compressed bytes) — else
+        // a gzip'd upstream response reaches the client mis-framed / truncated.
+        if (
+          key === "transfer-encoding" ||
+          key === "connection" ||
+          key === "content-encoding" ||
+          key === "content-length"
+        )
+          continue;
+        responseHeaders[key] = value;
+      }
+      res.writeHead(upstreamRes.status, responseHeaders);
+      res.end(responseBody);
+    } catch (err) {
+      console.error("[AgentLB] Raw relay error:", describeConnectError(err));
+      if (!res.headersSent) {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            type: "error",
+            error: { type: "proxy_error", message: "Upstream unreachable" },
+          }),
+        );
+      }
+    }
+  } finally {
+    clearTimeout(timer);
+    res.off("close", onClose);
+    release();
+  }
 }
-
 
 function logTimestamp() {
   const d = new Date();
-  const pad = (n, w = 2) => String(n).padStart(w, '0');
+  const pad = (n, w = 2) => String(n).padStart(w, "0");
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
 }
 
 // How much of each request the `logDir` log records. 'body' is what the logger
 // has always done; 'headers' drops both body sections, which is the difference
 // between a kilobyte and a megabyte per request.
-const LOG_LEVELS = new Set(['off', 'headers', 'body']);
-const DEFAULT_LOG_LEVEL = 'body';
+const LOG_LEVELS = new Set(["off", "headers", "body"]);
+const DEFAULT_LOG_LEVEL = "body";
 
 export function resolveLogLevel(config) {
   const level = config?.logLevel;
@@ -3965,7 +6798,7 @@ export function resolveLogMaxBodyBytes(config) {
   // string is not a number and means "unset", which must reach the default:
   // Number('') is 0, and 0 here would be the unbounded logging this bounds.
   // Number() on null or true would likewise read as 0 and 1 rather than junk.
-  const max = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
+  const max = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw;
   if (max === 0) return 0;
   return Number.isFinite(max) && max > 0 ? max : DEFAULT_LOG_MAX_BODY_BYTES;
 }
@@ -3983,7 +6816,7 @@ export function resolveMaxBodyBytes(config) {
   const raw = config?.proxy?.maxBodyBytes;
   // Same reading rules as resolveLogMaxBodyBytes: a quoted number counts, a
   // blank string means unset, and 0 is the explicit opt-out.
-  const max = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
+  const max = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw;
   if (max === 0) return Infinity;
   return Number.isFinite(max) && max > 0 ? max : DEFAULT_MAX_BODY_BYTES;
 }
@@ -3991,7 +6824,8 @@ export function resolveMaxBodyBytes(config) {
 // The names openRequestLog writes, and nothing else. Deletion keys off this
 // pattern rather than off mtime so a file the logger did not create cannot
 // match: the directory is one the operator named, and may hold anything.
-const LOG_FILE_RE = /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.(\d{3})_\d{5,}\.log$/;
+const LOG_FILE_RE =
+  /^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})\.(\d{3})_\d{5,}\.log$/;
 const LOG_SWEEP_INTERVAL_MS = 10 * 60_000;
 const DEFAULT_LOG_RETENTION_HOURS = 72;
 
@@ -4002,9 +6836,12 @@ export function resolveLogRetentionHours(config) {
   // default and deleting, and a quoted "720" must not silently become 72. A
   // blank string means "unset" and reaches the default, since Number('') is 0.
   // Number() on null or true would instead read as 0 and 1.
-  const hours = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw;
+  const hours =
+    typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw;
   if (hours === 0) return 0;
-  return Number.isFinite(hours) && hours > 0 ? hours : DEFAULT_LOG_RETENTION_HOURS;
+  return Number.isFinite(hours) && hours > 0
+    ? hours
+    : DEFAULT_LOG_RETENTION_HOURS;
 }
 
 /**
@@ -4022,7 +6859,11 @@ export function resolveLogRetentionHours(config) {
  * operation needs — including for a file still being appended to, whose mtime
  * is fresh however old its name looks.
  */
-export async function sweepRequestLogs(logDir, retentionHours, now = Date.now()) {
+export async function sweepRequestLogs(
+  logDir,
+  retentionHours,
+  now = Date.now(),
+) {
   if (!(retentionHours > 0)) return 0;
   const cutoff = now - retentionHours * 3600_000;
   let entries;
@@ -4036,7 +6877,15 @@ export async function sweepRequestLogs(logDir, retentionHours, now = Date.now())
     if (!entry.isFile()) continue;
     const m = LOG_FILE_RE.exec(entry.name);
     if (!m) continue;
-    const started = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +m[7]).getTime();
+    const started = new Date(
+      +m[1],
+      +m[2] - 1,
+      +m[3],
+      +m[4],
+      +m[5],
+      +m[6],
+      +m[7],
+    ).getTime();
     // Negated so anything not definitively older than the cutoff is skipped.
     // The pattern admits only digits and Date rolls every such combination into
     // a real time, so this cannot be indeterminate today; the shape keeps the
@@ -4052,7 +6901,9 @@ export async function sweepRequestLogs(logDir, retentionHours, now = Date.now())
     try {
       await unlink(path);
       removed++;
-    } catch { /* already gone, or a concurrent sweep won the race */ }
+    } catch {
+      /* already gone, or a concurrent sweep won the race */
+    }
   }
   return removed;
 }
@@ -4068,10 +6919,17 @@ export async function sweepRequestLogs(logDir, retentionHours, now = Date.now())
 // and interleave two requests in one file. A single counter cannot collide.
 let logFileSeq = 0;
 
-function openRequestLog(logDir, _reqId, { level = DEFAULT_LOG_LEVEL, maxBodyBytes = DEFAULT_LOG_MAX_BODY_BYTES } = {}) {
-  const filename = `${logTimestamp()}_${String(++logFileSeq).padStart(5, '0')}.log`;
+function openRequestLog(
+  logDir,
+  _reqId,
+  { level = DEFAULT_LOG_LEVEL, maxBodyBytes = DEFAULT_LOG_MAX_BODY_BYTES } = {},
+) {
+  const filename = `${logTimestamp()}_${String(++logFileSeq).padStart(5, "0")}.log`;
   // 0600: the file holds the full request and response bodies.
-  const ws = createWriteStream(join(logDir, filename), { flags: 'a', mode: 0o600 });
+  const ws = createWriteStream(join(logDir, filename), {
+    flags: "a",
+    mode: 0o600,
+  });
   let ended = false;
   let failed = false;
   // Whether the last write was queued rather than flushed. The streaming path
@@ -4083,33 +6941,53 @@ function openRequestLog(logDir, _reqId, { level = DEFAULT_LOG_LEVEL, maxBodyByte
   const fail = (err) => {
     if (failed) return;
     failed = true;
-    console.error(`[AgentLB] Request log ${filename} abandoned: ${err.message}`);
+    console.error(
+      `[AgentLB] Request log ${filename} abandoned: ${err.message}`,
+    );
   };
-  ws.on('error', fail);
+  ws.on("error", fail);
   const write = (s) => {
     if (ended || failed || !s) return;
-    backlogged = !ws.write(Buffer.from(String(s), 'latin1'));
+    backlogged = !ws.write(Buffer.from(String(s), "latin1"));
   };
   // Logging must never fail the request it describes. The formatter runs on
   // whatever bytes the client or upstream produced, so a throw here is a log
   // problem, not a request problem: record it once and go on relaying.
-  const guarded = (fn) => { try { return fn(); } catch (err) { fail(err); return undefined; } };
+  const guarded = (fn) => {
+    try {
+      return fn();
+    } catch (err) {
+      fail(err);
+      return undefined;
+    }
+  };
   const drain = () => {
     if (!backlogged || ended || failed || ws.destroyed) return null;
     return new Promise((resolve) => {
-      const done = () => { ws.off('drain', done); ws.off('close', done); ws.off('error', done); backlogged = false; resolve(); };
-      ws.once('drain', done);
-      ws.once('close', done);
-      ws.once('error', done);
+      const done = () => {
+        ws.off("drain", done);
+        ws.off("close", done);
+        ws.off("error", done);
+        backlogged = false;
+        resolve();
+      };
+      ws.once("drain", done);
+      ws.once("close", done);
+      ws.once("error", done);
     });
   };
   return {
     write,
     // Stream a complete body buffer under a section header.
-    body(label, buf, contentType) { guarded(() => this._body(label, buf, contentType)); },
+    body(label, buf, contentType) {
+      guarded(() => this._body(label, buf, contentType));
+    },
     _body(label, buf, contentType) {
-      if (level === 'headers') return;
-      if (!buf || !buf.length) { write(`\n\n=== ${label} ===\n(empty)`); return; }
+      if (level === "headers") return;
+      if (!buf || !buf.length) {
+        write(`\n\n=== ${label} ===\n(empty)`);
+        return;
+      }
       if (maxBodyBytes > 0) {
         // A complete body is already held whole, so keeping its tail costs no
         // extra memory — and the tail is where the newest message and the latest
@@ -4121,44 +6999,54 @@ function openRequestLog(logDir, _reqId, { level = DEFAULT_LOG_LEVEL, maxBodyByte
           // carry that formatter's depth and in-string state across the gap: the
           // indentation would be wrong, and once the tail's closing brackets
           // outnumber the depth it throws on a negative repeat count.
-          const head = new BodyWriter(write, label, contentType || '');
+          const head = new BodyWriter(write, label, contentType || "");
           head.chunk(buf.subarray(0, half));
           head.end();
           write(`\n${truncationNote(dropped)}\n`);
-          write(buf.subarray(buf.length - half).toString('latin1'));
+          write(buf.subarray(buf.length - half).toString("latin1"));
           return;
         }
       }
-      const whole = new BodyWriter(write, label, contentType || '');
+      const whole = new BodyWriter(write, label, contentType || "");
       whole.chunk(buf);
       whole.end();
     },
     // A BodyWriter to append chunks incrementally (e.g. an SSE response), or
     // null when the level records no bodies — streamResponse takes either.
     bodyWriter(label, contentType) {
-      if (level === 'headers') return null;
-      const bw = new BodyWriter(write, label, contentType || '', maxBodyBytes);
+      if (level === "headers") return null;
+      const bw = new BodyWriter(write, label, contentType || "", maxBodyBytes);
       return {
         chunk: (buf) => guarded(() => bw.chunk(buf)),
         end: () => guarded(() => bw.end()),
         drain,
       };
     },
-    end() { if (!ended) { ended = true; if (!failed) ws.end('\n'); else ws.destroy(); } },
+    end() {
+      if (!ended) {
+        ended = true;
+        if (!failed) ws.end("\n");
+        else ws.destroy();
+      }
+    },
   };
 }
 
 export function formatHeaders(headers) {
   if (headers.entries) {
-    return [...headers.entries()].map(([k, v]) => {
-      const name = String(k).toLowerCase();
-      return `  ${k}: ${SENSITIVE_HEADER_NAMES.has(name) ? '[redacted]' : v}`;
-    }).join('\n');
+    return [...headers.entries()]
+      .map(([k, v]) => {
+        const name = String(k).toLowerCase();
+        return `  ${k}: ${SENSITIVE_HEADER_NAMES.has(name) ? "[redacted]" : v}`;
+      })
+      .join("\n");
   }
-  return Object.entries(headers).map(([k, v]) => {
-    const name = String(k).toLowerCase();
-    return `  ${k}: ${SENSITIVE_HEADER_NAMES.has(name) ? '[redacted]' : v}`;
-  }).join('\n');
+  return Object.entries(headers)
+    .map(([k, v]) => {
+      const name = String(k).toLowerCase();
+      return `  ${k}: ${SENSITIVE_HEADER_NAMES.has(name) ? "[redacted]" : v}`;
+    })
+    .join("\n");
 }
 
 // Failures that say nothing about the ACCOUNT, only about the socket. Retrying
@@ -4183,7 +7071,9 @@ export function formatHeaders(headers) {
 // general guard. Override: AGENT_LB_UPSTREAM_NONSTREAM_HEADERS_TIMEOUT_MS.
 const DEFAULT_NONSTREAM_HEADERS_TIMEOUT_MS = 600_000;
 export function nonStreamHeadersTimeout() {
-  const env = Number(process.env.AGENT_LB_UPSTREAM_NONSTREAM_HEADERS_TIMEOUT_MS);
+  const env = Number(
+    process.env.AGENT_LB_UPSTREAM_NONSTREAM_HEADERS_TIMEOUT_MS,
+  );
   const general = Number(process.env.AGENT_LB_UPSTREAM_HEADERS_TIMEOUT_MS);
   const base = env > 0 ? env : DEFAULT_NONSTREAM_HEADERS_TIMEOUT_MS;
   return general > base ? general : base;
@@ -4197,20 +7087,35 @@ export function nonStreamHeadersTimeout() {
 export function codexUsageLimit(body, headers = {}) {
   const err = body?.error;
   const pct = (name) => Number(headers[`x-codex-${name}-used-percent`]);
-  const spent = err?.type === 'usage_limit_reached' || err?.code === 'usage_limit_reached'
-    || pct('primary') >= 100 || pct('secondary') >= 100;
+  const spent =
+    err?.type === "usage_limit_reached" ||
+    err?.code === "usage_limit_reached" ||
+    pct("primary") >= 100 ||
+    pct("secondary") >= 100;
   if (!spent) return null;
   const fromBody = Number(err?.resets_in_seconds);
-  const fromHeader = Number(headers['x-codex-primary-reset-after-seconds']);
-  const resetSeconds = Number.isFinite(fromBody) && fromBody > 0 ? fromBody
-    : Number.isFinite(fromHeader) && fromHeader > 0 ? fromHeader : 3600;
+  const fromHeader = Number(headers["x-codex-primary-reset-after-seconds"]);
+  const resetSeconds =
+    Number.isFinite(fromBody) && fromBody > 0
+      ? fromBody
+      : Number.isFinite(fromHeader) && fromHeader > 0
+        ? fromHeader
+        : 3600;
   return { resetSeconds };
 }
 
 const SOCKET_TRANSIENT = new Set([
-  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EPIPE',
-  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
-  'AGENTLB_HEADERS_TIMEOUT', 'AGENTLB_BODY_TIMEOUT', 'AGENTLB_HEADERS_TIMEOUT', 'AGENTLB_BODY_TIMEOUT',
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EPIPE",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+  "AGENTLB_HEADERS_TIMEOUT",
+  "AGENTLB_BODY_TIMEOUT",
+  "AGENTLB_HEADERS_TIMEOUT",
+  "AGENTLB_BODY_TIMEOUT",
 ]);
 
 // Failures that are a property of the HOST being dialled: name resolution and
@@ -4222,7 +7127,13 @@ const SOCKET_TRANSIENT = new Set([
 // Conditional, because an account may name its own `upstream` for a third-party
 // backend. Where an untried account would dial a different host, this failure
 // says nothing about that one, and failing over is correct.
-const HOST_TRANSIENT = new Set(['ENOTFOUND', 'EAI_AGAIN', 'EHOSTUNREACH', 'ENETUNREACH', 'ENETDOWN']);
+const HOST_TRANSIENT = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "ENETDOWN",
+]);
 
 /**
  * Every error code a failure carries: its own, its `cause`'s, and its
@@ -4246,18 +7157,22 @@ function errorCodes(err) {
  * host, which is what makes a host-scoped failure worth failing over. Exported
  * for its own tests.
  */
-export function isTransientUpstreamError(err, { otherHostAvailable = false } = {}) {
+export function isTransientUpstreamError(
+  err,
+  { otherHostAvailable = false } = {},
+) {
   if (!(err instanceof Error)) return false;
-  if (err.name === 'TimeoutError' || err.name === 'AbortError') return true;
+  if (err.name === "TimeoutError" || err.name === "AbortError") return true;
   const codes = errorCodes(err);
-  if (codes.some(c => SOCKET_TRANSIENT.has(c))) return true;
-  if (codes.some(c => HOST_TRANSIENT.has(c))) return !otherHostAvailable;
+  if (codes.some((c) => SOCKET_TRANSIENT.has(c))) return true;
+  if (codes.some((c) => HOST_TRANSIENT.has(c))) return !otherHostAvailable;
   // Read last, and only once no code has been found. Node's global fetch, which
   // `AGENT_LB_UPSTREAM_GLOBAL_FETCH` selects, reports every failure with this
   // message and the real error on `.cause`; checking it earlier would answer for
   // the whole transport before the codes above were consulted, so a host-scoped
   // failure there would never reach its conditional arm.
-  if (typeof err.message === 'string' && err.message.includes('fetch failed')) return true;
+  if (typeof err.message === "string" && err.message.includes("fetch failed"))
+    return true;
   return false;
 }
 
@@ -4279,43 +7194,69 @@ export function isTransientUpstreamError(err, { otherHostAvailable = false } = {
  * Counts only the accounts that were candidates, names the model when the
  * request carried one, and says plainly that the wait is until a window resets.
  */
-export function exhaustedMessage(accountManager, model, retryAfter, provider = null) {
+export function exhaustedMessage(
+  accountManager,
+  model,
+  retryAfter,
+  provider = null,
+) {
   const allAccounts = accountManager.accounts || [];
   if (allAccounts.length === 0) {
-    return 'No accounts configured in AgentLB. Please add an account via the Web Dashboard or CLI.';
+    return "No accounts configured in AgentLB. Please add an account via the Web Dashboard or CLI.";
   }
   const accounts = provider
-    ? allAccounts.filter(a => providerOf(a) === provider)
+    ? allAccounts.filter((a) => providerOf(a) === provider)
     : allAccounts;
 
   if (accounts.length === 0) {
     return `No ${provider} accounts configured in AgentLB. Please add a ${provider} account via the Web Dashboard or CLI.`;
   }
 
-  const eligible = accounts.filter(a => !a.disabled);
+  const eligible = accounts.filter((a) => !a.disabled);
   const disabled = accounts.length - eligible.length;
-  const scope = model ? ` for ${model}` : '';
+  const scope = model ? ` for ${model}` : "";
 
   if (eligible.length === 0) {
-    const plural = disabled === 1 ? 'account is' : 'accounts are';
+    const plural = disabled === 1 ? "account is" : "accounts are";
     return `No account can serve this request${scope}: all ${disabled} ${plural} disabled.`;
   }
 
-  const identityCount = eligible.filter(a => accountManager._identityVerificationRequired?.(a)).length;
-  const pool = eligible.length === 1 ? '1 account is' : `all ${eligible.length} accounts are`;
-  const quotaWord = eligible.length === 1 ? 'at its quota or rate limit' : 'at their quota or rate limit';
-  const aside = disabled ? ` (${disabled} more disabled)` : '';
-  const idNote = identityCount > 0
-    ? ` (${identityCount} require${identityCount === 1 ? 's' : ''} identity verification in browser)`
-    : '';
-  const when = retryAfter > 0
-    ? ` Quota resets in ${retryAfter}s.`
-    : ' Retry shortly.';
+  const identityCount = eligible.filter((a) =>
+    accountManager._identityVerificationRequired?.(a),
+  ).length;
+  const pool =
+    eligible.length === 1
+      ? "1 account is"
+      : `all ${eligible.length} accounts are`;
+  const quotaWord =
+    eligible.length === 1
+      ? "at its quota or rate limit"
+      : "at their quota or rate limit";
+  const aside = disabled ? ` (${disabled} more disabled)` : "";
+  const idNote =
+    identityCount > 0
+      ? ` (${identityCount} require${identityCount === 1 ? "s" : ""} identity verification in browser)`
+      : "";
+  const when =
+    retryAfter > 0 ? ` Quota resets in ${retryAfter}s.` : " Retry shortly.";
 
   return `No account can serve this request${scope}: ${pool}${aside} ${quotaWord}${idNote}.${when}`;
 }
 
-export async function forwardRequest(req, res, body, accountManager, upstream, retryCount, hooks, reqId, ctx, logDir, sx, useSx) {
+export async function forwardRequest(
+  req,
+  res,
+  body,
+  accountManager,
+  upstream,
+  retryCount,
+  hooks,
+  reqId,
+  ctx,
+  logDir,
+  sx,
+  useSx,
+) {
   const maxRetries = accountManager.accounts.length;
   // This function is exported, so a caller may hand us a ctx built elsewhere.
   // The 401 path reads ctx.reauthed on every response; default it here rather
@@ -4326,7 +7267,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
   ctx.logMaxBodyBytes ??= DEFAULT_LOG_MAX_BODY_BYTES;
   // Whether THIS attempt dials via sx.org. Undefined on the first call → derive
   // from the default policy ('always' routes; 'off'/'429' start direct).
-  const route = useSx === undefined ? !!(sx?.useByDefault()) : useSx;
+  const route = useSx === undefined ? !!sx?.useByDefault() : useSx;
 
   // Taken before the walk, which can move the observation, and a request cannot
   // confirm the stay its own selection began. A pinned request bypasses
@@ -4337,9 +7278,10 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
   // is no evidence about a rest either.
   const hopTo = ctx.hopTo ?? null;
   ctx.hopTo = null;
-  const restingGen = ctx.pinnedIndex == null && hopTo == null
-    ? accountManager.observedGeneration(ctx.sessionId, ctx.model)
-    : null;
+  const restingGen =
+    ctx.pinnedIndex == null && hopTo == null
+      ? accountManager.observedGeneration(ctx.sessionId, ctx.model)
+      : null;
 
   // Select account, skipping any already tried (and failed) this request.
   // The model scopes availability so a Fable-exhausted account is skipped only
@@ -4351,9 +7293,10 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
   // pinned request never reaches that walk, and a budget a pin can spend past is
   // not a budget. The request gets the exhausted response, exactly as it would
   // for an already-tried pin — it still never leaks to another account.
-  const pinned = ctx.pinnedIndex != null && !ctx.tried.has(ctx.pinnedIndex)
-    ? accountManager.accounts[ctx.pinnedIndex]
-    : null;
+  const pinned =
+    ctx.pinnedIndex != null && !ctx.tried.has(ctx.pinnedIndex)
+      ? accountManager.accounts[ctx.pinnedIndex]
+      : null;
   // What this attempt's selection decided beyond which account it returned.
   // Carried on ctx rather than read straight back, because the failover hops
   // below run after an upstream round trip.
@@ -4363,19 +7306,30 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
   // serve a Codex request from it, sending an OpenAI-shaped body to
   // api.anthropic.com with a Claude token. Subscriptions only: an API-key
   // account is metered capacity with no tie to a caller, so a pin to one stands.
-  const pinnedWrongProvider = pinned
-    && isSubscriptionAccount(pinned)
-    && providerOf(pinned) !== (ctx.provider || DEFAULT_PROVIDER);
+  const pinnedWrongProvider =
+    pinned &&
+    isSubscriptionAccount(pinned) &&
+    providerOf(pinned) !== (ctx.provider || DEFAULT_PROVIDER);
   // The hop's destination was picked by pickAlternate against this request's
   // own exclusions, and is taken as-is: re-selecting here would walk the fleet
   // cursor onto it, which is exactly the move a detour must not make (#286).
-  const account = hopTo != null
-    ? accountManager.accounts[hopTo]
-    : ctx.pinnedIndex != null
-      ? (pinned && !pinnedWrongProvider && !accountManager.capExceeded(pinned, ctx.model) ? pinned : null)
-      : accountManager.getActiveAccount(
-        ctx.tried, ctx.model, ctx.advisorModel, ctx.sessionId, ctx.provider, selection,
-      );
+  const account =
+    hopTo != null
+      ? accountManager.accounts[hopTo]
+      : ctx.pinnedIndex != null
+        ? pinned &&
+          !pinnedWrongProvider &&
+          !accountManager.capExceeded(pinned, ctx.model)
+          ? pinned
+          : null
+        : accountManager.getActiveAccount(
+            ctx.tried,
+            ctx.model,
+            ctx.advisorModel,
+            ctx.sessionId,
+            ctx.provider,
+            selection,
+          );
   // Accounts a rollover deliberately routed this request away from. Request-
   // scoped: the decision belongs to the request, not to one attempt of it.
   if (selection.rolledOff) {
@@ -4386,15 +7340,17 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // Named plainly: a pin that cannot serve is a configuration mistake, and the
     // exhausted-account response would send the operator looking at quota.
     ctx.status = 400;
-    ctx.delivered = true;   // a configuration mistake, answered plainly
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      type: 'error',
-      error: {
-        type: 'invalid_request_error',
-        message: `Pinned account "${pinned.name}" is a ${providerOf(pinned)} subscription and cannot serve a ${ctx.provider} request.`,
-      },
-    }));
+    ctx.delivered = true; // a configuration mistake, answered plainly
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        type: "error",
+        error: {
+          type: "invalid_request_error",
+          message: `Pinned account "${pinned.name}" is a ${providerOf(pinned)} subscription and cannot serve a ${ctx.provider} request.`,
+        },
+      }),
+    );
     return;
   }
   if (!account) {
@@ -4415,41 +7371,56 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // by an earlier request, and a mixed Claude/Codex fleet contains accounts
     // that are deliberately outside this request's provider partition.
     const requestProvider = ctx.provider || DEFAULT_PROVIDER;
-    const relevantAccounts = ctx.pinnedIndex != null
-      ? [accountManager.accounts[ctx.pinnedIndex]].filter(a => a && !a.disabled)
-      : accountManager.accounts.filter(a =>
-        !a.disabled
-        && (!isSubscriptionAccount(a) || providerOf(a) === requestProvider)
-        && (!ctx.model || accountManager._routeAllows(a, ctx.model)));
-    const identityAccounts = relevantAccounts.filter(a =>
-      accountManager.unavailableReason(a, ctx.model, ctx.advisorModel) === 'identity-verification');
-    const allIdentityRequired = relevantAccounts.length > 0
-      && identityAccounts.length === relevantAccounts.length;
+    const relevantAccounts =
+      ctx.pinnedIndex != null
+        ? [accountManager.accounts[ctx.pinnedIndex]].filter(
+            (a) => a && !a.disabled,
+          )
+        : accountManager.accounts.filter(
+            (a) =>
+              !a.disabled &&
+              (!isSubscriptionAccount(a) ||
+                providerOf(a) === requestProvider) &&
+              (!ctx.model || accountManager._routeAllows(a, ctx.model)),
+          );
+    const identityAccounts = relevantAccounts.filter(
+      (a) =>
+        accountManager.unavailableReason(a, ctx.model, ctx.advisorModel) ===
+        "identity-verification",
+    );
+    const allIdentityRequired =
+      relevantAccounts.length > 0 &&
+      identityAccounts.length === relevantAccounts.length;
     if (allIdentityRequired) {
-      const identityNames = identityAccounts.map(a => a.name);
-      const names = identityNames.map(n => `"${n}"`).join(', ');
+      const identityNames = identityAccounts.map((a) => a.name);
+      const names = identityNames.map((n) => `"${n}"`).join(", ");
       ctx.status = 502;
-      ctx.account = `(${identityNames.join(', ')} require identity verification)`;
+      ctx.account = `(${identityNames.join(", ")} require identity verification)`;
       if (!res.headersSent) {
-        res.writeHead(502, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          type: 'error',
-          error: {
-            type: 'proxy_error',
-            message: `Anthropic requires identity verification for every eligible account: ${names}. Complete verification for one of these accounts, then retry.`,
-          },
-        }));
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            type: "error",
+            error: {
+              type: "proxy_error",
+              message: `Anthropic requires identity verification for every eligible account: ${names}. Complete verification for one of these accounts, then retry.`,
+            },
+          }),
+        );
       }
       return;
     }
-    const allRefused = rejected?.size > 0 && (ctx.pinnedIndex != null
-      ? rejected.has(accountManager.accounts[ctx.pinnedIndex]?.name)
-      : rejected.size === accountManager.accounts.length);
+    const allRefused =
+      rejected?.size > 0 &&
+      (ctx.pinnedIndex != null
+        ? rejected.has(accountManager.accounts[ctx.pinnedIndex]?.name)
+        : rejected.size === accountManager.accounts.length);
     if (allRefused) {
-      const names = [...rejected].map(n => `"${n}"`).join(', ');
+      const names = [...rejected].map((n) => `"${n}"`).join(", ");
       const entitlementDenied = ctx.entitlementDenied;
-      const allEntitlementDenied = entitlementDenied?.size === rejected.size
-        && [...rejected].every(name => entitlementDenied.has(name));
+      const allEntitlementDenied =
+        entitlementDenied?.size === rejected.size &&
+        [...rejected].every((name) => entitlementDenied.has(name));
       let message;
       if (allEntitlementDenied && ctx.pinnedIndex != null) {
         message = `No account served this request. The pinned account ${names} returned OAuth entitlement denial (${OAUTH_ENTITLEMENT_ERROR_CODE}). An explicit pin targets that account exactly; choose a different eligible account or change its organization's OAuth policy.`;
@@ -4459,13 +7430,15 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         message = `Upstream refused the credential for account ${names} (403). Check the account, then re-add it with: agentlb login`;
       }
       ctx.status = 502;
-      ctx.account = `(${[...rejected].join(', ')} refused)`;
+      ctx.account = `(${[...rejected].join(", ")} refused)`;
       if (!res.headersSent) {
-        res.writeHead(502, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          type: 'error',
-          error: { type: 'proxy_error', message },
-        }));
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            type: "error",
+            error: { type: "proxy_error", message },
+          }),
+        );
       }
       return;
     }
@@ -4473,21 +7446,34 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // retry-after or sleep on other accounts' windows — return immediately.
     if (ctx.pinnedIndex != null) {
       ctx.status = 429;
-      ctx.account = '(pinned account unavailable)';
+      ctx.account = "(pinned account unavailable)";
       if (!res.headersSent) {
-        res.writeHead(429, { 'Content-Type': 'application/json', 'retry-after': '5' });
-        res.end(JSON.stringify({
-          type: 'error',
-          error: { type: 'rate_limit_error', message: 'Pinned account is unavailable (rate-limited, errored, or already tried). Retry shortly.' },
-        }));
+        res.writeHead(429, {
+          "Content-Type": "application/json",
+          "retry-after": "5",
+        });
+        res.end(
+          JSON.stringify({
+            type: "error",
+            error: {
+              type: "rate_limit_error",
+              message:
+                "Pinned account is unavailable (rate-limited, errored, or already tried). Retry shortly.",
+            },
+          }),
+        );
       }
       return;
     }
     ctx.status = 429;
-    ctx.account = '(none available)';
+    ctx.account = "(none available)";
     const status = accountManager.getStatus();
-    const providerAccounts = status.accounts.filter(a => (a.provider || DEFAULT_PROVIDER) === requestProvider);
-    const retryAfter = computeRetryAfter(providerAccounts.length > 0 ? providerAccounts : status.accounts);
+    const providerAccounts = status.accounts.filter(
+      (a) => (a.provider || DEFAULT_PROVIDER) === requestProvider,
+    );
+    const retryAfter = computeRetryAfter(
+      providerAccounts.length > 0 ? providerAccounts : status.accounts,
+    );
 
     // Long-hold mode: hold the HTTP connection and poll until an account
     // recovers or the budget (holdSeconds) runs out. Claude Code waits for
@@ -4499,31 +7485,74 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // minute instead of sleeping the full retryAfter (often 3600s).
       const waitMs = Math.min(retryAfter * 1000, ctx.holdBudgetMs, 60_000);
       ctx.holdBudgetMs -= waitMs;
-      console.log(`[AgentLB] All accounts exhausted — holding connection, retry in ${Math.ceil(waitMs / 1000)}s (${Math.ceil(ctx.holdBudgetMs / 1000)}s budget left)`);
+      console.log(
+        `[AgentLB] All accounts exhausted — holding connection, retry in ${Math.ceil(waitMs / 1000)}s (${Math.ceil(ctx.holdBudgetMs / 1000)}s budget left)`,
+      );
       await waitForRetry(waitMs, ctx.signal);
-      if (clientGone(res)) { ctx.abandoned = true; return; }
-      return forwardRequest(req, res, body, accountManager, upstream, retryCount, hooks, reqId, ctx, logDir, sx, route);
+      if (clientGone(res)) {
+        ctx.abandoned = true;
+        return;
+      }
+      return forwardRequest(
+        req,
+        res,
+        body,
+        accountManager,
+        upstream,
+        retryCount,
+        hooks,
+        reqId,
+        ctx,
+        logDir,
+        sx,
+        route,
+      );
     }
 
     const exhaustedRetries = ctx.exhaustedRetries || 0;
     if (exhaustedRetries < 1 && retryAfter <= INLINE_RETRY_AFTER_MAX_SECONDS) {
       ctx.exhaustedRetries = exhaustedRetries + 1;
-      console.log(`[AgentLB] All accounts exhausted — waiting ${retryAfter}s before retry`);
+      console.log(
+        `[AgentLB] All accounts exhausted — waiting ${retryAfter}s before retry`,
+      );
       await waitForRetry(retryAfter * 1000, ctx.signal);
-      if (clientGone(res)) { ctx.abandoned = true; return; }
-      return forwardRequest(req, res, body, accountManager, upstream, retryCount, hooks, reqId, ctx, logDir, sx, route);
+      if (clientGone(res)) {
+        ctx.abandoned = true;
+        return;
+      }
+      return forwardRequest(
+        req,
+        res,
+        body,
+        accountManager,
+        upstream,
+        retryCount,
+        hooks,
+        reqId,
+        ctx,
+        logDir,
+        sx,
+        route,
+      );
     }
     res.writeHead(429, {
-      'Content-Type': 'application/json',
-      'retry-after': String(retryAfter),
+      "Content-Type": "application/json",
+      "retry-after": String(retryAfter),
     });
-    res.end(JSON.stringify({
-      type: 'error',
-      error: {
-        type: 'rate_limit_error',
-        message: exhaustedMessage(accountManager, ctx.model, retryAfter, requestProvider),
-      },
-    }));
+    res.end(
+      JSON.stringify({
+        type: "error",
+        error: {
+          type: "rate_limit_error",
+          message: exhaustedMessage(
+            accountManager,
+            ctx.model,
+            retryAfter,
+            requestProvider,
+          ),
+        },
+      }),
+    );
     return;
   }
 
@@ -4538,9 +7567,22 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
 
   // Refresh OAuth token if needed
   await accountManager.ensureTokenFresh(account.index);
-  if (account.status === 'error' && retryCount < maxRetries) {
+  if (account.status === "error" && retryCount < maxRetries) {
     ctx.tried.add(account.index);
-    return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+    return forwardRequest(
+      req,
+      res,
+      body,
+      accountManager,
+      upstream,
+      retryCount + 1,
+      hooks,
+      reqId,
+      ctx,
+      logDir,
+      sx,
+      route,
+    );
   }
 
   // Build upstream request headers
@@ -4549,17 +7591,17 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     const lk = key.toLowerCase();
     // HTTP/2 pseudo-headers (:method, :path, :authority, :scheme) live in
     // req.headers on the h2 server path; fetch rejects `:`-prefixed names.
-    if (lk.startsWith(':')) continue;
+    if (lk.startsWith(":")) continue;
     if (HOP_BY_HOP_HEADERS.has(lk)) continue;
     // Both credential headers are dropped, not just the one the account will
     // set: applyAuthHeaders overwrites `authorization` only for bearer-token
     // accounts, so on an API-key account the CLIENT's own
     // `Authorization: Bearer <its Anthropic OAuth token>` would otherwise ride
     // along untouched — to whatever host that account's `upstream` names.
-    if (lk === 'x-api-key' || lk === 'authorization') continue;
+    if (lk === "x-api-key" || lk === "authorization") continue;
     // Strip accept-encoding: Node fetch auto-decompresses, which would
     // mismatch the Content-Encoding header we forward to the client
-    if (lk === 'accept-encoding') continue;
+    if (lk === "accept-encoding") continue;
     // Headers configured as usage dimensions are addressed to this proxy and
     // carry the operator's own labels (project, branch, team). They are
     // consumed here, so they do not travel upstream.
@@ -4570,122 +7612,211 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
   // Credential presentation is provider-specific: Anthropic OAuth and Codex
   // both use a bearer token, Anthropic API keys use x-api-key, and Codex also
   // needs ChatGPT-Account-Id to scope the token to one account.
-  if (ctx.clientEntry?.allowedProviders?.length && !ctx.clientEntry.allowedProviders.includes(providerOf(account))) {
+  if (
+    ctx.clientEntry?.allowedProviders?.length &&
+    !ctx.clientEntry.allowedProviders.includes(providerOf(account))
+  ) {
     ctx.status = 403;
-    denyClientPolicy(res, { error: 'client key is not authorized for the selected provider' });
+    denyClientPolicy(res, {
+      error: "client key is not authorized for the selected provider",
+    });
     return;
   }
   applyAuthHeaders(headers, account);
 
-  const requestProvider = ctx.requestProvider || ctx.provider || DEFAULT_PROVIDER;
+  const requestProvider =
+    ctx.requestProvider || ctx.provider || DEFAULT_PROVIDER;
   const servingProvider = providerOf(account);
   const isCrossProvider = servingProvider !== requestProvider;
 
   // For Anthropic OAuth accounts, ensure Claude Code headers are set so Anthropic accepts the request
-  if (servingProvider === 'anthropic' && account.type === 'oauth') {
-    if (!headers['anthropic-beta']) {
-      headers['anthropic-beta'] = 'claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,effort-2025-11-24,afk-mode-2026-01-31';
-    } else if (!headers['anthropic-beta'].includes('claude-code-20250219')) {
-      headers['anthropic-beta'] = `${headers['anthropic-beta']},claude-code-20250219`;
+  if (servingProvider === "anthropic" && account.type === "oauth") {
+    if (!headers["anthropic-beta"]) {
+      headers["anthropic-beta"] =
+        "claude-code-20250219,interleaved-thinking-2025-05-14,thinking-token-count-2026-05-13,context-management-2025-06-27,prompt-caching-scope-2026-01-05,mid-conversation-system-2026-04-07,advisor-tool-2026-03-01,effort-2025-11-24,afk-mode-2026-01-31";
+    } else if (!headers["anthropic-beta"].includes("claude-code-20250219")) {
+      headers["anthropic-beta"] =
+        `${headers["anthropic-beta"]},claude-code-20250219`;
     }
-    if (!headers['user-agent'] || !headers['user-agent'].includes('claude-cli')) {
-      headers['user-agent'] = 'claude-cli/2.1.280 (external, sdk-cli)';
+    if (
+      !headers["user-agent"] ||
+      !headers["user-agent"].includes("claude-cli")
+    ) {
+      headers["user-agent"] = "claude-cli/2.1.280 (external, sdk-cli)";
     }
-    headers['x-app'] ??= 'cli';
-    headers['anthropic-version'] ??= '2023-06-01';
+    headers["x-app"] ??= "cli";
+    headers["anthropic-version"] ??= "2023-06-01";
   }
 
   let upstreamUrl = `${upstreamFor(account, upstream)}${req.url}`;
   const method = req.method;
 
   let sendBody = body;
-  const isChatCompletions = (req.url || '').startsWith('/v1/chat/completions');
-  if (isChatCompletions && servingProvider === 'codex' && (account.type === 'oauth' || (upstreamFor(account, upstream) || '').includes('chatgpt.com'))) {
+  const isChatCompletions = (req.url || "").startsWith("/v1/chat/completions");
+  if (
+    isChatCompletions &&
+    servingProvider === "codex" &&
+    (account.type === "oauth" ||
+      (upstreamFor(account, upstream) || "").includes("chatgpt.com"))
+  ) {
     ctx.originalModel = ctx.model;
     upstreamUrl = `${upstreamFor(account, upstream)}/backend-api/codex/responses`;
-    sendBody = translateChatCompletionsToCodexResponses(sendBody, substitutedModel(ctx.fallbackPolicy, ctx.requestedModel || ctx.model, 'codex'));
-    headers['content-type'] = 'application/json';
-    headers['accept'] = 'text/event-stream';
-    headers['user-agent'] = 'codex-cli/0.1.0';
+    sendBody = translateChatCompletionsToCodexResponses(
+      sendBody,
+      substitutedModel(
+        ctx.fallbackPolicy,
+        ctx.requestedModel || ctx.model,
+        "codex",
+      ),
+    );
+    headers["content-type"] = "application/json";
+    headers["accept"] = "text/event-stream";
+    headers["user-agent"] = "codex-cli/0.1.0";
     ctx.isCodexResponsesToOpenAI = true;
     let isClientStreaming = false;
     try {
-      const parsed = JSON.parse(body.toString('utf8'));
+      const parsed = JSON.parse(body.toString("utf8"));
       if (parsed.stream === true) isClientStreaming = true;
     } catch {}
     ctx.isClientStreaming = isClientStreaming;
   } else if (isCrossProvider) {
-    if (requestProvider === 'anthropic' && servingProvider === 'codex') {
-      if (account.type === 'oauth' || (upstreamFor(account, upstream) || '').includes('chatgpt.com')) {
+    if (requestProvider === "anthropic" && servingProvider === "codex") {
+      if (
+        account.type === "oauth" ||
+        (upstreamFor(account, upstream) || "").includes("chatgpt.com")
+      ) {
         ctx.originalModel = ctx.model;
         upstreamUrl = `${upstreamFor(account, upstream)}/backend-api/codex/responses`;
-        const openAIBody = translateAnthropicToOpenAI(sendBody, substitutedModel(ctx.fallbackPolicy, ctx.requestedModel || ctx.model, 'codex'));
-        sendBody = translateChatCompletionsToCodexResponses(openAIBody, substitutedModel(ctx.fallbackPolicy, ctx.requestedModel || ctx.model, 'codex'));
-        headers['content-type'] = 'application/json';
-        headers['accept'] = 'text/event-stream';
-        headers['user-agent'] = 'codex-cli/0.1.0';
+        const openAIBody = translateAnthropicToOpenAI(
+          sendBody,
+          substitutedModel(
+            ctx.fallbackPolicy,
+            ctx.requestedModel || ctx.model,
+            "codex",
+          ),
+        );
+        sendBody = translateChatCompletionsToCodexResponses(
+          openAIBody,
+          substitutedModel(
+            ctx.fallbackPolicy,
+            ctx.requestedModel || ctx.model,
+            "codex",
+          ),
+        );
+        headers["content-type"] = "application/json";
+        headers["accept"] = "text/event-stream";
+        headers["user-agent"] = "codex-cli/0.1.0";
         ctx.isCodexResponsesToAnthropic = true;
         let isClientStreaming = false;
         try {
-          const parsed = JSON.parse(body.toString('utf8'));
+          const parsed = JSON.parse(body.toString("utf8"));
           if (parsed.stream === true) isClientStreaming = true;
         } catch {}
         ctx.isClientStreaming = isClientStreaming;
       } else {
         upstreamUrl = `${upstreamFor(account, upstream)}/v1/chat/completions`;
-        sendBody = translateAnthropicToOpenAI(sendBody, substitutedModel(ctx.fallbackPolicy, ctx.requestedModel || ctx.model, 'codex'));
-        headers['content-type'] = 'application/json';
+        sendBody = translateAnthropicToOpenAI(
+          sendBody,
+          substitutedModel(
+            ctx.fallbackPolicy,
+            ctx.requestedModel || ctx.model,
+            "codex",
+          ),
+        );
+        headers["content-type"] = "application/json";
       }
-    } else if (requestProvider === 'codex' && servingProvider === 'anthropic') {
+    } else if (requestProvider === "codex" && servingProvider === "anthropic") {
       upstreamUrl = `${upstreamFor(account, upstream)}/v1/messages`;
-      sendBody = translateOpenAIToAnthropic(sendBody, substitutedModel(ctx.fallbackPolicy, ctx.requestedModel || ctx.model, 'anthropic'));
-      headers['content-type'] = 'application/json';
+      sendBody = translateOpenAIToAnthropic(
+        sendBody,
+        substitutedModel(
+          ctx.fallbackPolicy,
+          ctx.requestedModel || ctx.model,
+          "anthropic",
+        ),
+      );
+      headers["content-type"] = "application/json";
     }
   }
 
   // Every rewrite below runs inside rewriteRequestBody (exported for tests);
   // Content-Length is refreshed below because the body can shrink.
-  const effectiveUrl = (upstreamUrl && upstreamUrl.includes('/v1/messages')) ? '/v1/messages' : req.url;
-  sendBody = rewriteRequestBody(sendBody, account, effectiveUrl, headers['content-type'] || req.headers['content-type']);
+  const effectiveUrl =
+    upstreamUrl && upstreamUrl.includes("/v1/messages")
+      ? "/v1/messages"
+      : req.url;
+  sendBody = rewriteRequestBody(
+    sendBody,
+    account,
+    effectiveUrl,
+    headers["content-type"] || req.headers["content-type"],
+  );
 
   const rewrittenModel = parseRequestModel(sendBody);
   if (rewrittenModel) {
-    if (!substitutionAllowed(ctx.fallbackPolicy, ctx.requestedModel, servingProvider, rewrittenModel)) {
+    if (
+      !substitutionAllowed(
+        ctx.fallbackPolicy,
+        ctx.requestedModel,
+        servingProvider,
+        rewrittenModel,
+      )
+    ) {
       ctx.status = 403;
-      denyClientPolicy(res, { error: 'model substitution is not approved by fallbackPolicy' });
+      denyClientPolicy(res, {
+        error: "model substitution is not approved by fallbackPolicy",
+      });
       return;
     }
     ctx.model = rewrittenModel;
     if (ctx.clientEntry && ctx.clientUsage) {
-      const policy = ctx.clientUsage.checkQuota(ctx.client, ctx.clientEntry, rewrittenModel);
-      if (!policy.allowed) { ctx.status = policy.status || 403; denyClientPolicy(res, policy); return; }
+      const policy = ctx.clientUsage.checkQuota(
+        ctx.client,
+        ctx.clientEntry,
+        rewrittenModel,
+      );
+      if (!policy.allowed) {
+        ctx.status = policy.status || 403;
+        denyClientPolicy(res, policy);
+        return;
+      }
     }
   }
 
   // If the body changed length (sanitize, model rewrite, or field strip), update
   // Content-Length so the upstream doesn't receive a mismatched framing and
   // truncate or stall.
-  if (sendBody !== body) headers['content-length'] = String(sendBody.length);
+  if (sendBody !== body) headers["content-length"] = String(sendBody.length);
 
   // Streaming request log, opened lazily on the first terminal outcome (a
   // pure-429-then-retry attempt writes no file, matching prior behavior). The
   // request head+body are written once, just before the response is logged.
   let log = null;
   let reqLogged = false;
-  const getLog = () => (logDir && ctx.logLevel !== 'off'
-    ? (log ||= openRequestLog(logDir, reqId, { level: ctx.logLevel, maxBodyBytes: ctx.logMaxBodyBytes }))
-    : null);
+  const getLog = () =>
+    logDir && ctx.logLevel !== "off"
+      ? (log ||= openRequestLog(logDir, reqId, {
+          level: ctx.logLevel,
+          maxBodyBytes: ctx.logMaxBodyBytes,
+        }))
+      : null;
   const logRequestHead = () => {
     const l = getLog();
     if (!l || reqLogged) return;
     reqLogged = true;
-    l.write(`=== REQUEST (account: ${account.name}, retry: ${retryCount}) ===\n${method} ${upstreamUrl}\n${formatHeaders(headers)}`);
+    l.write(
+      `=== REQUEST (account: ${account.name}, retry: ${retryCount}) ===\n${method} ${upstreamUrl}\n${formatHeaders(headers)}`,
+    );
     // The body that went upstream, not the one the client sent: they differ
     // exactly when the proxy rewrote it (tool-pair sanitising, account_uuid,
     // modelMap, cache_control strip), which is the first thing to check when
     // upstream rejects it.
-    if (sendBody !== body) l.write(`\n(body rewritten by the proxy before sending: ${body.length} → ${sendBody.length} bytes; the upstream copy follows)`);
-    if (sendBody.length > 0) l.body('REQUEST BODY', sendBody, req.headers['content-type']);
+    if (sendBody !== body)
+      l.write(
+        `\n(body rewritten by the proxy before sending: ${body.length} → ${sendBody.length} bytes; the upstream copy follows)`,
+      );
+    if (sendBody.length > 0)
+      l.body("REQUEST BODY", sendBody, req.headers["content-type"]);
   };
 
   let ownsRecoveryProbe = false;
@@ -4699,47 +7830,91 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // clientGone — so this is a pure abandonment exit. It fires while an account
     // is paused or ramping, which is exactly when clients give up, so leaving it
     // unmarked clustered false positives where the signal is read hardest.
-    if (!await accountManager.admit(account.index, () => clientGone(res))) { ctx.abandoned = true; return; }
+    if (!(await accountManager.admit(account.index, () => clientGone(res)))) {
+      ctx.abandoned = true;
+      return;
+    }
     // This request may have selected the account before another in-flight request
     // observed an entitlement denial. Re-check after admission, when the queued
     // request is about to send, so the cooldown also drains that preselected
     // backlog. Explicit caller pins still target exactly the requested account.
-    if (ctx.pinnedIndex == null && retryCount < maxRetries
-        && (accountManager.isEntitlementDenied(account.index)
-          || accountManager.isIdentityVerificationRequired(account.index))) {
+    if (
+      ctx.pinnedIndex == null &&
+      retryCount < maxRetries &&
+      (accountManager.isEntitlementDenied(account.index) ||
+        accountManager.isIdentityVerificationRequired(account.index))
+    ) {
       accountManager.release(account.index, { successful: false });
       ctx.tried.add(account.index);
-      return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+      return forwardRequest(
+        req,
+        res,
+        body,
+        accountManager,
+        upstream,
+        retryCount + 1,
+        hooks,
+        reqId,
+        ctx,
+        logDir,
+        sx,
+        route,
+      );
     }
     const attemptStart = performance.now();
     let upstreamRes;
     let admittedLoad = 0;
-    const halfOpen = account.circuitBreakerUntil > 0 && account.circuitBreakerUntil <= Date.now();
+    const halfOpen =
+      account.circuitBreakerUntil > 0 &&
+      account.circuitBreakerUntil <= Date.now();
     if (halfOpen && account.halfOpenInFlight) {
       accountManager.release(account.index, { successful: false });
       ctx.status = 503;
-      res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '1' });
-      res.end(JSON.stringify({ error: { message: 'Backend recovery probe in progress' } })); return;
+      res.writeHead(503, {
+        "Content-Type": "application/json",
+        "Retry-After": "1",
+      });
+      res.end(
+        JSON.stringify({
+          error: { message: "Backend recovery probe in progress" },
+        }),
+      );
+      return;
     }
-    if (halfOpen) { account.halfOpenInFlight = true; ownsRecoveryProbe = true; }
+    if (halfOpen) {
+      account.halfOpenInFlight = true;
+      ownsRecoveryProbe = true;
+    }
     try {
       // Codex translation always streams upstream; otherwise the client's own
       // choice is what upstream sees.
-      const upstreamStreams = ctx.isCodexResponsesToOpenAI || ctx.isCodexResponsesToAnthropic || ctx.clientStream !== false;
-      upstreamRes = await upstreamFetch(upstreamUrl, {
-        headersTimeoutMs: upstreamStreams ? undefined : nonStreamHeadersTimeout(),
-        method,
-        headers,
-        // Cancels the admission wait and the request itself when the client
-        // goes away (see the listener's AbortController).
-        signal: ctx.signal,
-        body: ['GET', 'HEAD'].includes(method) ? undefined : sendBody,
-        redirect: 'manual',
-      }, sx, route);
+      const upstreamStreams =
+        ctx.isCodexResponsesToOpenAI ||
+        ctx.isCodexResponsesToAnthropic ||
+        ctx.clientStream !== false;
+      upstreamRes = await upstreamFetch(
+        upstreamUrl,
+        {
+          headersTimeoutMs: upstreamStreams
+            ? undefined
+            : nonStreamHeadersTimeout(),
+          method,
+          headers,
+          // Cancels the admission wait and the request itself when the client
+          // goes away (see the listener's AbortController).
+          signal: ctx.signal,
+          body: ["GET", "HEAD"].includes(method) ? undefined : sendBody,
+          redirect: "manual",
+        },
+        sx,
+        route,
+      );
     } finally {
       ctx.metrics?.observeHeaders((performance.now() - attemptStart) / 1000);
-      admittedLoad = accountManager.release(account.index,
-        { successful: !!upstreamRes && upstreamRes.status < 400 }) || 0;
+      admittedLoad =
+        accountManager.release(account.index, {
+          successful: !!upstreamRes && upstreamRes.status < 400,
+        }) || 0;
     }
 
     // Extract rate limit headers. Codex reports the same readings under
@@ -4748,25 +7923,31 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     const rateLimitHeaders = {};
     const codexQuotaHeaders = {};
     for (const [key, value] of upstreamRes.headers.entries()) {
-      if (key.startsWith('anthropic-ratelimit-')) {
+      if (key.startsWith("anthropic-ratelimit-")) {
         rateLimitHeaders[key] = value;
-      } else if (key.startsWith('x-codex-')) {
+      } else if (key.startsWith("x-codex-")) {
         codexQuotaHeaders[key] = value;
       }
     }
-    const isCodexAccount = providerOf(account) === 'codex';
-    accountManager.updateQuota(account.index, isCodexAccount ? codexQuotaHeaders : rateLimitHeaders);
+    const isCodexAccount = providerOf(account) === "codex";
+    accountManager.updateQuota(
+      account.index,
+      isCodexAccount ? codexQuotaHeaders : rateLimitHeaders,
+    );
 
     // Any non-429 response is live proof a rate-limit hold no longer binds —
     // this is what lets a revalidation probe (a throttled account selected by
     // _selectProbe) clear its own hold and return the fleet to service.
-    if (upstreamRes.status !== 429) accountManager.clearRateLimited(account.index);
+    if (upstreamRes.status !== 429)
+      accountManager.clearRateLimited(account.index);
 
     if (upstreamRes.status >= 500) {
       account.consecutiveErrors = (account.consecutiveErrors || 0) + 1;
       if (account.consecutiveErrors >= 3) {
         account.circuitBreakerUntil = Date.now() + 60000;
-        console.warn(`[Agent-LB] Circuit breaker tripped on account "${account.name}" (${account.consecutiveErrors} consecutive 5xx) — isolated for 60s`);
+        console.warn(
+          `[Agent-LB] Circuit breaker tripped on account "${account.name}" (${account.consecutiveErrors} consecutive 5xx) — isolated for 60s`,
+        );
       }
     }
 
@@ -4778,7 +7959,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // and out-of-range values are bounded to [1, 300]. A negative value would
       // otherwise bypass the wait cap — setTimeout returns immediately and a
       // pause/hold would be armed in the past.
-      const retryAfterHeader = upstreamRes.headers.get('retry-after');
+      const retryAfterHeader = upstreamRes.headers.get("retry-after");
       let retryAfter = parseInt(retryAfterHeader, 10);
       if (Number.isNaN(retryAfter)) retryAfter = 60;
       // A 429 that says nothing about the account — no retry-after, no
@@ -4791,19 +7972,25 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // (#288). A throttle, by contrast, always carries the headers.
       // (Codex's x-codex-* readings ride on every response, so they do not
       // make a 429 account-scoped; only a spent quota, detected below, does.)
-      let requestScoped = retryAfterHeader == null && Object.keys(rateLimitHeaders).length === 0;
+      let requestScoped =
+        retryAfterHeader == null && Object.keys(rateLimitHeaders).length === 0;
       // The body is diagnostic for a request-scoped refusal (it names the
       // reason) and noise otherwise. A Codex 429 is read either way: ChatGPT
       // states quota exhaustion only in the body (`usage_limit_reached`), and
       // it sends no retry-after.
-      let refusal = '';
+      let refusal = "";
       let codexLimit = null;
       if (requestScoped || isCodexAccount) {
         const raw = await readErrorBody(upstreamRes.body).catch(() => null);
         let parsed = null;
-        try { parsed = raw ? JSON.parse(raw.toString('utf8')) : null; } catch { parsed = null; }
-        refusal = String(parsed?.error?.message || '');
-        if (isCodexAccount) codexLimit = codexUsageLimit(parsed, codexQuotaHeaders);
+        try {
+          parsed = raw ? JSON.parse(raw.toString("utf8")) : null;
+        } catch {
+          parsed = null;
+        }
+        refusal = String(parsed?.error?.message || "");
+        if (isCodexAccount)
+          codexLimit = codexUsageLimit(parsed, codexQuotaHeaders);
         if (codexLimit) requestScoped = false;
       } else {
         await upstreamRes.body?.cancel();
@@ -4814,18 +8001,53 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // skips it for later requests too) and move this request to another one.
       if (codexLimit) {
         const hold = Math.min(Math.max(codexLimit.resetSeconds, 1), 3600);
-        console.log(`[AgentLB] Codex usage limit reached on "${account.name}" — holding ${hold}s and switching account`);
+        console.log(
+          `[AgentLB] Codex usage limit reached on "${account.name}" — holding ${hold}s and switching account`,
+        );
         accountManager.markRateLimited(account.index, hold);
-        account.lastError = { reason: 'usage-limit', status: 429, error: refusal || 'Codex usage limit reached', timestamp: Date.now() };
+        account.lastError = {
+          reason: "usage-limit",
+          status: 429,
+          error: refusal || "Codex usage limit reached",
+          timestamp: Date.now(),
+        };
         if (retryCount < maxRetries) {
           ctx.tried.add(account.index);
-          if (clientGone(res)) { ctx.abandoned = true; return; }
-          return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+          if (clientGone(res)) {
+            ctx.abandoned = true;
+            return;
+          }
+          return forwardRequest(
+            req,
+            res,
+            body,
+            accountManager,
+            upstream,
+            retryCount + 1,
+            hooks,
+            reqId,
+            ctx,
+            logDir,
+            sx,
+            route,
+          );
         }
         ctx.status = 429;
         if (!res.headersSent && !clientGone(res)) {
-          res.writeHead(429, { 'Content-Type': 'application/json', 'retry-after': String(hold) });
-          res.end(JSON.stringify({ type: 'error', error: { type: 'rate_limit_error', message: refusal || 'Codex usage limit reached on every account.' } }));
+          res.writeHead(429, {
+            "Content-Type": "application/json",
+            "retry-after": String(hold),
+          });
+          res.end(
+            JSON.stringify({
+              type: "error",
+              error: {
+                type: "rate_limit_error",
+                message:
+                  refusal || "Codex usage limit reached on every account.",
+              },
+            }),
+          );
         }
         return;
       }
@@ -4835,24 +8057,47 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // account is futile — switch to another account now (updateQuota above
       // already recorded the spent bucket's utilization from the headers).
       const rl = rateLimitHeaders;
-      const generalRejected = rl['anthropic-ratelimit-unified-5h-status'] === 'rejected'
-        || rl['anthropic-ratelimit-unified-7d-status'] === 'rejected';
-      const fableRejected = rl['anthropic-ratelimit-unified-7d_oi-status'] === 'rejected' && !generalRejected;
+      const generalRejected =
+        rl["anthropic-ratelimit-unified-5h-status"] === "rejected" ||
+        rl["anthropic-ratelimit-unified-7d-status"] === "rejected";
+      const fableRejected =
+        rl["anthropic-ratelimit-unified-7d_oi-status"] === "rejected" &&
+        !generalRejected;
       if ((generalRejected || fableRejected) && retryCount < maxRetries) {
         // A Fable-only rejection leaves the account fine for other models, so we
         // do NOT throttle it globally — the recorded Fable utilization makes
         // selection skip it for Fable requests only. A general rejection spends a
         // shared bucket, so hold the whole account for its reset window.
         if (fableRejected) {
-          console.log(`[AgentLB] Fable weekly exhausted on "${account.name}" — switching account for this Fable request`);
+          console.log(
+            `[AgentLB] Fable weekly exhausted on "${account.name}" — switching account for this Fable request`,
+          );
         } else {
           const hold = Math.min(Math.max(retryAfter, 1), 3600);
-          console.log(`[AgentLB] Quota rejection (429) on "${account.name}" — throttling ${hold}s and switching account`);
+          console.log(
+            `[AgentLB] Quota rejection (429) on "${account.name}" — throttling ${hold}s and switching account`,
+          );
           accountManager.markRateLimited(account.index, hold);
         }
         ctx.tried.add(account.index);
-        if (clientGone(res)) { ctx.abandoned = true; return; }
-        return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+        if (clientGone(res)) {
+          ctx.abandoned = true;
+          return;
+        }
+        return forwardRequest(
+          req,
+          res,
+          body,
+          accountManager,
+          upstream,
+          retryCount + 1,
+          hooks,
+          reqId,
+          ctx,
+          logDir,
+          sx,
+          route,
+        );
       }
 
       retryAfter = Math.min(Math.max(retryAfter, 1), 300);
@@ -4860,7 +8105,7 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // sx.org failover: 429s are IP-based, so retry via the proxy's egress IP.
       // 'always' is already on sx; '429' switches direct→sx now and skips the
       // wait (a fresh IP isn't throttled). Also arm the sticky window for MITM.
-      const nextUseSx = !!(sx?.useOn429());
+      const nextUseSx = !!sx?.useOn429();
       const switchingToSx = nextUseSx && !route;
       // The sticky window routes every new MITM tunnel through sx.org for a
       // while, which is metered. A request-scoped 429 is not an IP limit, so it
@@ -4879,8 +8124,11 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // Not for a request-scoped 429: the account is fine, and the pause is
       // exactly the fleet-wide stall #288 describes.
       if (!requestScoped) {
-        accountManager.pauseAccount(account.index,
-          Math.min(retryAfter, RATE_LIMIT_ABSORB_MAX_SECONDS), admittedLoad);
+        accountManager.pauseAccount(
+          account.index,
+          Math.min(retryAfter, RATE_LIMIT_ABSORB_MAX_SECONDS),
+          admittedLoad,
+        );
       }
 
       // ONE bounded failover hop to an idle sibling (#137, #165, #156).
@@ -4914,36 +8162,80 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
         // must leave the fleet cursor where it is (#286).
         const alt = accountManager.pickAlternate(
           new Set([...ctx.tried, ...(ctx.rolledOff || []), account.index]),
-          ctx.model, ctx.advisorModel, ctx.provider,
+          ctx.model,
+          ctx.advisorModel,
+          ctx.provider,
         );
         if (alt && !accountManager.isPaused(alt.index)) {
           ctx.rateLimitHopped = true;
           ctx.hopTo = alt.index;
           ctx.tried.add(account.index);
-          console.log(`[AgentLB] Rate-limit 429 on "${account.name}" — failing over once to idle account "${alt.name}"`);
-          if (clientGone(res)) { ctx.abandoned = true; return; }
-          return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+          console.log(
+            `[AgentLB] Rate-limit 429 on "${account.name}" — failing over once to idle account "${alt.name}"`,
+          );
+          if (clientGone(res)) {
+            ctx.abandoned = true;
+            return;
+          }
+          return forwardRequest(
+            req,
+            res,
+            body,
+            accountManager,
+            upstream,
+            retryCount + 1,
+            hooks,
+            reqId,
+            ctx,
+            logDir,
+            sx,
+            route,
+          );
         }
       } else if (ctx.rateLimitHopped && requestScoped) {
         // Second headerless 429, on a different account: it followed the
         // request. Nothing here is about either account.
-        console.log(`[AgentLB] 429 followed the request onto "${account.name}" with no rate-limit headers — it is about the request, not the accounts; returning it to the client`
-          + (refusal ? ` (${safeLine(refusal)})` : ''));
+        console.log(
+          `[AgentLB] 429 followed the request onto "${account.name}" with no rate-limit headers — it is about the request, not the accounts; returning it to the client` +
+            (refusal ? ` (${safeLine(refusal)})` : ""),
+        );
       } else if (ctx.rateLimitHopped) {
         // Second 429 this request, on a different account. Say so once: the
         // operator chasing "why is my fleet throttled" is looking for exactly
         // this, and it points at the egress IP rather than at the accounts.
-        console.log('[AgentLB] Second account rate-limited too — the limit looks IP-scoped, not per-account'
-          + (sx?.useOn429() ? '' : ' (sx.org mode "429" would retry from a fresh egress IP)'));
+        console.log(
+          "[AgentLB] Second account rate-limited too — the limit looks IP-scoped, not per-account" +
+            (sx?.useOn429()
+              ? ""
+              : ' (sx.org mode "429" would retry from a fresh egress IP)'),
+        );
       }
 
       // sx fresh-IP retry (still the same account) takes precedence over waiting.
       // Bounded by retryCount like the inline-wait path below, so a persistently
       // 429ing upstream can't loop forever through sx.
       if (switchingToSx && retryCount < maxRetries) {
-        console.log(`[AgentLB] 429 on "${account.name}" — retrying via sx.org (fresh egress IP)`);
-        if (clientGone(res)) { ctx.abandoned = true; return; }
-        return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, nextUseSx);
+        console.log(
+          `[AgentLB] 429 on "${account.name}" — retrying via sx.org (fresh egress IP)`,
+        );
+        if (clientGone(res)) {
+          ctx.abandoned = true;
+          return;
+        }
+        return forwardRequest(
+          req,
+          res,
+          body,
+          accountManager,
+          upstream,
+          retryCount + 1,
+          hooks,
+          reqId,
+          ctx,
+          logDir,
+          sx,
+          nextUseSx,
+        );
       }
 
       // A request-scoped 429 goes back to the client now. The hop above (and
@@ -4953,19 +8245,51 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // third time is the other half of #288. With no sibling to hop to, one
       // short retry covers a momentary blip, and then it is the client's turn.
       if (requestScoped) {
-        if (!ctx.rateLimitHopped && !ctx.requestScopedRetried && retryCount < maxRetries) {
+        if (
+          !ctx.rateLimitHopped &&
+          !ctx.requestScopedRetried &&
+          retryCount < maxRetries
+        ) {
           ctx.requestScopedRetried = true;
-          console.log(`[AgentLB] 429 with no rate-limit headers on "${account.name}" — retrying once in 2s${refusal ? ` (${safeLine(refusal)})` : ''}`);
+          console.log(
+            `[AgentLB] 429 with no rate-limit headers on "${account.name}" — retrying once in 2s${refusal ? ` (${safeLine(refusal)})` : ""}`,
+          );
           await waitForRetry(2000, ctx.signal);
-          if (clientGone(res)) { ctx.abandoned = true; return; }
-          return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, nextUseSx);
+          if (clientGone(res)) {
+            ctx.abandoned = true;
+            return;
+          }
+          return forwardRequest(
+            req,
+            res,
+            body,
+            accountManager,
+            upstream,
+            retryCount + 1,
+            hooks,
+            reqId,
+            ctx,
+            logDir,
+            sx,
+            nextUseSx,
+          );
         }
         ctx.status = 429;
         if (!res.headersSent && !clientGone(res)) {
           // No retry-after: upstream gave none, and inventing one would tell the
           // client to wait for a limit that does not exist. Its own backoff applies.
-          res.writeHead(429, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ type: 'error', error: { type: 'rate_limit_error', message: refusal || 'Upstream refused this request (429) without rate-limit headers.' } }));
+          res.writeHead(429, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              type: "error",
+              error: {
+                type: "rate_limit_error",
+                message:
+                  refusal ||
+                  "Upstream refused this request (429) without rate-limit headers.",
+              },
+            }),
+          );
         }
         return;
       }
@@ -4973,21 +8297,55 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // Absorb short waits inline on the same account — the client never sees the
       // 429. Bounded by retryCount (maxRetries = account count) so a persistently
       // rate-limited account can't loop forever tying up the connection.
-      if (retryAfter <= RATE_LIMIT_ABSORB_MAX_SECONDS && retryCount < maxRetries) {
-        console.log(`[AgentLB] Rate-limit 429 on "${account.name}" — waiting ${retryAfter}s, retrying same account (no switch)`);
+      if (
+        retryAfter <= RATE_LIMIT_ABSORB_MAX_SECONDS &&
+        retryCount < maxRetries
+      ) {
+        console.log(
+          `[AgentLB] Rate-limit 429 on "${account.name}" — waiting ${retryAfter}s, retrying same account (no switch)`,
+        );
         await waitForRetry(retryAfter * 1000, ctx.signal);
-        if (clientGone(res)) { ctx.abandoned = true; return; }
-        return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, nextUseSx);
+        if (clientGone(res)) {
+          ctx.abandoned = true;
+          return;
+        }
+        return forwardRequest(
+          req,
+          res,
+          body,
+          accountManager,
+          upstream,
+          retryCount + 1,
+          hooks,
+          reqId,
+          ctx,
+          logDir,
+          sx,
+          nextUseSx,
+        );
       }
 
       // Longer retry-after (or retries exhausted): don't hold the connection and
       // don't rotate — surface the 429 with retry-after so the client backs off.
       // The pause above keeps other requests off this account meanwhile.
-      console.log(`[AgentLB] Rate-limit 429 on "${account.name}" — retry-after ${retryAfter}s over inline cap; returning 429 to client (no switch)`);
+      console.log(
+        `[AgentLB] Rate-limit 429 on "${account.name}" — retry-after ${retryAfter}s over inline cap; returning 429 to client (no switch)`,
+      );
       ctx.status = 429;
       if (!res.headersSent && !clientGone(res)) {
-        res.writeHead(429, { 'Content-Type': 'application/json', 'retry-after': String(retryAfter) });
-        res.end(JSON.stringify({ type: 'error', error: { type: 'rate_limit_error', message: `Rate limited; retry in ${retryAfter}s.` } }));
+        res.writeHead(429, {
+          "Content-Type": "application/json",
+          "retry-after": String(retryAfter),
+        });
+        res.end(
+          JSON.stringify({
+            type: "error",
+            error: {
+              type: "rate_limit_error",
+              message: `Rate limited; retry in ${retryAfter}s.`,
+            },
+          }),
+        );
       }
       return;
     }
@@ -5015,20 +8373,45 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // overloaded, not the account, and walking the fleet would just spend every
     // account'"'"'s cache discovering that. After the hop the response goes to the
     // client as it does today, with its own retry-after intact.
-    if (upstreamRes.status >= 500 && !res.headersSent && !ctx.serverErrorHopped && retryCount < maxRetries) {
+    if (
+      upstreamRes.status >= 500 &&
+      !res.headersSent &&
+      !ctx.serverErrorHopped &&
+      retryCount < maxRetries
+    ) {
       // Same exclusion as the 429 hop, and the same cursor-preserving pick.
       const alt = accountManager.pickAlternate(
         new Set([...ctx.tried, ...(ctx.rolledOff || []), account.index]),
-        ctx.model, ctx.advisorModel, ctx.provider,
+        ctx.model,
+        ctx.advisorModel,
+        ctx.provider,
       );
       if (alt && !accountManager.isPaused(alt.index)) {
         await upstreamRes.body?.cancel();
         ctx.serverErrorHopped = true;
         ctx.hopTo = alt.index;
         ctx.tried.add(account.index);
-        console.log(`[AgentLB] Upstream ${upstreamRes.status} on "${account.name}" — failing over once to "${alt.name}"`);
-        if (clientGone(res)) { ctx.abandoned = true; return; }
-        return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+        console.log(
+          `[AgentLB] Upstream ${upstreamRes.status} on "${account.name}" — failing over once to "${alt.name}"`,
+        );
+        if (clientGone(res)) {
+          ctx.abandoned = true;
+          return;
+        }
+        return forwardRequest(
+          req,
+          res,
+          body,
+          accountManager,
+          upstream,
+          retryCount + 1,
+          hooks,
+          reqId,
+          ctx,
+          logDir,
+          sx,
+          route,
+        );
       }
     }
 
@@ -5040,26 +8423,51 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // this OAuth account and retry the same body on the next eligible one.
     // Other 400s remain byte-for-byte passthrough and are never rotated.
     let bufferedResponseBody = null;
-    if (upstreamRes.status === 400 && account.type === 'oauth' && upstreamRes.body) {
-      const contentType = upstreamRes.headers.get('content-type') || '';
-      if (!contentType.includes('text/event-stream')) {
+    if (
+      upstreamRes.status === 400 &&
+      account.type === "oauth" &&
+      upstreamRes.body
+    ) {
+      const contentType = upstreamRes.headers.get("content-type") || "";
+      if (!contentType.includes("text/event-stream")) {
         bufferedResponseBody = await readBodyBuffer(upstreamRes.body);
         if (isOAuthIdentityVerificationRequired(bufferedResponseBody)) {
-          const deniedUntil = accountManager.markIdentityVerificationRequired(account.index);
+          const deniedUntil = accountManager.markIdentityVerificationRequired(
+            account.index,
+          );
           account.lastError = {
-            reason: 'identity-verification',
+            reason: "identity-verification",
             status: 400,
-            error: 'Wymagana weryfikacja tożsamości (400 Identity Verification). Zaloguj się na claude.ai i potwierdź numer telefonu/SMS.',
-            timestamp: Date.now()
+            error:
+              "Wymagana weryfikacja tożsamości (400 Identity Verification). Zaloguj się na claude.ai i potwierdź numer telefonu/SMS.",
+            timestamp: Date.now(),
           };
           (ctx.identityVerificationRequired ??= new Set()).add(account.name);
           ctx.tried.add(account.index);
           const cooldown = deniedUntil
             ? ` until ${new Date(deniedUntil).toISOString()}`
-            : '';
-          console.error(`[AgentLB] 400 on "${account.name}"; Anthropic requires identity verification — excluding account${cooldown} and retrying`);
-          if (clientGone(res)) { ctx.abandoned = true; return; }
-          return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+            : "";
+          console.error(
+            `[AgentLB] 400 on "${account.name}"; Anthropic requires identity verification — excluding account${cooldown} and retrying`,
+          );
+          if (clientGone(res)) {
+            ctx.abandoned = true;
+            return;
+          }
+          return forwardRequest(
+            req,
+            res,
+            body,
+            accountManager,
+            upstream,
+            retryCount + 1,
+            hooks,
+            reqId,
+            ctx,
+            logDir,
+            sx,
+            route,
+          );
         }
       }
     }
@@ -5073,48 +8481,89 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // account left, the no-account branch reports a proxy error instead.
     if (upstreamRes.status === 403 && !res.headersSent) {
       const responseBody = await readErrorBody(upstreamRes.body);
-      const entitlementDenied = account.type === 'oauth'
-        && responseBody != null
-        && isOAuthEntitlementDenied(responseBody);
+      const entitlementDenied =
+        account.type === "oauth" &&
+        responseBody != null &&
+        isOAuthEntitlementDenied(responseBody);
       const deniedUntil = entitlementDenied
         ? accountManager.markEntitlementDenied(account.index)
         : null;
       if (entitlementDenied) {
         account.lastError = {
-          reason: 'entitlement',
+          reason: "entitlement",
           status: 403,
-          error: 'Odmowa dostępu OAuth (403 Organization Block). Anthropic zablokował użycie tokenów OAuth dla organizacji konta.',
-          timestamp: Date.now()
+          error:
+            "Odmowa dostępu OAuth (403 Organization Block). Anthropic zablokował użycie tokenów OAuth dla organizacji konta.",
+          timestamp: Date.now(),
         };
       } else {
         account.lastError = {
-          reason: 'forbidden',
+          reason: "forbidden",
           status: 403,
-          error: 'Upstream odmówił dostępu (HTTP 403 Forbidden).',
-          timestamp: Date.now()
+          error: "Upstream odmówił dostępu (HTTP 403 Forbidden).",
+          timestamp: Date.now(),
         };
       }
       // A set, not a name: the no-account branch needs to tell "every account was
       // refused" (fail fast, nothing to wait for) from "this one was, others are
       // just out of quota" (still worth holding for a reset).
       (ctx.credentialRejected ??= new Set()).add(account.name);
-      if (entitlementDenied) (ctx.entitlementDenied ??= new Set()).add(account.name);
+      if (entitlementDenied)
+        (ctx.entitlementDenied ??= new Set()).add(account.name);
       ctx.tried.add(account.index);
       const cooldown = deniedUntil
         ? `; OAuth entitlement cooldown until ${new Date(deniedUntil).toISOString()}`
-        : '';
-      console.error(`[AgentLB] 403 on "${account.name}"; upstream refused the account credential${cooldown}`);
-      return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+        : "";
+      console.error(
+        `[AgentLB] 403 on "${account.name}"; upstream refused the account credential${cooldown}`,
+      );
+      return forwardRequest(
+        req,
+        res,
+        body,
+        accountManager,
+        upstream,
+        retryCount + 1,
+        hooks,
+        reqId,
+        ctx,
+        logDir,
+        sx,
+        route,
+      );
     }
 
-    if (upstreamRes.status === 401 && account.type === 'oauth' && account.refreshToken
-        && retryCount < maxRetries && !ctx.reauthed.has(account.index)) {
+    if (
+      upstreamRes.status === 401 &&
+      account.type === "oauth" &&
+      account.refreshToken &&
+      retryCount < maxRetries &&
+      !ctx.reauthed.has(account.index)
+    ) {
       ctx.reauthed.add(account.index);
       await upstreamRes.body?.cancel();
-      console.log(`[AgentLB] 401 on "${account.name}" — token rejected; forcing refresh and retrying`);
+      console.log(
+        `[AgentLB] 401 on "${account.name}" — token rejected; forcing refresh and retrying`,
+      );
       await accountManager.ensureTokenFresh(account.index, true);
-      if (clientGone(res)) { ctx.abandoned = true; return; }
-      return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+      if (clientGone(res)) {
+        ctx.abandoned = true;
+        return;
+      }
+      return forwardRequest(
+        req,
+        res,
+        body,
+        accountManager,
+        upstream,
+        retryCount + 1,
+        hooks,
+        reqId,
+        ctx,
+        logDir,
+        sx,
+        route,
+      );
     }
 
     // A 401 no refresh cured: an API key upstream rejects, or an OAuth token
@@ -5124,25 +8573,50 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // account problem they have no part in. Treat it like the 403 above: skip
     // the account for this request and fail over; with none left, the
     // no-account branch reports a proxy error instead of a 401.
-    if (upstreamRes.status === 401 && !res.headersSent && retryCount < maxRetries) {
+    if (
+      upstreamRes.status === 401 &&
+      !res.headersSent &&
+      retryCount < maxRetries
+    ) {
       await upstreamRes.body?.cancel();
       account.lastError = {
-        reason: 'unauthorized',
+        reason: "unauthorized",
         status: 401,
-        error: 'Upstream odrzucił poświadczenie konta (HTTP 401) — sprawdź klucz lub zaloguj konto ponownie.',
+        error:
+          "Upstream odrzucił poświadczenie konta (HTTP 401) — sprawdź klucz lub zaloguj konto ponownie.",
         timestamp: Date.now(),
       };
       (ctx.credentialRejected ??= new Set()).add(account.name);
       ctx.tried.add(account.index);
-      console.error(`[AgentLB] 401 on "${account.name}"; upstream rejected the account credential — failing over`);
-      if (clientGone(res)) { ctx.abandoned = true; return; }
-      return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+      console.error(
+        `[AgentLB] 401 on "${account.name}"; upstream rejected the account credential — failing over`,
+      );
+      if (clientGone(res)) {
+        ctx.abandoned = true;
+        return;
+      }
+      return forwardRequest(
+        req,
+        res,
+        body,
+        accountManager,
+        upstream,
+        retryCount + 1,
+        hooks,
+        reqId,
+        ctx,
+        logDir,
+        sx,
+        route,
+      );
     }
 
     // Log the request head (once) followed by the response headers, streaming
     // to disk from here on.
     logRequestHead();
-    getLog()?.write(`\n\n=== RESPONSE ${upstreamRes.status} ===\n${formatHeaders(upstreamRes.headers)}`);
+    getLog()?.write(
+      `\n\n=== RESPONSE ${upstreamRes.status} ===\n${formatHeaders(upstreamRes.headers)}`,
+    );
 
     ctx.status = upstreamRes.status;
 
@@ -5153,22 +8627,35 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     for (const [key, value] of upstreamRes.headers.entries()) {
       if (CONNECTION_SPECIFIC_HEADERS.has(key)) continue;
       // Strip content-encoding/content-length since fetch may auto-decompress
-      if (key === 'content-encoding' || key === 'content-length') continue;
+      if (key === "content-encoding" || key === "content-length") continue;
       responseHeaders[key] = value;
     }
 
-    const contentType = upstreamRes.headers.get('content-type') || '';
-    const isStreaming = contentType.includes('text/event-stream');
-    if (isStreaming && upstreamRes.body && ctx.onFirstToken && upstreamRes.status < 400) {
-      upstreamRes = { status: upstreamRes.status, headers: upstreamRes.headers, body: observeTokenStream(upstreamRes.body, ctx.onFirstToken) };
+    const contentType = upstreamRes.headers.get("content-type") || "";
+    const isStreaming = contentType.includes("text/event-stream");
+    if (
+      isStreaming &&
+      upstreamRes.body &&
+      ctx.onFirstToken &&
+      upstreamRes.status < 400
+    ) {
+      upstreamRes = {
+        status: upstreamRes.status,
+        headers: upstreamRes.headers,
+        body: observeTokenStream(upstreamRes.body, ctx.onFirstToken),
+      };
     }
 
     if (upstreamRes.status < 400) {
       if (ctx.isCodexResponsesToOpenAI || ctx.isCodexResponsesToAnthropic) {
         const clientStreaming = ctx.isClientStreaming !== false;
-        responseHeaders['content-type'] = clientStreaming ? 'text/event-stream; charset=utf-8' : 'application/json; charset=utf-8';
+        responseHeaders["content-type"] = clientStreaming
+          ? "text/event-stream; charset=utf-8"
+          : "application/json; charset=utf-8";
       } else if (isCrossProvider) {
-        responseHeaders['content-type'] = isStreaming ? 'text/event-stream; charset=utf-8' : 'application/json; charset=utf-8';
+        responseHeaders["content-type"] = isStreaming
+          ? "text/event-stream; charset=utf-8"
+          : "application/json; charset=utf-8";
       }
     }
 
@@ -5178,39 +8665,112 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // an error event, a stream cut off) reach the client as an error status.
     // Once the 200 is written that is impossible: the client used to get a
     // 200 with an empty answer and no sign anything went wrong.
-    if (upstreamRes.status < 400 && upstreamRes.body && ctx.isClientStreaming === false
-        && (ctx.isCodexResponsesToOpenAI || ctx.isCodexResponsesToAnthropic)) {
+    if (
+      upstreamRes.status < 400 &&
+      upstreamRes.body &&
+      ctx.isClientStreaming === false &&
+      (ctx.isCodexResponsesToOpenAI || ctx.isCodexResponsesToAnthropic)
+    ) {
       const toAnthropic = !!ctx.isCodexResponsesToAnthropic;
-      const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
+      const buf =
+        bufferedResponseBody ?? (await collectIdleBody(upstreamRes.body));
       const l = getLog();
       const failure = codexResponseFailure(buf);
       let status = 200;
       let finalBuf;
       if (failure) {
         status = failure.status;
-        console.error(`[AgentLB] Codex response failed on "${account.name}" (${safeLine(failure.code)}): ${safeLine(failure.message)}`);
-        finalBuf = Buffer.from(JSON.stringify(toAnthropic
-          ? { type: 'error', error: { type: failure.type, message: failure.message } }
-          : { error: { message: failure.message, type: failure.type, code: failure.code } }), 'utf8');
+        console.error(
+          `[AgentLB] Codex response failed on "${account.name}" (${safeLine(failure.code)}): ${safeLine(failure.message)}`,
+        );
+        finalBuf = Buffer.from(
+          JSON.stringify(
+            toAnthropic
+              ? {
+                  type: "error",
+                  error: { type: failure.type, message: failure.message },
+                }
+              : {
+                  error: {
+                    message: failure.message,
+                    type: failure.type,
+                    code: failure.code,
+                  },
+                },
+          ),
+          "utf8",
+        );
       } else {
         try {
-          const openAIObj = translateCodexResponsesToOpenAIResponse(buf, ctx.originalModel || ctx.model);
-          finalBuf = Buffer.from(JSON.stringify(toAnthropic ? translateOpenAIToAnthropicResponse(openAIObj, ctx.model) : openAIObj), 'utf8');
-          extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model, ctx.usageDetails);
+          const openAIObj = translateCodexResponsesToOpenAIResponse(
+            buf,
+            ctx.originalModel || ctx.model,
+          );
+          finalBuf = Buffer.from(
+            JSON.stringify(
+              toAnthropic
+                ? translateOpenAIToAnthropicResponse(openAIObj, ctx.model)
+                : openAIObj,
+            ),
+            "utf8",
+          );
+          extractUsageFromBody(
+            finalBuf,
+            account.index,
+            accountManager,
+            ctx.onUsage,
+            ctx.sessionId,
+            ctx.model,
+            ctx.usageDetails,
+          );
         } catch (e) {
           status = 502;
-          console.error(`[AgentLB] Codex response translation failed on "${account.name}": ${safeLine(e.message)}`);
-          finalBuf = Buffer.from(JSON.stringify(toAnthropic
-            ? { type: 'error', error: { type: 'api_error', message: 'Could not translate the upstream response' } }
-            : { error: { message: 'Could not translate the upstream response', type: 'api_error', code: 'translation_failed' } }), 'utf8');
+          console.error(
+            `[AgentLB] Codex response translation failed on "${account.name}": ${safeLine(e.message)}`,
+          );
+          finalBuf = Buffer.from(
+            JSON.stringify(
+              toAnthropic
+                ? {
+                    type: "error",
+                    error: {
+                      type: "api_error",
+                      message: "Could not translate the upstream response",
+                    },
+                  }
+                : {
+                    error: {
+                      message: "Could not translate the upstream response",
+                      type: "api_error",
+                      code: "translation_failed",
+                    },
+                  },
+            ),
+            "utf8",
+          );
         }
       }
       ctx.status = status;
-      if (status < 400) accountManager.confirmStay(account, restingGen, ctx.sessionId, ctx.provider);
-      if (l) { l.body('RESPONSE BODY', finalBuf, 'application/json'); l.end(); }
-      res.writeHead(status, status < 400
-        ? { ...responseHeaders, 'content-type': 'application/json; charset=utf-8' }
-        : { 'Content-Type': 'application/json' });
+      if (status < 400)
+        accountManager.confirmStay(
+          account,
+          restingGen,
+          ctx.sessionId,
+          ctx.provider,
+        );
+      if (l) {
+        l.body("RESPONSE BODY", finalBuf, "application/json");
+        l.end();
+      }
+      res.writeHead(
+        status,
+        status < 400
+          ? {
+              ...responseHeaders,
+              "content-type": "application/json; charset=utf-8",
+            }
+          : { "Content-Type": "application/json" },
+      );
       res.end(finalBuf);
       ctx.delivered = answeredStatus(status);
       return;
@@ -5221,21 +8781,33 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // The catch block's retry is guarded by `!res.headersSent`, so a stay
     // confirmed once the headers are out has no retry behind it.
     if (upstreamRes.status < 400) {
-      accountManager.confirmStay(account, restingGen, ctx.sessionId, ctx.provider);
+      accountManager.confirmStay(
+        account,
+        restingGen,
+        ctx.sessionId,
+        ctx.provider,
+      );
     }
 
     if (!upstreamRes.body) {
       const l = getLog();
-      if (l) { l.body('RESPONSE BODY', null); l.end(); }
+      if (l) {
+        l.body("RESPONSE BODY", null);
+        l.end();
+      }
       res.end();
       ctx.delivered = answeredStatus(upstreamRes.status);
       return;
     }
 
     if (upstreamRes.status >= 400) {
-      const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
+      const buf =
+        bufferedResponseBody ?? (await collectIdleBody(upstreamRes.body));
       const l = getLog();
-      if (l) { l.body('RESPONSE BODY', buf, contentType); l.end(); }
+      if (l) {
+        l.body("RESPONSE BODY", buf, contentType);
+        l.end();
+      }
       res.end(buf);
       ctx.delivered = answeredStatus(upstreamRes.status);
       return;
@@ -5245,14 +8817,27 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       const isClientStreaming = ctx.isClientStreaming !== false;
       if (isClientStreaming) {
         const l = getLog();
-        const transform = createCodexResponsesToOpenAITransformStream(ctx.originalModel || ctx.model, (usage) => {
-          const inTok = usage.input_tokens || 0;
-          const outTok = usage.output_tokens || 0;
-          accountManager.updateUsage(account.index, inTok, outTok);
-          ctx.onUsage?.(inTok, outTok);
-          accountManager.recordTokenUsage(account.index, ctx.sessionId, ctx.model, usage, ctx.usageDetails);
-        });
-        await pipeline(Readable.from(idleBody(upstreamRes.body)), transform, res);
+        const transform = createCodexResponsesToOpenAITransformStream(
+          ctx.originalModel || ctx.model,
+          (usage) => {
+            const inTok = usage.input_tokens || 0;
+            const outTok = usage.output_tokens || 0;
+            accountManager.updateUsage(account.index, inTok, outTok);
+            ctx.onUsage?.(inTok, outTok);
+            accountManager.recordTokenUsage(
+              account.index,
+              ctx.sessionId,
+              ctx.model,
+              usage,
+              ctx.usageDetails,
+            );
+          },
+        );
+        await pipeline(
+          Readable.from(idleBody(upstreamRes.body)),
+          transform,
+          res,
+        );
         l?.end();
         ctx.delivered = answeredStatus(upstreamRes.status);
         return;
@@ -5263,67 +8848,129 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       const isClientStreaming = ctx.isClientStreaming !== false;
       if (isClientStreaming) {
         const l = getLog();
-        const codexToOpenAI = createCodexResponsesToOpenAITransformStream(ctx.originalModel || ctx.model, (usage) => {
-          const inTok = usage.input_tokens || 0;
-          const outTok = usage.output_tokens || 0;
-          accountManager.updateUsage(account.index, inTok, outTok);
-          ctx.onUsage?.(inTok, outTok);
-          accountManager.recordTokenUsage(account.index, ctx.sessionId, ctx.model, usage, ctx.usageDetails);
-        });
-        const openAIToAnthropic = createOpenAIToAnthropicTransformStream(ctx.model);
-        await pipeline(Readable.from(idleBody(upstreamRes.body)), codexToOpenAI, openAIToAnthropic, res);
+        const codexToOpenAI = createCodexResponsesToOpenAITransformStream(
+          ctx.originalModel || ctx.model,
+          (usage) => {
+            const inTok = usage.input_tokens || 0;
+            const outTok = usage.output_tokens || 0;
+            accountManager.updateUsage(account.index, inTok, outTok);
+            ctx.onUsage?.(inTok, outTok);
+            accountManager.recordTokenUsage(
+              account.index,
+              ctx.sessionId,
+              ctx.model,
+              usage,
+              ctx.usageDetails,
+            );
+          },
+        );
+        const openAIToAnthropic = createOpenAIToAnthropicTransformStream(
+          ctx.model,
+        );
+        await pipeline(
+          Readable.from(idleBody(upstreamRes.body)),
+          codexToOpenAI,
+          openAIToAnthropic,
+          res,
+        );
         l?.end();
         ctx.delivered = answeredStatus(upstreamRes.status);
         return;
       }
     }
 
-    if (isCrossProvider && requestProvider === 'anthropic' && servingProvider === 'codex') {
+    if (
+      isCrossProvider &&
+      requestProvider === "anthropic" &&
+      servingProvider === "codex"
+    ) {
       if (isStreaming) {
         const l = getLog();
         const transform = createOpenAIToAnthropicTransformStream(ctx.model);
-        await pipeline(Readable.from(idleBody(upstreamRes.body)), transform, res);
+        await pipeline(
+          Readable.from(idleBody(upstreamRes.body)),
+          transform,
+          res,
+        );
         l?.end();
         ctx.delivered = answeredStatus(upstreamRes.status);
         return;
       } else {
-        const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
+        const buf =
+          bufferedResponseBody ?? (await collectIdleBody(upstreamRes.body));
         let finalBuf = buf;
         try {
           const translated = translateOpenAIToAnthropicResponse(buf, ctx.model);
-          finalBuf = Buffer.from(JSON.stringify(translated), 'utf8');
-          extractUsageFromBody(finalBuf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model, ctx.usageDetails);
+          finalBuf = Buffer.from(JSON.stringify(translated), "utf8");
+          extractUsageFromBody(
+            finalBuf,
+            account.index,
+            accountManager,
+            ctx.onUsage,
+            ctx.sessionId,
+            ctx.model,
+            ctx.usageDetails,
+          );
         } catch (e) {
-          console.warn('[Agent-LB] JSON response translation warning:', e.message);
+          console.warn(
+            "[Agent-LB] JSON response translation warning:",
+            e.message,
+          );
         }
         const l = getLog();
-        if (l) { l.body('RESPONSE BODY', finalBuf, 'application/json'); l.end(); }
+        if (l) {
+          l.body("RESPONSE BODY", finalBuf, "application/json");
+          l.end();
+        }
         res.end(finalBuf);
         ctx.delivered = answeredStatus(upstreamRes.status);
         return;
       }
     }
 
-    if (isCrossProvider && requestProvider === 'codex' && servingProvider === 'anthropic') {
+    if (
+      isCrossProvider &&
+      requestProvider === "codex" &&
+      servingProvider === "anthropic"
+    ) {
       if (isStreaming) {
         const l = getLog();
         const transform = createAnthropicToOpenAITransformStream(ctx.model);
-        await pipeline(Readable.from(idleBody(upstreamRes.body)), transform, res);
+        await pipeline(
+          Readable.from(idleBody(upstreamRes.body)),
+          transform,
+          res,
+        );
         l?.end();
         ctx.delivered = answeredStatus(upstreamRes.status);
         return;
       } else {
-        const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
+        const buf =
+          bufferedResponseBody ?? (await collectIdleBody(upstreamRes.body));
         let finalBuf = buf;
         try {
           const translated = translateAnthropicToOpenAIResponse(buf, ctx.model);
-          finalBuf = Buffer.from(JSON.stringify(translated), 'utf8');
-          extractUsageFromBody(buf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model, ctx.usageDetails);
+          finalBuf = Buffer.from(JSON.stringify(translated), "utf8");
+          extractUsageFromBody(
+            buf,
+            account.index,
+            accountManager,
+            ctx.onUsage,
+            ctx.sessionId,
+            ctx.model,
+            ctx.usageDetails,
+          );
         } catch (e) {
-          console.warn('[Agent-LB] JSON response translation warning:', e.message);
+          console.warn(
+            "[Agent-LB] JSON response translation warning:",
+            e.message,
+          );
         }
         const l = getLog();
-        if (l) { l.body('RESPONSE BODY', finalBuf, 'application/json'); l.end(); }
+        if (l) {
+          l.body("RESPONSE BODY", finalBuf, "application/json");
+          l.end();
+        }
         res.end(finalBuf);
         ctx.delivered = answeredStatus(upstreamRes.status);
         return;
@@ -5334,9 +8981,21 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // Stream each chunk straight to the log as it is relayed — never hold the
       // whole (potentially ~1M-token) SSE body in memory.
       const l = getLog();
-      const bw = l ? l.bodyWriter('RESPONSE BODY (streamed)', contentType) : null;
+      const bw = l
+        ? l.bodyWriter("RESPONSE BODY (streamed)", contentType)
+        : null;
       try {
-        await streamResponse(upstreamRes.body, res, account.index, accountManager, bw, ctx.onUsage, ctx.sessionId, ctx.model, ctx.usageDetails);
+        await streamResponse(
+          upstreamRes.body,
+          res,
+          account.index,
+          accountManager,
+          bw,
+          ctx.onUsage,
+          ctx.sessionId,
+          ctx.model,
+          ctx.usageDetails,
+        );
         // Reached only when the stream completed. A stream that dies upstream
         // throws out of streamResponse, so it never marks itself delivered —
         // which is the failure the token counters cannot see, since a stream
@@ -5350,10 +9009,22 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       }
       l?.end();
     } else {
-      const buf = bufferedResponseBody ?? await collectIdleBody(upstreamRes.body);
-      extractUsageFromBody(buf, account.index, accountManager, ctx.onUsage, ctx.sessionId, ctx.model, ctx.usageDetails);
+      const buf =
+        bufferedResponseBody ?? (await collectIdleBody(upstreamRes.body));
+      extractUsageFromBody(
+        buf,
+        account.index,
+        accountManager,
+        ctx.onUsage,
+        ctx.sessionId,
+        ctx.model,
+        ctx.usageDetails,
+      );
       const l = getLog();
-      if (l) { l.body('RESPONSE BODY', buf, contentType); l.end(); }
+      if (l) {
+        l.body("RESPONSE BODY", buf, contentType);
+        l.end();
+      }
       res.end(buf);
       ctx.delivered = answeredStatus(upstreamRes.status);
     }
@@ -5364,15 +9035,28 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // away. Both still go through the log block below, so the request-log
     // file is closed on every exit from this catch — they are only classified
     // after it.
-    const clientLeft = err?.code === 'AGENTLB_CLIENT_GONE';
-    const overloaded = err?.code === 'AGENTLB_UPSTREAM_OVERLOADED';
-    if (clientLeft) console.log(`[AgentLB] Client disconnected while waiting on "${account.name}" — upstream request cancelled`);
-    else if (overloaded) console.error(`[AgentLB] Upstream admission queue full (${describeConnectError(err)}) — 503 to the client, no account rotation`);
-    else console.error(`[AgentLB] Upstream error (account "${account.name}"):`, describeConnectError(err));
+    const clientLeft = err?.code === "AGENTLB_CLIENT_GONE";
+    const overloaded = err?.code === "AGENTLB_UPSTREAM_OVERLOADED";
+    if (clientLeft)
+      console.log(
+        `[AgentLB] Client disconnected while waiting on "${account.name}" — upstream request cancelled`,
+      );
+    else if (overloaded)
+      console.error(
+        `[AgentLB] Upstream admission queue full (${describeConnectError(err)}) — 503 to the client, no account rotation`,
+      );
+    else
+      console.error(
+        `[AgentLB] Upstream error (account "${account.name}"):`,
+        describeConnectError(err),
+      );
 
     logRequestHead();
     const l = getLog();
-    if (l) { l.write(`\n\n=== ERROR ===\n${err.stack || err.message}`); l.end(); }
+    if (l) {
+      l.write(`\n\n=== ERROR ===\n${err.stack || err.message}`);
+      l.end();
+    }
 
     if (clientLeft) {
       // Observed here, so marked here: neither an answer nor a starvation.
@@ -5386,10 +9070,21 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // sidelining, and the row is not attributed to the account it never
       // reached. A 503 with Retry-After lets the client back off briefly.
       ctx.status = 503;
-      ctx.account = '(upstream queue full)';
+      ctx.account = "(upstream queue full)";
       if (!res.headersSent && !clientGone(res)) {
-        res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '1' });
-        res.end(JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'Proxy upstream queue is full; retry shortly.' } }));
+        res.writeHead(503, {
+          "Content-Type": "application/json",
+          "Retry-After": "1",
+        });
+        res.end(
+          JSON.stringify({
+            type: "error",
+            error: {
+              type: "overloaded_error",
+              message: "Proxy upstream queue is full; retry shortly.",
+            },
+          }),
+        );
       }
       return;
     }
@@ -5397,7 +9092,9 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     account.consecutiveErrors = (account.consecutiveErrors || 0) + 1;
     if (account.consecutiveErrors >= 3) {
       account.circuitBreakerUntil = Date.now() + 60000;
-      console.warn(`[Agent-LB] Circuit breaker tripped on account "${account.name}" (${account.consecutiveErrors} consecutive errors) — isolated for 60s`);
+      console.warn(
+        `[Agent-LB] Circuit breaker tripped on account "${account.name}" (${account.consecutiveErrors} consecutive errors) — isolated for 60s`,
+      );
     }
 
     // Would failing over dial anywhere else? Only an untried account pointing at
@@ -5426,12 +9123,23 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // The scan is deliberately blind to the probe fallback (a soft-exhausted
     // other-host account it rejects could still be probed) — conservative, and
     // self-healing: probes from other requests refresh the stale quota.
-    const hostOf = (u) => { try { return new URL(u).hostname; } catch { return u; } };
+    const hostOf = (u) => {
+      try {
+        return new URL(u).hostname;
+      } catch {
+        return u;
+      }
+    };
     const thisHost = hostOf(account.upstream || upstream);
-    const otherHostAvailable = ctx.pinnedIndex != null || accountManager.accounts.some(a =>
-      a.index !== account.index && !ctx.tried.has(a.index) &&
-      hostOf(a.upstream || upstream) !== thisHost &&
-      accountManager._isAvailable(a, ctx.model));
+    const otherHostAvailable =
+      ctx.pinnedIndex != null ||
+      accountManager.accounts.some(
+        (a) =>
+          a.index !== account.index &&
+          !ctx.tried.has(a.index) &&
+          hostOf(a.upstream || upstream) !== thisHost &&
+          accountManager._isAvailable(a, ctx.model),
+      );
     const isTransient = isTransientUpstreamError(err, { otherHostAvailable });
 
     // Transient network errors (including a stale-socket headers/body timeout):
@@ -5453,7 +9161,20 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
     // it for the rest of THIS request only and fail over to another account.
     if (retryCount < maxRetries && !res.headersSent) {
       ctx.tried.add(account.index);
-      return forwardRequest(req, res, body, accountManager, upstream, retryCount + 1, hooks, reqId, ctx, logDir, sx, route);
+      return forwardRequest(
+        req,
+        res,
+        body,
+        accountManager,
+        upstream,
+        retryCount + 1,
+        hooks,
+        reqId,
+        ctx,
+        logDir,
+        sx,
+        route,
+      );
     }
     ctx.status = 502;
 
@@ -5462,11 +9183,16 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
       // error names the resolved upstream hosts and ports (per-account
       // upstreams included), which is the operator's business — it went to
       // the log above — and not the client's.
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        type: 'error',
-        error: { type: 'proxy_error', message: 'Upstream error; see the proxy log' },
-      }));
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          type: "error",
+          error: {
+            type: "proxy_error",
+            message: "Upstream error; see the proxy log",
+          },
+        }),
+      );
     } else if (!res.writableEnded) {
       // Error after headers were already sent (mid-stream) and it wasn't
       // classified transient: we can't send a status or fail over, and
@@ -5487,7 +9213,17 @@ export async function forwardRequest(req, res, body, accountManager, upstream, r
 /**
  * Stream an SSE response to the client, parsing usage data along the way.
  */
-export async function streamResponse(webStream, res, accountIndex, accountManager, bodyWriter, onUsage = null, sessionId = null, model = null, details = {}) {
+export async function streamResponse(
+  webStream,
+  res,
+  accountIndex,
+  accountManager,
+  bodyWriter,
+  onUsage = null,
+  sessionId = null,
+  model = null,
+  details = {},
+) {
   const reader = webStream.getReader();
   // A client that leaves while upstream is silent must not hold the pending
   // read — and with it the upstream socket and its admission permit — until
@@ -5495,12 +9231,14 @@ export async function streamResponse(webStream, res, accountIndex, accountManage
   // chunk. Cancelling the reader settles the pending read as done, and the
   // loop exits through the same clientGone break. Optional-chained because
   // tests drive this with a bare Writable.
-  const onClose = () => { reader.cancel().catch(() => {}); };
-  res.once?.('close', onClose);
+  const onClose = () => {
+    reader.cancel().catch(() => {});
+  };
+  res.once?.("close", onClose);
   if (clientGone(res)) onClose();
   const idleMs = resolveBodyIdleTimeout();
   const decoder = new TextDecoder();
-  let sseBuffer = '';
+  let sseBuffer = "";
   let errored = false;
   // The message's usage, merged across its two reports and recorded once below.
   const merged = {};
@@ -5540,13 +9278,17 @@ export async function streamResponse(webStream, res, accountIndex, accountManage
       // Handle backpressure — also bail out if client disconnects,
       // because 'drain' will never fire on a destroyed socket
       if (!ok) {
-        await new Promise(resolve => {
+        await new Promise((resolve) => {
           // Remove BOTH listeners when either fires: otherwise the un-fired one
           // (usually 'close') stays attached and accumulates one leaked listener
           // per backpressure cycle over a long SSE stream to a slow client.
-          const done = () => { res.off('drain', done); res.off('close', done); resolve(); };
-          res.once('drain', done);
-          res.once('close', done);
+          const done = () => {
+            res.off("drain", done);
+            res.off("close", done);
+            resolve();
+          };
+          res.once("drain", done);
+          res.once("close", done);
         });
         if (clientGone(res)) break;
       }
@@ -5565,7 +9307,7 @@ export async function streamResponse(webStream, res, accountIndex, accountManage
     errored = true;
     throw err;
   } finally {
-    res.off?.('close', onClose);
+    res.off?.("close", onClose);
     // Record the message once, on every exit path. A stream that died after
     // `message_start` still spent the input it reported, so the merge is written
     // even when no `message_delta` ever arrived. An empty merge is written
@@ -5573,7 +9315,13 @@ export async function streamResponse(webStream, res, accountIndex, accountManage
     // all (a ping and some text deltas, or an upstream error after the headers),
     // and recording those would report an observation that never happened.
     if (Object.keys(merged).length) {
-      accountManager.recordTokenUsage(accountIndex, sessionId, model, merged, details);
+      accountManager.recordTokenUsage(
+        accountIndex,
+        sessionId,
+        model,
+        merged,
+        details,
+      );
     }
     // Cancel upstream reader to stop consuming data nobody needs (and, on the
     // timeout path, to destroy the dead socket so the pool drops it).
@@ -5594,21 +9342,31 @@ export async function streamResponse(webStream, res, accountIndex, accountManage
 // message's final figures for a single `recordTokenUsage` once the stream is
 // over. One record per message is what makes double counting unrepresentable
 // rather than merely avoided.
-export function parseSSEUsage(event, accountIndex, accountManager, onUsage = null, merged = null) {
-  const dataLine = event.split(/\r?\n/).find(l => /^data:\s?/.test(l));
+export function parseSSEUsage(
+  event,
+  accountIndex,
+  accountManager,
+  onUsage = null,
+  merged = null,
+) {
+  const dataLine = event.split(/\r?\n/).find((l) => /^data:\s?/.test(l));
   if (!dataLine) return;
 
   try {
-    const data = JSON.parse(dataLine.replace(/^data:\s?/, ''));
-    if (data.type === 'message_start' && data.message?.usage) {
-      accountManager.updateUsage(accountIndex, data.message.usage.input_tokens, 0);
+    const data = JSON.parse(dataLine.replace(/^data:\s?/, ""));
+    if (data.type === "message_start" && data.message?.usage) {
+      accountManager.updateUsage(
+        accountIndex,
+        data.message.usage.input_tokens,
+        0,
+      );
       onUsage?.(data.message.usage.input_tokens || 0, 0);
       if (merged) Object.assign(merged, data.message.usage);
-    } else if (data.type === 'message_delta' && data.usage) {
+    } else if (data.type === "message_delta" && data.usage) {
       accountManager.updateUsage(accountIndex, 0, data.usage.output_tokens);
       onUsage?.(0, data.usage.output_tokens || 0);
       if (merged) Object.assign(merged, data.usage);
-    } else if (data.type === 'response.completed' && data.response?.usage) {
+    } else if (data.type === "response.completed" && data.response?.usage) {
       const u = data.response.usage;
       const inTok = u.input_tokens || 0;
       const outTok = u.output_tokens || 0;
@@ -5617,7 +9375,8 @@ export function parseSSEUsage(event, accountIndex, accountManager, onUsage = nul
       if (merged) Object.assign(merged, u);
     } else if (data.usage) {
       const inTok = data.usage.prompt_tokens ?? data.usage.input_tokens ?? 0;
-      const outTok = data.usage.completion_tokens ?? data.usage.output_tokens ?? 0;
+      const outTok =
+        data.usage.completion_tokens ?? data.usage.output_tokens ?? 0;
       if (inTok || outTok) {
         accountManager.updateUsage(accountIndex, inTok, outTok);
         onUsage?.(inTok, outTok);
@@ -5629,49 +9388,96 @@ export function parseSSEUsage(event, accountIndex, accountManager, onUsage = nul
   }
 }
 
-function extractUsageFromBody(buffer, accountIndex, accountManager, onUsage = null, sessionId = null, model = null, details = {}) {
+function extractUsageFromBody(
+  buffer,
+  accountIndex,
+  accountManager,
+  onUsage = null,
+  sessionId = null,
+  model = null,
+  details = {},
+) {
   try {
     const json = JSON.parse(buffer.toString());
     if (json.usage) {
-      accountManager.updateUsage(accountIndex, json.usage.input_tokens, json.usage.output_tokens);
+      accountManager.updateUsage(
+        accountIndex,
+        json.usage.input_tokens,
+        json.usage.output_tokens,
+      );
       onUsage?.(json.usage.input_tokens || 0, json.usage.output_tokens || 0);
-      accountManager.recordTokenUsage(accountIndex, sessionId, model, json.usage, details);
+      accountManager.recordTokenUsage(
+        accountIndex,
+        sessionId,
+        model,
+        json.usage,
+        details,
+      );
     }
   } catch {
     // not JSON or no usage
   }
 }
 
-
 // Automatically normalize model aliases for Anthropic Claude Code OAuth accounts.
 // Claude Code OAuth tokens are restricted to specific model IDs in Anthropic's gateway.
 export function normalizeAnthropicModelForOAuth(body) {
   try {
-    const obj = JSON.parse(body.toString('utf8'));
-    if (typeof obj.model === 'string') {
+    const obj = JSON.parse(body.toString("utf8"));
+    if (typeof obj.model === "string") {
       const trimmed = obj.model.trim();
       let target = null;
-      if (trimmed === 'agy' || (trimmed.startsWith('gemini-') && !trimmed.includes('low'))) {
-        target = 'claude-sonnet-5';
-      } else if (trimmed === 'agy-fast' || (trimmed.startsWith('gemini-') && trimmed.includes('low'))) {
-        target = 'claude-haiku-4-5-20251001';
-      } else if (trimmed.startsWith('claude-3-7-sonnet') || trimmed === 'claude-3-7') {
-        target = 'claude-sonnet-5';
-      } else if (trimmed.startsWith('claude-3-5-sonnet') || trimmed === 'claude-3-sonnet-20240229' || trimmed === 'claude-sonnet') {
-        target = 'claude-sonnet-4-6';
-      } else if (trimmed.startsWith('claude-3-5-haiku') || trimmed.startsWith('claude-3-haiku') || trimmed === 'claude-haiku') {
-        target = 'claude-haiku-4-5-20251001';
-      } else if (trimmed === 'claude-opus-5.5' || trimmed === 'claude-opus-5-5') {
-        target = 'claude-opus-5-5';
-      } else if (trimmed.startsWith('claude-3-opus') || trimmed === 'claude-opus') {
-        target = 'claude-opus-4-6';
+      if (
+        trimmed === "agy" ||
+        (trimmed.startsWith("gemini-") && !trimmed.includes("low"))
+      ) {
+        target = "claude-sonnet-5";
+      } else if (
+        trimmed === "agy-fast" ||
+        (trimmed.startsWith("gemini-") && trimmed.includes("low"))
+      ) {
+        target = "claude-haiku-4-5-20251001";
+      } else if (
+        trimmed.startsWith("claude-3-7-sonnet") ||
+        trimmed === "claude-3-7"
+      ) {
+        target = "claude-sonnet-5";
+      } else if (
+        trimmed.startsWith("claude-3-5-sonnet") ||
+        trimmed === "claude-3-sonnet-20240229" ||
+        trimmed === "claude-sonnet"
+      ) {
+        target = "claude-sonnet-4-6";
+      } else if (
+        trimmed === "claude-haiku-4-5" ||
+        trimmed.startsWith("claude-3-5-haiku") ||
+        trimmed.startsWith("claude-3-haiku") ||
+        trimmed === "claude-haiku"
+      ) {
+        target = "claude-haiku-4-5-20251001";
+      } else if (
+        trimmed === "claude-opus-5.5" ||
+        trimmed === "claude-opus-5-5"
+      ) {
+        target = "claude-opus-5-5";
+      } else if (trimmed === "claude-opus-4-5") {
+        target = "claude-opus-4-5-20251101";
+      } else if (trimmed === "claude-sonnet-4-5") {
+        target = "claude-sonnet-4-5-20250929";
+      } else if (
+        trimmed.startsWith("claude-3-opus") ||
+        trimmed === "claude-opus"
+      ) {
+        target = "claude-opus-4-6";
       }
       if (target && target !== obj.model) {
         obj.model = target;
-        return Buffer.from(JSON.stringify(obj), 'utf8');
+        return Buffer.from(JSON.stringify(obj), "utf8");
       }
     }
-  } catch { /* not JSON — pass through unchanged */ }
+  } catch {
+    /* not JSON — pass through unchanged */
+  }
   return body;
 }
 
@@ -5679,39 +9485,44 @@ export function normalizeAnthropicModelForOAuth(body) {
 // Without this header, Anthropic returns HTTP 429 ("rate_limit_error": "Error") on Claude Code OAuth tokens.
 export function ensureAnthropicBillingHeader(body) {
   try {
-    const obj = JSON.parse(body.toString('utf8'));
+    const obj = JSON.parse(body.toString("utf8"));
     if (!Array.isArray(obj.messages)) return body;
 
-    const billingText = 'x-anthropic-billing-header: cc_version=2.1.280.80a; cc_entrypoint=sdk-cli;';
+    const billingText =
+      "x-anthropic-billing-header: cc_version=2.1.280.80a; cc_entrypoint=sdk-cli;";
 
-    if (typeof obj.system === 'string') {
-      if (!obj.system.includes('x-anthropic-billing-header')) {
+    if (typeof obj.system === "string") {
+      if (!obj.system.includes("x-anthropic-billing-header")) {
         obj.system = [
-          { type: 'text', text: billingText },
-          { type: 'text', text: obj.system },
+          { type: "text", text: billingText },
+          { type: "text", text: obj.system },
         ];
-        return Buffer.from(JSON.stringify(obj), 'utf8');
+        return Buffer.from(JSON.stringify(obj), "utf8");
       }
       return body;
     }
 
     if (Array.isArray(obj.system)) {
-      const hasBilling = obj.system.some(b => b && typeof b.text === 'string' && b.text.includes('x-anthropic-billing-header'));
+      const hasBilling = obj.system.some(
+        (b) =>
+          b &&
+          typeof b.text === "string" &&
+          b.text.includes("x-anthropic-billing-header"),
+      );
       if (!hasBilling) {
-        obj.system = [
-          { type: 'text', text: billingText },
-          ...obj.system,
-        ];
-        return Buffer.from(JSON.stringify(obj), 'utf8');
+        obj.system = [{ type: "text", text: billingText }, ...obj.system];
+        return Buffer.from(JSON.stringify(obj), "utf8");
       }
       return body;
     }
 
     if (obj.system === undefined || obj.system === null) {
-      obj.system = [{ type: 'text', text: billingText }];
-      return Buffer.from(JSON.stringify(obj), 'utf8');
+      obj.system = [{ type: "text", text: billingText }];
+      return Buffer.from(JSON.stringify(obj), "utf8");
     }
-  } catch { /* not JSON — pass through unchanged */ }
+  } catch {
+    /* not JSON — pass through unchanged */
+  }
   return body;
 }
 
@@ -5733,25 +9544,29 @@ export function rewriteRequestBody(body, account, url, contentType) {
     sendBody = sanitizeToolPairs(sendBody, url, contentType);
     // Align the body's account_uuid (in metadata.user_id) with the account whose
     // token we're injecting (same-length patch; no-op if absent).
-    if (account.accountUuid) sendBody = patchAccountUuid(sendBody, account.accountUuid);
+    if (account.accountUuid)
+      sendBody = patchAccountUuid(sendBody, account.accountUuid);
     // Some strict Anthropic-compatible upstreams reject `cache_control`
     // subfields Claude Code sends (`scope`; `ttl: "1h"` on a few) with a
     // non-retryable 400, breaking EVERY request once such an account is
     // selected. Opt-in per account, like every other rewrite keyed on
     // `upstream`: `stripRequestFields: ["cache_control.scope"]`. A first-party
     // relay that honours every subfield loses nothing by default.
-    const ccSubfields = cacheControlSubfieldsToStrip(account.stripRequestFields);
-    if (ccSubfields.size) sendBody = sanitizeCacheControl(sendBody, url, contentType, ccSubfields);
+    const ccSubfields = cacheControlSubfieldsToStrip(
+      account.stripRequestFields,
+    );
+    if (ccSubfields.size)
+      sendBody = sanitizeCacheControl(sendBody, url, contentType, ccSubfields);
   }
   // Rewrite the model name for accounts that target a different upstream (e.g.
   // GLM), which uses different model identifiers than Anthropic.
   if (account.modelMap) sendBody = rewriteModel(sendBody, account.modelMap);
   // ChatGPT Codex backend requires 'gpt-5.6-sol' and rejects generic 'gpt-5.6' / 'gpt-5'.
-  if (providerOf(account) === 'codex' && account.type === 'oauth') {
+  if (providerOf(account) === "codex" && account.type === "oauth") {
     sendBody = normalizeCodexModelForOAuth(sendBody);
   }
   // Anthropic OAuth backend requires Claude Code billing header and specific model identifiers.
-  if (providerOf(account) === 'anthropic' && account.type === 'oauth') {
+  if (providerOf(account) === "anthropic" && account.type === "oauth") {
     sendBody = normalizeAnthropicModelForOAuth(sendBody);
     sendBody = ensureAnthropicBillingHeader(sendBody);
   }
@@ -5762,7 +9577,10 @@ export function rewriteRequestBody(body, account, url, contentType) {
   // top-level fields for those accounts only (the `cache_control.<sub>` entries
   // were consumed above); Anthropic accounts are untouched.
   const topLevel = Array.isArray(account.stripRequestFields)
-    ? account.stripRequestFields.filter(f => typeof f === 'string' && !f.includes('.')) : [];
+    ? account.stripRequestFields.filter(
+        (f) => typeof f === "string" && !f.includes("."),
+      )
+    : [];
   if (topLevel.length) sendBody = stripBodyFields(sendBody, topLevel);
   return sendBody;
 }
@@ -5772,13 +9590,18 @@ export function rewriteRequestBody(body, account, url, contentType) {
 // non-messages endpoints pass through untouched. Exported for tests.
 export function stripBodyFields(body, fields) {
   try {
-    const obj = JSON.parse(body.toString('utf8'));
+    const obj = JSON.parse(body.toString("utf8"));
     let changed = false;
     for (const f of fields) {
-      if (Object.prototype.hasOwnProperty.call(obj, f)) { delete obj[f]; changed = true; }
+      if (Object.prototype.hasOwnProperty.call(obj, f)) {
+        delete obj[f];
+        changed = true;
+      }
     }
-    if (changed) return Buffer.from(JSON.stringify(obj), 'utf8');
-  } catch { /* not JSON — pass through unchanged */ }
+    if (changed) return Buffer.from(JSON.stringify(obj), "utf8");
+  } catch {
+    /* not JSON — pass through unchanged */
+  }
   return body;
 }
 
@@ -5788,16 +9611,22 @@ export function stripBodyFields(body, fields) {
 // Exported for tests.
 export function rewriteModel(body, modelMap) {
   try {
-    const obj = JSON.parse(body.toString('utf8'));
+    const obj = JSON.parse(body.toString("utf8"));
     // Own keys only: the map is a plain object, so a model named
     // "constructor" or "toString" would otherwise look up a prototype
     // function, which JSON.stringify then drops — the request goes upstream
     // with no model at all.
-    if (typeof obj.model === 'string' && Object.hasOwn(modelMap, obj.model) && typeof modelMap[obj.model] === 'string') {
+    if (
+      typeof obj.model === "string" &&
+      Object.hasOwn(modelMap, obj.model) &&
+      typeof modelMap[obj.model] === "string"
+    ) {
       obj.model = modelMap[obj.model];
-      return Buffer.from(JSON.stringify(obj), 'utf8');
+      return Buffer.from(JSON.stringify(obj), "utf8");
     }
-  } catch { /* not JSON — pass through unchanged */ }
+  } catch {
+    /* not JSON — pass through unchanged */
+  }
   return body;
 }
 
@@ -5806,31 +9635,47 @@ export function rewriteModel(body, modelMap) {
 // and rejects generic 'gpt-5.6', 'gpt-5', or 'codex' with HTTP 400.
 export function normalizeCodexModelForOAuth(body) {
   try {
-    const obj = JSON.parse(body.toString('utf8'));
-    if (typeof obj.model === 'string') {
+    const obj = JSON.parse(body.toString("utf8"));
+    if (typeof obj.model === "string") {
       const trimmed = obj.model.trim();
-      if (trimmed === 'gpt-6') {
-        obj.model = 'gpt-6-astra';
-        return Buffer.from(JSON.stringify(obj), 'utf8');
+      if (trimmed === "gpt-6") {
+        obj.model = "gpt-6-astra";
+        return Buffer.from(JSON.stringify(obj), "utf8");
       }
-      if (trimmed === 'agy' || (trimmed.startsWith('gemini-') && !trimmed.includes('low')) || trimmed === 'gpt-5.6' || trimmed === 'gpt-5' || trimmed === 'codex') {
-        obj.model = 'gpt-5.6-sol';
-        return Buffer.from(JSON.stringify(obj), 'utf8');
+      if (
+        trimmed === "agy" ||
+        (trimmed.startsWith("gemini-") && !trimmed.includes("low")) ||
+        trimmed === "gpt-5.6" ||
+        trimmed === "gpt-5" ||
+        trimmed === "codex"
+      ) {
+        obj.model = "gpt-5.6-sol";
+        return Buffer.from(JSON.stringify(obj), "utf8");
       }
-      if (trimmed === 'agy-fast' || (trimmed.startsWith('gemini-') && trimmed.includes('low')) || trimmed === 'codex-mini') {
-        obj.model = 'gpt-5.6-terra';
-        return Buffer.from(JSON.stringify(obj), 'utf8');
+      if (
+        trimmed === "agy-fast" ||
+        (trimmed.startsWith("gemini-") && trimmed.includes("low")) ||
+        trimmed === "codex-mini"
+      ) {
+        obj.model = "gpt-5.6-terra";
+        return Buffer.from(JSON.stringify(obj), "utf8");
       }
     }
-  } catch { /* not JSON — pass through unchanged */ }
+  } catch {
+    /* not JSON — pass through unchanged */
+  }
   return body;
 }
 
 function computeRetryAfter(accounts) {
   let soonest = Infinity;
   for (const acct of accounts) {
-    const resets = [acct.rateLimitedUntil, acct.entitlementDeniedUntil, acct.identityVerificationUntil, acct.quota.resetsAt]
-      .filter(Boolean);
+    const resets = [
+      acct.rateLimitedUntil,
+      acct.entitlementDeniedUntil,
+      acct.identityVerificationUntil,
+      acct.quota.resetsAt,
+    ].filter(Boolean);
     for (const reset of resets) {
       const ms = new Date(reset).getTime() - Date.now();
       if (ms < soonest) soonest = ms;
@@ -5840,6 +9685,13 @@ function computeRetryAfter(accounts) {
 }
 
 function denyClientPolicy(res, policy) {
-  res.writeHead(policy.status || 403, { 'Content-Type': 'application/json', ...(policy.retryAfter ? { 'Retry-After': String(policy.retryAfter) } : {}) });
-  res.end(JSON.stringify({ error: { type: 'permission_error', message: policy.error } }));
+  res.writeHead(policy.status || 403, {
+    "Content-Type": "application/json",
+    ...(policy.retryAfter ? { "Retry-After": String(policy.retryAfter) } : {}),
+  });
+  res.end(
+    JSON.stringify({
+      error: { type: "permission_error", message: policy.error },
+    }),
+  );
 }
