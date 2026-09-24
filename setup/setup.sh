@@ -55,11 +55,10 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$LANG_VAL" ]; then
-	if [ "${LANG:-}" != "${LANG#pl}" ] || [ "${LC_ALL:-}" != "${LC_ALL#pl}" ]; then
-		LANG_VAL="pl"
-	else
-		LANG_VAL="en"
-	fi
+	case "${LC_ALL:-}${LANG:-}" in
+		pl*) LANG_VAL="pl" ;;
+		*) LANG_VAL="en" ;;
+	esac
 fi
 
 say() { printf '%s\n' "$*"; }
