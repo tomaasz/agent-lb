@@ -1055,15 +1055,65 @@ const PAGE = `<!doctype html>
         </svg>
       </div>
       <h1 data-i18n="loginTitle">Panel Zarządzania</h1>
-      <p data-i18n="loginSubtitle">Wprowadź klucz administracyjny, aby zarządzać usługą.</p>
+      <p data-i18n="loginSubtitle">Wprowadź dane logowania, aby zarządzać usługą.</p>
     </div>
     <div id="keyboxErr" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(239,68,68,0.12);border:1px solid var(--bad);color:var(--bad);font-size:13px;text-align:left"></div>
     <div id="keyboxInfo" style="display:none;margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(63,185,80,0.12);border:1px solid var(--ok);color:var(--ok);font-size:13px;text-align:left"></div>
-    <div class="login-field">
-      <label for="key" data-i18n="loginKeyLabel">Klucz dostępu (administracyjny lub stacji roboczej)</label>
-      <input id="key" type="password" placeholder="tc-..." autocomplete="current-password" data-i18n-placeholder="loginKeyPlaceholder">
+
+    <form id="loginForm" method="POST" action="/agent-lb/api/auth/login" autocomplete="on">
+      <div id="loginView">
+        <div class="login-field">
+          <label for="loginUser" data-i18n="loginUserLabel">Użytkownik</label>
+          <input id="loginUser" name="username" type="text" autocomplete="username" placeholder="tomaasz" value="tomaasz" required>
+        </div>
+        <div class="login-field">
+          <label for="loginPass" data-i18n="loginPassLabel">Hasło</label>
+          <input id="loginPass" name="password" type="password" autocomplete="current-password" placeholder="Wprowadź hasło" required>
+        </div>
+        <button id="go" type="submit" data-i18n="loginButton">Zaloguj się</button>
+        <div style="margin-top:14px; display:flex; justify-content:space-between; font-size:12.5px;">
+          <a href="#" id="linkForgotPassword" style="color:var(--accent); text-decoration:none; cursor:pointer;" data-i18n="loginForgotPass">Zapomniałem hasła</a>
+          <a href="#" id="linkToggleApiKey" style="color:var(--dim); text-decoration:none; cursor:pointer;" data-i18n="loginApiKeyToggle">Klucz API</a>
+        </div>
+      </div>
+    </form>
+
+    <div id="apiKeyView" style="display:none;">
+      <div class="login-field">
+        <label for="key" data-i18n="loginKeyLabel">Klucz dostępu (administracyjny lub stacji roboczej)</label>
+        <input id="key" type="password" placeholder="tc-..." autocomplete="off">
+      </div>
+      <button id="goKey" type="button" class="btn btn-accent" style="width:100%; min-height:42px;" data-i18n="loginButton">Zaloguj się</button>
+      <div style="margin-top:14px; text-align:center; font-size:12.5px;">
+        <a href="#" id="linkBackToPassword" style="color:var(--accent); text-decoration:none; cursor:pointer;" data-i18n="loginPasswordToggle">&larr; Wróć do logowania hasłem</a>
+      </div>
     </div>
-    <button id="go" data-i18n="loginButton">Zaloguj się</button>
+
+    <div id="forgotView" style="display:none;">
+      <p style="font-size:13px; color:var(--dim); margin-bottom:14px;" data-i18n="forgotDesc">Wprowadź swój login lub adres e-mail, aby otrzymać link i kod PIN do zresetowania hasła.</p>
+      <div class="login-field">
+        <label for="forgotTarget" data-i18n="forgotTargetLabel">Użytkownik lub e-mail</label>
+        <input id="forgotTarget" type="text" placeholder="tomaasz lub tomaasz@gmail.com" value="tomaasz">
+      </div>
+      <button id="btnSendForgot" type="button" class="btn btn-accent" style="width:100%; min-height:42px;" data-i18n="btnSendForgot">Wyślij kod i link na e-mail</button>
+
+      <div id="resetFields" style="display:none; margin-top:18px; padding-top:14px; border-top:1px solid var(--line);">
+        <div class="login-field">
+          <label for="resetCode" data-i18n="resetPinLabel">Kod PIN z e-maila (lub token)</label>
+          <input id="resetCode" type="text" placeholder="6-cyfrowy kod PIN">
+        </div>
+        <div class="login-field">
+          <label for="resetNewPass" data-i18n="resetNewPassLabel">Nowe hasło</label>
+          <input id="resetNewPass" type="password" autocomplete="new-password" placeholder="Minimum 4 znaki">
+        </div>
+        <button id="btnCompleteReset" type="button" class="btn btn-ok" style="width:100%; min-height:42px; margin-top:8px;" data-i18n="btnCompleteReset">Ustaw nowe hasło i zaloguj</button>
+      </div>
+
+      <div style="margin-top:14px; text-align:center; font-size:12.5px;">
+        <a href="#" id="linkBackFromForgot" style="color:var(--accent); text-decoration:none; cursor:pointer;" data-i18n="loginBackToLogin">&larr; Wróć do logowania</a>
+      </div>
+    </div>
+
     <div class="login-card-foot" data-i18n="loginFoot">
       Agent LB &bull; Zabezpieczony dostęp administracyjny
     </div>
@@ -2023,7 +2073,19 @@ const PAGE = `<!doctype html>
       themeLight: '☀️ Jasny',
       langBtn: '🇬🇧 EN',
       loginTitle: 'Panel Zarządzania',
-      loginSubtitle: 'Wprowadź klucz administracyjny, aby zarządzać usługą.',
+      loginSubtitle: 'Wprowadź dane logowania, aby zarządzać usługą.',
+      loginUserLabel: 'Użytkownik',
+      loginPassLabel: 'Hasło',
+      loginForgotPass: 'Zapomniałem hasła',
+      loginApiKeyToggle: 'Klucz API',
+      loginPasswordToggle: 'Logowanie hasłem',
+      loginBackToLogin: 'Wróć do logowania',
+      forgotDesc: 'Wprowadź swój login lub adres e-mail, aby otrzymać link i kod PIN do zresetowania hasła.',
+      forgotTargetLabel: 'Użytkownik lub e-mail',
+      btnSendForgot: 'Wyślij kod i link na e-mail',
+      resetPinLabel: 'Kod PIN z e-maila (lub token)',
+      resetNewPassLabel: 'Nowe hasło',
+      btnCompleteReset: 'Ustaw nowe hasło i zaloguj',
       loginKeyLabel: 'Klucz dostępu (administracyjny lub stacji roboczej)',
       loginKeyPlaceholder: 'tc-...',
       loginButton: 'Zaloguj się',
@@ -2294,7 +2356,19 @@ const PAGE = `<!doctype html>
       themeLight: '☀️ Light',
       langBtn: '🇵🇱 PL',
       loginTitle: 'Management Dashboard',
-      loginSubtitle: 'Enter password, administrative key, or any workstation client key to gain access.',
+      loginSubtitle: 'Enter credentials to manage service.',
+      loginUserLabel: 'Username',
+      loginPassLabel: 'Password',
+      loginForgotPass: 'Forgot password?',
+      loginApiKeyToggle: 'API Key',
+      loginPasswordToggle: 'Log in with password',
+      loginBackToLogin: 'Back to login',
+      forgotDesc: 'Enter your username or email to receive a password reset link and PIN code.',
+      forgotTargetLabel: 'Username or email',
+      btnSendForgot: 'Send code and link via email',
+      resetPinLabel: 'PIN code from email (or token)',
+      resetNewPassLabel: 'New password',
+      btnCompleteReset: 'Set new password and log in',
       loginKeyLabel: 'Access Key (administrative or workstation)',
       loginKeyPlaceholder: 'tc-...',
       loginButton: 'Log In',
@@ -5713,94 +5787,279 @@ ${SHARED_HELPERS}
 
   function checkAuthAndStart() {
     var apiKey = localStorage.getItem(KEY) || '';
-    if (!apiKey) {
-      fetch('/agent-lb/api/auth/verify')
+    var headers = {};
+    if (apiKey) headers['x-api-key'] = apiKey;
+
+    fetch('/agent-lb/api/auth/verify', { headers: headers })
+      .then(function (res) {
+        if (res.status === 200) {
+          document.getElementById('keybox').style.display = 'none';
+          document.getElementById('app').style.display = '';
+          start();
+        } else {
+          showKeybox();
+        }
+      })
+      .catch(function () {
+        showKeybox();
+      });
+  }
+
+  function hideKeyboxMessages() {
+    var e = document.getElementById('keyboxErr');
+    if (e) e.style.display = 'none';
+    var i = document.getElementById('keyboxInfo');
+    if (i) i.style.display = 'none';
+  }
+
+  // Handle URL reset_token parameter if present
+  (function initResetTokenFromUrl() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var token = params.get('reset_token');
+      if (token) {
+        showKeybox();
+        var lView = document.getElementById('loginView');
+        var kView = document.getElementById('apiKeyView');
+        var fView = document.getElementById('forgotView');
+        var rFields = document.getElementById('resetFields');
+        if (lView) lView.style.display = 'none';
+        if (kView) kView.style.display = 'none';
+        if (fView) fView.style.display = 'block';
+        if (rFields) rFields.style.display = 'block';
+        var rCode = document.getElementById('resetCode');
+        if (rCode) rCode.value = token;
+        var info = document.getElementById('keyboxInfo');
+        if (info) {
+          info.textContent = currentLang === 'pl'
+            ? 'Wprowadź nowe hasło poniżej, aby dokończyć resetowanie.'
+            : 'Enter your new password below to complete the reset.';
+          info.style.display = 'block';
+        }
+      }
+    } catch (e) {}
+  })();
+
+  // View toggle event listeners
+  var linkForgot = document.getElementById('linkForgotPassword');
+  var linkApi = document.getElementById('linkToggleApiKey');
+  var linkBackPass = document.getElementById('linkBackToPassword');
+  var linkBackForgot = document.getElementById('linkBackFromForgot');
+
+  if (linkForgot) {
+    linkForgot.addEventListener('click', function (e) {
+      e.preventDefault();
+      document.getElementById('loginView').style.display = 'none';
+      document.getElementById('apiKeyView').style.display = 'none';
+      document.getElementById('forgotView').style.display = 'block';
+      hideKeyboxMessages();
+    });
+  }
+  if (linkApi) {
+    linkApi.addEventListener('click', function (e) {
+      e.preventDefault();
+      document.getElementById('loginView').style.display = 'none';
+      document.getElementById('forgotView').style.display = 'none';
+      document.getElementById('apiKeyView').style.display = 'block';
+      hideKeyboxMessages();
+    });
+  }
+  if (linkBackPass) {
+    linkBackPass.addEventListener('click', function (e) {
+      e.preventDefault();
+      document.getElementById('apiKeyView').style.display = 'none';
+      document.getElementById('forgotView').style.display = 'none';
+      document.getElementById('loginView').style.display = 'block';
+      hideKeyboxMessages();
+    });
+  }
+  if (linkBackForgot) {
+    linkBackForgot.addEventListener('click', function (e) {
+      e.preventDefault();
+      document.getElementById('apiKeyView').style.display = 'none';
+      document.getElementById('forgotView').style.display = 'none';
+      document.getElementById('loginView').style.display = 'block';
+      hideKeyboxMessages();
+    });
+  }
+
+  // Standard Username & Password Form submit
+  var loginForm = document.getElementById('loginForm');
+  if (loginForm) {
+    loginForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = document.getElementById('go');
+      var user = (document.getElementById('loginUser').value || '').trim();
+      var pass = (document.getElementById('loginPass').value || '').trim();
+      if (!pass) {
+        showKeybox(currentLang === 'pl' ? 'Wprowadź hasło przed logowaniem.' : 'Please enter your password.');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = currentLang === 'pl' ? 'Logowanie...' : 'Logging in...';
+
+      fetch('/agent-lb/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user, password: pass })
+      })
         .then(function (res) {
-          if (res.status === 200) {
+          if (res.ok) {
             document.getElementById('keybox').style.display = 'none';
             document.getElementById('app').style.display = '';
             start();
           } else {
-            showKeybox();
+            return res.json().then(function (errData) {
+              showKeybox(errData && errData.error ? errData.error : (currentLang === 'pl' ? 'Nieprawidłowy login lub hasło.' : 'Invalid username or password.'));
+            }).catch(function () {
+              showKeybox(currentLang === 'pl' ? 'Nieprawidłowy login lub hasło.' : 'Invalid username or password.');
+            });
           }
         })
-        .catch(function () {
-          showKeybox();
+        .catch(function (err) {
+          showKeybox((currentLang === 'pl' ? 'Błąd połączenia: ' : 'Connection error: ') + err.message);
+        })
+        .finally(function () {
+          btn.disabled = false;
+          btn.textContent = currentLang === 'pl' ? 'Zaloguj się' : 'Log In';
         });
-      return;
-    }
-
-    fetch('/agent-lb/api/auth/verify', {
-      headers: { 'x-api-key': apiKey }
-    })
-      .then(function (res) {
-        if (res.ok) {
-          document.getElementById('keybox').style.display = 'none';
-          document.getElementById('app').style.display = '';
-          start();
-        } else {
-          localStorage.removeItem(KEY);
-          return res.json().then(function (errData) {
-            showKeybox(errData && errData.error ? errData.error : (currentLang === 'pl' ? 'Sesja wygasła lub klucz API jest nieprawidłowy.' : 'Session expired or API key is invalid.'));
-          }).catch(function () {
-            showKeybox(currentLang === 'pl' ? 'Sesja wygasła lub klucz API jest nieprawidłowy.' : 'Session expired or API key is invalid.');
-          });
-        }
-      })
-      .catch(function () {
-        start();
-      });
+    });
   }
 
-  document.getElementById('go').addEventListener('click', function () {
-    var btn = document.getElementById('go');
-    var v = document.getElementById('key').value.trim();
-    v = v.replace(/^export\\s+ANTHROPIC_API_KEY\\s*=\\s*/i, '')
-         .replace(/^ANTHROPIC_API_KEY\\s*=\\s*/i, '')
-         .replace(/^["']|["']$/g, '')
-         .trim();
-    if (!v) {
-      showKeybox(currentLang === 'pl' ? 'Wprowadź hasło lub klucz API przed połączeniem.' : 'Enter password or API key before connecting.');
-      return;
-    }
-    btn.disabled = true;
-    btn.textContent = 'Logowanie...';
+  // Forgot password: send PIN & link
+  var btnSendForgot = document.getElementById('btnSendForgot');
+  if (btnSendForgot) {
+    btnSendForgot.addEventListener('click', function () {
+      var target = (document.getElementById('forgotTarget').value || '').trim();
+      btnSendForgot.disabled = true;
+      btnSendForgot.textContent = currentLang === 'pl' ? 'Wysyłanie...' : 'Sending...';
 
-    fetch('/agent-lb/api/auth/verify', {
-      headers: { 'x-api-key': v }
-    })
-      .then(function (res) {
-        if (res.ok) {
-          localStorage.setItem(KEY, v);
-          document.getElementById('keybox').style.display = 'none';
-          document.getElementById('app').style.display = '';
-          start();
-        } else {
-          return res.json().then(function (errData) {
-            showKeybox(errData && errData.error ? errData.error : (currentLang === 'pl' ? 'Nieprawidłowe hasło lub klucz administracyjny.' : 'Invalid password or administrative key.'));
-          }).catch(function () {
-            showKeybox(currentLang === 'pl' ? 'Nieprawidłowe hasło lub klucz administracyjny.' : 'Invalid password or administrative key.');
+      fetch('/agent-lb/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: target })
+      })
+        .then(function (res) {
+          return res.json().then(function (data) {
+            if (res.ok && data.ok) {
+              var kInfo = document.getElementById('keyboxInfo');
+              if (kInfo) {
+                kInfo.textContent = data.message || (currentLang === 'pl' ? 'Wysłano link i kod PIN na Twój adres e-mail.' : 'Link and PIN code sent to your email.');
+                kInfo.style.display = 'block';
+              }
+              document.getElementById('resetFields').style.display = 'block';
+            } else {
+              showKeybox(data.error || (currentLang === 'pl' ? 'Błąd wysyłania kodu.' : 'Error sending reset code.'));
+            }
           });
-        }
-      })
-      .catch(function (e) {
-        showKeybox((currentLang === 'pl' ? 'Błąd połączenia: ' : 'Connection error: ') + e.message);
-      })
-      .finally(function () {
-        btn.disabled = false;
-        btn.textContent = currentLang === 'pl' ? 'Zaloguj się' : 'Log In';
-      });
-  });
+        })
+        .catch(function (err) {
+          showKeybox((currentLang === 'pl' ? 'Błąd połączenia: ' : 'Connection error: ') + err.message);
+        })
+        .finally(function () {
+          btnSendForgot.disabled = false;
+          btnSendForgot.textContent = currentLang === 'pl' ? 'Wyślij kod i link na e-mail' : 'Send code and link via email';
+        });
+    });
+  }
 
-  document.getElementById('key').addEventListener('keydown', function (e) {
-    if (e.key === 'Enter') document.getElementById('go').click();
-  });
+  // Complete password reset
+  var btnCompleteReset = document.getElementById('btnCompleteReset');
+  if (btnCompleteReset) {
+    btnCompleteReset.addEventListener('click', function () {
+      var code = (document.getElementById('resetCode').value || '').trim();
+      var newPass = (document.getElementById('resetNewPass').value || '').trim();
+      if (!code || !newPass) {
+        showKeybox(currentLang === 'pl' ? 'Wprowadź kod PIN oraz nowe hasło.' : 'Please enter the PIN code and new password.');
+        return;
+      }
+      btnCompleteReset.disabled = true;
+      btnCompleteReset.textContent = currentLang === 'pl' ? 'Zapisywanie...' : 'Saving...';
+
+      fetch('/agent-lb/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code, newPassword: newPass })
+      })
+        .then(function (res) {
+          return res.json().then(function (data) {
+            if (res.ok && data.ok) {
+              document.getElementById('keybox').style.display = 'none';
+              document.getElementById('app').style.display = '';
+              start();
+            } else {
+              showKeybox(data.error || (currentLang === 'pl' ? 'Błąd resetowania hasła.' : 'Error resetting password.'));
+            }
+          });
+        })
+        .catch(function (err) {
+          showKeybox((currentLang === 'pl' ? 'Błąd połączenia: ' : 'Connection error: ') + err.message);
+        })
+        .finally(function () {
+          btnCompleteReset.disabled = false;
+          btnCompleteReset.textContent = currentLang === 'pl' ? 'Ustaw nowe hasło i zaloguj' : 'Set new password and log in';
+        });
+    });
+  }
+
+  // API Key login alternative
+  var goKey = document.getElementById('goKey');
+  if (goKey) {
+    goKey.addEventListener('click', function () {
+      var v = (document.getElementById('key').value || '').trim();
+      v = v.replace(/^export\\s+ANTHROPIC_API_KEY\\s*=\\s*/i, '')
+           .replace(/^ANTHROPIC_API_KEY\\s*=\\s*/i, '')
+           .replace(/^["']|["']$/g, '')
+           .trim();
+      if (!v) {
+        showKeybox(currentLang === 'pl' ? 'Wprowadź klucz API przed logowaniem.' : 'Please enter an API key.');
+        return;
+      }
+      goKey.disabled = true;
+      goKey.textContent = currentLang === 'pl' ? 'Logowanie...' : 'Logging in...';
+
+      fetch('/agent-lb/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: v })
+      })
+        .then(function (res) {
+          if (res.ok) {
+            localStorage.setItem(KEY, v);
+            document.getElementById('keybox').style.display = 'none';
+            document.getElementById('app').style.display = '';
+            start();
+          } else {
+            showKeybox(currentLang === 'pl' ? 'Nieprawidłowy klucz administracyjny.' : 'Invalid administrative key.');
+          }
+        })
+        .catch(function (err) {
+          showKeybox(err.message);
+        })
+        .finally(function () {
+          goKey.disabled = false;
+          goKey.textContent = currentLang === 'pl' ? 'Zaloguj się' : 'Log In';
+        });
+    });
+  }
+
+  var keyInput = document.getElementById('key');
+  if (keyInput) {
+    keyInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        var g = document.getElementById('goKey');
+        if (g) g.click();
+      }
+    });
+  }
 
   var btnLogout = document.getElementById('btnLogout');
   if (btnLogout) {
     btnLogout.addEventListener('click', function () {
       localStorage.removeItem(KEY);
-      showKeybox(null, currentLang === 'pl' ? 'Zostałeś pomyślnie wylogowany.' : 'You have been logged out successfully.');
+      fetch('/agent-lb/api/auth/logout', { method: 'POST' }).finally(function () {
+        showKeybox(null, currentLang === 'pl' ? 'Zostałeś pomyślnie wylogowany.' : 'You have been logged out successfully.');
+      });
     });
   }
 

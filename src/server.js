@@ -41,6 +41,14 @@ export {
   relayPolicyAllowed,
   SENSITIVE_HEADER_NAMES,
 } from "./access-control.js";
+import {
+  verifySession,
+  serializeSessionCookie,
+  serializeLogoutCookie,
+  verifyPassword,
+  requestPasswordReset,
+  completePasswordReset,
+} from "./web-auth.js";
 import http from "node:http";
 import https from "node:https";
 import { randomBytes, createHash } from "node:crypto";
@@ -507,7 +515,18 @@ export function createProxyServer(
         config.proxy,
       );
       const isTrustedOrigin = isLocal || isTailnet;
+      const sessionAuth = verifySession(req.headers.cookie, config.proxy?.apiKey);
+      const isSessionAdmin = Boolean(sessionAuth?.valid);
+      const isPublicAuthAction =
+        normApiPath === "/api/auth/login" ||
+        normApiPath === "/api/auth/forgot-password" ||
+        normApiPath === "/api/auth/reset-password" ||
+        normApiPath === "/api/auth/logout";
+
       let auth = resolveClientAuth(config.proxy, clientKey);
+      if (isSessionAdmin) {
+        auth = { ok: true, client: sessionAuth.username, entry: null };
+      }
       // From a trusted origin, a Bearer that is not one of our keys is the
       // client's OWN upstream credential — Claude Code in OAuth mode sends its
       // claude.ai token, Codex its ChatGPT token — not a wrong proxy key. The
@@ -520,7 +539,7 @@ export function createProxyServer(
         clientKey = null;
         auth = { ok: false, client: null, entry: null };
       }
-      if (!auth.ok && (clientKey || !isTrustedOrigin)) {
+      if (!auth.ok && !isSessionAdmin && !isPublicAuthAction && (clientKey || !isTrustedOrigin)) {
         console.warn("[AgentLB Auth Rejection]", {
           method: req.method,
           url: req.url,
@@ -545,9 +564,10 @@ export function createProxyServer(
         );
         return;
       }
-      req.clientKey = clientKey;
-      req.tcClient = auth.ok ? auth.client : null;
+      req.clientKey = clientKey || (isSessionAdmin ? config.proxy?.apiKey : null);
+      req.tcClient = auth.ok ? auth.client : (isSessionAdmin ? sessionAuth.username : null);
       req.tcClientEntry = auth.entry || null;
+      req.sessionAuth = sessionAuth;
 
       // Protect every management alias BEFORE dispatch (including reload,
       // switch and setup/pull). Provider identity endpoints remain data-plane.
@@ -555,12 +575,12 @@ export function createProxyServer(
         /^\/(?:api\/(?:auth|keys|accounts|agy|routing|drain|ready|system|reboot|restart|test|chat|health-check|setup|reload|probe|switch)(?:\/|$)|accounts(?:\/|$)|client-keys(?:\/|$)|oauth(?:\/|$)|routing(?:\/|$)|drain(?:\/|$)|health-check(?:\/|$)|reload$|probe$|switch$|reboot$|restart$|metrics$|alerts$)/.test(
           normApiPath,
         );
-      const isAdmin = config.proxy?.apiKey
+      const isAdmin = isSessionAdmin || (config.proxy?.apiKey
         ? safeKeyEqual(clientKey, config.proxy.apiKey)
         : !config.proxy?.clientKeys?.length &&
           isLoopbackAddr(req.socket.remoteAddress) &&
-          !isForwardedRequest(req.headers);
-      if (managementPath && !isAdmin) {
+          !isForwardedRequest(req.headers));
+      if (managementPath && !isPublicAuthAction && !isAdmin) {
         res.writeHead(403, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({ ok: false, error: "administrator key required" }),
@@ -2035,8 +2055,22 @@ export function createProxyServer(
         (normApiPath === "/api/auth/verify" ||
           normApiPath === "/api/auth/session")
       ) {
-        const hasAdminKey = Boolean(config.proxy?.apiKey);
-        if (!hasAdminKey) {
+        if (sessionAuth?.valid) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              authenticated: true,
+              passwordRequired: true,
+              role: "admin",
+              isPrimary: true,
+              clientName: sessionAuth.username,
+            }),
+          );
+          return;
+        }
+
+        if (isTrustedOrigin) {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
@@ -2044,16 +2078,19 @@ export function createProxyServer(
               authenticated: true,
               passwordRequired: false,
               role: "admin",
+              fromTailnet: true,
             }),
           );
           return;
         }
+
+        const hasAdminKey = Boolean(config.proxy?.apiKey);
         const isMaster =
           clientKey && safeKeyEqual(clientKey, config.proxy.apiKey);
         const clientAuth = clientKey
           ? resolveClientAuth(config.proxy, clientKey)
           : null;
-        if (isMaster) {
+        if (!hasAdminKey || isMaster) {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
@@ -2062,7 +2099,7 @@ export function createProxyServer(
               passwordRequired: true,
               role: "admin",
               isPrimary: Boolean(isMaster),
-              clientName: clientAuth?.client || (isMaster ? "admin" : null),
+              clientName: isMaster ? "admin" : null,
             }),
           );
           return;
@@ -2074,7 +2111,7 @@ export function createProxyServer(
             authenticated: false,
             passwordRequired: true,
             error:
-              "Wymagana autoryzacja (podaj klucz administracyjny lub klucz stacji roboczej)",
+              "Wymagana autoryzacja (podaj login i hasło lub klucz API)",
           }),
         );
         return;
@@ -2086,36 +2123,148 @@ export function createProxyServer(
           const raw = await readControlBody(req);
           body = JSON.parse(raw || "{}");
         } catch {}
-        const candidate = (body.key || body.password || clientKey || "").trim();
+        const username = (body.username || body.user || "").trim();
+        const candidate = (body.password || body.key || clientKey || "").trim();
         const hasAdminKey = Boolean(config.proxy?.apiKey);
-        const isMaster =
-          candidate &&
-          hasAdminKey &&
-          safeKeyEqual(candidate, config.proxy.apiKey);
-        const clientAuth = candidate
-          ? resolveClientAuth(config.proxy, candidate)
-          : null;
-        if (!hasAdminKey || isMaster) {
-          res.writeHead(200, { "Content-Type": "application/json" });
+        const webAuth = config.proxy?.webAuth || {};
+        const expectedUser = (webAuth.username || "tomaasz").trim();
+        const passwordHash =
+          webAuth.passwordHash ||
+          "$2a$14$Wv8KE1RqpU2SRRAlNsqWx.AAy.7VpAOuOY.S53R.44JwyioUzICfi";
+
+        let authenticated = false;
+        let authUser = null;
+
+        // 1. Check webAuth username and password
+        if (
+          (!username || username.toLowerCase() === expectedUser.toLowerCase()) &&
+          verifyPassword(candidate, passwordHash, config.proxy?.apiKey)
+        ) {
+          authenticated = true;
+          authUser = expectedUser;
+        }
+
+        // 2. Check master admin apiKey directly
+        if (!authenticated && hasAdminKey && safeKeyEqual(candidate, config.proxy.apiKey)) {
+          authenticated = true;
+          authUser = "admin";
+        }
+
+        // 3. Check client workstation keys
+        const clientAuth =
+          !authenticated && candidate
+            ? resolveClientAuth(config.proxy, candidate)
+            : null;
+        if (!authenticated && (!hasAdminKey || clientAuth?.ok)) {
+          authenticated = true;
+          authUser = clientAuth?.client || "admin";
+        }
+
+        if (authenticated) {
+          const sessionCookie = serializeSessionCookie(
+            authUser,
+            config.proxy?.apiKey,
+          );
+          res.writeHead(200, {
+            "Content-Type": "application/json",
+            "Set-Cookie": sessionCookie,
+          });
           res.end(
             JSON.stringify({
               ok: true,
               authenticated: true,
               role: "admin",
-              isPrimary: Boolean(isMaster),
-              clientName: clientAuth?.client || (isMaster ? "admin" : null),
+              isPrimary: true,
+              clientName: authUser,
             }),
           );
           return;
         }
+
         res.writeHead(401, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
             ok: false,
             authenticated: false,
-            error: "Nieprawidłowe hasło lub klucz API",
+            error: "Nieprawidłowy login lub hasło",
           }),
         );
+        return;
+      }
+
+      if (req.method === "POST" && normApiPath === "/api/auth/forgot-password") {
+        let body = {};
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || "{}");
+        } catch {}
+        const target = (body.target || body.username || body.email || "").trim();
+        const host = req.headers.host || "agentlb.gotova.pl";
+        const result = requestPasswordReset(target, config, host);
+        res.writeHead(result.ok ? 200 : 400, {
+          "Content-Type": "application/json",
+        });
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      if (req.method === "POST" && normApiPath === "/api/auth/reset-password") {
+        let body = {};
+        try {
+          const raw = await readControlBody(req);
+          body = JSON.parse(raw || "{}");
+        } catch {}
+        const code = (body.code || body.token || body.pin || "").trim();
+        const newPassword = (body.newPassword || body.password || "").trim();
+        const result = completePasswordReset(code, newPassword);
+        if (!result.ok) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+          return;
+        }
+
+        await atomicConfigUpdate((disk) => {
+          disk.proxy = disk.proxy || {};
+          disk.proxy.webAuth = disk.proxy.webAuth || {};
+          disk.proxy.webAuth.username = result.username;
+          disk.proxy.webAuth.passwordHash = result.newHash;
+          disk.proxy.webAuth.email = result.email;
+        });
+
+        config.proxy = config.proxy || {};
+        config.proxy.webAuth = config.proxy.webAuth || {};
+        config.proxy.webAuth.username = result.username;
+        config.proxy.webAuth.passwordHash = result.newHash;
+        config.proxy.webAuth.email = result.email;
+
+        const sessionCookie = serializeSessionCookie(
+          result.username,
+          config.proxy?.apiKey,
+        );
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Set-Cookie": sessionCookie,
+        });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            message: "Hasło zostało pomyślnie zresetowane.",
+            user: result.username,
+          }),
+        );
+        return;
+      }
+
+      if (
+        (req.method === "POST" || req.method === "GET") &&
+        normApiPath === "/api/auth/logout"
+      ) {
+        const logoutCookie = serializeLogoutCookie();
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Set-Cookie": logoutCookie,
+        });
+        res.end(JSON.stringify({ ok: true }));
         return;
       }
 
