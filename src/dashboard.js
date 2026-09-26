@@ -1946,6 +1946,27 @@ const PAGE = `<!doctype html>
             </div>
           </div>
 
+          <div style="background:rgba(63,185,80,0.07); border:1px solid rgba(63,185,80,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
+              <span style="font-size:13px; font-weight:700; color:var(--ok);">🤖 Konfiguracja przez agenta AI (Claude Code / Codex + jcode w piaskownicy)</span>
+              <button class="btn btn-sm btn-accent" id="btnCopyAgentPrompt">📋 Kopiuj prompt</button>
+            </div>
+            <div style="font-size:11.5px; color:var(--dim); margin-bottom:8px;">
+              1. W terminalu na hoście wpisz klucz stacji (nie trafi do historii):
+              <code class="mono">read -rsp 'Klucz stacji: ' AGENT_LB_API_KEY &amp;&amp; export AGENT_LB_API_KEY</code><br>
+              2. Z tego samego terminala uruchom agenta (np. <code class="mono">claude</code>) i wklej mu prompt poniżej.
+              Pełna procedura: <a id="lnkAgentPrompt" href="/agent-prompt.md" target="_blank" rel="noopener" style="color:var(--accent);">agent-prompt.md ↗</a>
+            </div>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
+              <pre class="mono" id="cmdAgentPrompt" style="margin:0; font-size:11.5px; color:#e6edf3; white-space:pre-wrap;"></pre>
+            </div>
+            <div style="font-size:11.5px; color:var(--dim); margin-bottom:4px;">Albo sam jcode, bez agenta (Linux / WSL):</div>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+              <code class="mono" id="cmdJcodeSetupBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+            </div>
+            <button class="btn btn-xs btn-accent" id="btnCopyJcodeSetupBash">📋 Kopiuj polecenie jcode</button>
+          </div>
+
           <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
             <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;" data-i18n="setupAdvancedSummary">
               ⚙️ Zaawansowane: rozdzielne polecenia, zmienne ENV oraz konfiguracja ręczna
@@ -4855,6 +4876,22 @@ ${SHARED_HELPERS}
 
     var elBashMain = document.getElementById('cmdSetupBashMain');
     if (elBashMain) elBashMain.textContent = cmdBashMain;
+
+    // Prompt dla agenta AI: bez klucza w treści — agent czyta go z AGENT_LB_API_KEY.
+    var elAgentPrompt = document.getElementById('cmdAgentPrompt');
+    if (elAgentPrompt) {
+      elAgentPrompt.textContent = [
+        'Skonfiguruj ten host pod AgentLB (Claude Code, Codex, jcode w piaskownicy, VS Code) dokładnie według instrukcji z ' + hostUrl + '/agent-prompt.md',
+        '(pobierz ją: curl -fsSL ' + hostUrl + '/agent-prompt.md) i wykonaj wszystkie kroki z weryfikacją.',
+        'Nazwa stacji w AgentLB: ' + (name && name !== '__primary__' ? name : '<nazwa stacji>') + '.',
+        'Klucz stacji jest w zmiennej środowiskowej AGENT_LB_API_KEY — nigdy nie wypisuj jego wartości.',
+        'Na końcu zdaj mi raport prostym językiem po polsku.'
+      ].join('\\n');
+    }
+    var elJcodeSetup = document.getElementById('cmdJcodeSetupBash');
+    if (elJcodeSetup) elJcodeSetup.textContent = 'curl -fsSL ' + hostUrl + '/jcode-setup.sh | bash -s -- --key ' + cmdKey;
+    var lnkAgentPrompt = document.getElementById('lnkAgentPrompt');
+    if (lnkAgentPrompt) lnkAgentPrompt.href = hostUrl + '/agent-prompt.md';
     var elPsMain = document.getElementById('cmdSetupPowershellMain');
     if (elPsMain) elPsMain.textContent = cmdPsMain;
 
@@ -6961,6 +6998,8 @@ ${SHARED_HELPERS}
 
   bindCopy('btnCopyCreatedKey', 'createdClientKey', 'Klucz klienta');
   bindCopy('btnCopySetupBashMain', 'cmdSetupBashMain', 'Polecenie instalatora (Linux)');
+  bindCopy('btnCopyAgentPrompt', 'cmdAgentPrompt', 'Prompt dla agenta');
+  bindCopy('btnCopyJcodeSetupBash', 'cmdJcodeSetupBash', 'Polecenie jcode (Linux/WSL)');
   bindCopy('btnCopySetupPowershellMain', 'cmdSetupPowershellMain', 'Polecenie instalatora (Windows)');
   bindCopy('btnCopySetupBash', 'cmdSetupBash', 'Polecenie Claude (Bash)');
   bindCopy('btnCopySetupCodexBash', 'cmdSetupCodexBash', 'Polecenie Codex (Bash)');

@@ -390,7 +390,7 @@ export function createProxyServer(
 
       // Serve client setup scripts without auth (Claude Code, OpenAI Codex, OpenCode, Hermes, Claw, Orca)
       const setupScriptMatch = normPath.match(
-        /^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|claude-setup|setup-claude|codexlb-setup|codex-setup|setup-codex|agent-setup|opencode-setup|hermes-setup|claw-setup|openclaw-setup|orca-setup|aider-setup|agy-setup|agybridge-setup)(?:\.(sh|ps1|js))?$/,
+        /^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|claude-setup|setup-claude|codexlb-setup|codex-setup|setup-codex|agent-setup|opencode-setup|hermes-setup|claw-setup|openclaw-setup|orca-setup|aider-setup|agy-setup|agybridge-setup|jcode-setup|agent-prompt)(?:\.(sh|ps1|js|md))?$/,
       );
       if ((req.method === "GET" || req.method === "HEAD") && setupScriptMatch) {
         const scriptBase = setupScriptMatch[1];
@@ -400,9 +400,18 @@ export function createProxyServer(
           ext = ua.includes("powershell") || ua.includes("pwsh") ? "ps1" : "sh";
         }
         let possibleNames = [];
-        if (scriptBase.startsWith("agy")) {
+        if (scriptBase === "agent-prompt") {
+          // Markdown prompt for an AI agent that configures a workstation.
+          ext = "md";
+          possibleNames = ["agent-prompt.md"];
+        } else if (ext === "md") {
+          possibleNames = [];
+        } else if (scriptBase.startsWith("agy")) {
           // No generic fallback: serving setup.sh here would configure the wrong tool.
           possibleNames = [`agy-setup.${ext}`];
+        } else if (scriptBase === "jcode-setup") {
+          // Linux/WSL only (bwrap sandbox) — no .ps1/.js variant and no generic fallback.
+          possibleNames = [`jcode-setup.${ext}`];
         } else if (scriptBase.includes("hermes")) {
           possibleNames = [`hermes-setup.${ext}`, `setup.${ext}`];
         } else if (scriptBase.includes("opencode")) {
@@ -473,7 +482,9 @@ export function createProxyServer(
               ? "text/plain; charset=utf-8"
               : ext === "js"
                 ? "application/javascript; charset=utf-8"
-                : "application/x-sh",
+                : ext === "md"
+                  ? "text/markdown; charset=utf-8"
+                  : "application/x-sh",
           "Cache-Control": "no-cache",
         });
         res.end(content);
