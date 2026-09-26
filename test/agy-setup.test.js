@@ -51,7 +51,7 @@ describe('agybridge setup (real AGY runs locally, not through the proxy)', () =>
     const hermes = fs.readFileSync('setup/hermes-setup.sh', 'utf8');
     assert.ok(!hermes.includes('models.extend(["agy"'), 'python path: agy not in agentlb list');
     assert.ok(!hermes.includes("models.push('agy'"), 'node path: agy not in agentlb list');
-    assert.ok(hermes.includes('provider: "agy-fast"'), 'native AGY providers kept for the plugin');
+    assert.ok(hermes.includes('"agy-fast": {"name": "AGY Fast"'), 'native AGY providers kept for the plugin');
   });
 
   it('agy-setup.sh is valid bash and keeps the token out of argv and output', () => {

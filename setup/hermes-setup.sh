@@ -2,7 +2,8 @@
 # hermes-setup.sh — Konfigurator providera AgentLB w Hermes Agent
 #
 # Dodaje providera 'agentlb' ze wszystkimi modelami Claude i Codex
-# do ~/.hermes/config.yaml oraz ~/.hermes/.env.
+# do ~/.hermes/config.yaml (i profili) oraz ~/.hermes/.env. Idempotentny:
+# scala klucze zamiast doklejać, klucz trzyma tylko w .env.
 #
 # Użycie:
 #   curl -fsSL https://agentlb.gotova.pl/hermes-setup.sh | bash -s -- --key <KLUCZ_STACJI>
@@ -14,14 +15,17 @@ URL="${AGENT_LB_URL:-${AGENTLB_URL:-https://agentlb.gotova.pl}}"
 KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${OPENAI_API_KEY:-}}}"
 
 HAS_AGY_PLUGIN=false
+TOKEN_SAFE=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --url) URL="${2%/}"; shift ;;
     --key) KEY="$2"; shift ;;
     --with-agy|--agy) HAS_AGY_PLUGIN=true ;;
+    --token-safe) TOKEN_SAFE=true ;;
     -h|--help)
-      echo "Użycie: $0 [--key KLUCZ] [--url URL] [--with-agy]"
+      echo "Użycie: $0 [--key KLUCZ] [--url URL] [--with-agy] [--token-safe]"
+      echo "  --token-safe  ustaw agent.max_turns=25, compression.threshold=0.25, protect_last_n=10"
       exit 0
       ;;
     *) echo "Nieznany argument: $1" >&2; exit 2 ;;
@@ -59,11 +63,7 @@ mkdir -p "$HERMES_DIR"
 CONFIG_FILE="$HERMES_DIR/config.yaml"
 ENV_FILE="$HERMES_DIR/.env"
 
-TIMESTAMP=$(date +%s)
-if [ -f "$CONFIG_FILE" ]; then
-  cp "$CONFIG_FILE" "$CONFIG_FILE.bak-$TIMESTAMP"
-  echo "Utworzono kopię zapasową: $CONFIG_FILE.bak-$TIMESTAMP"
-fi
+TIMESTAMP=$(date +%s)  # kopie zapasowe: <plik>.bak-$TIMESTAMP przy każdym zmienianym config.yaml
 
 # Sprawdź obecność wtyczki hermes-agy-plugin na hoście (jeśli nie wymuszono przez parametr)
 if [ "$HAS_AGY_PLUGIN" = "false" ]; then
@@ -88,215 +88,184 @@ else
   echo "Nie wykryto wtyczki AGY na hoście (providery agy nie zostaną dodane). Instalacja: curl -fsSL $URL/agy-setup.sh | bash"
 fi
 
-# Zapis/aktualizacja konfiguracji przez Python lub Node.js lub fallback
-if command -v python3 >/dev/null 2>&1; then
-  python3 - << EOF
-import os, re
-
-config_path = "$CONFIG_FILE"
-url = "$URL/v1"
-key = "$KEY"
-has_agy = "$HAS_AGY_PLUGIN" == "true"
-
-models = [
-    "claude-fable-5-1",
-    "claude-fable-5",
-    "claude-opus-5-5",
-    "claude-opus-5",
-    "claude-opus-4-8",
-    "claude-opus-4-7",
-    "claude-opus-4-6",
-    "claude-sonnet-5",
-    "claude-sonnet-4-6",
-    "claude-mythos-5-1",
-    "claude-mythos-5",
-    "claude-haiku-4-5-20251001",
-    "claude-haiku-4-5",
-    "claude-opus-4-5-20251101",
-    "claude-sonnet-4-5-20250929",
-    "claude-3-7-sonnet-20250219",
-    "claude-3-5-sonnet-20241022",
-    "claude-3-5-haiku-20241022",
-    "claude-3-opus-20240229",
-    "codex",
-    "codex-mini",
-    "codex-mini-latest",
-    "gpt-6-astra",
-    "gpt-6-sol",
-    "gpt-6-luna",
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-    "gpt-5.6-luna",
-    "gpt-5.6-cyber",
-    "gpt-5.3-codex",
-    "gpt-5.2-codex",
-    "gpt-5.1-codex-max",
-    "gpt-5.1-codex",
-    "gpt-5-codex",
-    "gpt-5.5",
-    "gpt-5.4",
-    "gpt-4.1",
-    "o3-mini",
-    "o1",
-    "gpt-4o",
-    "gpt-4o-mini"
-]
-
-# AGY nie jest dopisywany do listy agentlb: agent-lb nie ma backendu AGY i po
-# cichu odpowiadałby Claude/GPT. Prawdziwy AGY to natywne providery agy/agy-fast
-# z wtyczki agybridge (poniżej) — instalacja: agy-setup.sh.
-
-models_yaml = "".join(f"      - \"{m}\"\n" for m in models)
-
-extra_providers = ""
-model_aliases_block = ""
-if has_agy:
-    model_aliases_block = """
-model_aliases:
-  agy:
-    model: "gemini-3.8-flash-high"
-    provider: "agy"
-  agy-fast:
-    model: "gemini-3.8-flash-low"
-    provider: "agy-fast"
-"""
-    extra_providers = """
-  agy:
-    name: "AGY"
-    provider: "agy"
-    models:
-      - "gemini-3.8-flash-high"
-      - "agy"
-  agy-fast:
-    name: "AGY Fast"
-    provider: "agy-fast"
-    models:
-      - "gemini-3.8-flash-low"
-      - "agy-fast"
-"""
-
-block = f"""
-# --- AgentLB Multi-Provider ---{model_aliases_block}
-custom_providers:
-  - name: "agentlb"
-    base_url: "{url}"
-    api_key: "{key}"
-    api_mode: "chat_completions"
-    context_length: 128000
-    models:
-{models_yaml}
-providers:
-  agentlb:
-    name: "AgentLB (All Models)"
-    base_url: "{url}"
-    api: "{url}"
-    api_key: "{key}"
-    api_mode: "chat_completions"
-    context_length: 128000
-    models:
-{models_yaml}{extra_providers}
-# --- End AgentLB ---
-auxiliary:
-  title_generation:
-    model_upgrade_enabled: false
-"""
-
-config_paths = ["$CONFIG_FILE"]
-profiles_dir = os.path.join(os.path.dirname("$CONFIG_FILE"), "profiles")
-if os.path.isdir(profiles_dir):
-    for entry in os.listdir(profiles_dir):
-        pdir = os.path.join(profiles_dir, entry)
-        if os.path.isdir(pdir):
-            config_paths.append(os.path.join(pdir, "config.yaml"))
-
-for p in config_paths:
-    content = ""
-    if os.path.exists(p):
-        try:
-            with open(p, "r", encoding="utf-8") as f:
-                content = f.read()
-        except Exception:
-            content = ""
-        content = re.sub(r"# --- AgentLB Multi-Provider ---[\s\S]*?(?:# --- End AgentLB ---|(?=\n[a-zA-Z0-9_]+:)|\Z)", "", content)
-    # Apply token-safe optimizations
-    content = re.sub(r"(max_turns:\s*)\d+", r"\g<1>25", content)
-    content = re.sub(r"(threshold:\s*)[0-9.]+", r"\g<1>0.25", content)
-    content = re.sub(r"(protect_last_n:\s*)\d+", r"\g<1>10", content)
-    content = re.sub(r"(context_length:\s*)\d+", r"\g<1>128000", content)
-    with open(p, "w", encoding="utf-8") as f:
-        f.write(content.strip() + "\n" + block + "\n")
-    print(f"✓ Zaktualizowano konfigurację: {p}")
-EOF
-elif command -v node >/dev/null 2>&1; then
-  node - << EOF
-const fs = require('fs');
-const path = require('path');
-const configPaths = ["$CONFIG_FILE"];
-const profilesDir = path.join(path.dirname("$CONFIG_FILE"), "profiles");
-if (fs.existsSync(profilesDir)) {
-  for (const entry of fs.readdirSync(profilesDir)) {
-    const pdir = path.join(profilesDir, entry);
-    if (fs.statSync(pdir).isDirectory()) {
-      configPaths.push(path.join(pdir, "config.yaml"));
-    }
-  }
-}
-const url = "$URL/v1";
-const key = "$KEY";
-const hasAgy = "$HAS_AGY_PLUGIN" === "true";
-const models = [
-  "claude-fable-5-1", "claude-fable-5", "claude-opus-5-5", "claude-opus-5", "claude-opus-4-8",
-  "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-5", "claude-sonnet-4-6",
-  "claude-mythos-5-1", "claude-mythos-5", "claude-haiku-4-5-20251001", "claude-haiku-4-5",
-  "claude-opus-4-5-20251101", "claude-sonnet-4-5-20250929",
-  "claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229",
-  "codex", "codex-mini", "codex-mini-latest", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna",
-  "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-cyber", "gpt-5.3-codex",
-  "gpt-5.2-codex", "gpt-5.1-codex-max", "gpt-5.1-codex", "gpt-5-codex",
-  "gpt-5.5", "gpt-5.4", "gpt-4.1", "o3-mini", "o1", "gpt-4o", "gpt-4o-mini"
-];
-const modelsYaml = models.map(m => '      - "' + m + '"\n').join('');
-
-let modelAliasesBlock = '';
-let extraProviders = '';
-if (hasAgy) {
-  modelAliasesBlock = '\nmodel_aliases:\n  agy:\n    model: "gemini-3.8-flash-high"\n    provider: "agy"\n  agy-fast:\n    model: "gemini-3.8-flash-low"\n    provider: "agy-fast"\n';
-  extraProviders = '\n  agy:\n    name: "AGY"\n    provider: "agy"\n    models:\n      - "gemini-3.8-flash-high"\n      - "agy"\n  agy-fast:\n    name: "AGY Fast"\n    provider: "agy-fast"\n    models:\n      - "gemini-3.8-flash-low"\n      - "agy-fast"\n';
+# Scalanie konfiguracji: ruamel.yaml z venva Hermesa (zachowuje komentarze,
+# odmawia zapisu pliku z duplikatami kluczy). Dawniej blok był doklejany na
+# koniec pliku, co przy każdym uruchomieniu dublowało model_aliases,
+# custom_providers, providers i auxiliary, a globalne regexy nadpisywały każde
+# context_length/threshold/max_turns — także 1048576 dla agy.
+find_yaml_python() {
+  local c
+  for c in "${HERMES_SETUP_PYTHON:-}" "$HERMES_DIR/hermes-agent/venv/bin/python" \
+           "$HERMES_DIR"/installs/*/environments/*/venv/bin/python python3; do
+    [ -n "$c" ] && command -v "$c" >/dev/null 2>&1 || continue
+    "$c" -c 'import ruamel.yaml' >/dev/null 2>&1 && { printf '%s\n' "$c"; return 0; }
+  done
+  return 1
 }
 
-const block = '\n# --- AgentLB Multi-Provider ---' + modelAliasesBlock + '\ncustom_providers:\n  - name: "agentlb"\n    base_url: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 128000\n    models:\n' + modelsYaml + '\nproviders:\n  agentlb:\n    name: "AgentLB (All Models)"\n    base_url: "' + url + '"\n    api: "' + url + '"\n    api_key: "' + key + '"\n    api_mode: "chat_completions"\n    context_length: 128000\n    models:\n' + modelsYaml + extraProviders + '\n# --- End AgentLB ---\nauxiliary:\n  title_generation:\n    model_upgrade_enabled: false\n';
-
-for (const p of configPaths) {
-  let content = fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
-  content = content.replace(/# --- AgentLB Multi-Provider ---[\s\S]*?(?:# --- End AgentLB ---|(?=\n[a-zA-Z0-9_]+:)|\$)/, '').trim();
-  content = content.replace(/(max_turns:\s*)\d+/g, '$125');
-  content = content.replace(/(threshold:\s*)[0-9.]+/g, '$10.25');
-  content = content.replace(/(protect_last_n:\s*)\d+/g, '$110');
-  content = content.replace(/(context_length:\s*)\d+/g, '$1128000');
-  fs.writeFileSync(p, (content ? content + '\n' : '') + block);
-  console.log('✓ Zaktualizowano konfigurację:', p);
-}
-EOF
+if ! YAML_PYTHON="$(find_yaml_python)"; then
+  echo "BŁĄD: nie znaleziono Pythona z ruamel.yaml (instaluje go Hermes)." >&2
+  echo "Zainstaluj najpierw Hermes Agent albo wskaż interpreter: HERMES_SETUP_PYTHON=/ścieżka/python $0 ..." >&2
+  exit 1
 fi
 
-# Zapisz też klucz do ~/.hermes/.env oraz każdego profilu w ~/.hermes/profiles/*/.env
-env_files=("$ENV_FILE")
+config_paths=("$CONFIG_FILE")
 if [ -d "$HERMES_DIR/profiles" ]; then
   for pdir in "$HERMES_DIR/profiles"/*; do
-    if [ -d "$pdir" ]; then
-      env_files+=("$pdir/.env")
-    fi
+    [ -f "$pdir/config.yaml" ] && config_paths+=("$pdir/config.yaml")
   done
 fi
 
+# Wartości przekazujemy przez zmienne środowiskowe, nie przez wklejanie w kod.
+# Klucz nie trafia do config.yaml — tylko referencja ${AGENT_LB_API_KEY}.
+merge_status=0
+AGENTLB_BASE_URL="$URL/v1" HAS_AGY="$HAS_AGY_PLUGIN" TOKEN_SAFE="$TOKEN_SAFE" BACKUP_SUFFIX="bak-$TIMESTAMP" \
+  "$YAML_PYTHON" - "${config_paths[@]}" <<'PY' || merge_status=$?
+import os
+import re
+import shutil
+import sys
+
+from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
+
+MODELS = [
+    "claude-fable-5-1", "claude-fable-5", "claude-opus-5-5", "claude-opus-5",
+    "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-5",
+    "claude-sonnet-4-6", "claude-mythos-5-1", "claude-mythos-5",
+    "claude-haiku-4-5-20251001", "claude-haiku-4-5", "claude-opus-4-5-20251101",
+    "claude-sonnet-4-5-20250929", "claude-3-7-sonnet-20250219",
+    "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229",
+    "codex", "codex-mini", "codex-mini-latest", "gpt-6-astra", "gpt-6-sol",
+    "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-cyber",
+    "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-max", "gpt-5.1-codex",
+    "gpt-5-codex", "gpt-5.5", "gpt-5.4", "gpt-4.1", "o3-mini", "o1", "gpt-4o",
+    "gpt-4o-mini",
+]
+# AGY nie jest dopisywany do listy agentlb: agent-lb nie ma backendu AGY i po
+# cichu odpowiadałby Claude/GPT. Prawdziwy AGY to natywne providery agy/agy-fast
+# z wtyczki agybridge — instalacja: agy-setup.sh.
+AGY = {
+    "agy": {"name": "AGY", "model": "gemini-3.8-flash-high"},
+    "agy-fast": {"name": "AGY Fast", "model": "gemini-3.8-flash-low"},
+}
+KEY_REF = "${AGENT_LB_API_KEY}"
+# Blok doklejany przez starsze wersje tego skryptu (wraz z auxiliary za znacznikiem końca).
+LEGACY = re.compile(
+    r"\n*# --- AgentLB Multi-Provider ---[\s\S]*?# --- End AgentLB ---\n"
+    r"(?:auxiliary:\n  title_generation:\n    model_upgrade_enabled: false\n)?"
+)
+
+url = os.environ["AGENTLB_BASE_URL"]
+has_agy = os.environ.get("HAS_AGY") == "true"
+token_safe = os.environ.get("TOKEN_SAFE") == "true"
+suffix = os.environ["BACKUP_SUFFIX"]
+
+yaml = YAML()
+yaml.preserve_quotes = True
+yaml.width = 4096
+yaml.indent(mapping=2, sequence=4, offset=2)
+
+
+def section(parent, key):
+    if not isinstance(parent.get(key), dict):
+        parent[key] = CommentedMap()
+    return parent[key]
+
+
+def agentlb_fields(extra):
+    fields = {"base_url": url, **extra, "api_key": KEY_REF, "api_mode": "chat_completions",
+              "context_length": 128000, "models": CommentedSeq(MODELS)}
+    return fields
+
+
+def merge(cfg):
+    providers = section(cfg, "providers")
+    section(providers, "agentlb").update(
+        agentlb_fields({"name": "AgentLB (All Models)", "api": url}))
+
+    custom = cfg.get("custom_providers")
+    if not isinstance(custom, list):
+        custom = cfg["custom_providers"] = CommentedSeq()
+    entry = next((c for c in custom if isinstance(c, dict) and c.get("name") == "agentlb"), None)
+    if entry is None:
+        entry = CommentedMap(name="agentlb")
+        custom.append(entry)
+    entry.update(agentlb_fields({}))
+
+    if has_agy:
+        aliases = section(cfg, "model_aliases")
+        for name, spec in AGY.items():
+            # Tylko pola, za które odpowiada ten skrypt — np. context_length użytkownika zostaje.
+            section(providers, name).update(
+                {"name": spec["name"], "provider": name,
+                 "models": CommentedSeq([spec["model"], name])})
+            section(aliases, name).update({"model": spec["model"], "provider": name})
+
+    section(section(cfg, "auxiliary"), "title_generation")["model_upgrade_enabled"] = False
+
+    if token_safe:
+        section(cfg, "agent")["max_turns"] = 25
+        compression = section(cfg, "compression")
+        compression["threshold"] = 0.25
+        compression["protect_last_n"] = 10
+
+
+failed = 0
+for path in sys.argv[1:]:
+    text = open(path, encoding="utf-8").read() if os.path.exists(path) else ""
+    cleaned = LEGACY.sub("\n", text)
+    try:
+        cfg = yaml.load(cleaned) or CommentedMap()
+    except Exception as exc:  # np. zduplikowane klucze — nie pogarszamy uszkodzonego pliku
+        lines = str(exc).strip().splitlines()
+        first = next((l for l in lines if "duplicate key" in l), lines[0]).strip()
+        print(f"✗ Pomijam {path}: plik YAML jest uszkodzony ({first}). Napraw go i uruchom ponownie.",
+              file=sys.stderr)
+        failed += 1
+        continue
+    if not isinstance(cfg, dict):
+        print(f"✗ Pomijam {path}: oczekiwano mapy YAML na najwyższym poziomie.", file=sys.stderr)
+        failed += 1
+        continue
+
+    merge(cfg)
+    if os.path.exists(path):
+        shutil.copy2(path, f"{path}.{suffix}")
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        yaml.dump(cfg, fh)
+    if os.path.exists(path):
+        shutil.copymode(path, tmp)
+    else:
+        os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+    note = " (usunięto stary doklejony blok AgentLB)" if cleaned != text else ""
+    print(f"✓ Zaktualizowano konfigurację: {path}{note}")
+
+sys.exit(1 if failed else 0)
+PY
+
+# Klucz trafia tylko do .env (głównego i profili, które mają config.yaml).
+# Usuwamy poprzednie wpisy, żeby nie mnożyć OPENAI_BASE_URL przy każdym uruchomieniu.
+env_files=("$ENV_FILE")
+for cfg in "${config_paths[@]:1}"; do
+  env_files+=("$(dirname "$cfg")/.env")
+done
+
 for ef in "${env_files[@]}"; do
   touch "$ef"
-  grep -v "^AGENT_LB_API_KEY=" "$ef" | grep -v "^AGENTLB_API_KEY=" > "$ef.tmp" 2>/dev/null || true
-  echo "AGENT_LB_API_KEY=\"$KEY\"" >> "$ef.tmp"
-  echo "OPENAI_BASE_URL=\"$URL/v1\"" >> "$ef.tmp"
-  mv "$ef.tmp" "$ef"
   chmod 600 "$ef" 2>/dev/null || true
+  grep -vE '^(export[[:space:]]+)?(AGENT_LB_API_KEY|AGENTLB_API_KEY|OPENAI_BASE_URL)=' "$ef" > "$ef.tmp" 2>/dev/null || true
+  printf 'AGENT_LB_API_KEY="%s"\nOPENAI_BASE_URL="%s"\n' "$KEY" "$URL/v1" >> "$ef.tmp"
+  chmod 600 "$ef.tmp" 2>/dev/null || true
+  mv "$ef.tmp" "$ef"
 done
+
+if [ "$merge_status" -ne 0 ]; then
+  echo "Uwaga: część plików konfiguracji pominięto (szczegóły wyżej)." >&2
+  exit "$merge_status"
+fi
 
 echo "Zaktualizowano konfigurację Hermes: $CONFIG_FILE"
 echo "Gotowe!"
