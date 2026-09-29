@@ -820,6 +820,46 @@ export function createProxyServer(
             },
           },
           {
+            id: "claude-sonnet-5-5",
+            name: "Claude Sonnet 5.5",
+            display_name: "Claude Sonnet 5.5",
+            description: "Frontier intelligence with high speed and precision",
+            context_window: 1000000,
+            max_tokens: 128000,
+            batch_max_output_tokens: 300000,
+            latency: "fast",
+            thinking: { extended: "no", adaptive: "yes" },
+            default_effort: "high",
+            reliable_knowledge_cutoff: "2026-06",
+            pricing: {
+              input_per_mtok: 3,
+              output_per_mtok: 15,
+              cache_write_5m_per_mtok: 3.75,
+              cache_write_1h_per_mtok: 6,
+              cache_read_per_mtok: 0.2,
+            },
+          },
+          {
+            id: "claude-sonnet-5.5",
+            name: "Claude Sonnet 5.5",
+            display_name: "Claude Sonnet 5.5",
+            description: "Frontier intelligence with high speed and precision",
+            context_window: 1000000,
+            max_tokens: 128000,
+            batch_max_output_tokens: 300000,
+            latency: "fast",
+            thinking: { extended: "no", adaptive: "yes" },
+            default_effort: "high",
+            reliable_knowledge_cutoff: "2026-06",
+            pricing: {
+              input_per_mtok: 3,
+              output_per_mtok: 15,
+              cache_write_5m_per_mtok: 3.75,
+              cache_write_1h_per_mtok: 6,
+              cache_read_per_mtok: 0.2,
+            },
+          },
+          {
             id: "claude-sonnet-5",
             name: "Claude Sonnet 5",
             display_name: "Claude Sonnet 5",
@@ -9620,6 +9660,11 @@ export function normalizeAnthropicModelForOAuth(body) {
         trimmed === "claude-opus-5-5"
       ) {
         target = "claude-opus-5-5";
+      } else if (
+        trimmed === "claude-sonnet-5.5" ||
+        trimmed === "claude-sonnet-5-5"
+      ) {
+        target = "claude-sonnet-5-5";
       } else if (trimmed === "claude-opus-4-5") {
         target = "claude-opus-4-5-20251101";
       } else if (trimmed === "claude-sonnet-4-5") {

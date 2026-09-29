@@ -7178,6 +7178,7 @@ ${SHARED_HELPERS}
       { id: 'claude-opus-4-8', name: 'Claude Opus 4.8' },
       { id: 'claude-opus-4-7', name: 'Claude Opus 4.7' },
       { id: 'claude-opus-4-6', name: 'Claude Opus 4.6' },
+      { id: 'claude-sonnet-5-5', name: isEn ? 'Claude Sonnet 5.5 (Recommended / Fast Agentic)' : 'Claude Sonnet 5.5 (Rekomendowany / Szybkie kodowanie agentowe)' },
       { id: 'claude-sonnet-5', name: isEn ? 'Claude Sonnet 5 (Default Claude Code)' : 'Claude Sonnet 5 (Domyślny Claude Code)' },
       { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
       { id: 'claude-mythos-5-1', name: isEn ? 'Claude Mythos 5.1 (Specialized / Research)' : 'Claude Mythos 5.1 (Specjalistyczny / Eksperymentalny)' },
@@ -7185,6 +7186,7 @@ ${SHARED_HELPERS}
       // Current Lineup
       { id: 'claude-fable-5-1', name: isEn ? 'Claude Fable 5.1 (Advanced Reasoning & Agents · 1M ctx)' : 'Claude Fable 5.1 (Najbardziej zaawansowany / Agenty · 1M ctx)' },
       { id: 'claude-opus-5-5', name: isEn ? 'Claude Opus 5.5 (Flagship Agentic Coding · 1M ctx)' : 'Claude Opus 5.5 (Flagowy / Kodowanie agentowe · 1M ctx)' },
+      { id: 'claude-sonnet-5-5', name: isEn ? 'Claude Sonnet 5.5 (Recommended / Fast Agentic · 1M ctx)' : 'Claude Sonnet 5.5 (Rekomendowany / Szybkie kodowanie agentowe · 1M ctx)' },
       { id: 'claude-sonnet-5', name: isEn ? 'Claude Sonnet 5 (Default Claude Code / Balanced · 1M ctx)' : 'Claude Sonnet 5 (Domyślny Claude Code / Zrównoważony · 1M ctx)' },
       { id: 'claude-haiku-4-5-20251001', name: isEn ? 'Claude Haiku 4.5 (Fastest / Near-frontier · 200K ctx)' : 'Claude Haiku 4.5 (Najszybszy / Lekkie zadania · 200K ctx)' },
       // Specialized Models

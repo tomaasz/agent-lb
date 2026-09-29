@@ -28,6 +28,8 @@ export const MODEL_FALLBACK_MAP = {
   'claude-opus-4-6': 'gpt-6-astra',
   'claude-opus-4-5-20251101': 'gpt-6-astra',
   'claude-opus-4-5': 'gpt-6-astra',
+  'claude-sonnet-5-5': 'gpt-5.6-sol',
+  'claude-sonnet-5.5': 'gpt-5.6-sol',
   'claude-sonnet-5': 'gpt-5.6-sol',
   'claude-sonnet-4-6': 'gpt-5.6-sol',
   'claude-sonnet-4-5-20250929': 'gpt-5.6-sol',

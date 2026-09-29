@@ -29,6 +29,10 @@ test("Claude 5 family ids route to their dedicated quota semantics", () => {
   assert.equal(weeklyBucketForModel("claude-opus-5"), "unified7d");
   assert.equal(modelFamily("claude-opus-5-5"), "opus");
   assert.equal(weeklyBucketForModel("claude-opus-5-5"), "unified7d");
+  assert.equal(modelFamily("claude-sonnet-5-5"), "sonnet");
+  assert.equal(weeklyBucketForModel("claude-sonnet-5-5"), "unified7dSonnet");
+  assert.equal(modelFamily("claude-sonnet-5.5"), "sonnet");
+  assert.equal(weeklyBucketForModel("claude-sonnet-5.5"), "unified7dSonnet");
   assert.equal(weeklyBucketForModel("claude-sonnet-5"), "unified7dSonnet");
   assert.equal(modelFamily("claude-fable-5-1"), "fable");
   assert.equal(weeklyBucketForModel("claude-fable-5-1"), "unified7dFable");
@@ -818,6 +822,14 @@ test("normalizeAnthropicModelForOAuth normalizes modern aliases to canonical IDs
     "claude-opus-4-5-20251101",
   );
 
+  const normSonnet55 = normalizeAnthropicModelForOAuth(
+    Buffer.from(JSON.stringify({ model: "claude-sonnet-5.5" })),
+  );
+  assert.equal(
+    JSON.parse(normSonnet55.toString()).model,
+    "claude-sonnet-5-5",
+  );
+
   const normSonnet45 = normalizeAnthropicModelForOAuth(
     Buffer.from(JSON.stringify({ model: "claude-sonnet-4-5" })),
   );
@@ -846,6 +858,14 @@ test("resolveTargetModel handles Fable, Mythos, and current Opus 5.5 fallbacks",
   assert.equal(
     resolveTargetModel("claude-haiku-4-5", "codex"),
     "gpt-5.6-terra",
+  );
+  assert.equal(
+    resolveTargetModel("claude-sonnet-5-5", "codex"),
+    "gpt-5.6-sol",
+  );
+  assert.equal(
+    resolveTargetModel("claude-sonnet-5.5", "codex"),
+    "gpt-5.6-sol",
   );
 });
 
