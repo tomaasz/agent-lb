@@ -5566,32 +5566,49 @@ const SESSION_ID_SHAPE = /^[A-Za-z0-9._-]{1,128}$/;
  */
 export function extractPromptSummary(parsedBody) {
   if (!parsedBody) return null;
-  const messages = Array.isArray(parsedBody.messages)
-    ? parsedBody.messages
-    : null;
-  if (messages && messages.length > 0) {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m && m.role === "user") {
-        let text = "";
-        if (typeof m.content === "string") {
-          text = m.content;
-        } else if (Array.isArray(m.content)) {
-          for (const part of m.content) {
-            if (part?.type === "text" && typeof part.text === "string") {
-              text += (text ? " " : "") + part.text;
-            }
-          }
-        }
-        text = text.trim().replace(/\s+/g, " ");
-        if (text) return text.length > 80 ? text.slice(0, 77) + "..." : text;
+  const oneLine = (text) => {
+    const t = text.trim().replace(/\s+/g, " ");
+    if (!t) return null;
+    return t.length > 80 ? t.slice(0, 77) + "..." : t;
+  };
+  const textOf = (content) => {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    let text = "";
+    for (const part of content) {
+      // "text" is Chat/Anthropic, "input_text" is the Codex Responses API.
+      if (
+        (part?.type === "text" || part?.type === "input_text") &&
+        typeof part.text === "string"
+      ) {
+        text += (text ? " " : "") + part.text;
       }
     }
+    return text;
+  };
+  const lastUser = (items) => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const m = items[i];
+      if (m && m.role === "user") {
+        const summary = oneLine(textOf(m.content));
+        if (summary) return summary;
+      }
+    }
+    return null;
+  };
+  if (Array.isArray(parsedBody.messages)) {
+    const s = lastUser(parsedBody.messages);
+    if (s) return s;
   }
-  if (typeof parsedBody.prompt === "string") {
-    const p = parsedBody.prompt.trim().replace(/\s+/g, " ");
-    if (p) return p.length > 80 ? p.slice(0, 77) + "..." : p;
+  // Codex speaks the Responses API: the prompt is in `input`, not `messages`.
+  if (Array.isArray(parsedBody.input)) {
+    const s = lastUser(parsedBody.input);
+    if (s) return s;
+  } else if (typeof parsedBody.input === "string") {
+    const s = oneLine(parsedBody.input);
+    if (s) return s;
   }
+  if (typeof parsedBody.prompt === "string") return oneLine(parsedBody.prompt);
   return null;
 }
 
@@ -8831,7 +8848,16 @@ export async function forwardRequest(
       responseHeaders[key] = value;
     }
 
-    const contentType = upstreamRes.headers.get("content-type") || "";
+    let contentType = upstreamRes.headers.get("content-type") || "";
+    // chatgpt.com answers a native Codex /responses stream with NO content-type
+    // header. Taking that for a plain body buffered the whole SSE (no live
+    // output for the client) and skipped usage parsing, so Codex requests were
+    // counted but never got tokens or a feed entry. A client that asked for a
+    // stream and got a bodied 2xx with no type is a stream.
+    if (!contentType && upstreamRes.status < 400 && ctx.clientStream === true) {
+      contentType = "text/event-stream";
+      responseHeaders["content-type"] = contentType;
+    }
     const isStreaming = contentType.includes("text/event-stream");
     if (
       isStreaming &&
