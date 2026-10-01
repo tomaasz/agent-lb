@@ -3342,6 +3342,22 @@ export class AccountManager {
    */
   recordTokenUsage(accountIndex, sessionId, model, usage, details = {}) {
     if (!usage) return;
+    // OpenAI/Codex report cached input inside the input figure
+    // (`input_tokens_details.cached_tokens`), unlike Anthropic's separate cache
+    // fields. Split it out so cache shows as cache and In + Cache + Out = total.
+    const cached = usage.input_tokens_details?.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens;
+    if (Number.isFinite(cached) && cached > 0 && !Number.isFinite(usage.cache_read_input_tokens)) {
+      const inKey = Number.isFinite(usage.input_tokens) ? 'input_tokens' : 'prompt_tokens';
+      const total = Number.isFinite(usage.total_tokens)
+        ? usage.total_tokens
+        : (usage[inKey] || 0) + (usage.output_tokens ?? usage.completion_tokens ?? 0);
+      usage = {
+        ...usage,
+        [inKey]: Math.max(0, (usage[inKey] || 0) - cached),
+        cache_read_input_tokens: cached,
+        total_tokens: total,
+      };
+    }
     // The same resolver routing uses, so a token total and a routing decision
     // agree about which family a request belonged to. Resolved here rather than
     // at the call sites: they parse a wire format and have no business knowing

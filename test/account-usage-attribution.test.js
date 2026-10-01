@@ -278,3 +278,50 @@ describe('Account Limit Usage Attribution & Inspector', () => {
     assert.ok(html.includes('id="tblUsageRecent"'), 'Recent table must be in modal');
   });
 });
+
+describe('OpenAI/Codex cached input tokens', () => {
+  const acct = { name: 'codex', token: 't', provider: 'codex' };
+
+  it('reads cached_tokens from Responses usage as cache and keeps the total', () => {
+    const mgr = new AccountManager([acct]);
+    mgr.recordTokenUsage(0, 's1', 'gpt-6.1-sol', {
+      input_tokens: 200000, output_tokens: 500, total_tokens: 200500,
+      input_tokens_details: { cached_tokens: 180000 },
+    }, { client: 'c' });
+    const r = mgr.accounts[0].usage.recent[0];
+    assert.equal(r.cacheTokens, 180000);
+    assert.equal(r.inputTokens, 20000);
+    assert.equal(r.outputTokens, 500);
+    assert.equal(r.totalTokens, 200500);
+    assert.equal(mgr.accounts[0].usage.totalCacheReadTokens, 180000);
+  });
+
+  it('reads cached_tokens from Chat usage (prompt_tokens_details)', () => {
+    const mgr = new AccountManager([acct]);
+    mgr.recordTokenUsage(0, null, 'gpt-5.5', {
+      prompt_tokens: 1000, completion_tokens: 10,
+      prompt_tokens_details: { cached_tokens: 600 },
+    }, {});
+    const r = mgr.accounts[0].usage.recent[0];
+    assert.equal(r.cacheTokens, 600);
+    assert.equal(r.inputTokens, 400);
+  });
+
+  it('leaves Anthropic usage untouched', () => {
+    const mgr = new AccountManager([acct]);
+    mgr.recordTokenUsage(0, null, 'claude-opus-5-5', {
+      input_tokens: 5, output_tokens: 7, cache_read_input_tokens: 100,
+    }, {});
+    const r = mgr.accounts[0].usage.recent[0];
+    assert.equal(r.inputTokens, 5);
+    assert.equal(r.cacheTokens, 100);
+  });
+
+  it('does not report negative input when cached exceeds input', () => {
+    const mgr = new AccountManager([acct]);
+    mgr.recordTokenUsage(0, null, 'gpt-5.5', {
+      input_tokens: 10, output_tokens: 1, input_tokens_details: { cached_tokens: 50 },
+    }, {});
+    assert.equal(mgr.accounts[0].usage.recent[0].inputTokens, 0);
+  });
+});
