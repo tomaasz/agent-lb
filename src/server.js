@@ -1726,7 +1726,7 @@ export function createProxyServer(
             description: "Highest reasoning effort for the hardest problems",
           },
         ];
-        const modelsList = rawModelsList.map((m) => {
+        const modelsList = rawModelsList.map((m, idx) => {
           const maxInput = m.max_input_tokens || m.context_window || 1000000;
           const maxOutput = m.max_tokens || m.max_output_tokens || 128000;
           return {
@@ -1737,6 +1737,7 @@ export function createProxyServer(
             display_name: m.display_name || m.name,
             slug: m.id,
             description: m.description || m.name,
+            priority: typeof m.priority === "number" ? m.priority : idx + 1,
             context_window: m.context_window || maxInput,
             max_input_tokens: m.max_input_tokens || m.context_window || 1000000,
             max_tokens: maxOutput,
