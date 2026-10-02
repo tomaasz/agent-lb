@@ -1113,6 +1113,45 @@ export function createProxyServer(
             ],
           },
           {
+            id: "gpt-6.1-sol",
+            name: "GPT-6.1 Sol",
+            display_name: "GPT-6.1 Sol",
+            description: "Built to power complex coding and agentic workflows",
+            context_window: 1050000,
+            max_input_tokens: 922000,
+            max_tokens: 128000,
+            latency: "fast",
+            default_effort: "medium",
+            reliable_knowledge_cutoff: "2026-06",
+            pricing: {
+              input_per_mtok: 2,
+              cached_input_per_mtok: 0.1,
+              cache_write_per_mtok: 2.5,
+              output_per_mtok: 10,
+            },
+            supported_reasoning_levels: [
+              { effort: "none", description: "Disable reasoning" },
+              {
+                effort: "low",
+                description: "Fast responses with lighter reasoning",
+              },
+              {
+                effort: "medium",
+                description: "Balances speed with reasoning",
+              },
+              {
+                effort: "high",
+                description: "Deeper reasoning for complex problems",
+              },
+              { effort: "xhigh", description: "Maximum reasoning effort" },
+              {
+                effort: "max",
+                description:
+                  "Highest reasoning effort for the hardest problems",
+              },
+            ],
+          },
+          {
             id: "gpt-6-sol",
             name: "GPT-6 Sol",
             display_name: "GPT-6 Sol",
@@ -3651,6 +3690,8 @@ export function createProxyServer(
               if (isOauth) {
                 if (effectiveModel === "gpt-6") {
                   effectiveModel = "gpt-6-astra";
+                } else if (effectiveModel === "gpt-6.1") {
+                  effectiveModel = "gpt-6.1-sol";
                 } else if (
                   effectiveModel === "gpt-5.6" ||
                   effectiveModel === "gpt-5" ||
@@ -9871,6 +9912,10 @@ export function normalizeCodexModelForOAuth(body) {
       const trimmed = obj.model.trim();
       if (trimmed === "gpt-6") {
         obj.model = "gpt-6-astra";
+        return Buffer.from(JSON.stringify(obj), "utf8");
+      }
+      if (trimmed === "gpt-6.1") {
+        obj.model = "gpt-6.1-sol";
         return Buffer.from(JSON.stringify(obj), "utf8");
       }
       if (

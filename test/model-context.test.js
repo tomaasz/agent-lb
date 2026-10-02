@@ -903,6 +903,21 @@ test("OpenAI and Codex models endpoint exposes accurate parameters matching docu
     assert.equal(astra.pricing.output_per_mtok, 50);
     assert.ok(astra.supported_reasoning_levels.some((l) => l.effort === "max"));
 
+    // GPT-6.1 Sol
+    const gpt61Sol = findModel("gpt-6.1-sol");
+    assert.ok(gpt61Sol, "gpt-6.1-sol is present");
+    assert.equal(gpt61Sol.context_window, 1050000);
+    assert.equal(gpt61Sol.max_tokens, 128000);
+    assert.equal(gpt61Sol.latency, "fast");
+    assert.equal(gpt61Sol.pricing.input_per_mtok, 2);
+    assert.equal(gpt61Sol.pricing.output_per_mtok, 10);
+    assert.ok(
+      gpt61Sol.supported_reasoning_levels.some((l) => l.effort === "none"),
+    );
+    assert.ok(
+      gpt61Sol.supported_reasoning_levels.some((l) => l.effort === "max"),
+    );
+
     // GPT-6 Sol
     const gpt6Sol = findModel("gpt-6-sol");
     assert.ok(gpt6Sol, "gpt-6-sol is present");

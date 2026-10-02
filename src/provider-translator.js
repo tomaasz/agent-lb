@@ -44,6 +44,8 @@ export const MODEL_FALLBACK_MAP = {
   'claude-3-haiku-20240307': 'gpt-4o-mini',
   // OpenAI -> Claude
   'gpt-6-astra': 'claude-opus-5-5',
+  'gpt-6.1-sol': 'claude-opus-5-5',
+  'gpt-6.1': 'claude-opus-5-5',
   'gpt-6-sol': 'claude-opus-5-5',
   'gpt-6-luna': 'claude-haiku-4-5-20251001',
   'gpt-6': 'claude-opus-5-5',
@@ -771,6 +773,8 @@ export function translateChatCompletionsToCodexResponses(body, targetModel = 'gp
     effectiveModel = 'gpt-5.6-terra';
   } else if (effectiveModel === 'gpt-6') {
     effectiveModel = 'gpt-6-astra';
+  } else if (effectiveModel === 'gpt-6.1') {
+    effectiveModel = 'gpt-6.1-sol';
   }
 
   const input = [];

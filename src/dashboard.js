@@ -7214,6 +7214,7 @@ ${SHARED_HELPERS}
     return [
       // GPT-6 Family
       { id: 'gpt-6-astra', name: isEn ? 'GPT-6 Astra (Flagship / Complex reasoning)' : 'GPT-6 Astra (Flagowy / Złożone wnioskowanie)' },
+      { id: 'gpt-6.1-sol', name: isEn ? 'GPT-6.1 Sol (Flagship Coding & Agentic)' : 'GPT-6.1 Sol (Flagowe kodowanie i agenty)' },
       { id: 'gpt-6-sol', name: isEn ? 'GPT-6 Sol (Coding & Agentic)' : 'GPT-6 Sol (Kodowanie i agenty)' },
       { id: 'gpt-6-luna', name: isEn ? 'GPT-6 Luna (Efficient / High-volume)' : 'GPT-6 Luna (Wydajny / Duży wolumen)' },
       // GPT-5.6 Family
