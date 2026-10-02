@@ -1738,6 +1738,46 @@ export function createProxyServer(
             slug: m.id,
             description: m.description || m.name,
             priority: typeof m.priority === "number" ? m.priority : idx + 1,
+            support_verbosity: m.support_verbosity ?? true,
+            default_verbosity: m.default_verbosity || "low",
+            apply_patch_tool_type: m.apply_patch_tool_type || "freeform",
+            web_search_tool_type: m.web_search_tool_type || "text_and_image",
+            truncation_policy: m.truncation_policy || {
+              mode: "tokens",
+              limit: 10000,
+            },
+            supports_image_detail_original:
+              m.supports_image_detail_original ?? true,
+            additional_speed_tiers: m.additional_speed_tiers || [],
+            service_tiers: m.service_tiers || [],
+            availability_nux: m.availability_nux || null,
+            upgrade: m.upgrade || null,
+            model_messages: m.model_messages || null,
+            include_skills_usage_instructions:
+              m.include_skills_usage_instructions ?? false,
+            include_plugin_usage_instructions:
+              m.include_plugin_usage_instructions ?? false,
+            include_apps_usage_instructions:
+              m.include_apps_usage_instructions ?? false,
+            default_reasoning_summary: m.default_reasoning_summary || "none",
+            comp_hash: m.comp_hash || "3000",
+            effective_context_window_percent:
+              m.effective_context_window_percent || 95,
+            experimental_supported_tools: m.experimental_supported_tools || [
+              "send_user_message_async",
+              "clock",
+            ],
+            input_modalities: m.input_modalities || ["text", "image"],
+            supports_search_tool: m.supports_search_tool ?? true,
+            supports_experimental_context: m.supports_experimental_context ?? false,
+            use_responses_lite: m.use_responses_lite ?? true,
+            node_repl_auto_review_required:
+              m.node_repl_auto_review_required ?? true,
+            node_repl_disabled: m.node_repl_disabled ?? false,
+            tool_mode: m.tool_mode || "code_mode_only",
+            multi_agent_version: m.multi_agent_version || "v2",
+            multi_agent_reasoning_effort:
+              m.multi_agent_reasoning_effort || "xhigh",
             context_window: m.context_window || maxInput,
             max_input_tokens: m.max_input_tokens || m.context_window || 1000000,
             max_tokens: maxOutput,
