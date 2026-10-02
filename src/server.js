@@ -1737,6 +1737,7 @@ export function createProxyServer(
             display_name: m.display_name || m.name,
             slug: m.id,
             description: m.description || m.name,
+            base_instructions: m.base_instructions || m.description || m.name,
             priority: typeof m.priority === "number" ? m.priority : idx + 1,
             support_verbosity: m.support_verbosity ?? true,
             default_verbosity: m.default_verbosity || "low",
