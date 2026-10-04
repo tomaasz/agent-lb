@@ -136,6 +136,10 @@ import {
 } from "./provider-translator.js";
 import { FairShareController } from "./fair-share.js";
 import { ToolCallDedupeCache } from "./tool-call-dedupe.js";
+import {
+  tryFastPathOptimization,
+  sendFastPathResponse,
+} from "./fast-path-optimizations.js";
 import { sameIdentity, findUpsertTarget } from "./identity.js";
 import { mintAccountId } from "./account-id.js";
 import { FleetHealthChecker } from "./health-checker.js";
@@ -2219,7 +2223,7 @@ export function createProxyServer(
         const hasAdminKey = Boolean(config.proxy?.apiKey);
         const isMaster =
           clientKey && safeKeyEqual(clientKey, config.proxy.apiKey);
-        const clientAuth = clientKey
+        const _clientAuth = clientKey
           ? resolveClientAuth(config.proxy, clientKey)
           : null;
         if (!hasAdminKey || isMaster) {
@@ -6354,6 +6358,35 @@ export function createProxyRequestListener({
                 error: { type: "permission_error", message: modelCheck.error },
               }),
             );
+            return;
+          }
+        }
+
+        if (requestProvider === "anthropic") {
+          const fastOpt = tryFastPathOptimization(
+            parsedBody,
+            config.fastPathOptimizations,
+          );
+          if (fastOpt) {
+            fairShare.release(keyId);
+            res.off("close", onRequestClose);
+            if (requestTimer) clearTimeout(requestTimer);
+            accountManager.endSession(sessionId, true);
+            metricsFor(config).observeFastPath(fastOpt.type);
+            console.log(
+              `[AgentLB] [FastPath] Intercepted ${fastOpt.type} — answered locally (saved upstream tokens)`,
+            );
+            if (openEntry)
+              hooks.onRequestEnd?.(reqId, {
+                method: req.method,
+                path: req.url,
+                status: 200,
+                model: parsedBody.model || "claude-opt",
+                sessionId,
+                client,
+              });
+            openEntry = null;
+            sendFastPathResponse(res, parsedBody, fastOpt);
             return;
           }
         }

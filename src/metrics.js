@@ -13,6 +13,10 @@ export class ProxyMetrics {
     this.responses = new Map();
     this.duration = { count: 0, sum: 0, buckets: buckets.map(() => 0) };
     this.headers = { count: 0, sum: 0, buckets: buckets.map(() => 0) };
+    this.fastPath = new Map();
+  }
+  observeFastPath(type) {
+    this.fastPath.set(type, (this.fastPath.get(type) || 0) + 1);
   }
   start(res) {
     const started = performance.now(); this.active++;
@@ -58,6 +62,10 @@ export class ProxyMetrics {
     }
     lines.push('# TYPE agentlb_alert gauge');
     for (const alert of this.alerts()) lines.push(`agentlb_alert{name="${alert.name}"} ${Number(alert.firing)}`);
+    if (this.fastPath.size > 0) {
+      lines.push('# TYPE agentlb_fast_path_total counter');
+      for (const [type, count] of this.fastPath) lines.push(`agentlb_fast_path_total{type="${type}"} ${count}`);
+    }
     return lines.join('\n') + '\n';
   }
 }

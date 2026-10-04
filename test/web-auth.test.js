@@ -6,9 +6,7 @@ import {
   serializeLogoutCookie,
   verifySession,
   verifyPassword,
-  validateResetCode,
   completePasswordReset,
-  hashPassword,
 } from '../src/web-auth.js';
 
 test('Session cookie creation and verification', () => {

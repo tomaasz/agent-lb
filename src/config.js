@@ -116,6 +116,14 @@ export function createDefaultConfig() {
       trafficGracePeriodSeconds: 900,
       errorBackoffSeconds: 3600,
     },
+    fastPathOptimizations: {
+      enabled: true,
+      quotaProbe: true,
+      prefixDetection: true,
+      titleGeneration: true,
+      suggestionMode: true,
+      filepathExtraction: true,
+    },
     sessionTitles: { enabled: false, width: 18 },
     eventLogging: 'hide',
     blockedModels: [],
@@ -142,6 +150,16 @@ export async function loadConfig() {
         intervalSeconds: 900,
         trafficGracePeriodSeconds: 900,
         errorBackoffSeconds: 3600,
+      };
+    }
+    if (config.fastPathOptimizations == null) {
+      config.fastPathOptimizations = {
+        enabled: true,
+        quotaProbe: true,
+        prefixDetection: true,
+        titleGeneration: true,
+        suggestionMode: true,
+        filepathExtraction: true,
       };
     }
     // Everything downstream pairs config entries to running accounts by entry id,
