@@ -338,9 +338,13 @@ function stripJsonComments(str) {
   return cleaned;
 }
 
+// One backup per file, taken the first time this installer touches it, so it
+// holds the user's original (pre-AgentLB) content.  Re-runs used to add a new
+// timestamped copy — with the API key inside — on every invocation.
 function backupPath(filePath) {
   if (!fs.existsSync(filePath)) return null;
-  const backup = `${filePath}.bak-${Date.now()}`;
+  const backup = `${filePath}.bak-agent-lb`;
+  if (fs.existsSync(backup)) return backup;
   try {
     fs.copyFileSync(filePath, backup, fs.constants.COPYFILE_EXCL);
     // The source may predate this installer and be world-readable.  Backups
@@ -370,8 +374,82 @@ function writeTextAtomic(filePath, content, mode = 0o600) {
 }
 
 function writeJsonSafe(filePath, value, mode = 0o600) {
+  const content = JSON.stringify(value, null, 2) + "\n";
+  try {
+    if (fs.readFileSync(filePath, "utf8") === content) return;
+  } catch {}
   backupPath(filePath);
-  writeTextAtomic(filePath, JSON.stringify(value, null, 2) + "\n", mode);
+  writeTextAtomic(filePath, content, mode);
+}
+
+// Every place the installer may write Claude Code extension settings:
+// desktop VS Code plus VS Code Server (Remote-SSH / WSL), stable and insiders.
+function vscodeSettingsDirs() {
+  const home = os.homedir();
+  const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+  const dirs = [
+    isWin
+      ? path.join(appData, "Code", "User")
+      : isMac
+        ? path.join(home, "Library", "Application Support", "Code", "User")
+        : path.join(home, ".config", "Code", "User"),
+  ];
+  for (const serverBase of [".vscode-server", ".vscode-server-insiders"]) {
+    dirs.push(path.join(home, serverBase, "data", "Machine"));
+    dirs.push(path.join(home, serverBase, "data", "User"));
+  }
+  return dirs;
+}
+
+// Codex configuration.  The codex-lb provider is made the top-level default,
+// so a plain `codex` goes through AgentLB without exporting OPENAI_BASE_URL /
+// OPENAI_API_KEY for the whole shell (that silently redirected every other
+// OpenAI client too).  Codex >= 0.160 rejects `profile = "…"` and
+// `[profiles.<name>]` in config.toml when --profile is used; profiles live in
+// <CODEX_HOME>/<name>.config.toml, so `--profile codexlb` gets that file.
+const CODEX_MODEL = "gpt-5.6-sol";
+const CODEX_PROFILE_HEADER = "# zarzadzane przez setup AgentLB (profil codexlb)";
+
+function stripCodexManagedBlocks(text) {
+  const out = [];
+  let skip = false;
+  for (const line of text.split(/\r?\n/)) {
+    if (/^# >>> codexlb/.test(line)) {
+      skip = true;
+      continue;
+    }
+    if (/^# <<< codexlb/.test(line)) {
+      skip = false;
+      continue;
+    }
+    if (!skip) out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+// Returns { toml, ownDefault }: ownDefault is true when the user already picks
+// a default provider/profile themselves, which the installer then leaves alone.
+function buildCodexToml(original, url) {
+  const rest = stripCodexManagedBlocks(original).replace(/^\n+/, "");
+  const firstTable = rest.search(/^\s*\[/m);
+  const topLevel = firstTable === -1 ? rest : rest.slice(0, firstTable);
+  const ownDefault = /^\s*(profile|model_provider)\s*=/m.test(topLevel);
+  let head = "";
+  if (!ownDefault) {
+    head = "# >>> codexlb-default >>> (zarzadzane przez setup)\n";
+    head += 'model_provider = "codex-lb"\n';
+    if (!/^\s*model\s*=/m.test(topLevel)) head += `model = "${CODEX_MODEL}"\n`;
+    head += "# <<< codexlb-default <<<\n\n";
+  }
+  let toml = head + (rest.trim() ? rest.replace(/\s*$/, "\n") : "");
+  if (!/^\s*\[model_providers\.codex-lb\]/m.test(rest)) {
+    toml += `\n# >>> codexlb >>> (zarzadzane przez setup)\n[model_providers.codex-lb]\nname = "openai"\nbase_url = "${url}/backend-api/codex"\nwire_api = "responses"\nsupports_websockets = false\nrequires_openai_auth = true\nenv_key = "CODEX_LB_API_KEY"\n# <<< codexlb <<<\n`;
+  }
+  return { toml, ownDefault };
+}
+
+function codexProfileFile() {
+  return `${CODEX_PROFILE_HEADER}\nmodel = "${CODEX_MODEL}"\nmodel_provider = "codex-lb"\nmodel_reasoning_effort = "xhigh"\n`;
 }
 
 function shQuote(value) {
@@ -449,15 +527,10 @@ function uninstallClientSettings() {
     }
     writeJsonSafe(claudePath, settings);
   }
-  const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
-  const vscodeDir = isWin
-    ? path.join(appData, "Code", "User")
-    : isMac
-      ? path.join(home, "Library", "Application Support", "Code", "User")
-      : path.join(home, ".config", "Code", "User");
-  const vscodePath = path.join(vscodeDir, "settings.json");
-  const vs = safeReadJson(vscodePath);
-  if (vs) {
+  for (const vscodeDir of vscodeSettingsDirs()) {
+    const vscodePath = path.join(vscodeDir, "settings.json");
+    const vs = safeReadJson(vscodePath);
+    if (!vs) continue;
     if (Array.isArray(vs["claudeCode.environmentVariables"])) {
       let envVars = vs["claudeCode.environmentVariables"].filter(
         (e) =>
@@ -485,30 +558,17 @@ function uninstallClientSettings() {
     delete codex.base_url;
     writeJsonSafe(codexPath, codex, 0o600);
   }
+  const codexProfilePath = path.join(home, ".codex", "codexlb.config.toml");
+  try {
+    if (fs.readFileSync(codexProfilePath, "utf-8").startsWith(CODEX_PROFILE_HEADER))
+      fs.unlinkSync(codexProfilePath);
+  } catch {}
   const codexTomlPath = path.join(home, ".codex", "config.toml");
   if (fs.existsSync(codexTomlPath)) {
     try {
-      const tomlLines = fs.readFileSync(codexTomlPath, "utf-8").split(/\r?\n/);
-      const filtered = [];
-      let skipBlock = false;
-      for (const line of tomlLines) {
-        if (/^# >>> codexlb/.test(line)) {
-          skipBlock = true;
-          continue;
-        }
-        if (/^# <<< codexlb/.test(line)) {
-          skipBlock = false;
-          continue;
-        }
-        if (skipBlock) continue;
-        filtered.push(line);
-      }
       fs.writeFileSync(
         codexTomlPath,
-        filtered
-          .join("\n")
-          .replace(/\n{3,}/g, "\n\n")
-          .trim() + "\n",
+        stripCodexManagedBlocks(fs.readFileSync(codexTomlPath, "utf-8")).trim() + "\n",
       );
     } catch (err) {
       console.warn(
@@ -546,6 +606,42 @@ function uninstallClientSettings() {
   console.log(
     "Usunięto ustawienia Agent-LB. Plik .credentials.json pozostawiono bez zmian.",
   );
+  const legacy = legacyBackups();
+  if (legacy.length > 0) {
+    console.log(
+      "\nStare kopie zapasowe z poprzednich wersji instalatora mogą zawierać klucz AgentLB.\n" +
+        "Nie usuwam ich automatycznie — przejrzyj i usuń ręcznie:",
+    );
+    for (const file of legacy) console.log(`  ${file}`);
+  }
+}
+
+// Timestamped copies (<file>.bak-<ms>) written by earlier installer versions.
+function legacyBackups() {
+  const home = os.homedir();
+  const managed = [
+    path.join(home, ".claude", "settings.json"),
+    path.join(home, ".claude", ".credentials.json"),
+    path.join(home, ".config", "agent-lb.env"),
+    path.join(home, ".codex", "config.json"),
+    path.join(home, ".codex", "config.toml"),
+    path.join(home, ".bashrc"),
+    path.join(home, ".zshrc"),
+    ...vscodeSettingsDirs().map((d) => path.join(d, "settings.json")),
+  ];
+  const found = [];
+  for (const file of managed) {
+    let names;
+    try {
+      names = fs.readdirSync(path.dirname(file));
+    } catch {
+      continue;
+    }
+    const re = new RegExp(`^${path.basename(file).replace(/\./g, "\\.")}\\.bak-\\d+$`);
+    for (const name of names)
+      if (re.test(name)) found.push(path.join(path.dirname(file), name));
+  }
+  return found.sort();
 }
 
 function safeReadJson(filePath) {
@@ -622,23 +718,10 @@ function ensureCliPackage(cmdName, pkgName, title) {
     execSync(`npm install -g ${pkgName}`, { stdio: "inherit", timeout: 90000 });
     console.log(`[OK] Pomyślnie zainstalowano ${title} (${cmdName}).`);
   } catch (err) {
-    if (!isWin && hasCommand("sudo")) {
-      try {
-        console.log(
-          `  -> Wymagane uprawnienia administratora do zapisu w globalnym katalogu npm (sudo)...`,
-        );
-        execSync(`sudo npm install -g ${pkgName}`, {
-          stdio: "inherit",
-          timeout: 90000,
-        });
-        console.log(
-          `[OK] Pomyślnie zainstalowano ${title} (${cmdName}) przez sudo.`,
-        );
-        return;
-      } catch {}
-    }
+    // No silent sudo: installing system-wide is the user's call.
     console.warn(
-      `  [Uwaga] Nie udało się zainstalować ${pkgName} automatycznie: ${err.message}. Zainstaluj ręcznie: npm install -g ${pkgName}`,
+      `  [Uwaga] Nie udało się zainstalować ${pkgName} bez uprawnień administratora: ${err.message}.\n` +
+        `  Zainstaluj ręcznie: ${isWin ? "" : "sudo "}npm install -g ${pkgName}`,
     );
   }
 }
@@ -796,26 +879,10 @@ async function main() {
     console.log("--------------------------------------------------------\n");
   }
 
-  // 3. Zabezpieczenie sesji OAuth
+  // 3. Sesja OAuth — .credentials.json jest tylko czytany, nigdy zmieniany,
+  // więc nie kopiujemy go (każda kopia to kolejny plik z tokenami logowania).
   const credsPath = path.join(os.homedir(), ".claude", ".credentials.json");
   const oauthSession = hasOAuthSession(credsPath);
-  if (fs.existsSync(credsPath)) {
-    try {
-      const credsContent = fs.readFileSync(credsPath, "utf-8");
-      if (
-        credsContent.includes("accessToken") ||
-        credsContent.includes("claude.ai")
-      ) {
-        const bakPath = `${credsPath}.bak-${Date.now()}`;
-        fs.copyFileSync(credsPath, bakPath);
-        console.log(
-          `[OK] Wykryto sesję logowania OAuth w .credentials.json — utworzono kopię zapasową (${path.basename(bakPath)}).`,
-        );
-      }
-    } catch (_e) {
-      // Ignoruj jeśli nie udało się skopiować
-    }
-  }
   if (oauthSession) {
     console.log(
       "[OK] Zachowuję tryb OAuth Claude Code; klucz proxy przekazuję przez ANTHROPIC_CUSTOM_HEADERS.",
@@ -857,29 +924,8 @@ async function main() {
 
   // 5. Konfiguracja oficjalnego rozszerzenia Claude Code w VS Code
   if (!skipVscode) {
-    let vscodeSettingsDir = null;
-    if (isWin) {
-      const appData =
-        process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
-      vscodeSettingsDir = path.join(appData, "Code", "User");
-    } else if (isMac) {
-      vscodeSettingsDir = path.join(
-        os.homedir(),
-        "Library",
-        "Application Support",
-        "Code",
-        "User",
-      );
-    } else {
-      vscodeSettingsDir = path.join(os.homedir(), ".config", "Code", "User");
-    }
-
-    const vscodeDirs = [];
-    if (vscodeSettingsDir) vscodeDirs.push(vscodeSettingsDir);
-    for (const serverBase of [".vscode-server", ".vscode-server-insiders"]) {
-      vscodeDirs.push(path.join(os.homedir(), serverBase, "data", "Machine"));
-      vscodeDirs.push(path.join(os.homedir(), serverBase, "data", "User"));
-    }
+    const vscodeDirs = vscodeSettingsDirs();
+    const vscodeSettingsDir = vscodeDirs[0];
 
     let configuredAny = false;
     for (const dir of vscodeDirs) {
@@ -973,16 +1019,31 @@ async function main() {
         `[OK] Skonfigurowano ${codexConfigFile} (Codex CLI przekierowane na AgentLB).`,
       );
 
-      let existingToml = fs.existsSync(codexTomlFile)
+      const originalToml = fs.existsSync(codexTomlFile)
         ? fs.readFileSync(codexTomlFile, "utf-8")
         : "";
-      if (!existingToml.includes("model_providers.codex-lb")) {
-        backupPath(codexTomlFile);
-        const tomlBlock = `\n# >>> codexlb >>> (zarzadzane przez setup)\n[model_providers.codex-lb]\nname = "openai"\nbase_url = "${targetUrl}/backend-api/codex"\nwire_api = "responses"\nsupports_websockets = false\nrequires_openai_auth = true\nenv_key = "CODEX_LB_API_KEY"\n\n[profiles.codexlb]\nmodel = "gpt-5.6-sol"\nmodel_provider = "codex-lb"\nmodel_reasoning_effort = "xhigh"\n# <<< codexlb <<<\n`;
-        fs.appendFileSync(codexTomlFile, tomlBlock, "utf-8");
+      const { toml, ownDefault } = buildCodexToml(originalToml, targetUrl);
+      if (ownDefault) {
         console.log(
-          `[OK] Skonfigurowano ${codexTomlFile} (profil codexlb dla Codex CLI).`,
+          `[INFO] ${codexTomlFile} ma już własny domyślny profil/dostawcę — nie zmieniam go. Przez AgentLB: codex --profile codexlb`,
         );
+      }
+      if (toml !== originalToml) {
+        backupPath(codexTomlFile);
+        writeTextAtomic(codexTomlFile, toml, 0o600);
+        console.log(
+          `[OK] Skonfigurowano ${codexTomlFile} (dostawca codex-lb${ownDefault ? "" : " jako domyślny"}).`,
+        );
+      }
+      const profileFile = path.join(codexDir, "codexlb.config.toml");
+      const existingProfile = fs.existsSync(profileFile)
+        ? fs.readFileSync(profileFile, "utf-8")
+        : null;
+      if (existingProfile === null || existingProfile.startsWith(CODEX_PROFILE_HEADER)) {
+        if (existingProfile !== codexProfileFile())
+          writeTextAtomic(profileFile, codexProfileFile(), 0o600);
+      } else {
+        console.log(`[INFO] ${profileFile} należy do użytkownika — nie zmieniam go.`);
       }
     } catch (err) {
       console.warn(
@@ -1010,10 +1071,12 @@ async function main() {
               `if ($hdrLines.Count -gt 0) { [Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', ($hdrLines -join [char]10), 'User') } ` +
               `else { [Environment]::SetEnvironmentVariable('ANTHROPIC_CUSTOM_HEADERS', $null, 'User') } }`);
         winCmd += `; [Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', '${psQuote(apiKey)}', 'User')`;
-        winCmd += `; [Environment]::SetEnvironmentVariable('OPENAI_API_KEY', '${psQuote(apiKey)}', 'User')`;
         winCmd += `; [Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', '${psQuote(apiKey)}', 'User')`;
-        winCmd += `; [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', '${targetUrl}/backend-api/codex', 'User')`;
-        winCmd += `; [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', '${targetUrl}/v1', 'User')`;
+        // Earlier versions exported OPENAI_* globally; drop them only when
+        // they still hold exactly what this installer once wrote there.
+        winCmd += `; if ([Environment]::GetEnvironmentVariable('OPENAI_API_KEY', 'User') -eq '${psQuote(apiKey)}') { [Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $null, 'User') }`;
+        winCmd += `; if ([Environment]::GetEnvironmentVariable('OPENAI_BASE_URL', 'User') -eq '${psQuote(targetUrl)}/v1') { [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', $null, 'User') }`;
+        winCmd += `; if ([Environment]::GetEnvironmentVariable('CODEX_BASE_URL', 'User') -eq '${psQuote(targetUrl)}/backend-api/codex') { [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', $null, 'User') }`;
         execFileSync("powershell.exe", ["-NoProfile", "-Command", winCmd]);
         console.log(
           `[OK] Zapisano zmienne środowiskowe w profilu użytkownika Windows.`,
@@ -1030,31 +1093,19 @@ async function main() {
       try {
         if (!fs.existsSync(configDir))
           fs.mkdirSync(configDir, { recursive: true });
-        let envContent = `# Agent-LB environment configuration\nexport ANTHROPIC_BASE_URL=${shQuote(targetUrl)}\n`;
+        // Claude Code reads its proxy settings from ~/.claude/settings.json and
+        // Codex from the codexlb profile, so the shell only needs the key under
+        // AgentLB-specific names.  Generic ANTHROPIC_* / OPENAI_* exports
+        // redirected every SDK script and tool on the host to the proxy.
+        let envContent = "# Agent-LB environment configuration\n";
         if (oauthSession) {
           envContent +=
             "unset ANTHROPIC_API_KEY  # preserve Claude Code OAuth session\n";
-          const customHeaders = proxyCustomHeaders(
-            apiKey,
-            process.env.ANTHROPIC_CUSTOM_HEADERS,
-          );
-          envContent += `export ANTHROPIC_CUSTOM_HEADERS=${shQuote(customHeaders)}\n`;
-        } else {
-          envContent += `export ANTHROPIC_API_KEY=${shQuote(apiKey)}\n`;
-          const rem = removeCustomHeader(
-            process.env.ANTHROPIC_CUSTOM_HEADERS,
-            "x-api-key",
-          );
-          if (rem)
-            envContent += `export ANTHROPIC_CUSTOM_HEADERS=${shQuote(rem)}\n`;
-          else envContent += "unset ANTHROPIC_CUSTOM_HEADERS\n";
         }
         envContent += `export CODEX_LB_API_KEY=${shQuote(apiKey)}\n`;
-        envContent += `export OPENAI_API_KEY=${shQuote(apiKey)}\n`;
         envContent += `export AGENT_LB_API_KEY=${shQuote(apiKey)}\n`;
-        envContent += `export CODEX_BASE_URL=${shQuote(`${targetUrl}/backend-api/codex`)}\n`;
-        envContent += `export OPENAI_BASE_URL=${shQuote(`${targetUrl}/v1`)}\n`;
-        backupPath(envFile);
+        // The env file is wholly owned by the installer and holds only the
+        // key, so it gets no backup copy.
         writeTextAtomic(envFile, envContent, 0o600);
         console.log(`[OK] Zapisano plik środowiskowy ${envFile}.`);
 
@@ -1136,9 +1187,9 @@ async function main() {
   );
   if (setupCodex || fs.existsSync(codexDir)) {
     console.log(
-      "4. OpenAI Codex CLI: skonfigurowano bazowy URL na " +
+      "4. OpenAI Codex CLI: dostawca codex-lb (" +
         targetUrl +
-        "/backend-api/codex.",
+        "/backend-api/codex) — 'codex' lub 'codex --profile codexlb'; klucz z CODEX_LB_API_KEY w nowym terminalu.",
     );
   }
 }

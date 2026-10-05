@@ -50,6 +50,14 @@ bash /tmp/alb-setup.sh --lang pl </dev/null     # klucz bierze z AGENT_LB_API_KE
 rm -f /tmp/alb-setup.sh
 ```
 
+Co zmienia: `~/.claude/settings.json` (adres proxy + klucz dla Claude Code), ustawienia rozszerzenia
+Claude Code w VS Code, dostawcę `codex-lb` w `~/.codex/config.toml` (jako domyślny, jeśli użytkownik nie ma
+własnego — wtedy zwykłe `codex` idzie przez AgentLB), profil `~/.codex/codexlb.config.toml` (format Codex ≥ 0.160;
+stare `[profiles.codexlb]` w config.toml jest usuwane, bo nowy Codex odrzuca je przy `--profile`) oraz `~/.config/agent-lb.env` wczytywany z `.bashrc` — tylko `AGENT_LB_API_KEY`
+i `CODEX_LB_API_KEY`. Skrypt **nie** ustawia już globalnie `OPENAI_*` ani `ANTHROPIC_*` (przekierowywały
+na proxy każde narzędzie korzystające z tych SDK), nie zabija procesów Codex i nie instaluje pakietów
+systemowych bez `--install-node`. Kopię zapasową każdego pliku robi tylko raz (`<plik>.bak-agent-lb`).
+
 Potem:
 - zaktualizuj **każdą** instalację z Kroku 0: dla każdej ścieżki z `type -a claude` uruchom `<ścieżka> update`.
   Stare wersje (< 2.1.280) rozwiązują skrót `opus` na starszego Opusa 5 i nie znają `claude-opus-5-5` —
@@ -76,6 +84,8 @@ na piaskownicę (strażnik systemd + `.bashrc` przywraca to po każdej aktualiza
 - `jcode telemetry status` z katalogu projektu → `disabled`;
 - w katalogu projektu: `jcode --shell -- -c 'git status; ls -A ~; env | grep -ci key'`
   → „not a git repository”, w home tylko `.jcode`, `0`;
+- pliki z sekretami w projekcie (`.env`, `.env.*`, `.envrc`; bez `.env.example` itp.) są w piaskownicy
+  puste: jeśli projekt ma `.env`, to `jcode --shell -- -c 'wc -c .env'` → `0 .env`;
 - jeśli wcześniej działał serwer jcode **poza** piaskownicą — zatrzymaj go (tylko ten PID). Klient jcode
   łączy się z już działającym serwerem, więc taki serwer „przejmuje” nowe sesje i używa kluczy hosta
   (objaw: w nagłówku `api-key:openai` zamiast `agentlb`, błędy 404 / `anyOf`).

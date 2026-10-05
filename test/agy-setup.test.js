@@ -77,6 +77,6 @@ describe('agybridge setup (real AGY runs locally, not through the proxy)', () =>
   it('dashboard offers an AGY quick-install button', () => {
     const html = renderDashboardHtml();
     assert.ok(html.includes('id="btnQuickToolAgy"'));
-    assert.ok(html.includes("/agy-setup.sh | bash"));
+    assert.ok(html.includes("/agy-setup.sh | ' + agyEnv + 'bash"));
   });
 });

@@ -71,8 +71,14 @@ test('installers preserve Claude OAuth and authenticate to the proxy with a cust
 
           const envFile = await fs.readFile(path.join(home, '.config', 'agent-lb.env'), 'utf8');
           assert.match(envFile, /^unset ANTHROPIC_API_KEY/m);
-          assert.match(envFile, /^export ANTHROPIC_CUSTOM_HEADERS='x-api-key: proxy-test-key'$/m);
           assert.match(envFile, /^export CODEX_LB_API_KEY='proxy-test-key'$/m);
+          assert.doesNotMatch(envFile, /ANTHROPIC_CUSTOM_HEADERS|ANTHROPIC_BASE_URL|OPENAI_|CODEX_BASE_URL/,
+            'generic SDK variables must not be exported for the whole shell');
+          assert.deepEqual(
+            (await fs.readdir(claudeDir)).filter(n => n.startsWith('.credentials.json.')),
+            [],
+            '.credentials.json is never modified, so it must not be copied',
+          );
 
           const second = await execFileAsync(process.execPath, [installer, '--url', proxyUrl, '--skip-vscode', '--skip-env'], {
             cwd: process.cwd(),

@@ -194,6 +194,23 @@ while IFS= read -r git_entry; do
     fi
 done < <(find "$WORKSPACE" -maxdepth 4 -name .git 2>/dev/null)
 
+# PLIKI Z SEKRETAMI W PROJEKCIE (.env, .env.local, .envrc, …) — zastąpione pustym plikiem,
+# żeby agent nie przeczytał haseł i nie wysłał ich do modelu. Wzorce (.env.example itp.)
+# zostają widoczne. Katalogi o takiej nazwie (np. virtualenv ".env") nie są ruszane.
+# Wyłączenie dla jednego uruchomienia: JCODE_SHOW_ENV_FILES=1.
+if [[ "${JCODE_SHOW_ENV_FILES:-}" != "1" ]]; then
+    # Pusty zwykły plik zamiast /dev/null: urządzenia w projekcie dają "Permission denied".
+    EMPTY_FILE="$JHOME/.masked-empty"
+    : > "$EMPTY_FILE"
+    while IFS= read -r secret_file; do
+        BWRAP_ARGS+=(--ro-bind "$EMPTY_FILE" "$secret_file")
+    done < <(find "$WORKSPACE" -maxdepth 4 \
+        \( -name .git -o -name node_modules -o -name .venv -o -name venv \) -prune -o \
+        -type f \( -name .env -o -name '.env.*' -o -name .envrc \) \
+        ! -name '*.example' ! -name '*.sample' ! -name '*.template' ! -name '*.dist' \
+        -print 2>/dev/null)
+fi
+
 if [[ "$DRY_RUN" == "true" ]]; then
     printf '%q ' "${BWRAP_ARGS[@]}" -- "${CMD[@]}" "${JCODE_ARGS[@]}"; echo
     exit 0
@@ -253,10 +270,12 @@ fi
 export JCODE_NO_TELEMETRY=1 DO_NOT_TRACK=1 JCODE_SKIP_SERVER_RELOAD=1
 touch "$HOME/.jcode/no_telemetry"
 BASHRC_BAK="$(mktemp)"; cp "$HOME/.bashrc" "$BASHRC_BAK"
-INST="$(mktemp)"; trap 'rm -f "$INST" "$BASHRC_BAK"' EXIT
+PROFILE_BAK="$(mktemp)"; [ -f "$HOME/.profile" ] && cp "$HOME/.profile" "$PROFILE_BAK"
+INST="$(mktemp)"; trap 'rm -f "$INST" "$BASHRC_BAK" "$PROFILE_BAK"' EXIT
 curl -fsSL https://jcode.sh/install -o "$INST"
 bash "$INST"
 cp "$BASHRC_BAK" "$HOME/.bashrc"   # instalator dopisuje PATH do .bashrc — ~/.local/bin już w nim jest
+[ -s "$PROFILE_BAK" ] && cp "$PROFILE_BAK" "$HOME/.profile"   # …i do .profile
 "$HOME/bin/jcode-relink" || true
 # zatrzymaj serwery jcode działające POZA piaskownicą (stara wersja / uruchomione bez wrappera)
 for p in $(pgrep -f jcode-linux-x86_64.bin || true); do
@@ -273,10 +292,11 @@ ln -sfn "$HOME/bin/jcode-update" "$HOME/.local/bin/jcode-update"
 # 3. jcode (oficjalny instalator: weryfikuje SHA-256; .bashrc przywracamy, bo instalator dopisuje PATH)
 if [ ! -x "$HOME/.jcode/builds/stable/jcode" ]; then
   say "Instaluję jcode (bez telemetrii)"
-  INST="$(mktemp)"; BRC="$(mktemp)"; [ -f "$HOME/.bashrc" ] && cp "$HOME/.bashrc" "$BRC"
+  INST="$(mktemp)"; BRC="$(mktemp)"; PRF="$(mktemp)"
+  [ -f "$HOME/.bashrc" ] && cp "$HOME/.bashrc" "$BRC"; [ -f "$HOME/.profile" ] && cp "$HOME/.profile" "$PRF"
   curl -fsSL https://jcode.sh/install -o "$INST"
   bash "$INST" >/dev/null
-  [ -s "$BRC" ] && cp "$BRC" "$HOME/.bashrc"; rm -f "$INST" "$BRC"
+  [ -s "$BRC" ] && cp "$BRC" "$HOME/.bashrc"; [ -s "$PRF" ] && cp "$PRF" "$HOME/.profile"; rm -f "$INST" "$BRC" "$PRF"
 fi
 "$HOME/.jcode/builds/stable/jcode" telemetry disable >/dev/null 2>&1 || true
 "$HOME/bin/jcode-relink" 2>/dev/null || true
@@ -351,9 +371,11 @@ fi
 if [ "$VERIFY" = 1 ]; then
   say "Weryfikacja piaskownicy"
   git -C "$W" init -q 2>/dev/null || true
-  CHK="$("$HOME/bin/jcode-sandboxed" -w "$W" --shell -- -c 'git status >/dev/null 2>&1 && echo GIT_WIDOCZNY; ls -A ~ | tr "\n" " "; env | grep -ciE "api_key|token" || true' 2>&1)"
+  echo 'SEKRET=widoczny' > "$W/.env"
+  CHK="$("$HOME/bin/jcode-sandboxed" -w "$W" --shell -- -c 'git status >/dev/null 2>&1 && echo GIT_WIDOCZNY; grep -q SEKRET .env 2>/dev/null && echo ENV_WIDOCZNY; ls -A ~ | tr "\n" " "; env | grep -ciE "api_key|token" || true' 2>&1)"
   echo "   $CHK" | tr '\n' ' '; echo
   case "$CHK" in *GIT_WIDOCZNY*) echo "BŁĄD: .git widoczny w piaskownicy" >&2; exit 1 ;; esac
+  case "$CHK" in *ENV_WIDOCZNY*) echo "BŁĄD: plik .env widoczny w piaskownicy" >&2; exit 1 ;; esac
   if [ -n "$KEY" ]; then
     say "Weryfikacja modelu"
     R="$(cd "$W" && timeout 180 "$HOME/bin/jcode-sandboxed" -w "$W" -- run 'Reply exactly: JCODE_OK' 2>&1 | tail -1 || true)"

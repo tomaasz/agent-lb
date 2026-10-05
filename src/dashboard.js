@@ -4865,13 +4865,18 @@ ${SHARED_HELPERS}
     if (name === '__primary__' && primaryAdminKey) realKey = primaryAdminKey;
     var hostUrl = window.location.origin;
     var cmdKey = realKey || '<KLUCZ_STACJI>';
+    // Klucz w zmiennej dla instalatora, nie w argumencie (--key widać w 'ps' innym użytkownikom);
+    // spacja na początku: przy HISTCONTROL=ignorespace (domyślnie w Ubuntu) polecenie nie trafia do historii.
+    function keyedPipe(script, runner) {
+      return ' curl -fsSL ' + hostUrl + script + ' | AGENT_LB_API_KEY="' + cmdKey + '" ' + runner;
+    }
 
     var elName = document.getElementById('createdClientName');
     if (elName) elName.textContent = name || 'stacja';
     var elKey = document.getElementById('createdClientKey');
     if (elKey) elKey.textContent = realKey || (name ? 'Wczytywanie klucza...' : '<KLUCZ_STACJI>');
 
-    var cmdBashMain = 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + cmdKey;
+    var cmdBashMain = keyedPipe('/setup.sh', 'bash');
     var cmdPsMain = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + cmdKey + '"';
 
     var elBashMain = document.getElementById('cmdSetupBashMain');
@@ -4889,14 +4894,14 @@ ${SHARED_HELPERS}
       ].join('\\n');
     }
     var elJcodeSetup = document.getElementById('cmdJcodeSetupBash');
-    if (elJcodeSetup) elJcodeSetup.textContent = 'curl -fsSL ' + hostUrl + '/jcode-setup.sh | bash -s -- --key ' + cmdKey;
+    if (elJcodeSetup) elJcodeSetup.textContent = keyedPipe('/jcode-setup.sh', 'bash');
     var lnkAgentPrompt = document.getElementById('lnkAgentPrompt');
     if (lnkAgentPrompt) lnkAgentPrompt.href = hostUrl + '/agent-prompt.md';
     var elPsMain = document.getElementById('cmdSetupPowershellMain');
     if (elPsMain) elPsMain.textContent = cmdPsMain;
 
-    var cmdBash = 'curl -fsSL ' + hostUrl + '/claude-setup.sh | bash -s -- --key ' + cmdKey;
-    var cmdCodexBash = 'curl -fsSL ' + hostUrl + '/codex-setup.sh | bash -s -- --key ' + cmdKey;
+    var cmdBash = keyedPipe('/claude-setup.sh', 'bash');
+    var cmdCodexBash = keyedPipe('/codex-setup.sh', 'bash');
     var cmdAgentBash = [
       '# OpenCode, Hermes Agent, Aider (zmienne OpenAI / Anthropic):',
       'export OPENAI_BASE_URL="' + hostUrl + '/v1"',
@@ -4917,10 +4922,10 @@ ${SHARED_HELPERS}
       '$env:OPENAI_API_KEY = "' + cmdKey + '"'
     ].join('\\n');
 
-    var cmdNode = 'curl -fsSL ' + hostUrl + '/claude-setup.js | node - --key ' + cmdKey;
-    var cmdCodexNode = 'curl -fsSL ' + hostUrl + '/codex-setup.js | node - --key ' + cmdKey;
-    var cmdGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/claude-setup.sh --key ' + cmdKey;
-    var cmdCodexGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/codex-setup.sh --key ' + cmdKey;
+    var cmdNode = keyedPipe('/claude-setup.js', 'node -');
+    var cmdCodexNode = keyedPipe('/codex-setup.js', 'node -');
+    var cmdGit = ' git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && AGENT_LB_API_KEY="' + cmdKey + '" ./setup/claude-setup.sh';
+    var cmdCodexGit = ' git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && AGENT_LB_API_KEY="' + cmdKey + '" ./setup/codex-setup.sh';
     var manualText = [
       '# --- 1. Claude Code CLI (OAuth / subscription — zalecane) ---',
       'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
@@ -4974,10 +4979,10 @@ ${SHARED_HELPERS}
     var elManual = document.getElementById('boxManualConfig');
     if (elManual) elManual.textContent = manualText;
 
-    var cmdHermes = 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash -s -- --key ' + cmdKey;
-    var cmdOpenCode = 'curl -fsSL ' + hostUrl + '/opencode-setup.sh | bash -s -- --key ' + cmdKey;
-    var cmdClaw = 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash -s -- --key ' + cmdKey;
-    var cmdOrca = 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash -s -- --key ' + cmdKey;
+    var cmdHermes = keyedPipe('/hermes-setup.sh', 'bash');
+    var cmdOpenCode = keyedPipe('/opencode-setup.sh', 'bash');
+    var cmdClaw = keyedPipe('/claw-setup.sh', 'bash');
+    var cmdOrca = keyedPipe('/orca-setup.sh', 'bash');
     var cmdAider = 'mkdir -p ~/.aider && printf "openai-api-base: ' + hostUrl + '/v1\\nopenai-api-key: ' + cmdKey + '\\nmodel: openai/gpt-5.6-sol\\n" > ~/.aider.conf.yml';
 
     var elHermes = document.getElementById('cmdSetupHermes');
@@ -5240,32 +5245,34 @@ ${SHARED_HELPERS}
           : 'irm ' + hostUrl + '/setup.ps1 | iex';
       } else {
         cmd = withKey
-          ? 'curl -fsSL ' + hostUrl + '/setup.sh | bash -s -- --key ' + key
+          ? ' curl -fsSL ' + hostUrl + '/setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
           : 'curl -fsSL ' + hostUrl + '/setup.sh | bash';
       }
     } else if (currentQuickTool === 'hermes') {
       cmd = withKey
-        ? 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash -s -- --key ' + key
+        ? ' curl -fsSL ' + hostUrl + '/hermes-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
         : 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash';
     } else if (currentQuickTool === 'opencode') {
       cmd = withKey
-        ? 'curl -fsSL ' + hostUrl + '/opencode-setup.sh | bash -s -- --key ' + key
+        ? ' curl -fsSL ' + hostUrl + '/opencode-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
         : 'curl -fsSL ' + hostUrl + '/opencode-setup.sh | bash';
     } else if (currentQuickTool === 'claw') {
       cmd = withKey
-        ? 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash -s -- --key ' + key
+        ? ' curl -fsSL ' + hostUrl + '/claw-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
         : 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash';
     } else if (currentQuickTool === 'orca') {
       cmd = withKey
-        ? 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash -s -- --key ' + key
+        ? ' curl -fsSL ' + hostUrl + '/orca-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
         : 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash';
     } else if (currentQuickTool === 'agy') {
       // The station key lets agybridge take its Google account from the AGY
       // pool in this dashboard. On Windows it runs inside WSL (Linux/macOS only).
-      var agyArgs = withKey ? ' -s -- --key ' + key : '';
+      // Key goes in the environment, not in argv (visible in ps); station keys
+      // are [A-Za-z0-9_-] so they need no quoting inside wsl's "...".
+      var agyEnv = withKey ? 'AGENT_LB_API_KEY=' + key + ' ' : '';
       cmd = currentQuickTab === 'ps'
-        ? 'wsl bash -lc "curl -fsSL ' + hostUrl + '/agy-setup.sh | bash' + agyArgs + '"'
-        : 'curl -fsSL ' + hostUrl + '/agy-setup.sh | bash' + agyArgs;
+        ? 'wsl bash -lc "curl -fsSL ' + hostUrl + '/agy-setup.sh | ' + agyEnv + 'bash"'
+        : ' curl -fsSL ' + hostUrl + '/agy-setup.sh | ' + agyEnv + 'bash';
     } else if (currentQuickTool === 'agent') {
       if (currentQuickTab === 'ps') {
         cmd = '$env:OPENAI_BASE_URL="' + hostUrl + '/v1"; $env:OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"; $env:ANTHROPIC_BASE_URL="' + hostUrl + '"; $env:ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
@@ -5279,7 +5286,7 @@ ${SHARED_HELPERS}
           : 'irm ' + hostUrl + '/codex-setup.ps1 | iex';
       } else {
         cmd = withKey
-          ? 'curl -fsSL ' + hostUrl + '/codex-setup.sh | bash -s -- --key ' + key
+          ? ' curl -fsSL ' + hostUrl + '/codex-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
           : 'curl -fsSL ' + hostUrl + '/codex-setup.sh | bash';
       }
     } else {
@@ -5289,7 +5296,7 @@ ${SHARED_HELPERS}
           : 'irm ' + hostUrl + '/claude-setup.ps1 | iex';
       } else {
         cmd = withKey
-          ? 'curl -fsSL ' + hostUrl + '/claude-setup.sh | bash -s -- --key ' + key
+          ? ' curl -fsSL ' + hostUrl + '/claude-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
           : 'curl -fsSL ' + hostUrl + '/claude-setup.sh | bash';
       }
     }

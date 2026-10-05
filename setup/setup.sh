@@ -32,6 +32,7 @@ SETUP_CODEX=0
 UNINSTALL=0
 WITH_AGY=0
 NO_INSTALL=0
+INSTALL_NODE=0
 KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${CLAUDE_LB_API_KEY:-${CODEX_LB_API_KEY:-${ANTHROPIC_API_KEY:-}}}}}"
 LANG_VAL="${AGENT_LB_LANG:-}"
 
@@ -42,11 +43,14 @@ while [ $# -gt 0 ]; do
 		--uninstall) UNINSTALL=1 ;;
 		--with-agy|--agy) WITH_AGY=1 ;;
 		--no-install|--skip-install) NO_INSTALL=1 ;;
+		--install-node) INSTALL_NODE=1 ;;
 		--url) URL="${2%/}"; shift ;;
 		--key) KEY="$2"; shift ;;
 		--lang) LANG_VAL="$2"; shift ;;
 		-h|--help)
-			echo "Usage / Użycie: ./setup.sh [--url URL] [--key KEY] [--lang pl|en] [--codex] [--with-agy] [--test] [--no-install] [--uninstall]"
+			echo "Usage / Użycie: ./setup.sh [--url URL] [--key KEY] [--lang pl|en] [--codex] [--with-agy] [--test] [--no-install] [--install-node] [--uninstall]"
+			echo "  Klucz najlepiej podać w zmiennej AGENT_LB_API_KEY (argument --key widać w 'ps' i w historii powłoki)."
+			echo "  --install-node  zainstaluj Node.js/npm przez apt (sudo), jeśli ich brak"
 			exit 0
 			;;
 		*) echo "Unknown argument / Nieznany argument: $1" >&2; exit 2 ;;
@@ -70,10 +74,13 @@ die() {
 	fi
 	exit 1
 }
+# Jedna kopia na plik, robiona przy pierwszym dotknięciu — zawiera oryginał sprzed AgentLB.
+# Wcześniej każde uruchomienie dokładało kopię z kluczem (<plik>.bak-<czas>).
 backup_existing() {
 	local file="$1"
 	[ -f "$file" ] || return 0
-	local backup="${file}.bak-$(date +%s)"
+	local backup="${file}.bak-agent-lb"
+	[ -e "$backup" ] && return 0
 	if ! cp -p "$file" "$backup" 2>/dev/null || ! chmod 600 "$backup" 2>/dev/null; then
 		say "Ostrzeżenie: nie udało się utworzyć kopii $file; pozostawiam oryginał i kontynuuję."
 	fi
@@ -86,8 +93,9 @@ check_and_ensure_nodejs() {
 	fi
 
 	say "[Wykryto brak] Node.js lub npm nie są zainstalowane w systemie."
-	if [ "$NO_INSTALL" -eq 1 ]; then
-		say "  -> Pominięto instalację Node.js (--no-install)."
+	if [ "$INSTALL_NODE" -ne 1 ] || [ "$NO_INSTALL" -eq 1 ]; then
+		say "  -> Nie instaluję pakietów systemowych bez zgody (uruchom ponownie z --install-node albo zainstaluj sam)."
+		say "      sudo apt-get install -y nodejs npm"
 		return 0
 	fi
 
@@ -135,15 +143,9 @@ ensure_cli_package() {
 	say "  -> Instaluję $title ($pkg_name)..."
 	if npm install -g "$pkg_name" 2>/dev/null; then
 		say "[OK] Pomyślnie zainstalowano $title ($cmd_name)."
-	elif command -v sudo >/dev/null 2>&1; then
-		say "  -> Wymagane uprawnienia administratora do zapisu w globalnym katalogu npm (sudo)..."
-		if sudo npm install -g "$pkg_name" 2>/dev/null; then
-			say "[OK] Pomyślnie zainstalowano $title ($cmd_name) przez sudo."
-		else
-			say "  [Uwaga] Instalacja przez sudo nie powiodła się. Możesz zainstalować ręcznie: npm install -g $pkg_name"
-		fi
 	else
-		say "  [Uwaga] Brak uprawnień do zapisu w globalnym katalogu npm. Zainstaluj ręcznie: npm install -g $pkg_name"
+		# Bez cichego sudo: instalacja systemowa to decyzja użytkownika.
+		say "  [Uwaga] Brak uprawnień do zapisu w globalnym katalogu npm. Zainstaluj ręcznie: sudo npm install -g $pkg_name"
 	fi
 }
 
@@ -171,8 +173,8 @@ if isinstance(data, dict):
     if isinstance(env, dict):
         env.pop('ANTHROPIC_BASE_URL', None)
         env.pop('ANTHROPIC_API_KEY', None)
-        env.pop('ANTHROPIC_CUSTOM_HEADERS', None)
-        existing = env.get('ANTHROPIC_CUSTOM_HEADERS')
+        # usuń tylko nagłówek x-api-key, pozostałe nagłówki użytkownika zostają
+        existing = env.pop('ANTHROPIC_CUSTOM_HEADERS', None)
         if existing:
             lines = [l.strip() for l in existing.splitlines() if l.strip()]
             lines = [l for l in lines if not l.lower().startswith('x-api-key:')]
@@ -186,11 +188,41 @@ if isinstance(data, dict):
         f.write('\n')
 PY
 	fi
+	if command -v python3 >/dev/null 2>&1; then
+		SETUP_HOME="$HOME" python3 - <<'PY' || true
+import json, os
+home = os.environ['SETUP_HOME']
+for base in ('.config/Code/User', '.vscode-server/data/Machine', '.vscode-server/data/User',
+             '.vscode-server-insiders/data/Machine', '.vscode-server-insiders/data/User'):
+    p = os.path.join(home, base, 'settings.json')
+    try:
+        with open(p, encoding='utf-8') as f: data = json.load(f)
+    except Exception:
+        continue
+    if not isinstance(data, dict):
+        continue
+    env_vars = [e for e in data.get('claudeCode.environmentVariables', [])
+                if e.get('name') not in ('ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN')]
+    for e in env_vars:
+        if e.get('name') == 'ANTHROPIC_CUSTOM_HEADERS':
+            e['value'] = '\n'.join(l.strip() for l in str(e.get('value', '')).splitlines()
+                                   if l.strip() and not l.strip().lower().startswith('x-api-key:'))
+    env_vars = [e for e in env_vars if e.get('name') != 'ANTHROPIC_CUSTOM_HEADERS' or e.get('value')]
+    if env_vars: data['claudeCode.environmentVariables'] = env_vars
+    else: data.pop('claudeCode.environmentVariables', None)
+    data.pop('claudeCode.disableLoginPrompt', None)
+    with open(p, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2); f.write('\n')
+PY
+	fi
+	if [ -f "$HOME/.codex/codexlb.config.toml" ] && head -1 "$HOME/.codex/codexlb.config.toml" | grep -qxF "# zarzadzane przez setup AgentLB (profil codexlb)"; then
+		rm -f "$HOME/.codex/codexlb.config.toml"
+	fi
 	if [ -f "$HOME/.codex/config.toml" ]; then
 		backup_existing "$HOME/.codex/config.toml"
 		awk '
-			/# >>> codexlb >>>/ { skip=1; next }
-			/# <<< codexlb <<</ { skip=0; next }
+			/^# >>> codexlb/ { skip=1; next }
+			/^# <<< codexlb/ { skip=0; next }
 			!skip { print }
 		' "$HOME/.codex/config.toml" > "$HOME/.codex/config.toml.tmp.$$" \
 			&& mv "$HOME/.codex/config.toml.tmp.$$" "$HOME/.codex/config.toml" \
@@ -212,6 +244,15 @@ if isinstance(data, dict):
 PY
 	fi
 	say "Usunięto ustawienia Agent-LB. Plik .credentials.json pozostawiono bez zmian."
+	LEGACY="$(find "$HOME/.claude" "$HOME/.config" "$HOME/.codex" "$HOME/.vscode-server/data" "$HOME/.vscode-server-insiders/data" "$HOME" \
+		-maxdepth 3 -type f -regextype posix-extended \
+		-regex '.*/(settings\.json|\.credentials\.json|agent-lb\.env|config\.json|config\.toml|\.bashrc|\.zshrc)\.bak-[0-9]+' 2>/dev/null | sort -u || true)"
+	if [ -n "$LEGACY" ]; then
+		say ""
+		say "Stare kopie zapasowe z poprzednich wersji instalatora mogą zawierać klucz AgentLB."
+		say "Nie usuwam ich automatycznie — przejrzyj i usuń ręcznie:"
+		printf '%s\n' "$LEGACY" | sed 's/^/  /'
+	fi
 	exit 0
 fi
 
@@ -282,14 +323,7 @@ PY
 		OAUTH_SESSION=1
 	fi
 fi
-if [ -f "$CREDS" ]; then
-	BAK="$CREDS.bak-$(date +%s)"
-	if cp -f "$CREDS" "$BAK"; then
-		say "Wykryto sesję OAuth — utworzono kopię zapasową (.credentials.json -> $(basename "$BAK"))."
-	else
-		say "Ostrzeżenie: nie udało się utworzyć kopii .credentials.json; kontynuuję bez jej usuwania."
-	fi
-fi
+# .credentials.json jest tylko czytany, nigdy zmieniany — nie robimy jego kopii (każda to kolejny plik z tokenami).
 if [ "$OAUTH_SESSION" -eq 1 ]; then
 	say "Zachowuję tryb OAuth Claude Code; klucz proxy przekazuję przez ANTHROPIC_CUSTOM_HEADERS."
 fi
@@ -297,43 +331,20 @@ fi
 # Zapis konfiguracji środowiskowej
 mkdir -p "$(dirname "$ENV_FILE")" "$BIN_DIR"
 umask 077
-backup_existing "$ENV_FILE"
+# $ENV_FILE należy w całości do instalatora i zawiera tylko klucz — bez kopii zapasowej.
 shell_quote() {
 	local value="$1"
 	value="${value//\'/\'\\\'\'}"
 	printf "'%s'" "$value"
 }
+# Claude Code bierze proxy z ~/.claude/settings.json, Codex z profilu codexlb — powłoka potrzebuje
+# tylko klucza pod nazwami AgentLB. Ogólne ANTHROPIC_* / OPENAI_* przekierowywały na proxy
+# każdy skrypt i narzędzie korzystające z tych SDK.
 {
 	printf '%s\n' '# Agent LB environment configuration'
-	printf 'export ANTHROPIC_BASE_URL=%s\n' "$(shell_quote "$URL")"
 	if [ "$OAUTH_SESSION" -eq 1 ]; then
 		printf '%s\n' 'unset ANTHROPIC_API_KEY  # preserve Claude Code OAuth session'
-		printf 'export ANTHROPIC_CUSTOM_HEADERS=%s\n' "$(shell_quote "x-api-key: $KEY")"
-		EXISTING_HDRS=""
-		if [ -n "${ANTHROPIC_CUSTOM_HEADERS:-}" ]; then
-			EXISTING_HDRS="$(printf '%s\n' "$ANTHROPIC_CUSTOM_HEADERS" | grep -iv '^x-api-key:' || true)"
-		fi
-		if [ -n "$EXISTING_HDRS" ]; then
-			printf 'export ANTHROPIC_CUSTOM_HEADERS=%s\n' "$(shell_quote "$(printf '%s\nx-api-key: %s' "$EXISTING_HDRS" "$KEY")")"
-		else
-			printf 'export ANTHROPIC_CUSTOM_HEADERS=%s\n' "$(shell_quote "x-api-key: $KEY")"
-		fi
-	else
-		printf 'export ANTHROPIC_API_KEY=%s\n' "$(shell_quote "$KEY")"
-		printf '%s\n' 'unset ANTHROPIC_CUSTOM_HEADERS'
-		EXISTING_HDRS=""
-		if [ -n "${ANTHROPIC_CUSTOM_HEADERS:-}" ]; then
-			EXISTING_HDRS="$(printf '%s\n' "$ANTHROPIC_CUSTOM_HEADERS" | grep -iv '^x-api-key:' || true)"
-		fi
-		if [ -n "$EXISTING_HDRS" ]; then
-			printf 'export ANTHROPIC_CUSTOM_HEADERS=%s\n' "$(shell_quote "$EXISTING_HDRS")"
-		else
-			printf '%s\n' 'unset ANTHROPIC_CUSTOM_HEADERS'
-		fi
 	fi
-	printf 'export CODEX_BASE_URL=%s\n' "$(shell_quote "$URL/backend-api/codex")"
-	printf 'export OPENAI_BASE_URL=%s\n' "$(shell_quote "$URL/v1")"
-	printf 'export OPENAI_API_KEY=%s\n' "$(shell_quote "$KEY")"
 	printf 'export CODEX_LB_API_KEY=%s\n' "$(shell_quote "$KEY")"
 	printf 'export AGENT_LB_API_KEY=%s\n' "$(shell_quote "$KEY")"
 } > "$ENV_FILE"
@@ -374,11 +385,9 @@ def remove_custom_header(existing, name):
 
 if os.environ.get('SETUP_OAUTH') == '1':
     data['env'].pop('ANTHROPIC_API_KEY', None)
-    data['env']['ANTHROPIC_CUSTOM_HEADERS'] = 'x-api-key: ' + os.environ['SETUP_KEY']
     data['env']['ANTHROPIC_CUSTOM_HEADERS'] = set_custom_header(data['env'].get('ANTHROPIC_CUSTOM_HEADERS'), 'x-api-key', os.environ['SETUP_KEY'])
 else:
     data['env']['ANTHROPIC_API_KEY'] = os.environ['SETUP_KEY']
-    data['env'].pop('ANTHROPIC_CUSTOM_HEADERS', None)
     rem = remove_custom_header(data['env'].get('ANTHROPIC_CUSTOM_HEADERS'), 'x-api-key')
     if rem:
         data['env']['ANTHROPIC_CUSTOM_HEADERS'] = rem
@@ -449,8 +458,42 @@ fi
 # Konfiguracja ~/.codex (OpenAI Codex CLI: config.toml oraz config.json)
 mkdir -p "$HOME/.codex"
 CODEX_TOML="$HOME/.codex/config.toml"
-if [ ! -f "$CODEX_TOML" ] || ! grep -qF "model_providers.codex-lb" "$CODEX_TOML" 2>/dev/null; then
-	backup_existing "$CODEX_TOML"
+CODEX_PROFILE="$HOME/.codex/codexlb.config.toml"
+CODEX_PROFILE_HEADER="# zarzadzane przez setup AgentLB (profil codexlb)"
+# Dostawca codex-lb jako domyślny: zwykłe `codex` idzie przez AgentLB bez globalnych OPENAI_*.
+# Codex >= 0.160 odrzuca `profile = …` i `[profiles.<nazwa>]` w config.toml przy --profile;
+# profil to osobny plik <CODEX_HOME>/codexlb.config.toml.
+backup_existing "$CODEX_TOML"
+[ -f "$CODEX_TOML" ] || : > "$CODEX_TOML"
+if command -v python3 >/dev/null 2>&1; then
+	SETUP_CODEX_TOML="$CODEX_TOML" SETUP_URL="$URL" python3 - <<'PY' || say "Ostrzeżenie: nie udało się zaktualizować $CODEX_TOML"
+import os, re
+p, url = os.environ['SETUP_CODEX_TOML'], os.environ['SETUP_URL']
+text = open(p, encoding='utf-8').read()
+rest = re.sub(r'^# >>> codexlb.*?^# <<< codexlb[^\n]*\n?', '', text, flags=re.S | re.M)
+rest = re.sub(r'\n{3,}', '\n\n', rest).lstrip('\n')
+m = re.search(r'^\s*\[', rest, flags=re.M)
+top = rest[:m.start()] if m else rest
+own_default = re.search(r'^\s*(profile|model_provider)\s*=', top, flags=re.M)
+head = ''
+if own_default:
+    print(f"[INFO] {p} ma już własny domyślny profil/dostawcę — nie zmieniam go. Przez AgentLB: codex --profile codexlb")
+else:
+    head = '# >>> codexlb-default >>> (zarzadzane przez setup)\nmodel_provider = "codex-lb"\n'
+    if not re.search(r'^\s*model\s*=', top, flags=re.M):
+        head += 'model = "gpt-5.6-sol"\n'
+    head += '# <<< codexlb-default <<<\n\n'
+new = head + (rest.rstrip() + '\n' if rest.strip() else '')
+if not re.search(r'^\s*\[model_providers\.codex-lb\]', rest, flags=re.M):
+    new += ('\n# >>> codexlb >>> (zarzadzane przez setup)\n[model_providers.codex-lb]\nname = "openai"\n'
+            f'base_url = "{url}/backend-api/codex"\nwire_api = "responses"\nsupports_websockets = false\n'
+            'requires_openai_auth = true\nenv_key = "CODEX_LB_API_KEY"\n# <<< codexlb <<<\n')
+if new != text:
+    with open(p, 'w', encoding='utf-8') as f: f.write(new)
+    print(f"Zaktualizowano {p} (dostawca codex-lb).")
+PY
+	chmod 600 "$CODEX_TOML" 2>/dev/null || true
+elif ! grep -qF "model_providers.codex-lb" "$CODEX_TOML" 2>/dev/null; then
 	cat >> "$CODEX_TOML" <<-EOF
 
 # >>> codexlb >>> (zarzadzane przez setup.sh)
@@ -461,18 +504,19 @@ wire_api = "responses"
 supports_websockets = false
 requires_openai_auth = true
 env_key = "CODEX_LB_API_KEY"
-
-[profiles.codexlb]
-model = "gpt-5.6-sol"
-model_provider = "codex-lb"
-model_reasoning_effort = "xhigh"
 # <<< codexlb <<<
 EOF
-	say "Zaktualizowano $CODEX_TOML (profil codexlb)."
+	say "Brak python3 — zwykłe 'codex' nie przejdzie przez AgentLB; używaj: codex --profile codexlb"
+fi
+if [ ! -f "$CODEX_PROFILE" ] || head -1 "$CODEX_PROFILE" | grep -qxF "$CODEX_PROFILE_HEADER"; then
+	printf '%s\nmodel = "gpt-5.6-sol"\nmodel_provider = "codex-lb"\nmodel_reasoning_effort = "xhigh"\n' "$CODEX_PROFILE_HEADER" > "$CODEX_PROFILE"
+	chmod 600 "$CODEX_PROFILE" 2>/dev/null || true
+else
+	say "[INFO] $CODEX_PROFILE należy do użytkownika — nie zmieniam go."
 fi
 
 CODEX_CONF="$HOME/.codex/config.json"
-if command -v python3 >/dev/null 2>&1; then
+if command -v python3 >/dev/null 2>&1 && ! grep -qF "\"base_url\": \"$URL/backend-api/codex\"" "$CODEX_CONF" 2>/dev/null; then
 	backup_existing "$CODEX_CONF"
 	SETUP_URL="$URL" SETUP_CODEX_CONF="$CODEX_CONF" python3 - <<'PY' 2>/dev/null && say "Zaktualizowano $CODEX_CONF."
 import json, os
@@ -524,8 +568,11 @@ if [ "$WITH_AGY" -eq 1 ]; then
 	fi
 fi
 
-# Zakończ stare procesy demona Codex (VS Code zrestartuje je automatycznie z nowymi zmiennymi)
-killall codex 2>/dev/null || pkill -f "codex.*app-server" 2>/dev/null || true
+# Nie zabijamy procesów Codex hurtem (to przerywało trwające sesje użytkownika) —
+# działające okna wczytają nową konfigurację po przeładowaniu.
+if pgrep -u "$(id -u)" -f "codex.*app-server" >/dev/null 2>&1; then
+	say "Działa Codex w VS Code — przeładuj okno (Ctrl+Shift+P → 'Developer: Reload Window'), by użył nowej konfiguracji."
+fi
 
 say ""
 say "=== Wdrożenie i konfiguracja zakończona sukcesem! ==="
