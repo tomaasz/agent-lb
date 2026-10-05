@@ -66,6 +66,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 import { ensureCerts, createConnectHandler, mitmHosts } from "./mitm.js";
 import { patchAccountUuid } from "./account-uuid-rewrite.js";
 import { sanitizeToolPairs } from "./tool-pair-sanitize.js";
+import { sanitizeContextDrop } from "./context-drop-sanitize.js";
 import {
   sanitizeCacheControl,
   cacheControlSubfieldsToStrip,
@@ -9847,6 +9848,14 @@ export function ensureAnthropicBillingHeader(body) {
 // so untouched bodies keep their exact bytes.
 export function rewriteRequestBody(body, account, url, contentType) {
   let sendBody = body;
+  if (account?.contextDrop !== false) {
+    sendBody = sanitizeContextDrop(
+      sendBody,
+      url,
+      contentType,
+      typeof account?.contextDrop === 'object' ? account.contextDrop : {},
+    );
+  }
   // The rewrites below are Anthropic-shaped and must not touch another
   // provider's payload: a Responses API body has no metadata.user_id to patch
   // and no Anthropic tool-pairing rule to repair, so running them would at
