@@ -202,21 +202,49 @@ export class SessionTracker {
    *     is dropped.
    */
   recordTokens(sessionId, bucket, usage, now = this._now()) {
-    const s = this._live(sessionId, now);
-    if (!s || !usage || !bucket) return null;
+    const s = this._live(sessionId, now) || this._ensure(sessionId, now);
+    if (!s || !usage) return null;
+    bucket = bucket || 'default';
     const t = s.tokens.get(bucket) || setAndReturn(s.tokens, bucket, emptyTokens());
-    const read = num(usage.cache_read_input_tokens);
-    const creation = num(usage.cache_creation_input_tokens);
-    const input = num(usage.input_tokens);
+    const read = num(usage.cache_read_input_tokens ?? usage.cacheReadTokens);
+    const creation = num(usage.cache_creation_input_tokens ?? usage.cacheCreationTokens ?? usage.cacheTokens);
+    const input = num(usage.input_tokens ?? usage.prompt_tokens ?? usage.inputTokens);
+    const output = num(usage.output_tokens ?? usage.completion_tokens ?? usage.outputTokens);
     t.cacheRead += read;
     t.cacheCreation += creation;
     t.input += input;
-    t.output += num(usage.output_tokens);
+    t.output += output;
     // Only a report that carries the input side describes a context. A
     // `message_delta` carries output alone and would otherwise reset this to 0.
     if (read || creation || input) t.context = read + creation + input;
     t.reports += 1;
     return t;
+  }
+
+  /**
+   * Sum all tokens consumed by this session across all quota buckets.
+   */
+  totalTokens(sessionId, now = this._now()) {
+    sessionId = keyOf(sessionId);
+    const s = sessionId && this.sessions.get(sessionId);
+    if (!s) return 0;
+    let sum = 0;
+    for (const t of s.tokens.values()) {
+      sum += (t.input || 0) + (t.output || 0) + (t.cacheRead || 0) + (t.cacheCreation || 0);
+    }
+    return sum;
+  }
+
+  sessionTokens(sessionId, now = this._now()) {
+    return this.totalTokens(sessionId, now);
+  }
+
+  resetSessionTokens(sessionId) {
+    sessionId = keyOf(sessionId);
+    const s = sessionId && this.sessions.get(sessionId);
+    if (!s) return false;
+    s.tokens.clear();
+    return true;
   }
 
   /**
@@ -566,6 +594,10 @@ export class SessionTracker {
 // spending two families is served by two accounts at once and naming only one
 // of them would be wrong rather than merely incomplete.
 function sessionItem(id, s, active) {
+  let totalTokens = 0;
+  for (const t of s.tokens.values()) {
+    totalTokens += (t.input || 0) + (t.output || 0) + (t.cacheRead || 0) + (t.cacheCreation || 0);
+  }
   return {
     id,
     active,
@@ -581,6 +613,7 @@ function sessionItem(id, s, active) {
     // cache included. An input+output sum understates a cached session by
     // orders of magnitude, which is why this is not counted from request headers.
     tokens: Object.fromEntries([...s.tokens].map(([bucket, t]) => [bucket, { ...t }])),
+    totalTokens,
   };
 }
 

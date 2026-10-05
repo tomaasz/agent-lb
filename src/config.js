@@ -101,6 +101,7 @@ export function createDefaultConfig() {
       port: 3456,
       trustLoopback: false,
       trustTailnet: false,
+      maxSessionTokens: null,
       apiKey: 'tc-' + randomBytes(24).toString('base64url'),
     },
     upstream: 'https://api.anthropic.com',
@@ -133,6 +134,13 @@ export async function loadConfig() {
     // long after the read that could have explained it (#330). A missing list
     // is an empty one.
     if (!Array.isArray(config.accounts)) config.accounts = [];
+    if (!config.proxy) config.proxy = {};
+    if (config.proxy.maxSessionTokens == null && process.env.AGENTLB_MAX_SESSION_TOKENS) {
+      config.proxy.maxSessionTokens = Number(process.env.AGENTLB_MAX_SESSION_TOKENS);
+    }
+    if (config.proxy.sessionBudgetStatusCode == null && process.env.AGENTLB_SESSION_BUDGET_STATUS_CODE) {
+      config.proxy.sessionBudgetStatusCode = Number(process.env.AGENTLB_SESSION_BUDGET_STATUS_CODE);
+    }
     if (config.distributeSessions == null) config.distributeSessions = 'adaptive';
     if (config.expiryRouting == null) config.expiryRouting = { enabled: true, tolerance: 1.5, preempt: true };
     if (config.crossProviderFallback == null) config.crossProviderFallback = true;
@@ -265,4 +273,35 @@ export function atomicConfigUpdate(updater) {
   const result = configUpdateChain.then(run, run);
   configUpdateChain = result.then(() => {}, () => {});
   return result;
+}
+
+/**
+ * Resolve the maximum tokens allowed per session from key config, proxy config,
+ * root config, or environment variable AGENTLB_MAX_SESSION_TOKENS.
+ */
+export function resolveMaxSessionTokens(config = {}, keyConfig = null) {
+  const check = (val) => {
+    if (val == null) return null;
+    const num = typeof val === 'number' ? val : Number(val);
+    return Number.isFinite(num) && num > 0 ? num : null;
+  };
+  return (
+    check(keyConfig?.maxSessionTokens) ??
+    check(config?.proxy?.maxSessionTokens) ??
+    check(config?.maxSessionTokens) ??
+    check(process.env.AGENTLB_MAX_SESSION_TOKENS) ??
+    null
+  );
+}
+
+/**
+ * Resolve the HTTP status code returned when a session budget is exceeded (429 or 402).
+ */
+export function resolveSessionBudgetStatusCode(config = {}) {
+  const raw =
+    config?.proxy?.sessionBudgetStatusCode ??
+    config?.sessionBudgetStatusCode ??
+    process.env.AGENTLB_SESSION_BUDGET_STATUS_CODE;
+  const code = Number(raw);
+  return code === 402 ? 402 : 429;
 }

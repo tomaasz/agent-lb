@@ -99,7 +99,11 @@ import {
   resolveUsageDimensions,
   usageDimensionHeaderNames,
 } from "./client-usage.js";
-import { atomicConfigUpdate } from "./config.js";
+import {
+  atomicConfigUpdate,
+  resolveMaxSessionTokens,
+  resolveSessionBudgetStatusCode,
+} from "./config.js";
 import {
   fetchProfile,
   parseAuthCode,
@@ -5992,6 +5996,46 @@ export function createProxyRequestListener({
       // /v1/messages and count_tokens). Read from headers up front so it drives
       // session-aware routing (issue #109) and colors the TUI activity stream.
       const sessionId = clientSessionId(req.headers);
+
+      if (sessionId) {
+        const maxSessionTokens = resolveMaxSessionTokens(config, req.tcClientEntry);
+        if (maxSessionTokens != null && maxSessionTokens > 0) {
+          const currentTokens =
+            accountManager?.sessionTokens?.(sessionId) ??
+            accountManager?.sessionTracker?.totalTokens?.(sessionId) ??
+            0;
+          if (currentTokens >= maxSessionTokens) {
+            const statusCode = resolveSessionBudgetStatusCode(config);
+            const errMessage = `Session token budget exceeded (${currentTokens.toLocaleString()} >= ${maxSessionTokens.toLocaleString()} limit) for session "${sessionId}". Request rejected by hard budget cap.`;
+            if (!hideActivity) {
+              hooks.onRequestEnd?.(reqId, {
+                method: req.method,
+                path: req.url,
+                account: "(rejected: session budget cap)",
+                status: statusCode,
+                model: null,
+                sessionId,
+                pinned: false,
+              });
+            }
+            res.writeHead(statusCode, {
+              "Content-Type": "application/json",
+              ...(statusCode === 429 ? { "Retry-After": "60" } : {}),
+            });
+            res.end(
+              JSON.stringify({
+                type: "error",
+                error: {
+                  type: statusCode === 402 ? "budget_exceeded" : "rate_limit_error",
+                  message: errMessage,
+                },
+              }),
+            );
+            recordEarlyOutcome(accountManager, sessionId, req.url, true);
+            return;
+          }
+        }
+      }
       if (!hideActivity) {
         // Marked open BEFORE the hook runs. The shipped TUI hook registers its
         // row and then renders, and the render can rethrow, so a hook that

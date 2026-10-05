@@ -1276,6 +1276,22 @@ export class AccountManager {
   }
 
   /**
+   * Get the cumulative tokens used by a session across all quota buckets.
+   */
+  sessionTokens(sessionId) {
+    if (!sessionId) return 0;
+    return this.sessionTracker?.totalTokens?.(sessionId) ?? 0;
+  }
+
+  /**
+   * Reset token counters for a session.
+   */
+  resetSessionTokens(sessionId) {
+    if (!sessionId) return false;
+    return this.sessionTracker?.resetSessionTokens?.(sessionId) ?? false;
+  }
+
+  /**
    * Per-account diagnostics for adaptive distribution: the profile plan tier,
    * relative score weight, and actual next target.
    *
