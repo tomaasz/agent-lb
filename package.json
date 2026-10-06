@@ -19,7 +19,8 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "node --test --test-timeout=120000",
-    "lint": "eslint . --max-warnings=0"
+    "lint": "eslint . --max-warnings=0",
+    "audit:tokens": "ccaudit --warn-threshold 1500 --fail-on-warn CLAUDE.md AGENTS.md GEMINI.md AI_TEAM.md PROJECT_CONTEXT.md"
   },
   "keywords": [
     "claude",

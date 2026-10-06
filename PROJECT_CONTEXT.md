@@ -13,10 +13,11 @@ Uniwersalny load balancer, rotator kont, zarządca limitów (quota rotator) oraz
 - Konteneryzacja: Docker (`docker/Dockerfile`, `docker/docker-compose.yml`)
 
 ## Główne komendy
-- install: `npm install` (cwd: `.`, wymagania: Node.js >=20, źródło: `package.json`, status: nieuruchomione w ramach audytu)
-- start: `npm start` / `node src/index.js` (cwd: `.`, wymagania: Node.js >=20, źródło: `package.json`, status: potwierdzona w konfiguracji)
-- test: `npm test` / `node --test --test-timeout=120000` (cwd: `.`, wymagania: Node.js >=20, źródło: `package.json`, status: potwierdzona i uruchomiona — regresje audytu w test/audit-hardening.test.js, test/observability-policy.test.js i test/client-key-admin.test.js)
-- lint: `npm run lint` / `eslint . --max-warnings=0` (cwd: `.`, wymagania: eslint, status: zweryfikowana i pomyślna — ESLint v9 flat config `eslint.config.js`)
+- install: `npm install` (Node.js >= 20.0.0)
+- start: `npm start` (uruchamia `node src/index.js`)
+- test: `npm test` (uruchamia `node --test --test-timeout=120000`)
+- lint: `npm run lint` (uruchamia `eslint . --max-warnings=0`)
+- audit:tokens: `npm run audit:tokens` (weryfikacja budżetu tokenów przez ccaudit)
 - typecheck: brak w repozytorium (projekt nie używa TypeScript)
 - build: brak (projekt to czysty kod JavaScript ESM wykonywany bezpośrednio przez środowisko Node.js)
 
