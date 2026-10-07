@@ -224,7 +224,7 @@ export class SessionTracker {
   /**
    * Sum all tokens consumed by this session across all quota buckets.
    */
-  totalTokens(sessionId, now = this._now()) {
+  totalTokens(sessionId, _now = this._now()) {
     sessionId = keyOf(sessionId);
     const s = sessionId && this.sessions.get(sessionId);
     if (!s) return 0;

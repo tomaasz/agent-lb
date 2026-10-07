@@ -6,7 +6,6 @@ import {
   synthesizeAndTruncateLog,
   sanitizeContextDrop,
   measureContextDropSavings,
-  DEFAULT_CONTEXT_DROP_OPTIONS,
 } from '../src/context-drop-sanitize.js';
 import { rewriteRequestBody } from '../src/server.js';
 

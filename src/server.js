@@ -2224,9 +2224,6 @@ export function createProxyServer(
         const hasAdminKey = Boolean(config.proxy?.apiKey);
         const isMaster =
           clientKey && safeKeyEqual(clientKey, config.proxy.apiKey);
-        const clientAuth = clientKey
-          ? resolveClientAuth(config.proxy, clientKey)
-          : null;
         if (!hasAdminKey || isMaster) {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(

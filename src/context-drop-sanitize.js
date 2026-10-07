@@ -268,6 +268,7 @@ export function measureContextDropSavings(rawText, turns = 30, options = {}) {
     rawTokens,
     truncatedChars,
     truncatedTokens,
+    charsSavedPerTurn,
     tokensSavedPerTurn,
     cumulativeRawTokens,
     cumulativeDroppedTokens,
