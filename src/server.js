@@ -885,6 +885,46 @@ export function createProxyServer(
             },
           },
           {
+            id: "claude-haiku-5-5",
+            name: "Claude Haiku 5.5",
+            display_name: "Claude Haiku 5.5",
+            description: "Fastest frontier model with low latency and high precision",
+            context_window: 1000000,
+            max_tokens: 128000,
+            batch_max_output_tokens: 300000,
+            latency: "fastest",
+            thinking: { extended: "yes", adaptive: "no" },
+            default_effort: null,
+            reliable_knowledge_cutoff: "2026-06",
+            pricing: {
+              input_per_mtok: 1,
+              output_per_mtok: 5,
+              cache_write_5m_per_mtok: 1.25,
+              cache_write_1h_per_mtok: 2,
+              cache_read_per_mtok: 0.1,
+            },
+          },
+          {
+            id: "claude-haiku-5.5",
+            name: "Claude Haiku 5.5",
+            display_name: "Claude Haiku 5.5",
+            description: "Fastest frontier model with low latency and high precision",
+            context_window: 1000000,
+            max_tokens: 128000,
+            batch_max_output_tokens: 300000,
+            latency: "fastest",
+            thinking: { extended: "yes", adaptive: "no" },
+            default_effort: null,
+            reliable_knowledge_cutoff: "2026-06",
+            pricing: {
+              input_per_mtok: 1,
+              output_per_mtok: 5,
+              cache_write_5m_per_mtok: 1.25,
+              cache_write_1h_per_mtok: 2,
+              cache_read_per_mtok: 0.1,
+            },
+          },
+          {
             id: "claude-haiku-4-5-20251001",
             name: "Claude Haiku 4.5",
             display_name: "Claude Haiku 4.5",
@@ -9799,6 +9839,11 @@ export function normalizeAnthropicModelForOAuth(body) {
         trimmed === "claude-sonnet"
       ) {
         target = "claude-sonnet-4-6";
+      } else if (
+        trimmed === "claude-haiku-5.5" ||
+        trimmed === "claude-haiku-5-5"
+      ) {
+        target = "claude-haiku-5-5";
       } else if (
         trimmed === "claude-haiku-4-5" ||
         trimmed.startsWith("claude-3-5-haiku") ||

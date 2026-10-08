@@ -280,6 +280,7 @@ const models = {
   "claude-sonnet-4-6": { name: "Claude Sonnet 4.6", modelID: "claude-sonnet-4-6" },
   "claude-mythos-5-1": { name: "Claude Mythos 5.1", modelID: "claude-mythos-5-1" },
   "claude-mythos-5": { name: "Claude Mythos 5", modelID: "claude-mythos-5" },
+  "claude-haiku-5-5": { name: "Claude Haiku 5.5", modelID: "claude-haiku-5-5" },
   "claude-haiku-4-5-20251001": { name: "Claude Haiku 4.5", modelID: "claude-haiku-4-5-20251001" },
   "claude-haiku-4-5": { name: "Claude Haiku 4.5", modelID: "claude-haiku-4-5-20251001" },
   "claude-opus-4-5": { name: "Claude Opus 4.5", modelID: "claude-opus-4-5-20251101" },

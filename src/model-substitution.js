@@ -26,6 +26,7 @@ export function substitutionAllowed(policy, sourceModel, targetProvider, finalMo
   if (sourceModel === finalModel) return true;
   if ((sourceModel === 'claude-opus-5.5' || sourceModel === 'claude-opus-5-5') && (finalModel === 'claude-opus-5.5' || finalModel === 'claude-opus-5-5')) return true;
   if ((sourceModel === 'claude-sonnet-5.5' || sourceModel === 'claude-sonnet-5-5') && (finalModel === 'claude-sonnet-5.5' || finalModel === 'claude-sonnet-5-5')) return true;
+  if ((sourceModel === 'claude-haiku-5.5' || sourceModel === 'claude-haiku-5-5') && (finalModel === 'claude-haiku-5.5' || finalModel === 'claude-haiku-5-5')) return true;
   if ((sourceModel === 'claude-haiku-4-5' || sourceModel === 'claude-haiku-4-5-20251001') && (finalModel === 'claude-haiku-4-5' || finalModel === 'claude-haiku-4-5-20251001')) return true;
   if ((sourceModel === 'agy' || sourceModel === 'agy-fast') && (finalModel === 'claude-sonnet-5' || finalModel === 'claude-haiku-4-5-20251001' || finalModel === 'claude-haiku-4-5' || finalModel === 'gpt-5.6-sol' || finalModel === 'gpt-5.6-terra' || finalModel === 'gpt-6.1-sol' || finalModel === 'gpt-6-sol')) return true;
   return !!policy.rules?.some(r => r.fromModel === sourceModel && r.toProvider === targetProvider && r.toModel === finalModel);
