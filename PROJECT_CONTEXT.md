@@ -16,6 +16,7 @@ Uniwersalny load balancer, rotator kont, zarządca limitów (quota rotator) oraz
 - install: `npm install` (Node.js >= 20.0.0)
 - start: `npm start` (uruchamia `node src/index.js`)
 - test: `npm test` (uruchamia `node --test --test-timeout=120000`)
+- test:trimmed: `npm run test:trimmed` (uruchamia testy z obcięciem wyjścia do 4k tokenów przez ttok)
 - lint: `npm run lint` (uruchamia `eslint . --max-warnings=0`)
 - audit:tokens: `npm run audit:tokens` (weryfikacja budżetu tokenów przez ccaudit)
 - typecheck: brak w repozytorium (projekt nie używa TypeScript)

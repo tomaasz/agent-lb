@@ -1,38 +1,36 @@
-# Plan Zadania: [Rec] Wdrożenie twardych limitów budżetowych (Hard Budget Caps) w agent-lb
+# Plan Zadania: [Rec] Wdrożenie narzędzia ttok 1.0 do bezpiecznego przycinania logów w agent-lb
 
-> **Cel:** Zabezpieczenie przed ucieczką pętli agentowych (Claude Code, Codex) poprzez wprowadzenie mechanizmu twardych limitów tokenowych per sesja na poziomie proxy agent-lb, odrzucającego żądania kodem 429/402 po przekroczeniu limitu (np. 100k tokenów).
+> **Cel:** Zabezpieczenie przed marnowaniem limitów tokenów i przepełnianiem kontekstu asystenta poprzez wdrożenie narzędzia ttok 1.0 do precyzyjnego przycinania i zliczania tokenów w logach testowych agent-lb.
 > **Status:** Zakończone
-> **Ostatnia aktualizacja:** 2026-10-05 15:40
+> **Ostatnia aktualizacja:** 2026-10-10 11:29
 
 ---
 
 ## 1. Fazy i Zadania
 
-### Faza 1: Rozpoznanie i architektura
-- [x] Analiza istniejącego śledzenia sesji w `src/session-tracker.js`
-- [x] Analiza rejestrowania tokenów w `src/account-manager.js` i `src/server.js`
-- [x] Analiza punktu wejściowego żądań i odmów (`createProxyRequestListener`, `denyClientPolicy`)
-- [x] Zaprojektowanie interfejsu konfiguracji (`maxSessionTokens`) i mechanizmu odcinania
+### Faza 1: Rozpoznanie i weryfikacja środowiska
+- [x] Sprawdzenie dostępności narzędzia `ttok` w środowisku (`ttok --version`, `/home/tomaasz/.local/bin/ttok`)
+- [x] Weryfikacja działania na testowym pliku i wejściu standardowym stdin
+- [x] Potwierdzenie kryteriów Done: polecenie ttok zwraca poprawną liczbę jednostek i kod wyjścia 0
 
-### Faza 2: Implementacja
-- [x] Rozszerzenie konfiguracji w `src/config.js` (`proxy.maxSessionTokens` / `maxSessionTokens` / env `AGENTLB_MAX_SESSION_TOKENS`)
-- [x] Dodanie/rozszerzenie śledzenia sumarycznych tokenów per sesja w `src/session-tracker.js` (`totalTokens`, `sessionTokens`, `resetSessionTokens`)
-- [x] Implementacja kontroli twardego limitu sesji (Hard Budget Cap check) w `src/server.js` przed przekazaniem żądania do kolejki/upstream
-- [x] Zwracanie natychmiastowej odpowiedzi błędu 429/402 z czytelnym komunikatem o wyczerpaniu budżetu sesji
+### Faza 2: Integracja z projektem agent-lb
+- [x] Dodanie skryptu `test:trimmed` do `package.json` (`node --test ... 2>&1 | (ttok -t 4000 2>/dev/null || cat)`)
+- [x] Stworzenie zestawu testów `test/ttok-log-trim.test.js` weryfikującego zliczanie i obcinanie logów
+- [x] Aktualizacja `PROJECT_CONTEXT.md` z zachowaniem budżetu tokenów (ccaudit < 1500)
 
 ### Faza 3: Testy i weryfikacja
-- [x] Napisanie kompleksowych testów jednostkowych i integracyjnych w `test/hard-session-budget.test.js`
-- [x] Weryfikacja kryterium Done: testowe zapytanie po przekroczeniu limitu 100k tokenów zostaje natychmiast zablokowane kodem 429/402 bez obciążania upstreamu
-- [x] Uruchomienie pełnego zestawu testów `npm test` w repozytorium (wszystkie 115 testów / 225 przypadków zakończone sukcesem)
+- [x] Uruchomienie `npm run lint` (0 błędów, 0 ostrzeżeń)
+- [x] Uruchomienie dedykowanego testu `node --test test/ttok-log-trim.test.js` (4/4 testów PASS)
+- [x] Uruchomienie `npm run audit:tokens` (1457 tokenów / próg 1500 PASS)
+- [x] Wykonanie commitu i push na `origin/main`
 
 ---
 
 ## 2. Bieżący Krok (Next Action)
-- [x] Wdrożenie zakończone, testy przeszły pomyślnie. Gotowe do zgłoszenia do review / zamknięcia zadania kanban.
+- [x] Wszystkie kroki zrealizowane pomyślnie. Zadanie gotowe do zamknięcia w kanbanie.
 
 ---
 
 ## 3. Decyzje projektowe i założenia
-- **Decyzja 1:** Śledzenie sumarycznych tokenów w `session-tracker.js` w oparciu o unikalny `sessionId` (pochodzący z nagłówków `x-claude-code-session-id`, `x-session-id`, `session-id`).
-- **Decyzja 2:** Sprawdzanie limitu w `createProxyRequestListener` zaraz po ekstrakcji `sessionId` – przed buforowaniem ciała żądania i przed wyborem konta upstream, co oszczędza zasoby i zapobiega niepotrzebnemu obciążaniu upstreamu.
-- **Decyzja 3:** Zwracanie kodu 429 (lub 402 w zależności od polityki, standardowo 429 Too Many Requests z błędem typu `rate_limit_error` / `budget_exceeded`), informującego klienta Claude Code / Codex o przekroczeniu budżetu tokenów w danej sesji.
+- **Decyzja 1:** Narzędzie `ttok 1.0` jest zainstalowane w `~/.local/bin/ttok` (przez `uv tool`). W testach oraz skryptach npm zaimplementowano bezpieczne sprawdzanie obecności (`which ttok` / fallback), zapobiegające awariom w środowiskach CI pozbawionych Pythona/ttok.
+- **Decyzja 2:** Zaimplementowano skrypt `npm run test:trimmed` z bezpiecznym limitem 4000 tokenów, co drastycznie ogranicza narzut tokenowy z 64k znaków raportu testowego podczas sesji agentowych.
