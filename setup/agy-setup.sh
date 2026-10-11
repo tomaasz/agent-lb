@@ -332,6 +332,96 @@ EOF
   warn "Brak systemd --user — serwer nie startuje sam. Uruchamiaj go poleceniem: agybridge-start"
 fi
 
+# Raport limitów kont Google do panelu agent-lb: co 5 min pyta Google o
+# pozostały limit konta zalogowanego w 'agy' na tej stacji i wysyła wynik.
+if [ "$POOL_SAVE" = "1" ] && [ -n "$LB_KEY" ]; then
+  REPORT="$CONF_DIR/quota-report.py"
+  cat > "$REPORT" <<'PYREPORT'
+#!/usr/bin/env python3
+"""Zgłasza agent-lb limity konta Google z 'agy' (bez wypisywania tokenów)."""
+import base64, json, os, subprocess, sys, time, urllib.request
+from datetime import datetime
+
+HOME = os.path.expanduser("~")
+TOKEN_FILE = os.path.join(HOME, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+API = "https://daily-cloudcode-pa.googleapis.com/v1internal:"
+LB = os.environ.get("AGENT_LB_URL", "").rstrip("/")
+KEY = os.environ.get("AGENT_LB_API_KEY", "")
+AGY = os.environ.get("AGY_CLI_PATH", "agy")
+
+
+def read_token():
+    with open(TOKEN_FILE, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def post(url, body, headers):
+    req = urllib.request.Request(url, json.dumps(body).encode(), headers, method="POST")
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read())
+
+
+def main():
+    if not LB or not KEY:
+        sys.exit("brak AGENT_LB_URL / AGENT_LB_API_KEY")
+    # 'agy models' odświeża token OAuth w pliku, więc zawsze mamy świeży.
+    subprocess.run([AGY, "models"], capture_output=True, timeout=60)
+    tok = read_token()
+    claims = tok["id_token"].split(".")[1]
+    claims = json.loads(base64.urlsafe_b64decode(claims + "=" * (-len(claims) % 4)))
+    email = claims["email"].lower()
+    h = {"Authorization": "Bearer " + tok["token"]["access_token"],
+         "Content-Type": "application/json", "User-Agent": "antigravity"}
+    load = post(API + "loadCodeAssist", {"metadata": {"ideType": "ANTIGRAVITY"}}, h)
+    project = load.get("cloudaicompanionProject")
+    found = post(API + "fetchAvailableModels", {"project": project} if project else {}, h)
+    models = []
+    for info in (found.get("models") or {}).values():
+        q = info.get("quotaInfo") or {}
+        # Tylko modele widoczne dla użytkownika (z nazwą i terminem resetu).
+        if not info.get("displayName") or "remainingFraction" not in q or not q.get("resetTime"):
+            continue
+        reset = datetime.fromisoformat(q["resetTime"].replace("Z", "+00:00")).timestamp() * 1000
+        models.append({"label": info["displayName"], "remaining": q["remainingFraction"], "resetAt": int(reset)})
+    post(LB + "/agy/usage", {"email": email, "models": models},
+         {"x-api-key": KEY, "Content-Type": "application/json"})
+
+
+main()
+PYREPORT
+  chmod 700 "$REPORT"
+  if [ "$DO_SERVICE" != "0" ] && command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+    UNIT_DIR="$HOME/.config/systemd/user"
+    mkdir -p "$UNIT_DIR"
+    cat > "$UNIT_DIR/agybridge-quota.service" <<EOF
+[Unit]
+Description=Raport limitów konta Google (AGY) do agent-lb
+
+[Service]
+Type=oneshot
+EnvironmentFile=$ENV_FILE
+Environment=PATH=${SVC_PATH:-$BIN_DIR:/usr/local/bin:/usr/bin:/bin}
+ExecStart=$VENV/bin/python $REPORT
+EOF
+    cat > "$UNIT_DIR/agybridge-quota.timer" <<EOF
+[Unit]
+Description=Co 5 minut zgłasza limity konta AGY do agent-lb
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
+EOF
+    systemctl --user daemon-reload
+    systemctl --user enable --quiet --now agybridge-quota.timer
+    echo "  Raport limitów do panelu: agybridge-quota.timer (co 5 min)."
+  else
+    echo "  Raport limitów do panelu: brak systemd --user — uruchamiaj z crona: $VENV/bin/python $REPORT (z AGENT_LB_URL i AGENT_LB_API_KEY z $ENV_FILE)."
+  fi
+fi
+
 # ---------------------------------------------------------------------------
 step "4/6 Hermes Agent"
 

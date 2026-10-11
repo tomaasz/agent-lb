@@ -119,6 +119,7 @@ export class AgyAccountStore {
       quotaMessage: a.quotaUntil && a.quotaUntil > now ? a.quotaMessage || null : null,
       addedAt: a.addedAt || null,
       lastUsedAt: a.lastUsedAt || null,
+      usage: a.usage || null,
       usedBy: (usedBy[a.id] || []).sort(),
     }));
   }
@@ -187,6 +188,34 @@ export class AgyAccountStore {
     if (!a) return false;
     a.quotaUntil = this.now() + clampCooldown(resetSeconds) * 1000;
     a.quotaMessage = typeof message === 'string' ? message.slice(0, 300) : null;
+    this._save();
+    return true;
+  }
+
+  /**
+   * Per-model quota as reported by a station (Google's fetchAvailableModels).
+   * Matched by account id or e-mail; returns false for an unknown account.
+   */
+  setUsage(who, models) {
+    const key = typeof who === 'string' ? who.trim().toLowerCase() : '';
+    const a = key && this.data.accounts.find(x => x.id === who || x.email === key);
+    if (!a || !Array.isArray(models)) return false;
+    const seen = new Map();
+    for (const m of models.slice(0, 200)) {
+      const label = typeof m?.label === 'string' ? m.label.trim().slice(0, 80) : '';
+      const remaining = Number(m?.remaining);
+      if (!label || !Number.isFinite(remaining)) continue;
+      const resetAt = Number(m.resetAt);
+      const entry = {
+        label,
+        remaining: Math.min(1, Math.max(0, remaining)),
+        resetAt: Number.isFinite(resetAt) && resetAt > 0 ? resetAt : null,
+      };
+      // Several model ids share one label: keep the most spent one.
+      const prev = seen.get(label);
+      if (!prev || entry.remaining < prev.remaining) seen.set(label, entry);
+    }
+    a.usage = { models: [...seen.values()].slice(0, 40), updatedAt: this.now() };
     this._save();
     return true;
   }
@@ -499,7 +528,7 @@ async function readJson(req, res) {
  * Google refresh token.
  */
 export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, clientUsage, store, logins }) {
-  if (normApiPath === '/agy/credential' || normApiPath === '/agy/quota') {
+  if (normApiPath === '/agy/credential' || normApiPath === '/agy/quota' || normApiPath === '/agy/usage') {
     if (!clientKey || !auth?.ok || !relayPolicyAllowed(auth, clientUsage)) {
       sendJson(res, 403, { ok: false, error: 'an unrestricted station key is required for AGY accounts' });
       return true;
@@ -510,6 +539,14 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
       const cred = store.credentialFor(client, current);
       if (!cred) { sendJson(res, 404, { ok: false, error: 'no AGY account with free quota' }); return true; }
       sendJson(res, 200, { ok: true, ...cred });
+      return true;
+    }
+    if (normApiPath === '/agy/usage' && req.method === 'POST') {
+      const body = await readJson(req, res);
+      if (!body) return true;
+      const who = typeof body.accountId === 'string' ? body.accountId : body.email;
+      const done = store.setUsage(who, body.models);
+      sendJson(res, done ? 200 : 404, done ? { ok: true } : { ok: false, error: 'no such AGY account' });
       return true;
     }
     if (normApiPath === '/agy/quota' && req.method === 'POST') {

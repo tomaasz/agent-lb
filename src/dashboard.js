@@ -745,6 +745,9 @@ const PAGE = `<!doctype html>
   .agy-row .agy-state { flex: 1; min-width: 160px; color: var(--dim); }
   .agy-row .agy-state.spent { color: var(--warn, #d29922); }
   .agy-row .agy-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+  .agy-usage { flex-basis: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 4px 14px; margin-top: 2px; }
+  .agy-usage .agy-usage-note { grid-column: 1 / -1; font-size: 11px; color: var(--dim); }
+  .agy-usage .quota { grid-template-columns: minmax(90px, 1.2fr) 1fr auto; }
   .agy-steps { margin: 0 0 8px 18px; padding: 0; font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
   .agy-countdown { font-size: 12px; color: var(--dim); }
 
@@ -6256,8 +6259,36 @@ ${SHARED_HELPERS}
         if (confirm(agyT('Usunąć konto ', 'Remove account ') + a.email + '?')) agyAction('accounts/remove', { id: a.id }, agyT('Usunięto ', 'Removed ') + a.email);
       }));
       row.appendChild(actions);
+      row.appendChild(agyUsageBlock(a.usage));
       box.appendChild(row);
     });
+  }
+  // Per-model quota reported by the stations (remaining share + time to reset).
+  function agyUsageBlock(usage) {
+    var wrap = document.createElement('div');
+    wrap.className = 'agy-usage';
+    var note = document.createElement('div');
+    note.className = 'agy-usage-note';
+    if (!usage || !usage.models || !usage.models.length) {
+      note.textContent = agyT('Limity: brak danych — stacja jeszcze nie zgłosiła zużycia.', 'Quota: no data yet — no station has reported usage.');
+      wrap.appendChild(note);
+      return wrap;
+    }
+    var age = Date.now() - usage.updatedAt;
+    note.textContent = agyT('Limity zgłoszone ', 'Quota reported ') + agyLeft(age) + agyT(' temu', ' ago') + (age > 30 * 60000 ? agyT(' (dane mogą być nieaktualne)', ' (may be stale)') : '');
+    wrap.appendChild(note);
+    usage.models.slice().sort(function (x, y) { return x.remaining - y.remaining || x.label.localeCompare(y.label); }).forEach(function (m) {
+      // quotaRow shows used share; AGY reports what is left.
+      var r = quotaRow(m.label, 1 - m.remaining, m.resetAt);
+      r.firstChild.title = m.label;
+      r.firstChild.style.overflow = 'hidden';
+      r.firstChild.style.textOverflow = 'ellipsis';
+      r.firstChild.style.whiteSpace = 'nowrap';
+      var val = r.lastChild;
+      val.textContent = agyT('zostało ', 'left ') + Math.round(m.remaining * 100) + '%' + val.textContent.slice(val.textContent.indexOf('%') + 1);
+      wrap.appendChild(r);
+    });
+    return wrap;
   }
   function agyEl(id) { return document.getElementById(id); }
   function agyStopTimer() {

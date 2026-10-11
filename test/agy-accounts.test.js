@@ -62,6 +62,21 @@ describe('AGY account store', () => {
     assert.throws(() => parseAgyToken({ token: { refresh_token: 'x' }, id_token: 'bad' }), /e-mail/);
   });
 
+  it('stores per-model usage reported by a station, keeping the most spent duplicate', () => {
+    const store = new AgyAccountStore(path.join(tmpDir(), 'agy.json'));
+    store.upsert(agyToken('a@example.com'));
+    const ok = store.setUsage('A@example.com', [
+      { label: 'Gemini Pro', remaining: 0.8, resetAt: 1000 },
+      { label: 'Gemini Pro', remaining: 0.3, resetAt: 2000 },
+      { label: 'bad', remaining: 'x' },
+      { label: 'Over', remaining: 5 },
+    ]);
+    assert.equal(ok, true);
+    const usage = store.list()[0].usage;
+    assert.deepEqual(usage.models.map(m => [m.label, m.remaining]), [['Gemini Pro', 0.3], ['Over', 1]]);
+    assert.equal(store.setUsage('nobody@example.com', []), false);
+  });
+
   it('rotates to the next free account when a quota is spent', () => {
     let now = 1_000_000;
     const store = new AgyAccountStore(path.join(tmpDir(), 'agy.json'), () => now);
