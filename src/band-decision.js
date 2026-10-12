@@ -169,3 +169,121 @@ export function decideBand(snapshot) {
   }
   return { kind: 'banded', keep, floor };
 }
+
+/** Defaults for the session-burn rule, see `decideSessionBurn`. */
+export const SESSION_BURN_DEFAULTS = Object.freeze({
+  enabled: true,
+  withinMin: 90,
+  minSpendable: 0.25,
+  minWeeklySpendable: 0.10,
+});
+
+/**
+ * The account whose 5-hour window is about to reset with quota still unspent,
+ * as a decision: that quota is lost at the reset, so spending it is free as
+ * long as the week can pay for it (every token also meters into the weekly
+ * window). Pure, like `decideBand`: `now` arrives in the snapshot.
+ *
+ * An account qualifies when its session resets within `withinMin`, at least
+ * `minSpendable` of the session is unspent, and at least `minWeeklySpendable`
+ * of its governing weekly window is. Unknown session or weekly readings never
+ * qualify: the rule acts only on what was reported. Of the qualifiers the
+ * highest session-pressure (unspent fraction per second to reset) wins, so the
+ * result is one account and deterministic.
+ *
+ * @typedef {{ index: number, priority: number, sessionUtilization: number | null,
+ *             sessionResetAt: number | null, weeklyUtilization: number | null }} BurnAccount
+ * @param {{ now: number, config: typeof SESSION_BURN_DEFAULTS, accounts: BurnAccount[] }} snapshot
+ * @returns {{ kind: 'none', reason: 'disabled' | 'no-qualifier' }
+ *         | { kind: 'burn', index: number, pressure: number }}
+ */
+export function decideSessionBurn(snapshot) {
+  const { accounts, now, config } = snapshot;
+  if (!config || !config.enabled) return { kind: 'none', reason: 'disabled' };
+  const horizonMs = config.withinMin * 60_000;
+  let best = null;
+  for (const a of accounts) {
+    if (a.sessionUtilization == null || !Number.isFinite(a.sessionUtilization)) continue;
+    if (a.weeklyUtilization == null || !Number.isFinite(a.weeklyUtilization)) continue;
+    if (!a.sessionResetAt) continue;
+    const msLeft = a.sessionResetAt - now;
+    if (msLeft <= 0 || msLeft > horizonMs) continue;
+    const sessionSpendable = spendableFraction(a.sessionUtilization);
+    if (sessionSpendable < config.minSpendable) continue;
+    if (spendableFraction(a.weeklyUtilization) < config.minWeeklySpendable) continue;
+    const pressure = sessionSpendable / (msLeft / 1000);
+    if (!best || pressure > best.pressure) best = { index: a.index, pressure };
+  }
+  return best ? { kind: 'burn', ...best } : { kind: 'none', reason: 'no-qualifier' };
+}
+
+/** A hand-edited config into a usable session-burn config: only a literal
+ * `false` for `enabled` turns it off, and each number must be finite and in
+ * range or it falls back to the default. */
+export function normalizeSessionBurn(raw) {
+  const d = SESSION_BURN_DEFAULTS;
+  const c = raw && typeof raw === 'object' ? raw : {};
+  const num = (v, lo, hi, dflt) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : dflt);
+  return {
+    enabled: c.enabled !== false,
+    withinMin: num(c.withinMin, 1, 300, d.withinMin),
+    minSpendable: num(c.minSpendable, 0, 1, d.minSpendable),
+    minWeeklySpendable: num(c.minWeeklySpendable, 0, 1, d.minWeeklySpendable),
+  };
+}
+
+/** Defaults for the weekly-burn rule, see `decideWeeklyBurn`. `preemptPinned`
+ * lets the rule move sessions already pinned elsewhere, at the cost of their
+ * prompt cache. `crossPriority` lets it pick an account from a lower priority
+ * tier: a fallback account's expiring week is lost like any other. */
+export const WEEKLY_BURN_DEFAULTS = Object.freeze({
+  enabled: true,
+  withinHours: 72,
+  minSpendable: 0.15,
+  preemptPinned: true,
+  crossPriority: true,
+});
+
+/**
+ * The account whose weekly window resets within `withinHours` with at least
+ * `minSpendable` of it unspent: that quota is lost at the reset, and a week is
+ * far larger than a 5-hour session, so this outranks `decideSessionBurn`. Same
+ * contract as it: pure, unknown readings never qualify, the highest
+ * unspent-per-second wins.
+ *
+ * @param {{ now: number, config: typeof WEEKLY_BURN_DEFAULTS,
+ *           accounts: { index: number, weeklyUtilization: number | null, weeklyResetAt: number | null }[] }} snapshot
+ * @returns {{ kind: 'none', reason: 'disabled' | 'no-qualifier' }
+ *         | { kind: 'burn', index: number, pressure: number }}
+ */
+export function decideWeeklyBurn(snapshot) {
+  const { accounts, now, config } = snapshot;
+  if (!config || !config.enabled) return { kind: 'none', reason: 'disabled' };
+  const horizonMs = config.withinHours * 3600_000;
+  let best = null;
+  for (const a of accounts) {
+    if (a.weeklyUtilization == null || !Number.isFinite(a.weeklyUtilization)) continue;
+    if (!a.weeklyResetAt) continue;
+    const msLeft = a.weeklyResetAt - now;
+    if (msLeft <= 0 || msLeft > horizonMs) continue;
+    const spendable = spendableFraction(a.weeklyUtilization);
+    if (spendable < config.minSpendable) continue;
+    const pressure = spendable / (msLeft / 1000);
+    if (!best || pressure > best.pressure) best = { index: a.index, pressure };
+  }
+  return best ? { kind: 'burn', ...best } : { kind: 'none', reason: 'no-qualifier' };
+}
+
+/** A hand-edited config into a usable weekly-burn config; see `normalizeSessionBurn`. */
+export function normalizeWeeklyBurn(raw) {
+  const d = WEEKLY_BURN_DEFAULTS;
+  const c = raw && typeof raw === 'object' ? raw : {};
+  const num = (v, lo, hi, dflt) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : dflt);
+  return {
+    enabled: c.enabled !== false,
+    withinHours: num(c.withinHours, 1, 168, d.withinHours),
+    minSpendable: num(c.minSpendable, 0, 1, d.minSpendable),
+    preemptPinned: c.preemptPinned !== false,
+    crossPriority: c.crossPriority !== false,
+  };
+}

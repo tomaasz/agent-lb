@@ -108,7 +108,7 @@ export function createDefaultConfig() {
     switchThreshold: 0.98,
     holdSeconds: 0,
     distributeSessions: 'adaptive',
-    expiryRouting: { enabled: true, tolerance: 1.5, preempt: true },
+    expiryRouting: { enabled: true, tolerance: 1.5, preempt: true, sessionBurn: { enabled: true, withinMin: 90, minSpendable: 0.25, minWeeklySpendable: 0.10 }, weeklyBurn: { enabled: true, withinHours: 72, minSpendable: 0.15, preemptPinned: true, crossPriority: true } },
     crossProviderFallback: true,
     fallbackPolicy: { mode: 'explicit', rules: [] },
     autoHealthCheck: {

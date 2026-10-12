@@ -3240,6 +3240,13 @@ export function createProxyServer(
           config.distributeSessions = body.distributeSessions;
         }
         if (body?.expiryRouting !== undefined) {
+          // The dashboard form knows nothing of sessionBurn; keep what is set.
+          if (body.expiryRouting && body.expiryRouting.sessionBurn === undefined) {
+            body.expiryRouting.sessionBurn = accountManager.expiryRouting.sessionBurn;
+          }
+          if (body.expiryRouting && body.expiryRouting.weeklyBurn === undefined) {
+            body.expiryRouting.weeklyBurn = accountManager.expiryRouting.weeklyBurn;
+          }
           accountManager.setExpiryRouting(body.expiryRouting);
           config.expiryRouting = body.expiryRouting;
         }

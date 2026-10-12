@@ -7,7 +7,7 @@ import { weeklyBucketForModel, modelGlobMatches, modelFamily, gatingUtilization,
 import { SessionTracker } from './session-tracker.js';
 import { buildQuotaSummary, quotaTier } from './quota-summary.js';
 import { ROLLOVER_MIN_JUMP_MS, remapHeld } from './rollover.js';
-import { decideBand, pressureOf, pressureRank, assertNever } from './band-decision.js';
+import { decideBand, decideSessionBurn, normalizeSessionBurn, decideWeeklyBurn, normalizeWeeklyBurn, pressureOf, pressureRank, assertNever } from './band-decision.js';
 import { BurnRateLearner, ConcurrencyLearner, scoreCandidate } from './adaptive-distribution.js';
 import { safeLine } from './safe-text.js';
 
@@ -943,6 +943,10 @@ export class AccountManager {
         if (!next || next.index === current.index) this._noteHeldRollover(current, model, advisorModel, exclude);
         if (next) return next;
       }
+      if (this.expiryRouting.enabled && this._weeklyBurnTarget(current, exclude, model, advisorModel)) {
+        const next = this._selectNext(exclude, model, advisorModel);
+        if (next) return next;
+      }
       const betterExists = this._preemptedBy(current, model, advisorModel, exclude);
       if (betterExists) return this._selectNext(exclude, model, advisorModel);
       return current;
@@ -1016,6 +1020,17 @@ export class AccountManager {
         // the next request asks again.
         this._noteHeldRollover(pinned, model, advisorModel, exclude);
         return pinned;
+      }
+      // Weekly burn: another account's week is about to expire with quota left,
+      // which costs far more than this session's prompt cache. Moves only to an
+      // account that qualifies, so it is inert unless one does.
+      if (this.expiryRouting.enabled) {
+        const burn = this._weeklyBurnTarget(pinned, exclude, model, advisorModel);
+        if (burn) {
+          this._beginRamp(burn);
+          console.log(`[AgentLB] Session pin on "${pinned.name}" released — weekly quota on "${burn.name}" is about to expire; re-routing`);
+          return burn;
+        }
       }
       // Mirror _select's priority preemption so an operator's priority order
       // still wins over a session's stickiness.
@@ -2053,6 +2068,8 @@ export class AccountManager {
         ? Math.max(1, c.tolerance)
         : 1.5,
       preempt: typeof c.preempt === 'boolean' ? c.preempt : true,
+      sessionBurn: normalizeSessionBurn(c.sessionBurn),
+      weeklyBurn: normalizeWeeklyBurn(c.weeklyBurn),
     };
     // Nothing survives the knob being off: every observation is dropped when
     // preemption stops and none is written while it is off, so no mechanism
@@ -2230,7 +2247,68 @@ export class AccountManager {
         available = burnFirst.concat(available.filter(a => (a.priority || 0) > minPrio));
       }
     }
+    // Burn rules: quota that is about to be lost is worth spending first. The
+    // weekly window outranks the 5h one (it is far larger), and the session rule
+    // only chooses among accounts the weekly band admits, so it can never pull
+    // traffic off an account whose week is expiring faster. Only the best
+    // priority tier is considered, so operator priority still wins.
+    if (available.length > 1) {
+      const weekly = this._weeklyBurnCandidate(available, model);
+      if (weekly) return [weekly];
+      const banded = this._topPressureBand(available, model);
+      const session = banded.length > 1 ? this._sessionBurnCandidate(banded, model) : null;
+      return session ? [session] : banded;
+    }
     return this._topPressureBand(available, model);
+  }
+
+  /** The top-tier account `decideWeeklyBurn` picks from `available`, or null. */
+  _weeklyBurnCandidate(available, model, now = Date.now()) {
+    const config = this.expiryRouting.weeklyBurn;
+    if (!config?.enabled) return null;
+    // Across priority tiers unless configured otherwise: operator priority says
+    // who is preferred, not that a fallback's expiring week should be wasted.
+    const minPrio = Math.min(...available.map(a => a.priority || 0));
+    const tier = config.crossPriority ? available : available.filter(a => (a.priority || 0) === minPrio);
+    const decision = decideWeeklyBurn({
+      now,
+      config,
+      accounts: tier.map(a => {
+        const w = this._governingWindow(a, model);
+        return { index: a.index, weeklyUtilization: w.utilization ?? null, weeklyResetAt: w.resetAt ?? null };
+      }),
+    });
+    return decision.kind === 'burn' ? tier.find(a => a.index === decision.index) ?? null : null;
+  }
+
+  /** The weekly-burn account a session pinned (or the walk parked) on `holder`
+   * should move to, or null when it should stay. Honors `preemptPinned`. */
+  _weeklyBurnTarget(holder, exclude, model, advisorModel) {
+    if (!this.expiryRouting.weeklyBurn?.preemptPinned) return null;
+    const available = this.accounts.filter(a => !exclude?.has(a.index) && this._isAvailable(a, model, advisorModel));
+    if (available.length < 2) return null;
+    const target = this._weeklyBurnCandidate(available, model);
+    return target && target.index !== holder.index ? target : null;
+  }
+
+  /** The top-tier account `decideSessionBurn` picks from `available`, or null. */
+  _sessionBurnCandidate(available, model, now = Date.now()) {
+    const config = this.expiryRouting.sessionBurn;
+    if (!config?.enabled) return null;
+    const minPrio = Math.min(...available.map(a => a.priority || 0));
+    const tier = available.filter(a => (a.priority || 0) === minPrio);
+    const decision = decideSessionBurn({
+      now,
+      config,
+      accounts: tier.map(a => ({
+        index: a.index,
+        priority: a.priority || 0,
+        sessionUtilization: a.quota.unified5h ?? null,
+        sessionResetAt: a.quota.unified5hReset ?? null,
+        weeklyUtilization: this._governingWindow(a, model).utilization ?? null,
+      })),
+    });
+    return decision.kind === 'burn' ? tier.find(a => a.index === decision.index) ?? null : null;
   }
 
 
