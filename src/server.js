@@ -8410,6 +8410,14 @@ export async function forwardRequest(
           error: refusal || "Codex usage limit reached",
           timestamp: Date.now(),
         };
+        if (accountManager.isAutoResetEnabled?.(account)) {
+          const resetRes = await accountManager.checkAutoReset(account.index, { reason: "429_usage_limit" }).catch(() => null);
+          if (resetRes?.ok) {
+            accountManager.clearRateLimited(account.index);
+            account.status = "active";
+            ctx.tried.delete(account.index);
+          }
+        }
         if (retryCount < maxRetries) {
           ctx.tried.add(account.index);
           if (clientGone(res)) {

@@ -1,36 +1,39 @@
-# Plan Zadania: [Rec] Wdrożenie narzędzia ttok 1.0 do bezpiecznego przycinania logów w agent-lb
+# Plan Zadania: [R205] Automatyczny reset limitów Codex CLI w agent-lb (t_d2bf030b)
 
-> **Cel:** Zabezpieczenie przed marnowaniem limitów tokenów i przepełnianiem kontekstu asystenta poprzez wdrożenie narzędzia ttok 1.0 do precyzyjnego przycinania i zliczania tokenów w logach testowych agent-lb.
+> **Cel:** Dodanie do komponentu agent-lb modularnej obsługi automatycznego wywoływania resetu limitów zapytań Codex CLI przy niskim stanie konta (<10% limitu / >=90% utylizacji), z zabezpieczeniem przed pętlami, obsługą błędów, konfigurowalnym feature flagiem i pełnym zestawem testów jednostkowych.
 > **Status:** Zakończone
-> **Ostatnia aktualizacja:** 2026-10-10 11:29
+> **Ostatnia aktualizacja:** 2026-10-12 22:54
 
 ---
 
 ## 1. Fazy i Zadania
 
-### Faza 1: Rozpoznanie i weryfikacja środowiska
-- [x] Sprawdzenie dostępności narzędzia `ttok` w środowisku (`ttok --version`, `/home/tomaasz/.local/bin/ttok`)
-- [x] Weryfikacja działania na testowym pliku i wejściu standardowym stdin
-- [x] Potwierdzenie kryteriów Done: polecenie ttok zwraca poprawną liczbę jednostek i kod wyjścia 0
+### Faza 1: Rozpoznanie i architektura
+- [x] Analiza istniejącego kodu i endpointów OpenAI WHAM (codex-auth.js, account-manager.js, server.js)
+- [x] Weryfikacja ustaleń z zadania badawczego t_e41e3929 (1 konto tomaasz@gmail.com, 2 kredyty dostępne, próg <10% headroomu)
+- [x] Zaprojektowanie modularnej architektury src/codex-reset.js z zabezpieczeniem współbieżności i pętli błędów
 
-### Faza 2: Integracja z projektem agent-lb
-- [x] Dodanie skryptu `test:trimmed` do `package.json` (`node --test ... 2>&1 | (ttok -t 4000 2>/dev/null || cat)`)
-- [x] Stworzenie zestawu testów `test/ttok-log-trim.test.js` weryfikującego zliczanie i obcinanie logów
-- [x] Aktualizacja `PROJECT_CONTEXT.md` z zachowaniem budżetu tokenów (ccaudit < 1500)
+### Faza 2: Implementacja
+- [x] Krok 1: Utworzenie src/codex-reset.js z logiką sprawdzania progów, loop prevention, backoff cooldown i audytem zdarzeń
+- [x] Krok 2: Usprawnienie src/codex-auth.js (consumeCodexResetCredit zwracające identyfikator zużytego kredytu)
+- [x] Krok 3: Integracja z src/account-manager.js (wyzwalanie po aktualizacji kwot i sondach, reporting w getStatus())
+- [x] Krok 4: Integracja z src/server.js (reakcja na 429 quota exhaustion) oraz src/config.js i src/index.js (feature flag autoResetCredits / codexReset)
 
 ### Faza 3: Testy i weryfikacja
-- [x] Uruchomienie `npm run lint` (0 błędów, 0 ostrzeżeń)
-- [x] Uruchomienie dedykowanego testu `node --test test/ttok-log-trim.test.js` (4/4 testów PASS)
-- [x] Uruchomienie `npm run audit:tokens` (1457 tokenów / próg 1500 PASS)
-- [x] Wykonanie commitu i push na `origin/main`
+- [x] Krok 1: Implementacja kompleksowych testów jednostkowych test/codex-auto-reset.test.js (warunki progowe <10%, obsługa błędów, cooldown, zapobieganie pętlom, wyłącznik feature flag)
+- [x] Krok 2: Weryfikacja regresji istniejących testów (npm test test/codex-support.test.js i inne)
+- [x] Krok 3: Sprawdzenie lintera (npm run lint) i audytu tokenów (npm run audit:tokens)
+- [x] Krok 4: Aktualizacja findings.md i dokumentacji
 
 ---
 
 ## 2. Bieżący Krok (Next Action)
-- [x] Wszystkie kroki zrealizowane pomyślnie. Zadanie gotowe do zamknięcia w kanbanie.
+- [x] Wszystkie kroki zrealizowane pomyślnie. Zadanie gotowe do handoffu / review.
 
 ---
 
 ## 3. Decyzje projektowe i założenia
-- **Decyzja 1:** Narzędzie `ttok 1.0` jest zainstalowane w `~/.local/bin/ttok` (przez `uv tool`). W testach oraz skryptach npm zaimplementowano bezpieczne sprawdzanie obecności (`which ttok` / fallback), zapobiegające awariom w środowiskach CI pozbawionych Pythona/ttok.
-- **Decyzja 2:** Zaimplementowano skrypt `npm run test:trimmed` z bezpiecznym limitem 4000 tokenów, co drastycznie ogranicza narzut tokenowy z 64k znaków raportu testowego podczas sesji agentowych.
+- **Decyzja 1 (Modularność):** Cała logika decyzyjna progu, ochrony przed pętlami, licznika awarii i logowania audytowego jest wydzielona do src/codex-reset.js. AccountManager deleguje do tego modułu.
+- **Decyzja 2 (Warunek progowy <10%):** Próg wyzwala się, gdy utylizacja okna 5h (lub 7d) wynosi >= 0.90 (czyli pozostały headroom < 10%) lub gdy konto ma status exhausted. Domyślna wartość to 0.90, konfigurowalna przez codexReset.threshold lub env AGENTLB_AUTO_RESET_THRESHOLD.
+- **Decyzja 3 (Ochrona przed pętlami):** Flaga _resetInProgress blokuje równoległe wywołania. Na wypadek błędu API włączany jest cooldown (60s dla pojedynczego błędu, 15 min po 3 kolejnych awariach, 5 min przy braku kredytów). Po udanym resecie obowiązuje 30-sekundowy cooldown ochronny.
+- **Decyzja 4 (Feature flag / rollback):** Opcja autoResetCredits: false lub codexReset: { enabled: false } natychmiast wyłącza mechanizm bez wpływu na ręczne wywoływanie przez dashboard.

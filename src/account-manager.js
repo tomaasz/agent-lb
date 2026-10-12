@@ -10,6 +10,7 @@ import { ROLLOVER_MIN_JUMP_MS, remapHeld } from './rollover.js';
 import { decideBand, decideSessionBurn, normalizeSessionBurn, decideWeeklyBurn, normalizeWeeklyBurn, pressureOf, pressureRank, assertNever } from './band-decision.js';
 import { BurnRateLearner, ConcurrencyLearner, scoreCandidate } from './adaptive-distribution.js';
 import { safeLine } from './safe-text.js';
+import { isAutoResetConfigured, resolveResetThreshold, isCodexAccountNearLimit, triggerCodexAutoReset } from './codex-reset.js';
 
 // Re-exported for callers that import these model helpers from here.
 export { isFableModel, parseRequestModel, parseAdvisorModel } from './model.js';
@@ -223,6 +224,7 @@ function makeAccount(acct, index) {
     hasClaudePro: acct.hasClaudePro ?? null,
     priority: acct.priority || 0,
     disabled: acct.disabled || false,
+    autoResetCredits: acct.autoResetCredits ?? null,
 
     maxUsage: acct.maxUsage ?? null,
     upstream: acct.upstream || null,
@@ -311,9 +313,12 @@ function sampleModelFor(route) {
 }
 
 export class AccountManager {
-  constructor(accounts, switchThreshold = 0.98, { refreshFn = refreshAccessToken, codexRefreshFn = refreshCodexToken, throttleProbeFloorMs, familyStaleMs, statusStaleMs, forcedRefreshFloorMs = FORCED_REFRESH_FLOOR_MS, routes, ramp, distributeSessions = false, adaptive, sessionTracker, expiryRouting, crossProviderFallback = false } = {}) {
+  constructor(accounts, switchThreshold = 0.98, { refreshFn = refreshAccessToken, codexRefreshFn = refreshCodexToken, throttleProbeFloorMs, familyStaleMs, statusStaleMs, forcedRefreshFloorMs = FORCED_REFRESH_FLOOR_MS, routes, ramp, distributeSessions = false, adaptive, sessionTracker, expiryRouting, crossProviderFallback = false, autoResetCredits = true, codexReset } = {}) {
     // Cross-provider fallback when all accounts of a primary provider are exhausted
     this.crossProviderFallback = !!crossProviderFallback;
+    this.autoResetCredits = autoResetCredits;
+    this.codexReset = codexReset;
+    this.resetAuditLog = [];
     // How long a just-minted token is trusted against a forced refresh.
     this._forcedRefreshFloorMs = forcedRefreshFloorMs;
     // Injectable for tests (mirrors Prober's probeFn); defaults to the real
@@ -3275,6 +3280,12 @@ export class AccountManager {
       const pct = account.quota.unified7d != null ? Math.round(account.quota.unified7d * 100) : null;
       console.log(`[AgentLB] "${account.name}" near weekly quota${pct == null ? '' : ` (${pct}%)`}`);
     }
+
+    if (this.isAutoResetEnabled(account)) {
+      this.checkAutoReset(account.index, { reason: 'response_headers' }).catch(err => {
+        console.warn(`[AgentLB] Auto-reset check failed for "${account.name}": ${err?.message || err}`);
+      });
+    }
   }
 
   updateQuota(accountIndex, headers) {
@@ -3637,6 +3648,12 @@ export class AccountManager {
       if (account.lastError?.reason === 'quota') account.lastError = null;
       console.log(`[AgentLB] Account "${account.name}" recovered from exhausted state (utilization: ${q.unified5h != null ? Math.round(q.unified5h * 100) + '%' : 'headroom available'})`);
     }
+
+    if (this.isAutoResetEnabled(account)) {
+      this.checkAutoReset(accountIndex, { reason: 'usage_probe' }).catch(err => {
+        console.warn(`[AgentLB] Auto-reset check failed for "${account.name}": ${err?.message || err}`);
+      });
+    }
   }
 
   /**
@@ -3668,6 +3685,41 @@ export class AccountManager {
     return res;
   }
 
+  /**
+   * Whether automated RateLimitResetCredit consumption is enabled for an account.
+   */
+  isAutoResetEnabled(account = null) {
+    if (account?.autoResetCredits === false) return false;
+    return isAutoResetConfigured(this.autoResetCredits ?? this.codexReset?.enabled);
+  }
+
+  /**
+   * Threshold for auto-reset trigger (defaults to 0.90 = headroom < 10%).
+   */
+  getAutoResetThreshold() {
+    return resolveResetThreshold(this.codexReset || this.autoResetCredits);
+  }
+
+  /**
+   * Check and trigger auto-reset for a Codex account if eligible.
+   */
+  async checkAutoReset(accountIndex, { reason = 'quota_update' } = {}) {
+    const account = this.accounts[accountIndex];
+    if (!account || !this.isAutoResetEnabled(account)) return { ok: false, skipped: true, reason: 'disabled' };
+    const threshold = this.getAutoResetThreshold();
+    return triggerCodexAutoReset(this, accountIndex, {
+      reason,
+      threshold,
+      enabled: true,
+    });
+  }
+
+  /**
+   * In-memory audit log of reset actions.
+   */
+  getResetAuditLog() {
+    return this.resetAuditLog || [];
+  }
 
   /**
    * Apply quota learned from the OAuth usage endpoint (the background probe).
@@ -4136,6 +4188,11 @@ export class AccountManager {
       crossProviderFallback: !!this.crossProviderFallback,
       routes: this.getRoutes(),
       sessions: { ...sessions, distribute: this.distributeSessions, mode: this.distributionMode, draining: this.drainingCount() },
+      autoReset: {
+        enabled: this.isAutoResetEnabled(),
+        threshold: this.getAutoResetThreshold(),
+        history: this.getResetAuditLog(),
+      },
       // Empty outside adaptive mode, so the renderer needs no mode check of its
       // own and an older client simply sees nothing extra.
       adaptive: this._adaptiveStatsCached(),
@@ -4192,6 +4249,14 @@ export class AccountManager {
           : null,
         circuitBreakerUntil: a.circuitBreakerUntil && a.circuitBreakerUntil > Date.now()
           ? new Date(a.circuitBreakerUntil).toISOString()
+          : null,
+        autoResetEligible: isCodexAccountNearLimit(a, this.getAutoResetThreshold()),
+        resetInProgress: Boolean(a._resetInProgress),
+        lastResetAttemptAt: a._lastResetAttemptAt ? new Date(a._lastResetAttemptAt).toISOString() : null,
+        lastResetSuccessAt: a._lastResetSuccessAt ? new Date(a._lastResetSuccessAt).toISOString() : null,
+        lastResetError: a._lastResetError || null,
+        resetCooldownUntil: a._resetCooldownUntil && a._resetCooldownUntil > Date.now()
+          ? new Date(a._resetCooldownUntil).toISOString()
           : null,
       })),
     };

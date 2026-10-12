@@ -234,7 +234,7 @@ export async function consumeCodexResetCredit(account, creditId = null) {
       return { ok: false, status: res.status, error: `Konsumpcja kredytu resetu nie powiodła się (${res.status}): ${text}` };
     }
     const data = await res.json().catch(() => ({}));
-    return { ok: true, data };
+    return { ok: true, creditId: targetCreditId, data };
   } catch (err) {
     return { ok: false, error: err.message };
   }

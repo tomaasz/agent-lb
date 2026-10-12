@@ -110,6 +110,8 @@ export function createDefaultConfig() {
     distributeSessions: 'adaptive',
     expiryRouting: { enabled: true, tolerance: 1.5, preempt: true, sessionBurn: { enabled: true, withinMin: 90, minSpendable: 0.25, minWeeklySpendable: 0.10 }, weeklyBurn: { enabled: true, withinHours: 72, minSpendable: 0.15, preemptPinned: true, crossPriority: true } },
     crossProviderFallback: true,
+    autoResetCredits: true,
+    codexReset: { enabled: true, threshold: 0.90, cooldownSeconds: 60 },
     fallbackPolicy: { mode: 'explicit', rules: [] },
     autoHealthCheck: {
       enabled: true,
@@ -144,6 +146,20 @@ export async function loadConfig() {
     if (config.distributeSessions == null) config.distributeSessions = 'adaptive';
     if (config.expiryRouting == null) config.expiryRouting = { enabled: true, tolerance: 1.5, preempt: true };
     if (config.crossProviderFallback == null) config.crossProviderFallback = true;
+    if (config.autoResetCredits == null && config.codexReset?.enabled == null) {
+      if (process.env.AGENTLB_AUTO_RESET_CREDITS != null) {
+        config.autoResetCredits = process.env.AGENTLB_AUTO_RESET_CREDITS === 'true' || process.env.AGENTLB_AUTO_RESET_CREDITS === '1';
+      } else {
+        config.autoResetCredits = true;
+      }
+    }
+    if (config.codexReset == null) {
+      config.codexReset = {
+        enabled: config.autoResetCredits !== false,
+        threshold: 0.90,
+        cooldownSeconds: 60,
+      };
+    }
     if (config.autoHealthCheck == null) {
       config.autoHealthCheck = {
         enabled: true,
