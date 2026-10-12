@@ -770,6 +770,22 @@ test("Claude models endpoint exposes accurate parameters matching documentation"
     assert.equal(opus55.pricing.input_per_mtok, 4);
     assert.equal(opus55.pricing.output_per_mtok, 20);
 
+    // Sonnet 5.5 and Haiku 5.5 (prices per platform.claude.com/docs/en/models)
+    const sonnet55 = findModel("claude-sonnet-5-5");
+    assert.ok(sonnet55, "claude-sonnet-5-5 is present in catalog");
+    assert.equal(sonnet55.context_window, 1000000);
+    assert.equal(sonnet55.pricing.input_per_mtok, 2);
+    assert.equal(sonnet55.pricing.output_per_mtok, 10);
+    assert.equal(sonnet55.pricing.cache_read_per_mtok, 0.1);
+
+    const haiku55 = findModel("claude-haiku-5-5");
+    assert.ok(haiku55, "claude-haiku-5-5 is present in catalog");
+    assert.equal(haiku55.context_window, 1000000);
+    assert.equal(haiku55.default_reasoning_level, "medium");
+    assert.equal(haiku55.capabilities.thinking.types.adaptive.supported, true);
+    assert.equal(haiku55.pricing.input_per_mtok, 0.1);
+    assert.equal(haiku55.pricing.output_per_mtok, 0.5);
+
     // Sonnet 5
     const sonnet5 = findModel("claude-sonnet-5");
     assert.ok(sonnet5, "claude-sonnet-5 is present in catalog");
