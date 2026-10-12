@@ -796,9 +796,22 @@ test("Claude models endpoint exposes accurate parameters matching documentation"
     assert.ok(findModel("claude-mythos-5"), "claude-mythos-5 is present");
     assert.ok(findModel("claude-opus-5"), "claude-opus-5 is present");
     assert.ok(
-      findModel("claude-haiku-4-5"),
-      "claude-haiku-4-5 alias is present",
+      findModel("claude-haiku-4-5-20251001"),
+      "claude-haiku-4-5-20251001 is present",
     );
+
+    // Compatibility aliases are accepted by the proxy but hidden from the
+    // catalog, so pickers do not list the same model twice.
+    for (const alias of [
+      "claude-opus-5.5",
+      "claude-sonnet-5.5",
+      "claude-haiku-5.5",
+      "claude-haiku-4-5",
+    ]) {
+      assert.equal(findModel(alias), undefined, `${alias} is hidden`);
+    }
+    const ids = body.data.map((m) => m.id);
+    assert.equal(new Set(ids).size, ids.length, "no duplicate model ids");
   } finally {
     await new Promise((resolve) => proxyServer.close(resolve));
   }

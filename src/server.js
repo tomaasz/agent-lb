@@ -805,6 +805,7 @@ export function createProxyServer(
           },
           {
             id: "claude-opus-5.5",
+            unlisted: true,
             name: "Claude Opus 5.5",
             display_name: "Claude Opus 5.5",
             description:
@@ -846,6 +847,7 @@ export function createProxyServer(
           },
           {
             id: "claude-sonnet-5.5",
+            unlisted: true,
             name: "Claude Sonnet 5.5",
             display_name: "Claude Sonnet 5.5",
             description: "Frontier intelligence with high speed and precision",
@@ -906,6 +908,7 @@ export function createProxyServer(
           },
           {
             id: "claude-haiku-5.5",
+            unlisted: true,
             name: "Claude Haiku 5.5",
             display_name: "Claude Haiku 5.5",
             description: "Fastest frontier model with low latency and high precision",
@@ -945,6 +948,7 @@ export function createProxyServer(
           },
           {
             id: "claude-haiku-4-5",
+            unlisted: true,
             name: "Claude Haiku 4.5",
             display_name: "Claude Haiku 4.5",
             description:
@@ -1771,7 +1775,11 @@ export function createProxyServer(
             description: "Highest reasoning effort for the hardest problems",
           },
         ];
-        const modelsList = rawModelsList.map((m, idx) => {
+        // Compatibility aliases (dotted / short IDs) stay accepted by the proxy
+        // (see normalizeAnthropicModelForOAuth) but are hidden from the catalog
+        // so model pickers do not show the same model twice.
+        const listedModels = rawModelsList.filter((m) => !m.unlisted);
+        const modelsList = listedModels.map((m, idx) => {
           const maxInput = m.max_input_tokens || m.context_window || 1000000;
           const maxOutput = m.max_tokens || m.max_output_tokens || 128000;
           return {
