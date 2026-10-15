@@ -547,6 +547,13 @@ console.log('gemini-fake-low\\tFake Low');
 describe('testAgyAccount acquire timeout', () => {
   const fakeStore = { list: () => [{ id: 'a', enabled: true, quotaUntil: null }] };
   const fakeCatalog = { list: async () => [{ id: 'gemini-x-low' }] };
+  let listener;
+  before(async () => {
+    // In production the HTTP listener keeps the loop alive while unref'd timeouts run.
+    listener = http.createServer();
+    await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
+  });
+  after(async () => { await new Promise(resolve => listener.close(resolve)); });
 
   it('gives up on a hanging acquire after the timeout and returns an error', async () => {
     const { testAgyAccount } = await import('../src/agy-gateway.js');
