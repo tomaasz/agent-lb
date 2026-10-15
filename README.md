@@ -205,7 +205,11 @@ The proxy does not set a Claude token or context-window value. It forwards `max_
 
 ### AGY (Antigravity CLI) via agybridge
 
-AGY is not served by the proxy — agent-lb has no AGY backend, so the model names `agy`, `agy-fast` and `gemini-3.8-flash-*` are not listed by `/v1/models` (they are still accepted and mapped to Claude/GPT only as a fallback). Real AGY runs locally on each workstation, on the Google account logged into `agy` there, through [agybridge](https://github.com/tomaasz/agybridge):
+AGY (Gemini models) now works through the proxy, for any client, with the same key as Claude/Codex. The agent-lb server needs [agybridge](https://github.com/tomaasz/agybridge) installed (default command name `agybridge`; override with `config.agy.bridgeCommand`; optionally `config.agy.homesDir` and `config.agy.accountsPath`). Add Google accounts in the dashboard (Accounts → AGY → *Log in a Google account*); the pool picks the account and switches to the next one when quota runs out before the first answer token. Models are listed live from `agy models` (Gemini only), each effort level is its own model in `/v1/models`; the `agy` and `agy-fast` aliases are still accepted but hidden from the list. `hermes-setup.sh` adds these `gemini-*` models to the `agentlb` provider.
+
+Honest costs: each request starts one `agy` process (~10 s, ~13k prompt tokens), up to 2 requests run at once per account, and the first reply arrives as a single chunk after keep-alive comments.
+
+**Station mode (unchanged).** You can still run AGY locally on a workstation, on the Google account logged into `agy` there, through agybridge:
 
 ```bash
 curl -fsSL https://agentlb.yourdomain.com/agy-setup.sh | bash

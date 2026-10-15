@@ -202,7 +202,11 @@ curl -fsSL http://twoj-serwer:3456/setup.sh | bash -s -- --key tc-KLUCZ_STACJI
 
 ### AGY (Antigravity CLI) przez agybridge
 
-AGY nie jest obsługiwany przez proxy — agent-lb nie ma backendu AGY, dlatego nazwy `agy`, `agy-fast` i `gemini-3.8-flash-*` nie pojawiają się w `/v1/models` (są nadal przyjmowane i mapowane na Claude/GPT wyłącznie jako fallback). Prawdziwy AGY działa lokalnie na każdej stacji, na koncie Google zalogowanym tam w `agy`, przez [agybridge](https://github.com/tomaasz/agybridge):
+AGY (modele Gemini) działa teraz przez proxy, dla każdego klienta i z tym samym kluczem co Claude/Codex. Serwer agent-lb potrzebuje zainstalowanego [agybridge](https://github.com/tomaasz/agybridge) (domyślna komenda `agybridge`; inną ścieżkę ustawia `config.agy.bridgeCommand`; opcjonalnie `config.agy.homesDir` i `config.agy.accountsPath`). Konta Google dodajesz w panelu (Konta → AGY → *Zaloguj konto Google*); pula wybiera konto i przełącza się na następne, gdy limit się wyczerpie przed pierwszym tokenem odpowiedzi. Modele są listowane na żywo z `agy models` (tylko Gemini), każdy poziom wysiłku to osobny model w `/v1/models`; aliasy `agy` i `agy-fast` są nadal przyjmowane, ale ukryte na liście. `hermes-setup.sh` dopisuje te modele `gemini-*` do providera `agentlb`.
+
+Uczciwie o kosztach: każde żądanie uruchamia jeden proces `agy` (ok. 10 s, ok. 13 tys. tokenów promptu), na jedno konto przypadają maks. 2 żądania naraz, a pierwsza odpowiedź przychodzi jako jeden kawałek po komentarzach keep-alive.
+
+**Tryb stacji (bez zmian).** Możesz też nadal uruchamiać AGY lokalnie na stacji, na koncie Google zalogowanym tam w `agy`, przez agybridge:
 
 ```bash
 curl -fsSL https://agentlb.twojadomena.pl/agy-setup.sh | bash

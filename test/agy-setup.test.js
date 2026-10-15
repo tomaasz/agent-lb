@@ -2,15 +2,20 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createProxyServer } from '../src/server.js';
 import { AccountManager } from '../src/account-manager.js';
 import { renderDashboardHtml } from '../src/dashboard.js';
 
-const AGY_MODELS = ['agy', 'agy-fast', 'gemini-3.8-flash-high', 'gemini-3.8-flash-low'];
+const AGY_MODELS = ['gemini-3.8-flash-high', 'gemini-3.8-flash-low'];
 
 async function withProxy(fn) {
   const am = new AccountManager([], 0.98);
-  const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {}, null, null, null);
+  const hooks = { agyModels: { list: async () => AGY_MODELS.map(id => ({ id, name: id })), resolveAlias: () => null } };
+  // Temp AGY paths: never the real accounts file or ~/.config/agy-homes.
+  const agyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-setup-test-'));
+  const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' }, agy: { accountsPath: path.join(agyDir, 'agy.json') } }, hooks, null, null, null);
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
     await fn(`http://127.0.0.1:${server.address().port}`);
@@ -34,12 +39,13 @@ describe('agybridge setup (real AGY runs locally, not through the proxy)', () =>
     });
   });
 
-  it('does not advertise AGY models the proxy cannot serve', async () => {
+  it('advertises live Gemini models but keeps legacy aliases hidden', async () => {
     await withProxy(async (base) => {
       const res = await fetch(`${base}/v1/models`, { headers: { 'x-api-key': 'tc-test-admin' } });
       assert.equal(res.status, 200);
       const ids = (await res.json()).data.map(m => m.id);
-      for (const id of AGY_MODELS) assert.ok(!ids.includes(id), `${id} not listed`);
+      for (const id of AGY_MODELS) assert.ok(ids.includes(id), `${id} listed`);
+      assert.ok(!ids.includes('agy') && !ids.includes('agy-fast'), 'legacy aliases stay hidden');
       assert.ok(ids.includes('claude-opus-5'), 'regular models still listed');
     });
   });
@@ -51,7 +57,8 @@ describe('agybridge setup (real AGY runs locally, not through the proxy)', () =>
     const hermes = fs.readFileSync('setup/hermes-setup.sh', 'utf8');
     assert.ok(!hermes.includes('models.extend(["agy"'), 'python path: agy not in agentlb list');
     assert.ok(!hermes.includes("models.push('agy'"), 'node path: agy not in agentlb list');
-    assert.ok(hermes.includes('"agy-fast": {"name": "AGY Fast"'), 'native AGY providers kept for the plugin');
+    assert.ok(!hermes.includes('"agy-fast": {"name": "AGY Fast"'), 'native AGY providers are no longer added');
+    assert.ok(hermes.includes('gemini-'), 'gemini models come from /v1/models');
   });
 
   it('agy-setup.sh is valid bash and keeps the token out of argv and output', () => {

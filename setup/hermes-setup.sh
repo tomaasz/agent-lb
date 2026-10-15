@@ -14,17 +14,16 @@ set -eu
 URL="${AGENT_LB_URL:-${AGENTLB_URL:-https://agentlb.gotova.pl}}"
 KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${OPENAI_API_KEY:-}}}"
 
-HAS_AGY_PLUGIN=false
 TOKEN_SAFE=false
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --url) URL="${2%/}"; shift ;;
     --key) KEY="$2"; shift ;;
-    --with-agy|--agy) HAS_AGY_PLUGIN=true ;;
+    --with-agy|--agy) ;;  # zachowane dla zgodności: Gemini idzie teraz przez providera agentlb
     --token-safe) TOKEN_SAFE=true ;;
     -h|--help)
-      echo "Użycie: $0 [--key KLUCZ] [--url URL] [--with-agy] [--token-safe]"
+      echo "Użycie: $0 [--key KLUCZ] [--url URL] [--token-safe]"
       echo "  --token-safe  ustaw agent.max_turns=25, compression.threshold=0.25, protect_last_n=10"
       exit 0
       ;;
@@ -57,6 +56,21 @@ else
   echo "Ostrzeżenie: Proxy zwróciło status HTTP $HTTP_STATUS, kontynuuję konfigurację..."
 fi
 
+# Modele Gemini (AGY) serwuje sam agent-lb — pobieramy ich id z /v1/models.
+# Odpowiedź zapisujemy w pliku: pełny katalog ma około 300 KB, więc nie mieści
+# się bezpiecznie w pojedynczej zmiennej środowiskowej (Linux ogranicza ją do
+# około 128 KB). Limit 2 MB odcina odpowiedź niepodobną do katalogu modeli.
+REMOTE_MODELS_FILE=$(mktemp "${TMPDIR:-/tmp}/agentlb-models.XXXXXX")
+cleanup_remote_models() { rm -f "$REMOTE_MODELS_FILE"; }
+trap cleanup_remote_models EXIT HUP INT TERM
+REMOTE_MODELS_OK=1
+curl -s -f --max-filesize 2097152 -m 10 "$URL/v1/models" -H "Authorization: Bearer $KEY" -o "$REMOTE_MODELS_FILE" 2>/dev/null || REMOTE_MODELS_OK=0
+if [ "$REMOTE_MODELS_OK" != "1" ] || [ ! -s "$REMOTE_MODELS_FILE" ]; then
+  REMOTE_MODELS_OK=0
+  : > "$REMOTE_MODELS_FILE"
+  echo "Ostrzeżenie: nie udało się pobrać listy modeli z $URL/v1/models — zachowuję dotychczasowe modele Gemini z konfiguracji." >&2
+fi
+
 HERMES_DIR="$HOME/.hermes"
 mkdir -p "$HERMES_DIR"
 
@@ -64,29 +78,6 @@ CONFIG_FILE="$HERMES_DIR/config.yaml"
 ENV_FILE="$HERMES_DIR/.env"
 
 TIMESTAMP=$(date +%s)  # kopie zapasowe: <plik>.bak-$TIMESTAMP przy każdym zmienianym config.yaml
-
-# Sprawdź obecność wtyczki hermes-agy-plugin na hoście (jeśli nie wymuszono przez parametr)
-if [ "$HAS_AGY_PLUGIN" = "false" ]; then
-  if [ -d "$HERMES_DIR/plugins/model-providers/agy" ] || \
-     [ -d "${HERMES_HOME:-$HOME/.hermes}/plugins/model-providers/agy" ] || \
-     [ -d "$HERMES_DIR/plugins/agy" ] || \
-     [ -f "$HERMES_DIR/plugins/model-providers/agy/plugin.yaml" ] || \
-     [ -f "$HERMES_DIR/plugins/model-providers/agy/__init__.py" ] || \
-     [ -d "$HOME/hermes-agy-plugin" ] || \
-     [ -d "$HOME/.hermes-agy-plugin" ]; then
-    HAS_AGY_PLUGIN=true
-  elif [ -d "$HERMES_DIR/plugins" ] && find "$HERMES_DIR/plugins" -maxdepth 4 \( -name "*agy*" -o -name "plugin.yaml" \) 2>/dev/null | grep -q "agy"; then
-    HAS_AGY_PLUGIN=true
-  elif command -v python3 >/dev/null 2>&1 && python3 -c "import sys; from importlib.util import find_spec; sys.exit(0 if (find_spec('agy') or find_spec('hermes_agy_plugin')) else 1)" 2>/dev/null; then
-    HAS_AGY_PLUGIN=true
-  fi
-fi
-
-if [ "$HAS_AGY_PLUGIN" = "true" ]; then
-  echo "Wykryto wtyczkę AGY (agybridge) na hoście — dodaję natywne providery agy i agy-fast..."
-else
-  echo "Nie wykryto wtyczki AGY na hoście (providery agy nie zostaną dodane). Instalacja: curl -fsSL $URL/agy-setup.sh | bash"
-fi
 
 # Scalanie konfiguracji: ruamel.yaml z venva Hermesa (zachowuje komentarze,
 # odmawia zapisu pliku z duplikatami kluczy). Dawniej blok był doklejany na
@@ -119,8 +110,9 @@ fi
 # Wartości przekazujemy przez zmienne środowiskowe, nie przez wklejanie w kod.
 # Klucz nie trafia do config.yaml — tylko referencja ${AGENT_LB_API_KEY}.
 merge_status=0
-AGENTLB_BASE_URL="$URL/v1" HAS_AGY="$HAS_AGY_PLUGIN" TOKEN_SAFE="$TOKEN_SAFE" BACKUP_SUFFIX="bak-$TIMESTAMP" \
+AGENTLB_BASE_URL="$URL/v1" REMOTE_MODELS_FILE="$REMOTE_MODELS_FILE" REMOTE_MODELS_OK="$REMOTE_MODELS_OK" TOKEN_SAFE="$TOKEN_SAFE" BACKUP_SUFFIX="bak-$TIMESTAMP" \
   "$YAML_PYTHON" - "${config_paths[@]}" <<'PY' || merge_status=$?
+import json
 import os
 import re
 import shutil
@@ -142,13 +134,54 @@ MODELS = [
     "gpt-5-codex", "gpt-5.5", "gpt-5.4", "gpt-4.1", "o3-mini", "o1", "gpt-4o",
     "gpt-4o-mini",
 ]
-# AGY nie jest dopisywany do listy agentlb: agent-lb nie ma backendu AGY i po
-# cichu odpowiadałby Claude/GPT. Prawdziwy AGY to natywne providery agy/agy-fast
-# z wtyczki agybridge — instalacja: agy-setup.sh.
-AGY = {
-    "agy": {"name": "AGY", "model": "gemini-3.8-flash-high"},
-    "agy-fast": {"name": "AGY Fast", "model": "gemini-3.8-flash-low"},
-}
+# Modele Gemini (AGY) obsługuje sam agent-lb (pula kont Google + agybridge na
+# serwerze), więc trafiają na listę providera agentlb — ich id przychodzą z
+# /v1/models. Natywne providery agy/agy-fast z wtyczki Hermesa nie są już
+# dopisywane nowym instalacjom; istniejące wpisy w config.yaml zostają nietknięte.
+GEMINI_ID = re.compile(r"^gemini-[A-Za-z0-9._-]{1,100}$")
+MAX_GEMINI = 100
+
+
+def gemini_models():
+    """Lista id z /v1/models albo None, gdy pobranie się nie udało (odpowiedź pusta/uszkodzona)."""
+    if os.environ.get("REMOTE_MODELS_OK") != "1":
+        return None
+    try:
+        with open(os.environ["REMOTE_MODELS_FILE"], encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        print("Ostrzeżenie: nie udało się odczytać listy modeli z odpowiedzi HTTP 200 — "
+              "zachowuję dotychczasowe modele Gemini z konfiguracji.", file=sys.stderr)
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("data"), list):
+        print("Ostrzeżenie: nie udało się odczytać listy modeli z odpowiedzi HTTP 200 — "
+              "zachowuję dotychczasowe modele Gemini z konfiguracji.", file=sys.stderr)
+        return None
+    ids = []
+    for item in data["data"]:
+        mid = item.get("id") if isinstance(item, dict) else None
+        if isinstance(mid, str) and GEMINI_ID.fullmatch(mid) and mid not in ids:
+            ids.append(mid)
+    return ids[:MAX_GEMINI]
+
+
+REMOTE_GEMINI = gemini_models()
+
+
+def models_for(*existing):
+    """Statyczne modele + Gemini: z serwera, a przy błędzie pobrania te już zapisane w configu."""
+    if REMOTE_GEMINI is not None:
+        gem = REMOTE_GEMINI
+    else:
+        gem = []
+        for seq in existing:
+            for m in seq if isinstance(seq, list) else []:
+                if isinstance(m, str) and GEMINI_ID.fullmatch(m) and m not in gem:
+                    gem.append(m)
+        gem = gem[:MAX_GEMINI]
+    return MODELS + [m for m in gem if m not in MODELS]
+
+
 KEY_REF = "${AGENT_LB_API_KEY}"
 # Blok doklejany przez starsze wersje tego skryptu (wraz z auxiliary za znacznikiem końca).
 LEGACY = re.compile(
@@ -157,7 +190,6 @@ LEGACY = re.compile(
 )
 
 url = os.environ["AGENTLB_BASE_URL"]
-has_agy = os.environ.get("HAS_AGY") == "true"
 token_safe = os.environ.get("TOKEN_SAFE") == "true"
 suffix = os.environ["BACKUP_SUFFIX"]
 
@@ -173,34 +205,26 @@ def section(parent, key):
     return parent[key]
 
 
-def agentlb_fields(extra):
+def agentlb_fields(extra, models):
     fields = {"base_url": url, **extra, "api_key": KEY_REF, "api_mode": "chat_completions",
-              "context_length": 128000, "models": CommentedSeq(MODELS)}
+              "context_length": 128000, "models": CommentedSeq(models)}
     return fields
 
 
 def merge(cfg):
     providers = section(cfg, "providers")
-    section(providers, "agentlb").update(
-        agentlb_fields({"name": "AgentLB (All Models)", "api": url}))
-
+    prov = section(providers, "agentlb")
     custom = cfg.get("custom_providers")
     if not isinstance(custom, list):
         custom = cfg["custom_providers"] = CommentedSeq()
     entry = next((c for c in custom if isinstance(c, dict) and c.get("name") == "agentlb"), None)
+    # Przy błędzie pobrania /v1/models zachowujemy Gemini z obu istniejących list.
+    models = models_for(prov.get("models"), entry.get("models") if entry is not None else None)
+    prov.update(agentlb_fields({"name": "AgentLB (All Models)", "api": url}, models))
     if entry is None:
         entry = CommentedMap(name="agentlb")
         custom.append(entry)
-    entry.update(agentlb_fields({}))
-
-    if has_agy:
-        aliases = section(cfg, "model_aliases")
-        for name, spec in AGY.items():
-            # Tylko pola, za które odpowiada ten skrypt — np. context_length użytkownika zostaje.
-            section(providers, name).update(
-                {"name": spec["name"], "provider": name,
-                 "models": CommentedSeq([spec["model"], name])})
-            section(aliases, name).update({"model": spec["model"], "provider": name})
+    entry.update(agentlb_fields({}, models))
 
     section(section(cfg, "auxiliary"), "title_generation")["model_upgrade_enabled"] = False
 

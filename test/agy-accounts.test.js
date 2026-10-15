@@ -1,6 +1,7 @@
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { createProxyServer } from '../src/server.js';
@@ -115,6 +116,28 @@ describe('AGY account store', () => {
     assert.equal(store.pin('missing'), false);
   });
 
+  it('a failing deferred stats save is logged briefly and never thrown into the process', () => {
+    mock.timers.enable({ apis: ['setTimeout'] });
+    const warn = mock.method(console, 'warn', () => {});
+    try {
+      const dir = tmpDir();
+      let now = 1000;
+      const store = new AgyAccountStore(path.join(dir, 'agy.json'), () => now);
+      const a = store.upsert(agyToken('a@example.com'));
+      store._save = () => { throw Object.assign(new Error(`EACCES: permission denied, open '${dir}/agy.json.tmp'`), { code: 'EACCES' }); };
+      assert.equal(store.recordRequest(a.id, { inputTokens: 1, outputTokens: 2 }), true);
+      assert.doesNotThrow(() => mock.timers.tick(10_000));
+      assert.equal(warn.mock.callCount(), 1);
+      const logged = warn.mock.calls[0].arguments.join(' ');
+      assert.match(logged, /AGY stats save failed: EACCES/);
+      assert.ok(!logged.includes(dir), 'no path in the log line');
+      assert.equal(store.statsSaveTimer, null, 'a later request can schedule the next save');
+    } finally {
+      warn.mock.restore();
+      mock.timers.reset();
+    }
+  });
+
   it('asks Google for the account chooser', () => {
     const url = withAccountChooser('https://accounts.google.com/o/oauth2/auth?prompt=consent&state=s');
     assert.equal(new URL(url).searchParams.get('prompt'), 'select_account consent');
@@ -204,7 +227,11 @@ describe('AGY routes on the proxy', () => {
       },
       agy: { command: fakeAgy(dir, 'route@example.com'), accountsPath: path.join(dir, 'agy.json') },
     };
-    server = createProxyServer(new AccountManager([], 0.98), config, {}, null, null, null);
+    server = createProxyServer(new AccountManager([], 0.98), config, {
+      // Fakes keep the catalog and worker pool away from ~/.config/agy-homes and the real agy.
+      agyPool: { busy: () => 0, ensureHome: () => dir, acquire: async () => { throw new Error('no workers in this test'); }, stopAll() {} },
+      agyModels: { list: async () => [], resolveAlias: () => null },
+    }, null, null, null);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     base = `http://127.0.0.1:${server.address().port}`;
   });
@@ -273,5 +300,271 @@ describe('AGY accounts in the dashboard', () => {
     // The account list is built with textContent, never innerHTML, so an e-mail cannot inject markup.
     const agyJs = html.slice(html.indexOf('function renderAgyAccounts'), html.indexOf('function agyEl'));
     assert.ok(agyJs.length > 0 && !agyJs.includes('innerHTML'));
+  });
+});
+
+describe('AGY account cards: stats, busy and the Test button', () => {
+  let server, base, dir, store, workers, hits, acquired, released, catalogMode;
+  const admin = 'tc-admin-key';
+  const station = 'tc-station-card';
+  let idA, idB;
+
+  const listen = (handler) => new Promise((resolve) => {
+    const s = http.createServer(handler);
+    s.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  const call = (p, key, body) => fetch(base + p, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { 'content-type': 'application/json', ...(key ? { 'x-api-key': key } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const sse = (events) => (req, res) => {
+    let raw = '';
+    req.on('data', (c) => { raw += c; });
+    req.on('end', () => {
+      hits.push({ port: req.socket.localPort, auth: req.headers.authorization, body: JSON.parse(raw) });
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.end(events);
+    });
+  };
+  const OK_STREAM = 'data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1}}\n\ndata: [DONE]\n\n';
+
+  before(async () => {
+    dir = tmpDir();
+    hits = []; acquired = []; released = []; catalogMode = 'ok';
+    store = new AgyAccountStore(path.join(dir, 'agy.json'));
+    idA = store.upsert(JSON.stringify(agyToken('a@example.com', 'sub-a'))).id;
+    idB = store.upsert(JSON.stringify(agyToken('b@example.com', 'sub-b'))).id;
+    store.recordRequest(idA, { inputTokens: 10, outputTokens: 5 });
+    workers = { [idA]: await listen(sse(OK_STREAM)), [idB]: await listen(sse(OK_STREAM)) };
+    const active = new Map();
+    const pool = {
+      busy: (id) => active.get(id) || 0,
+      ensureHome: () => dir,
+      stopAll() {},
+      async acquire(id) {
+        acquired.push(id);
+        active.set(id, (active.get(id) || 0) + 1);
+        return { port: workers[id].address().port, token: `worker-secret-${id}`, release: () => { released.push(id); active.set(id, active.get(id) - 1); } };
+      },
+    };
+    const agyModels = {
+      async list() {
+        if (catalogMode === 'fail') throw new Error('agy models failed');
+        return [{ id: 'gemini-x-high', name: 'X High' }, { id: 'gemini-x-low', name: 'X Low' }];
+      },
+      resolveAlias: (m) => m,
+    };
+    const config = { proxy: { apiKey: admin, clientKeys: [{ name: 'st', key: station }] }, agy: { accountsPath: path.join(dir, 'agy.json') } };
+    server = createProxyServer(new AccountManager([], 0.98), config, { agyStore: store, agyPool: pool, agyModels }, null, null, null);
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    base = `http://127.0.0.1:${server.address().port}`;
+  });
+
+  after(async () => {
+    await new Promise((resolve) => server.close(resolve));
+    for (const w of Object.values(workers)) await new Promise((resolve) => { w.closeAllConnections?.(); w.close(resolve); });
+  });
+
+  it('lists stats, busy and the model ids without any token or seededAt', async () => {
+    const body = await (await call('/api/agy/accounts', admin)).json();
+    assert.equal(body.ok, true);
+    const a = body.accounts.find((x) => x.id === idA);
+    assert.deepEqual({ requests: a.stats.requests, in: a.stats.inputTokens, out: a.stats.outputTokens }, { requests: 1, in: 10, out: 5 });
+    assert.equal(a.busy, 0);
+    assert.deepEqual(body.models, ['gemini-x-high', 'gemini-x-low']);
+    const text = JSON.stringify(body);
+    assert.ok(!/refresh|ya29|seededAt|worker-secret/.test(text), 'no token material or seededAt in the list');
+  });
+
+  it('keeps the list working when the model catalog fails', async () => {
+    catalogMode = 'fail';
+    try {
+      const res = await call('/api/agy/accounts', admin);
+      assert.equal(res.status, 200);
+      assert.equal((await res.json()).accounts.length, 2);
+    } finally { catalogMode = 'ok'; }
+  });
+
+  it('tests only the chosen account on the first -low model and never leaks the worker token', async () => {
+    hits.length = 0; acquired.length = 0; released.length = 0;
+    const res = await call('/api/agy/accounts/test', admin, { id: idB });
+    assert.equal(res.status, 200);
+    const text = await res.text();
+    const out = JSON.parse(text);
+    assert.equal(out.ok, true);
+    assert.equal(out.model, 'gemini-x-low');
+    assert.equal(typeof out.ms, 'number');
+    assert.ok(!text.includes('worker-secret'), 'worker token is not returned');
+    assert.deepEqual(acquired, [idB]);
+    assert.deepEqual(released, [idB]);
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].port, workers[idB].address().port);
+    assert.equal(hits[0].auth, `Bearer worker-secret-${idB}`);
+    assert.equal(hits[0].body.model, 'gemini-x-low');
+    assert.match(JSON.stringify(hits[0].body.messages), /Odpowiedz jednym słowem: OK/);
+    // Test neither reorders nor pins.
+    const after = await (await call('/api/agy/accounts', admin)).json();
+    assert.deepEqual(after.accounts.map((x) => x.id), [idA, idB]);
+    assert.equal(after.pinned, null);
+  });
+
+  it('reports an in-band SSE error event as a failure and still releases once', async () => {
+    const original = workers[idA];
+    workers[idA] = await listen(sse('data: {"error":{"message":"model overloaded worker-secret-leak"}}\n\n'));
+    acquired.length = 0; released.length = 0;
+    try {
+      const out = await (await call('/api/agy/accounts/test', admin, { id: idA })).json();
+      assert.equal(out.ok, false);
+      assert.match(out.error, /overloaded/);
+      assert.deepEqual(acquired, [idA]);
+      assert.deepEqual(released, [idA]);
+    } finally {
+      await new Promise((resolve) => workers[idA].close(resolve));
+      workers[idA] = original;
+    }
+  });
+
+  it('reports a dead worker as an error, releases once, and does not leak the token', async () => {
+    const original = workers[idA];
+    const dead = await listen(() => {});
+    const port = dead.address().port;
+    await new Promise((resolve) => dead.close(resolve));
+    workers[idA] = { address: () => ({ port }) };
+    acquired.length = 0; released.length = 0;
+    try {
+      const res = await call('/api/agy/accounts/test', admin, { id: idA });
+      const text = await res.text();
+      const out = JSON.parse(text);
+      assert.equal(out.ok, false);
+      assert.ok(out.error);
+      assert.ok(!text.includes('worker-secret'));
+      assert.deepEqual(released, [idA]);
+    } finally { workers[idA] = original; }
+  });
+
+  it('refuses a disabled or quota-spent account without touching any worker', async () => {
+    acquired.length = 0; released.length = 0;
+    store.setEnabled(idA, false);
+    let out = await (await call('/api/agy/accounts/test', admin, { id: idA })).json();
+    assert.equal(out.ok, false);
+    assert.match(out.error, /wyłączone|disabled/i);
+    store.setEnabled(idA, true);
+    store.markQuota(idA, 3600, 'AGY quota exhausted');
+    out = await (await call('/api/agy/accounts/test', admin, { id: idA })).json();
+    assert.equal(out.ok, false);
+    assert.match(out.error, /limit|quota/i);
+    store.clearQuota(idA);
+    assert.deepEqual(acquired, [], 'no other account or worker was used');
+  });
+
+  it('reports a catalog failure as a test error only', async () => {
+    catalogMode = 'fail';
+    try {
+      const out = await (await call('/api/agy/accounts/test', admin, { id: idB })).json();
+      assert.equal(out.ok, false);
+      assert.ok(out.error);
+    } finally { catalogMode = 'ok'; }
+  });
+
+  it('rejects unknown ids and non-administrators', async () => {
+    assert.equal((await call('/api/agy/accounts/test', admin, { id: 'nope' })).status, 404);
+    assert.equal((await call('/api/agy/accounts/test', admin, {})).status, 400);
+    assert.equal((await call('/api/agy/accounts/test', station, { id: idA })).status, 403);
+  });
+});
+
+describe('AGY test isolation: no default config, accounts or homes are touched', () => {
+  const savedEnv = {};
+  let sandboxHome, dir, server, base;
+
+  // A stand-in for `agy models` that records that it ran and which HOME it got.
+  function modelsAgy(file, log) {
+    fs.writeFileSync(file, `#!${process.execPath}
+import fs from 'node:fs';
+fs.appendFileSync(${JSON.stringify(log)}, process.env.HOME + '\\n');
+console.log('gemini-fake-low\\tFake Low');
+`, { mode: 0o755 });
+    return file;
+  }
+
+  async function start(accounts) {
+    dir = tmpDir();
+    const accountsPath = path.join(dir, 'agy.json');
+    const log = path.join(dir, 'agy-calls.log');
+    const store = new AgyAccountStore(accountsPath);
+    for (const email of accounts) store.upsert(JSON.stringify(agyToken(email, email)));
+    // The sandbox HOME stands in for the real one: anything written there is a leak.
+    sandboxHome = tmpDir();
+    for (const k of ['HOME', 'XDG_CONFIG_HOME', 'AGENT_LB_CONFIG', 'AGENTLB_CONFIG', 'CLAUDE_LB_CONFIG']) savedEnv[k] = process.env[k];
+    process.env.HOME = sandboxHome;
+    delete process.env.XDG_CONFIG_HOME; delete process.env.AGENT_LB_CONFIG; delete process.env.AGENTLB_CONFIG; delete process.env.CLAUDE_LB_CONFIG;
+    const config = { proxy: { apiKey: 'tc-iso', trustLoopback: false, trustTailnet: false }, agy: { accountsPath, command: modelsAgy(path.join(dir, 'models-agy.mjs'), log) } };
+    server = createProxyServer(new AccountManager([], 0.98), config, {}, null, null, null);
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    base = `http://127.0.0.1:${server.address().port}`;
+    return { log, accountsPath };
+  }
+
+  async function stop() {
+    await new Promise((resolve) => server.close(resolve));
+    for (const [k, v] of Object.entries(savedEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+
+  it('keeps homes next to the configured accounts file and never under the real HOME', async () => {
+    const { log, accountsPath } = await start(['iso@example.com']);
+    try {
+      const res = await fetch(`${base}/v1/models`, { headers: { 'x-api-key': 'tc-iso' } });
+      assert.equal(res.status, 200);
+      assert.ok((await res.json()).data.some((m) => m.id === 'gemini-fake-low'));
+      const homes = path.join(path.dirname(accountsPath), 'agy-homes');
+      const entries = fs.readdirSync(homes);
+      assert.equal(entries.length, 1, 'the account home is created beside the accounts file');
+      assert.ok(fs.existsSync(path.join(homes, entries[0], '.gemini', 'antigravity-cli', 'antigravity-oauth-token')));
+      assert.deepEqual(fs.readFileSync(log, 'utf8').trim().split('\n'), [path.join(homes, entries[0])], 'agy models ran with the isolated HOME');
+      assert.deepEqual(fs.readdirSync(sandboxHome), [], 'nothing was written under the default HOME/.config');
+    } finally { await stop(); }
+  });
+
+  it('spawns nothing and seeds nothing while the store has no account', async () => {
+    const { log, accountsPath } = await start([]);
+    try {
+      const res = await fetch(`${base}/v1/models`, { headers: { 'x-api-key': 'tc-iso' } });
+      assert.equal(res.status, 200);
+      assert.ok(!fs.existsSync(log), 'agy was never started');
+      assert.ok(!fs.existsSync(path.join(path.dirname(accountsPath), 'agy-homes')), 'no home was created');
+      assert.deepEqual(fs.readdirSync(sandboxHome), []);
+    } finally { await stop(); }
+  });
+
+  it('honors an explicit config.agy.homesDir', async () => {
+    const { resolveAgyHomesDir } = await import('../src/agy-workers.js');
+    assert.equal(resolveAgyHomesDir({ agy: { accountsPath: '/x/y/agy.json' } }), '/x/y/agy-homes');
+    assert.equal(resolveAgyHomesDir({ agy: { accountsPath: '/x/y/agy.json', homesDir: '/h' } }), '/h');
+  });
+});
+
+describe('testAgyAccount acquire timeout', () => {
+  const fakeStore = { list: () => [{ id: 'a', enabled: true, quotaUntil: null }] };
+  const fakeCatalog = { list: async () => [{ id: 'gemini-x-low' }] };
+
+  it('gives up on a hanging acquire after the timeout and returns an error', async () => {
+    const { testAgyAccount } = await import('../src/agy-gateway.js');
+    const pool = { acquire: () => new Promise(() => {}) };
+    const started = Date.now();
+    const out = await testAgyAccount({ store: fakeStore, pool, catalog: fakeCatalog, id: 'a', timeoutMs: 50 });
+    assert.equal(out.ok, false);
+    assert.match(out.error, /timeout/i);
+    assert.ok(Date.now() - started < 2000);
+  });
+
+  it('releases a lease that arrives after the timeout', async () => {
+    const { testAgyAccount } = await import('../src/agy-gateway.js');
+    let release = 0;
+    const pool = { acquire: () => new Promise((resolve) => setTimeout(() => resolve({ port: 1, token: 't', release: () => { release++; } }), 120)) };
+    const out = await testAgyAccount({ store: fakeStore, pool, catalog: fakeCatalog, id: 'a', timeoutMs: 40 });
+    assert.equal(out.ok, false);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    assert.equal(release, 1);
   });
 });

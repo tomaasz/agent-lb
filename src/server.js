@@ -1,4 +1,7 @@
 import { observeTokenStream } from "./first-token.js";
+import { AgyModelCatalog, createAgyModelsRunner, isAgyModelName, listAgyModelsBounded, AGY_CONTEXT_WINDOW, AGY_MAX_TOKENS } from "./agy-models.js";
+import { AgyWorkerPool, resolveAgyHomesDir } from "./agy-workers.js";
+import { handleAgyCompletion, testAgyAccount } from "./agy-gateway.js";
 import { substitutedModel, substitutionAllowed } from "./model-substitution.js";
 import { handleClientKeys } from "./client-key-admin.js";
 import { readControlBody } from "./control-body.js";
@@ -298,7 +301,27 @@ export function createProxyServer(
   clientUsage = null,
   dimensionUsage = null,
 ) {
+  let agyModelCatalog = hooks.agyModels || null;
   let agyStore = null;
+  let agyPool = hooks.agyPool || null;
+  const ensureAgy = () => {
+    agyStore ||= hooks.agyStore || new AgyAccountStore(config.agy?.accountsPath || getAgyAccountsPath());
+    agyPool ||= new AgyWorkerPool({
+      store: agyStore,
+      baseDir: resolveAgyHomesDir(config),
+      command: config.agy?.bridgeCommand || "agybridge",
+      agyCommand: resolveAgyCommand(config),
+    });
+    agyModelCatalog ||= new AgyModelCatalog({
+      run: createAgyModelsRunner(config),
+      homeFor: () => {
+        const account = agyStore.pick(new Set());
+        return account ? agyPool.ensureHome(account.id) : null;
+      },
+    });
+    return { store: agyStore, pool: agyPool, catalog: agyModelCatalog };
+  };
+  const getAgyModelCatalog = () => ensureAgy().catalog;
   let agyLogins = null;
   clientUsage ||= new ClientUsageTracker();
   const upstream = config.upstream || "https://api.anthropic.com";
@@ -676,23 +699,22 @@ export function createProxyServer(
         normApiPath.startsWith("/api/agy/") ||
         normApiPath.startsWith("/agy/")
       ) {
-        if (!agyStore) {
-          agyStore = new AgyAccountStore(
-            config.agy?.accountsPath || getAgyAccountsPath(),
-          );
-          agyLogins = new AgyLoginManager({
-            command: resolveAgyCommand(config),
-            store: agyStore,
-          });
-        }
+        const agy = ensureAgy();
+        agyLogins ||= new AgyLoginManager({
+          command: resolveAgyCommand(config),
+          store: agy.store,
+        });
         if (
           await handleAgyRoute(req, res, {
             normApiPath,
             auth,
             clientKey,
             clientUsage,
-            store: agyStore,
+            store: agy.store,
             logins: agyLogins,
+            pool: agy.pool,
+            catalog: agy.catalog,
+            testAccount: (id) => testAgyAccount({ ...agy, id }),
           })
         )
           return;
@@ -1755,11 +1777,8 @@ export function createProxyServer(
             max_tokens: 16384,
             default_effort: null,
           },
-          // agy / agy-fast / gemini-* are deliberately not advertised: this proxy
-          // has no AGY backend and would silently answer with Claude or GPT.
-          // Real AGY runs locally through agybridge (setup/agy-setup.sh). The
-          // names are still accepted and mapped, so a Hermes fallback from its
-          // native AGY provider to agentlb keeps working.
+          // Gemini models are not listed here: they are appended below from the
+          // live `agy models` catalog (agy / agy-fast stay hidden aliases).
         ];
         const defaultReasoningLevels = [
           {
@@ -1781,6 +1800,20 @@ export function createProxyServer(
         // (see normalizeAnthropicModelForOAuth) but are hidden from the catalog
         // so model pickers do not show the same model twice.
         const listedModels = rawModelsList.filter((m) => !m.unlisted);
+        try {
+          for (const g of await listAgyModelsBounded(getAgyModelCatalog())) {
+            listedModels.push({
+              id: g.id,
+              name: g.name,
+              display_name: g.name,
+              description: g.name,
+              context_window: AGY_CONTEXT_WINDOW,
+              max_tokens: AGY_MAX_TOKENS,
+            });
+          }
+        } catch {
+          // a catalog failure must never break /v1/models
+        }
         const modelsList = listedModels.map((m, idx) => {
           const maxInput = m.max_input_tokens || m.context_window || 1000000;
           const maxOutput = m.max_tokens || m.max_output_tokens || 128000;
@@ -5259,11 +5292,15 @@ export function createProxyServer(
     fairShare,
     toolDedupe,
     drainState,
+    agyFactory: ensureAgy,
   });
   const server = http.createServer(requestHandler);
   server.healthChecker = healthChecker;
+  // Read-only test/diagnostic view; the control endpoints expose the same count.
+  server.__agentLbDrainState = drainState;
   server.on("close", () => {
     healthChecker.stop();
+    agyPool?.stopAll();
   });
 
   // What bounds a directory of one-shot dumps is deleting the expired ones, not
@@ -5323,6 +5360,7 @@ export function createProxyServer(
       egress,
       clientUsage,
       dimensionUsage,
+      agyFactory: ensureAgy,
     }),
   );
   // Remote Control's real-time channel is a WebSocket, not a request/response
@@ -5788,6 +5826,7 @@ export function createProxyRequestListener({
   fairShare: injectedFairShare = null,
   toolDedupe: injectedToolDedupe = null,
   drainState = null,
+  agyFactory = null,
 }) {
   const fairShare =
     injectedFairShare ||
@@ -6255,6 +6294,55 @@ export function createProxyRequestListener({
       // are dropped with the other proxy-control headers.
       const stripHeaders = usageDimensionHeaderNames(config.proxy);
 
+      if (isAgyModelName(model)) {
+        if (req.url?.split("?")[0] === "/v1/messages") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: { type: "invalid_request_error", message: "AGY obsługuje /v1/chat/completions, nie /v1/messages" } }));
+          return;
+        }
+        if (req.method === "POST" && req.url?.split("?")[0] === "/v1/chat/completions") {
+          // 502 until the handler returns: a throw out of it is an upstream failure.
+          let status = 502;
+          drainTracker.activeRequests++;
+          try {
+            const agy = agyFactory?.();
+            if (!agy) {
+              status = 503;
+              res.writeHead(status, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: { type: "api_error", message: "AGY gateway is unavailable on this listener" } }));
+              return;
+            }
+            await handleAgyCompletion(req, res, {
+              body,
+              model,
+              store: agy.store,
+              pool: agy.pool,
+              catalog: agy.catalog,
+              usageRecorder,
+              hooks,
+            });
+            status = res.statusCode || 200;
+          } finally {
+            drainTracker.activeRequests = Math.max(0, drainTracker.activeRequests - 1);
+            const entry = openEntry;
+            openEntry = null;
+            if (entry && !hideActivity) {
+              hooks.onRequestEnd?.(entry.reqId, {
+                method: req.method,
+                path: req.url,
+                account: "AGY",
+                status,
+                model,
+                sessionId: entry.sessionId,
+                pinned: pinnedIndex != null,
+                client,
+              });
+            }
+          }
+          return;
+        }
+      }
+
       const requestProvider = providerForPath(req.url);
       const isClaudeModel =
         typeof model === "string" &&
@@ -6265,22 +6353,11 @@ export function createProxyRequestListener({
           model.startsWith("o1") ||
           model.startsWith("o3") ||
           model.startsWith("codex"));
-      const isAgyModel =
-        typeof model === "string" &&
-        (model === "agy" ||
-          model === "agy-fast" ||
-          model.startsWith("gemini-"));
       const targetProvider = isClaudeModel
         ? "anthropic"
         : isOpenAIModel
           ? "codex"
-          : isAgyModel
-            ? accountManager.getActiveCount?.("codex") > 0
-              ? "codex"
-              : accountManager.getActiveCount?.("anthropic") > 0
-                ? "anthropic"
-                : requestProvider
-            : requestProvider;
+          : requestProvider;
 
       const project =
         usageDimensions.find((d) => d.name === "project")?.key || null;
@@ -9844,16 +9921,6 @@ export function normalizeAnthropicModelForOAuth(body) {
       const trimmed = obj.model.trim();
       let target = null;
       if (
-        trimmed === "agy" ||
-        (trimmed.startsWith("gemini-") && !trimmed.includes("low"))
-      ) {
-        target = "claude-sonnet-5";
-      } else if (
-        trimmed === "agy-fast" ||
-        (trimmed.startsWith("gemini-") && trimmed.includes("low"))
-      ) {
-        target = "claude-haiku-4-5-20251001";
-      } else if (
         trimmed.startsWith("claude-3-7-sonnet") ||
         trimmed === "claude-3-7"
       ) {
@@ -10081,8 +10148,6 @@ export function normalizeCodexModelForOAuth(body) {
         return Buffer.from(JSON.stringify(obj), "utf8");
       }
       if (
-        trimmed === "agy" ||
-        (trimmed.startsWith("gemini-") && !trimmed.includes("low")) ||
         trimmed === "gpt-5.6" ||
         trimmed === "gpt-5" ||
         trimmed === "codex"
@@ -10090,11 +10155,7 @@ export function normalizeCodexModelForOAuth(body) {
         obj.model = "gpt-5.6-sol";
         return Buffer.from(JSON.stringify(obj), "utf8");
       }
-      if (
-        trimmed === "agy-fast" ||
-        (trimmed.startsWith("gemini-") && trimmed.includes("low")) ||
-        trimmed === "codex-mini"
-      ) {
+      if (trimmed === "codex-mini") {
         obj.model = "gpt-5.6-terra";
         return Buffer.from(JSON.stringify(obj), "utf8");
       }

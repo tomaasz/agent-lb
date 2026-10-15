@@ -16,6 +16,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      # hermes-setup.sh scala config.yaml przez ruamel.yaml; bez niego testy scalania są pomijane.
+      - name: Python venv with ruamel.yaml (hermes-setup tests)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/hermes-venv"
+          "$RUNNER_TEMP/hermes-venv/bin/pip" install --quiet 'ruamel.yaml>=0.18,<0.20'
+          echo "HERMES_SETUP_PYTHON=$RUNNER_TEMP/hermes-venv/bin/python" >> "$GITHUB_ENV"
       - run: npm test
         env:
           AGENT_LB_CONFIG: /tmp/agent-lb-ci/config.json

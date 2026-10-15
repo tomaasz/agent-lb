@@ -608,7 +608,11 @@ describe('Test Chat & Playground Support', () => {
     ];
 
     const am = new AccountManager(accounts, 0.98);
-    const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {}, null, null, null);
+    const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {
+      // /backend-api/codex/models shares the aggregate model handler. Keep this
+      // unrelated Codex test independent of the AGY CLI and its account store.
+      agyModels: { list: async () => [], resolveAlias: () => null },
+    }, null, null, null);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const proxyPort = server.address().port;
 

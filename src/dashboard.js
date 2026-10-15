@@ -719,35 +719,41 @@ const PAGE = `<!doctype html>
     display: block;
   }
 
-  /* 2-column master accounts grid: Col 1 Claude (1fr) | Col 2 Codex (1fr) */
+  /* 3-column master accounts grid: Claude | Codex | AGY (Google) */
   .dashboard-grid {
     display: grid;
-    grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
     align-items: start;
     margin-top: 6px;
   }
-  .grid-head-accounts { grid-column: 1 / 3; min-width: 0; }
+  .grid-head-accounts { grid-column: 1 / -1; min-width: 0; }
   #colClaude { grid-column: 1 / 2; min-width: 0; }
   #colCodex { grid-column: 2 / 3; min-width: 0; }
+  #colAgy { grid-column: 3 / 4; min-width: 0; }
+  @media (max-width: 1180px) {
+    .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #colAgy { grid-column: 1 / -1; }
+  }
   @media (max-width: 860px) {
     .dashboard-grid { grid-template-columns: 1fr; }
-    .grid-head-accounts, #colClaude, #colCodex { grid-column: 1 / 2; }
+    .grid-head-accounts, #colClaude, #colCodex, #colAgy { grid-column: 1 / 2; }
   }
 
-  .agy-section { margin-top: 18px; }
   .col-title.agy { color: #4f9dff; }
   .agy-hint { font-size: 11px; color: var(--dim); margin: 2px 0 8px; }
-  .agy-list { display: flex; flex-direction: column; gap: 6px; }
-  .agy-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--card, var(--bg)); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; font-size: 12px; }
-  .agy-row.off { opacity: 0.55; }
-  .agy-row .agy-email { font-weight: 600; color: var(--heading); min-width: 180px; word-break: break-all; }
-  .agy-row .agy-state { flex: 1; min-width: 160px; color: var(--dim); }
-  .agy-row .agy-state.spent { color: var(--warn, #d29922); }
-  .agy-row .agy-actions { display: flex; gap: 4px; flex-wrap: wrap; }
-  .agy-usage { flex-basis: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 4px 14px; margin-top: 2px; }
-  .agy-usage .agy-usage-note { grid-column: 1 / -1; font-size: 11px; color: var(--dim); }
-  .agy-usage .quota { grid-template-columns: minmax(90px, 1.2fr) 1fr auto; }
+  .agy-card .card-meta { flex-wrap: wrap; }
+  .agy-card .card-name-text { cursor: default; }
+  .agy-card .card-name-text:hover { color: var(--heading); text-decoration: none; }
+  .agy-card .card-title-group { flex-wrap: wrap; }
+  .agy-state-line { font-size: 11px; color: var(--dim); }
+  .agy-state-line.spent { color: var(--warn); }
+  .agy-test-line { font-size: 11px; color: var(--dim); word-break: break-word; }
+  .agy-test-line.ok { color: var(--ok); }
+  .agy-test-line.bad { color: var(--bad); }
+  .agy-usage { display: flex; flex-direction: column; gap: 3px; }
+  .agy-usage .agy-usage-note { font-size: 11px; color: var(--dim); }
+  .agy-card .quota { grid-template-columns: minmax(90px, 1.2fr) 1fr auto; }
   .agy-steps { margin: 0 0 8px 18px; padding: 0; font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
   .agy-countdown { font-size: 12px; color: var(--dim); }
 
@@ -1290,19 +1296,19 @@ const PAGE = `<!doctype html>
           </div>
           <div class="account-list" id="listCodex" data-provider="codex"></div>
         </div>
-      </div>
 
-      <!-- AGY (Google Antigravity): accounts handed to agybridge on the stations -->
-      <div class="agy-section" id="colAgy">
-        <div class="col-head">
-          <div class="row" style="gap:6px; align-items:center;">
-            <span class="col-title agy" data-i18n="agyColTitle">🔷 AGY (Google Antigravity)</span>
-            <span class="col-hint" id="countAgy">0</span>
+        <!-- Column 3: AGY (Google Antigravity) — same card vocabulary as Claude and Codex -->
+        <div class="account-col" id="colAgy">
+          <div class="col-head">
+            <div class="row" style="gap:6px; align-items:center;">
+              <span class="col-title agy" data-i18n="agyColTitle">🔷 AGY (Google)</span>
+              <span class="col-hint" id="countAgy">0</span>
+            </div>
+            <button class="btn btn-sm btn-accent" id="btnAgyLogin" style="padding:2px 8px; font-size:11px;" data-i18n="agyLoginBtn">🔑 Zaloguj konto Google</button>
           </div>
-          <button class="btn btn-sm btn-accent" id="btnAgyLogin" style="padding:2px 8px; font-size:11px;" data-i18n="agyLoginBtn">🔑 Zaloguj konto Google</button>
+          <div class="agy-hint" data-i18n="agyHint">Modele Gemini idą przez agent-lb: konto z góry listy (albo przypięte), a gdy limit się skończy — następne. Stacje z agybridge biorą konto stąd samo.</div>
+          <div class="account-list" id="listAgy" data-provider="agy"></div>
         </div>
-        <div class="agy-hint" data-i18n="agyHint">Stacje z agybridge używają konta z góry listy (albo przypiętego). Po wyczerpaniu limitu przechodzą automatycznie na następne.</div>
-        <div id="listAgy" class="agy-list"></div>
       </div>
     </div>
 
@@ -2162,9 +2168,29 @@ const PAGE = `<!doctype html>
       colClaudeTitle: '🟣 Claude (Anthropic)',
       colCodexTitle: '🟢 OpenAI Codex',
       colClientsTitle: '💻 Stacje robocze',
-      agyColTitle: '🔷 AGY (Google Antigravity)',
+      agyColTitle: '🔷 AGY (Google)',
       agyLoginBtn: '🔑 Zaloguj konto Google',
-      agyHint: 'Stacje z agybridge używają konta z góry listy (albo przypiętego). Po wyczerpaniu limitu przechodzą automatycznie na następne.',
+      agyHint: 'Modele Gemini idą przez agent-lb: konto z góry listy (albo przypięte), a gdy limit się skończy — następne. Stacje z agybridge biorą konto stąd samo.',
+      agyTest: 'Test',
+      agyTestTitle: 'Wyślij krótkie zapytanie przez to konto (tylko to konto)',
+      agyTestRunning: 'Testuję…',
+      agyTestOk: '✅ Test OK · {ms} ms · {model}',
+      agyTestFail: '⚠ Test nieudany: {error}',
+      agyBusy: '⚙ {n} w toku',
+      agyResetsIn: '⏳ odnowi za {time}',
+      agyHealthy: 'ZDROWE',
+      agyLimitSpent: 'LIMIT WYCZERPANY',
+      agyDisabledBadge: 'WYŁĄCZONE',
+      agyPinnedBadge: '📌 przypięte',
+      agyReqs: '{n} zapytań',
+      agyUsedBy: 'używa: {names}',
+      agyPinTitle: 'Wszystkie zapytania idą na to konto, dopóki ma limit',
+      agyUnpinTitle: 'Wróć do automatycznego wyboru',
+      agyClearQuotaTitle: 'Uznaj, że limit wrócił (np. po zmianie planu)',
+      agyRemoveTitle: 'Usuń konto',
+      agyEmptyList: 'Brak kont. Zaloguj pierwsze konto Google przyciskiem powyżej.',
+      agyCount: '{n} kont',
+      agyRouteOf: 'z',
       agyModalTitle: '🔑 Logowanie konta Google do AGY',
       agyPreparing: 'Przygotowuję link logowania…',
       agyStep1: 'Otwórz link i wybierz konto Google:',
@@ -2445,9 +2471,29 @@ const PAGE = `<!doctype html>
       colClaudeTitle: '🟣 Claude (Anthropic)',
       colCodexTitle: '🟢 OpenAI Codex',
       colClientsTitle: '💻 Workstations',
-      agyColTitle: '🔷 AGY (Google Antigravity)',
+      agyColTitle: '🔷 AGY (Google)',
       agyLoginBtn: '🔑 Log in a Google account',
-      agyHint: 'Stations running agybridge use the top account (or the pinned one). When its quota runs out they move to the next one automatically.',
+      agyHint: 'Gemini models go through agent-lb: the top account (or the pinned one), and the next one when its quota runs out. Stations running agybridge take their account from here too.',
+      agyTest: 'Test',
+      agyTestTitle: 'Send a tiny request through this account (this account only)',
+      agyTestRunning: 'Testing…',
+      agyTestOk: '✅ Test OK · {ms} ms · {model}',
+      agyTestFail: '⚠ Test failed: {error}',
+      agyBusy: '⚙ {n} in flight',
+      agyResetsIn: '⏳ resets in {time}',
+      agyHealthy: 'HEALTHY',
+      agyLimitSpent: 'LIMIT SPENT',
+      agyDisabledBadge: 'DISABLED',
+      agyPinnedBadge: '📌 pinned',
+      agyReqs: '{n} req',
+      agyUsedBy: 'used by: {names}',
+      agyPinTitle: 'All requests use this account while it has quota',
+      agyUnpinTitle: 'Back to automatic choice',
+      agyClearQuotaTitle: 'Treat the quota as back (e.g. after a plan change)',
+      agyRemoveTitle: 'Remove account',
+      agyEmptyList: 'No accounts yet. Log in the first Google account with the button above.',
+      agyCount: '{n} accounts',
+      agyRouteOf: 'of',
       agyModalTitle: '🔑 Log a Google account in to AGY',
       agyPreparing: 'Preparing the login link…',
       agyStep1: 'Open the link and choose a Google account:',
@@ -2664,7 +2710,8 @@ const PAGE = `<!doctype html>
     var str = dict[key] != null ? dict[key] : (I18N.pl[key] != null ? I18N.pl[key] : (I18N.en[key] != null ? I18N.en[key] : key));
     if (params && typeof params === 'object') {
       for (var k in params) {
-        str = str.replace(new RegExp('\\{' + k + '\\}', 'g'), params[k]);
+        // A function replacement keeps "$&" and friends in a value literal.
+        str = str.replace(new RegExp('\\{' + k + '\\}', 'g'), function () { return String(params[k]); });
       }
     }
     return str;
@@ -2725,6 +2772,7 @@ const PAGE = `<!doctype html>
     if (lastStatus) {
       render(lastStatus);
     }
+    if (typeof agyData !== 'undefined' && agyData && agyData.accounts && !draggedCard) renderAgyAccounts(agyData.accounts);
   }
 
   function setTheme(theme) {
@@ -2956,6 +3004,8 @@ ${SHARED_HELPERS}
       var prioBtn = c.querySelector('.btn-prio');
       if (prioBtn) prioBtn.textContent = 'prio ' + idx;
     });
+
+    if (listEl.dataset.provider === 'agy') { agyReorder(names); return; }
 
     note('ok', 'Zapisywanie nowego priorytetu kont...');
     apiCall('/agent-lb/api/accounts/reorder', 'POST', { order: names })
@@ -3619,14 +3669,17 @@ ${SHARED_HELPERS}
   function renderRoutes(s) {
     var wrap = document.getElementById('routesWrap');
     var rows = routeRows(s);
-    if (!rows.length) { wrap.style.display = 'none'; return; }
+    var gemRow = agyRouteRow();
+    if (!rows.length && !gemRow) { wrap.style.display = 'none'; return; }
     wrap.style.display = '';
     var table = document.getElementById('routes');
     table.textContent = '';
     var hr = el('tr');
     ['Family', 'Goes to', 'Can serve it'].forEach(function (h) { hr.appendChild(el('th', '', h)); });
     table.appendChild(hr);
+    var gemShown = false;
     rows.forEach(function (r) {
+      if (r.kind === 'default' && gemRow && !gemShown) { table.appendChild(gemRow); gemShown = true; }
       var tr = el('tr');
       var fam = el('td', '', r.label + (r.match ? ' ' : ''));
       if (r.match) fam.appendChild(el('span', 'tag', r.match));
@@ -3651,6 +3704,7 @@ ${SHARED_HELPERS}
       tr.appendChild(can);
       table.appendChild(tr);
     });
+    if (gemRow && !gemShown) table.appendChild(gemRow);
   }
 
   // Top of the page and only when something is wrong: a banner that is always
@@ -6179,13 +6233,22 @@ ${SHARED_HELPERS}
     var h = Math.floor(m / 60);
     return h ? (h + 'h ' + (m % 60) + 'm') : (m + 'm');
   }
+  var agyData = { accounts: [], models: [] };
+  var agyTests = {}; // account id -> { running, ok, text }
   function loadAgyAccounts() {
+    if (draggedCard) return Promise.resolve(); // Never replace the DOM mid-drag
     var key = localStorage.getItem(KEY) || '';
     var headers = {};
     if (key) headers['x-api-key'] = key;
     return fetch('/agent-lb/api/agy/accounts', { headers: headers })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) { if (d && d.ok) renderAgyAccounts(d.accounts || []); })
+      .then(function (d) {
+        if (d && d.ok) {
+          agyData = { accounts: d.accounts || [], models: d.models || [] };
+          renderAgyAccounts(agyData.accounts);
+          if (lastStatus) renderRoutes(lastStatus);
+        }
+      })
       .catch(function () {});
   }
   function agyAction(path, body, okMsg) {
@@ -6195,73 +6258,145 @@ ${SHARED_HELPERS}
       return loadAgyAccounts();
     });
   }
-  function agyButton(label, title, onClick) {
-    var b = document.createElement('button');
-    b.className = 'btn btn-xs';
+  function agyReorder(ids) {
+    return agyAction('accounts/reorder', { ids: ids });
+  }
+  function agyTestAccount(a) {
+    if (agyTests[a.id] && agyTests[a.id].running) return;
+    agyTests[a.id] = { running: true };
+    renderAgyAccounts(agyData.accounts);
+    apiCall('/agent-lb/api/agy/accounts/test', 'POST', { id: a.id }).then(function (d) {
+      if (d && d.ok) {
+        agyTests[a.id] = { ok: true, text: t('agyTestOk', { ms: d.ms, model: d.model }) };
+      } else {
+        agyTests[a.id] = { ok: false, text: t('agyTestFail', { error: (d && d.error) || 'error' }) };
+      }
+    }).catch(function (e) {
+      agyTests[a.id] = { ok: false, text: t('agyTestFail', { error: e && e.message ? e.message : 'error' }) };
+    }).then(function () {
+      renderAgyAccounts(agyData.accounts);
+    });
+  }
+  function agyIconButton(label, title, onClick, extraClass) {
+    var b = el('button', 'btn-icon' + (extraClass ? ' ' + extraClass : ''), label);
     b.type = 'button';
-    b.textContent = label;
     if (title) b.title = title;
-    b.addEventListener('click', onClick);
+    b.addEventListener('click', function (e) { e.stopPropagation(); onClick(b); });
     return b;
+  }
+  function agyAvailable(a) {
+    return a.enabled && !a.quotaUntil;
+  }
+  function renderAgyCard(a, i, ids) {
+    var spent = !!a.quotaUntil;
+    var card = el('div', 'card draggable agy-card' + (a.enabled ? '' : ' account-disabled') + (spent && a.enabled ? ' card-quota-exhausted' : ''));
+    card.draggable = true;
+    card.dataset.accountName = a.id;
+    card.dataset.provider = 'agy';
+
+    var head = el('div', 'card-header');
+    var titleGroup = el('div', 'card-title-group');
+    var handle = el('span', 'drag-handle', '⠿');
+    handle.title = t('dragHandleTitle');
+    titleGroup.appendChild(handle);
+    var prio = el('span', 'prio-badge' + (i === 0 ? ' prio-badge-top' : ''), '#' + (i + 1));
+    if (i > 0) {
+      prio.style.cursor = 'pointer';
+      prio.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var next = ids.slice(); next.unshift(next.splice(i, 1)[0]);
+        agyReorder(next);
+      });
+    }
+    titleGroup.appendChild(prio);
+    if (!a.enabled) titleGroup.appendChild(el('span', 'badge bad', t('agyDisabledBadge')));
+    else if (spent) titleGroup.appendChild(el('span', 'badge throttled', '⚠️ ' + t('agyLimitSpent')));
+    else titleGroup.appendChild(el('span', 'badge badge-healthy', t('agyHealthy')));
+    if (a.pinned) titleGroup.appendChild(el('span', 'badge current', t('agyPinnedBadge')));
+    head.appendChild(titleGroup);
+
+    var acts = el('div', 'card-actions');
+    var running = !!(agyTests[a.id] && agyTests[a.id].running);
+    var btnTest = el('button', 'btn btn-xs', running ? t('agyTestRunning') : t('agyTest'));
+    btnTest.type = 'button';
+    btnTest.title = t('agyTestTitle');
+    btnTest.disabled = running;
+    btnTest.addEventListener('click', function (e) { e.stopPropagation(); agyTestAccount(a); });
+    acts.appendChild(btnTest);
+    acts.appendChild(a.pinned
+      ? agyIconButton('📍', t('agyUnpinTitle'), function () { agyAction('accounts/pin', { id: null }); })
+      : agyIconButton('📌', t('agyPinTitle'), function () { agyAction('accounts/pin', { id: a.id }, agyT('Przypięto ', 'Pinned ') + a.email); }));
+    acts.appendChild(agyIconButton(a.enabled ? '⏸️' : '▶️', a.enabled ? t('btnDisable') : t('btnEnable'), function () {
+      agyAction('accounts/enable', { id: a.id, enabled: !a.enabled });
+    }));
+    if (spent) acts.appendChild(agyIconButton('🧹', t('agyClearQuotaTitle'), function () { agyAction('accounts/clear-quota', { id: a.id }); }));
+    acts.appendChild(agyIconButton('🗑️', t('agyRemoveTitle'), function () {
+      if (confirm(agyT('Usunąć konto ', 'Remove account ') + a.email + '?')) agyAction('accounts/remove', { id: a.id }, agyT('Usunięto ', 'Removed ') + a.email);
+    }, 'btn-icon-del'));
+    head.appendChild(acts);
+    card.appendChild(head);
+    attachCardDragListeners(card);
+
+    var nameRow = el('div', 'card-name-row');
+    var nameDisplay = el('div', 'card-name-display');
+    var nameText = el('span', 'card-name-text', a.email);
+    nameText.title = a.email;
+    nameDisplay.appendChild(nameText);
+    nameRow.appendChild(nameDisplay);
+    card.appendChild(nameRow);
+
+    var body = el('div', 'card-body');
+    if (spent) {
+      var line = el('div', 'agy-state-line spent', t('agyResetsIn', { time: agyLeft(a.quotaUntil - Date.now()) }));
+      if (a.quotaMessage) line.title = a.quotaMessage;
+      body.appendChild(line);
+    }
+    body.appendChild(agyUsageBlock(a.usage));
+    var test = agyTests[a.id];
+    if (test && !test.running) body.appendChild(el('div', 'agy-test-line ' + (test.ok ? 'ok' : 'bad'), test.text));
+    card.appendChild(body);
+
+    var meta = el('div', 'card-meta');
+    var st = a.stats || {};
+    var tokens = (Number(st.inputTokens) || 0) + (Number(st.outputTokens) || 0);
+    var last = st.lastAt ? ' · ' + fmtAgo(st.lastAt) : '';
+    meta.appendChild(el('span', 'card-meta-item', '📊 ' + t('agyReqs', { n: st.requests || 0 }) + ' · ' + fmtNum(tokens) + ' tok' + last));
+    if (a.busy > 0) meta.appendChild(el('span', 'card-meta-item ok', t('agyBusy', { n: a.busy })));
+    if (a.usedBy && a.usedBy.length) meta.appendChild(el('span', 'card-meta-item', t('agyUsedBy', { names: a.usedBy.join(', ') })));
+    card.appendChild(meta);
+    return card;
   }
   function renderAgyAccounts(list) {
     var box = document.getElementById('listAgy');
     if (!box) return;
+    attachListDropTarget(box);
     var count = document.getElementById('countAgy');
-    if (count) count.textContent = list.length + ' ' + agyT('kont', 'accounts');
+    if (count) count.textContent = t('agyCount', { n: list.length });
     box.textContent = '';
     if (!list.length) {
-      var empty = document.createElement('div');
-      empty.className = 'agy-hint';
-      empty.textContent = agyT('Brak kont. Zaloguj pierwsze konto Google przyciskiem powyżej.', 'No accounts yet. Log in the first Google account with the button above.');
+      var empty = el('div', '', t('agyEmptyList'));
+      empty.style.cssText = 'padding:16px; text-align:center; color:var(--dim); font-size:12px; border:1px dashed var(--line); border-radius:6px;';
       box.appendChild(empty);
       return;
     }
     var ids = list.map(function (a) { return a.id; });
-    list.forEach(function (a, i) {
-      var row = document.createElement('div');
-      row.className = 'agy-row' + (a.enabled ? '' : ' off');
-      var email = document.createElement('span');
-      email.className = 'agy-email';
-      email.textContent = (i + 1) + '. ' + a.email;
-      row.appendChild(email);
-      var state = document.createElement('span');
-      var parts = [];
-      if (!a.enabled) parts.push(agyT('⏸ wyłączone', '⏸ disabled'));
-      else if (a.quotaUntil) parts.push(agyT('⏳ limit wyczerpany, odnowienie za ', '⏳ quota spent, resets in ') + agyLeft(a.quotaUntil - Date.now()));
-      else parts.push(agyT('✅ dostępne', '✅ available'));
-      if (a.pinned) parts.push(agyT('📌 przypięte', '📌 pinned'));
-      if (a.usedBy && a.usedBy.length) parts.push(agyT('używa: ', 'used by: ') + a.usedBy.join(', '));
-      state.className = 'agy-state' + (a.quotaUntil ? ' spent' : '');
-      state.textContent = parts.join(' · ');
-      if (a.quotaMessage) state.title = a.quotaMessage;
-      row.appendChild(state);
-      var actions = document.createElement('span');
-      actions.className = 'agy-actions';
-      if (i > 0) actions.appendChild(agyButton('↑', agyT('Wyżej na liście', 'Move up'), function () {
-        var next = ids.slice(); next.splice(i - 1, 0, next.splice(i, 1)[0]);
-        agyAction('accounts/reorder', { ids: next });
-      }));
-      if (i < list.length - 1) actions.appendChild(agyButton('↓', agyT('Niżej na liście', 'Move down'), function () {
-        var next = ids.slice(); next.splice(i + 1, 0, next.splice(i, 1)[0]);
-        agyAction('accounts/reorder', { ids: next });
-      }));
-      actions.appendChild(a.pinned
-        ? agyButton(agyT('Odepnij', 'Unpin'), agyT('Wróć do automatycznego wyboru', 'Back to automatic choice'), function () { agyAction('accounts/pin', { id: null }); })
-        : agyButton(agyT('📌 Użyj', '📌 Use'), agyT('Wszystkie stacje używają tego konta, dopóki ma limit', 'All stations use this account while it has quota'), function () { agyAction('accounts/pin', { id: a.id }, agyT('Przypięto ', 'Pinned ') + a.email); }));
-      actions.appendChild(agyButton(a.enabled ? agyT('Wyłącz', 'Disable') : agyT('Włącz', 'Enable'), '', function () {
-        agyAction('accounts/enable', { id: a.id, enabled: !a.enabled });
-      }));
-      if (a.quotaUntil) actions.appendChild(agyButton(agyT('Wyczyść limit', 'Clear quota'), agyT('Uznaj, że limit wrócił (np. po zmianie planu)', 'Treat the quota as back (e.g. after a plan change)'), function () {
-        agyAction('accounts/clear-quota', { id: a.id });
-      }));
-      actions.appendChild(agyButton('🗑', agyT('Usuń konto', 'Remove account'), function () {
-        if (confirm(agyT('Usunąć konto ', 'Remove account ') + a.email + '?')) agyAction('accounts/remove', { id: a.id }, agyT('Usunięto ', 'Removed ') + a.email);
-      }));
-      row.appendChild(actions);
-      row.appendChild(agyUsageBlock(a.usage));
-      box.appendChild(row);
-    });
+    list.forEach(function (a, i) { box.appendChild(renderAgyCard(a, i, ids)); });
+  }
+  // The routing table's Gemini row: catalog ids and how many AGY accounts can serve them.
+  function agyRouteRow() {
+    var accounts = agyData.accounts || [];
+    var models = agyData.models || [];
+    if (!accounts.length && !models.length) return null;
+    var free = accounts.filter(agyAvailable).length;
+    var tr = el('tr');
+    var fam = el('td', '', 'Gemini ');
+    fam.appendChild(el('span', 'tag', 'gemini-*'));
+    tr.appendChild(fam);
+    tr.appendChild(el('td', models.length ? '' : 'dim', models.length ? models.join(', ') : '—'));
+    var can = el('td', '');
+    can.appendChild(el('span', free ? 'ok' : 'no', free + ' ' + t('agyRouteOf') + ' ' + accounts.length));
+    tr.appendChild(can);
+    return tr;
   }
   // Per-model quota reported by the stations (remaining share + time to reset).
   function agyUsageBlock(usage) {

@@ -359,3 +359,12 @@ describe('Codex Responses <-> OpenAI Chat Completions Translation', () => {
     }
   });
 });
+
+describe('Codex translation and the AGY aliases', () => {
+  it('no longer maps agy / agy-fast onto GPT models', () => {
+    for (const alias of ['agy', 'agy-fast']) {
+      const out = JSON.parse(translateChatCompletionsToCodexResponses({ model: alias, messages: [{ role: 'user', content: 'x' }] }, alias).toString('utf8'));
+      assert.equal(out.model, alias, `${alias} must pass through unchanged, not become a GPT model`);
+    }
+  });
+});

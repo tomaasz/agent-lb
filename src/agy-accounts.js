@@ -83,6 +83,8 @@ export class AgyAccountStore {
     this.now = now;
     this.stations = new Map(); // client name -> { accountId, at }
     this.data = this._load();
+    this.lastStatsSaveAt = 0;
+    this.statsSaveTimer = null;
   }
 
   _load() {
@@ -120,6 +122,7 @@ export class AgyAccountStore {
       addedAt: a.addedAt || null,
       lastUsedAt: a.lastUsedAt || null,
       usage: a.usage || null,
+      stats: a.stats || { requests: 0, inputTokens: 0, outputTokens: 0, lastAt: null },
       usedBy: (usedBy[a.id] || []).sort(),
     }));
   }
@@ -174,6 +177,15 @@ export class AgyAccountStore {
     return true;
   }
 
+  /** Remember that the account's token was copied into its worker HOME (never listed). */
+  markSeeded(id) {
+    const a = this._find(id);
+    if (!a) return false;
+    a.seededAt = this.now();
+    this._save();
+    return true;
+  }
+
   clearQuota(id) {
     const a = this._find(id);
     if (!a) return false;
@@ -222,6 +234,46 @@ export class AgyAccountStore {
 
   _available(a) {
     return a.enabled !== false && !(a.quotaUntil && a.quotaUntil > this.now());
+  }
+
+  /** Pick for proxy routing: pinned first, then the free account whose model resets soonest. */
+  pick(exclude = new Set()) {
+    const pinned = this.data.pinned && this._find(this.data.pinned);
+    if (pinned && this._available(pinned) && !exclude.has(pinned.id)) return pinned;
+    return this.data.accounts
+      .map((account, index) => ({ account, index, resetAt: Math.min(...(account.usage?.models || []).map(m => Number(m.resetAt)).filter(Number.isFinite), Infinity) }))
+      .filter(x => this._available(x.account) && !exclude.has(x.account.id))
+      .sort((a, b) => a.resetAt - b.resetAt || a.index - b.index)[0]?.account || null;
+  }
+
+  /** Persist aggregate request stats, with disk writes throttled to at most once per 10 seconds. */
+  recordRequest(id, { inputTokens = 0, outputTokens = 0 } = {}) {
+    const account = this._find(id);
+    if (!account) return false;
+    const stats = account.stats ||= { requests: 0, inputTokens: 0, outputTokens: 0, lastAt: null };
+    stats.requests++;
+    stats.inputTokens += Number(inputTokens) || 0;
+    stats.outputTokens += Number(outputTokens) || 0;
+    stats.lastAt = this.now();
+    const elapsed = stats.lastAt - this.lastStatsSaveAt;
+    if (elapsed >= 10_000) {
+      this._save();
+      this.lastStatsSaveAt = stats.lastAt;
+    } else if (!this.statsSaveTimer) {
+      this.statsSaveTimer = setTimeout(() => {
+        this.statsSaveTimer = null;
+        // A timer callback has no caller: a throw here (disk full, directory
+        // gone) would be an uncaught exception and take the whole proxy down.
+        try {
+          this._save();
+          this.lastStatsSaveAt = this.now();
+        } catch (err) {
+          console.warn('[AgentLB] AGY stats save failed:', err?.code || 'error');
+        }
+      }, 10_000 - elapsed);
+      this.statsSaveTimer.unref?.();
+    }
+    return true;
   }
 
   /** The account a station should use: pinned, else its current one, else the first free. */
@@ -527,7 +579,24 @@ async function readJson(req, res) {
  * stations and needs an unrestricted station key, since it hands out a
  * Google refresh token.
  */
-export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, clientUsage, store, logins }) {
+const MODEL_LIST_WAIT_MS = 2000;
+
+/** Model ids for the dashboard; never blocks the account list on a slow `agy models`. */
+async function catalogIds(catalog) {
+  if (!catalog) return [];
+  let timer;
+  try {
+    const models = await Promise.race([
+      catalog.list(),
+      new Promise(resolve => { timer = setTimeout(() => resolve(catalog.models || []), MODEL_LIST_WAIT_MS); timer.unref?.(); }),
+    ]);
+    return (models || []).map(m => m.id).filter(id => typeof id === 'string');
+  } catch {
+    return [];
+  } finally { clearTimeout(timer); }
+}
+
+export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, clientUsage, store, logins, pool = null, catalog = null, testAccount = null }) {
   if (normApiPath === '/agy/credential' || normApiPath === '/agy/quota' || normApiPath === '/agy/usage') {
     if (!clientKey || !auth?.ok || !relayPolicyAllowed(auth, clientUsage)) {
       sendJson(res, 403, { ok: false, error: 'an unrestricted station key is required for AGY accounts' });
@@ -566,7 +635,8 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
   const action = normApiPath.slice('/api/agy/'.length);
 
   if (action === 'accounts' && req.method === 'GET') {
-    sendJson(res, 200, { ok: true, pinned: store.data.pinned, accounts: store.list() });
+    const accounts = store.list().map(a => ({ ...a, busy: Number(pool?.busy?.(a.id)) || 0 }));
+    sendJson(res, 200, { ok: true, pinned: store.data.pinned, accounts, models: await catalogIds(catalog) });
     return true;
   }
   if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: 'method not allowed' }); return true; }
@@ -601,6 +671,14 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
       case 'accounts/reorder':
         { const done = store.reorder(body.ids); sendJson(res, done ? 200 : 400, done ? { ok: true } : { ok: false, error: '"ids" must be a list' }); }
         return true;
+      case 'accounts/test': {
+        if (typeof body.id !== 'string' || !body.id) { sendJson(res, 400, { ok: false, error: '"id" is required' }); return true; }
+        if (!store.list().some(a => a.id === body.id)) { sendJson(res, 404, { ok: false, error: 'no such AGY account' }); return true; }
+        if (!testAccount) { sendJson(res, 501, { ok: false, error: 'AGY test is not available' }); return true; }
+        const result = await testAccount(body.id);
+        sendJson(res, 200, result.ok ? { ok: true, ms: result.ms, model: result.model } : { ok: false, error: result.error, ...(result.ms != null ? { ms: result.ms } : {}) });
+        return true;
+      }
       case 'accounts/clear-quota':
         { const done = store.clearQuota(body.id); sendJson(res, done ? 200 : 404, done ? { ok: true } : { ok: false, error: 'no such AGY account' }); }
         return true;

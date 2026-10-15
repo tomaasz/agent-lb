@@ -77,10 +77,6 @@ export const MODEL_FALLBACK_MAP = {
   'o1': 'claude-3-7-sonnet-20250219',
   'o1-pro': 'claude-opus-5',
   'o1-mini': 'claude-3-5-haiku-20241022',
-  'agy': 'claude-sonnet-5',
-  'agy-fast': 'claude-haiku-4-5-20251001',
-  'gemini-3.8-flash-high': 'claude-sonnet-5',
-  'gemini-3.8-flash-low': 'claude-haiku-4-5-20251001',
 };
 
 /**
@@ -93,10 +89,7 @@ export function resolveTargetModel(sourceModel, targetProvider) {
   if (targetProvider === 'codex' && (sourceModel === 'codex' || sourceModel === 'gpt-5.6' || sourceModel === 'gpt-5')) return 'gpt-5.6-sol';
   if (targetProvider === 'codex' && sourceModel === 'codex-mini') return 'gpt-5.6-terra';
   if (targetProvider === 'codex' && sourceModel === 'codex-mini-latest') return 'codex-mini-latest';
-  if (targetProvider === 'codex' && (sourceModel === 'agy' || (sourceModel.startsWith('gemini-') && !sourceModel.includes('low')))) return 'gpt-5.6-sol';
-  if (targetProvider === 'codex' && (sourceModel === 'agy-fast' || (sourceModel.startsWith('gemini-') && sourceModel.includes('low')))) return 'gpt-5.6-terra';
-  if (targetProvider === 'anthropic' && (sourceModel === 'agy' || (sourceModel.startsWith('gemini-') && !sourceModel.includes('low')))) return 'claude-sonnet-5';
-  if (targetProvider === 'anthropic' && (sourceModel === 'agy-fast' || (sourceModel.startsWith('gemini-') && sourceModel.includes('low')))) return 'claude-haiku-4-5-20251001';
+  if (sourceModel === 'agy' || sourceModel === 'agy-fast' || sourceModel.startsWith('gemini-')) return sourceModel;
   if (MODEL_FALLBACK_MAP[sourceModel]) return MODEL_FALLBACK_MAP[sourceModel];
   if (targetProvider === 'codex') {
     if (sourceModel.includes('haiku')) return 'gpt-4o-mini';
@@ -769,9 +762,9 @@ export function createAnthropicToOpenAITransformStream(requestedModel = 'gpt-4o'
 export function translateChatCompletionsToCodexResponses(body, targetModel = 'gpt-5.6-sol') {
   const json = typeof body === 'string' ? JSON.parse(body) : (Buffer.isBuffer(body) ? JSON.parse(body.toString('utf8')) : body);
   let effectiveModel = targetModel || json.model || 'gpt-5.6-sol';
-  if (effectiveModel === 'codex' || effectiveModel === 'gpt-5.6' || effectiveModel === 'gpt-5' || effectiveModel === 'agy') {
+  if (effectiveModel === 'codex' || effectiveModel === 'gpt-5.6' || effectiveModel === 'gpt-5') {
     effectiveModel = 'gpt-5.6-sol';
-  } else if (effectiveModel === 'codex-mini' || effectiveModel === 'agy-fast') {
+  } else if (effectiveModel === 'codex-mini') {
     effectiveModel = 'gpt-5.6-terra';
   } else if (effectiveModel === 'gpt-6') {
     effectiveModel = 'gpt-6-astra';

@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   isFableModel,
   modelFamily,
@@ -727,9 +730,12 @@ test("formatAccountStatus and UNAVAILABLE_TEXT clearly distinguish identity veri
 
 test("Claude models endpoint exposes accurate parameters matching documentation", async () => {
   const am = new AccountManager([]);
+  // Temp AGY paths keep the Gemini catalog away from the real accounts file and homes.
+  const agyDir = fs.mkdtempSync(path.join(os.tmpdir(), "model-context-agy-"));
   const proxyServer = createProxyServer(am, {
     upstream: "http://127.0.0.1:9",
     proxy: { apiKey: "test-key", trustLoopback: false, trustTailnet: false },
+    agy: { accountsPath: path.join(agyDir, "agy.json") },
   });
   await new Promise((resolve) => proxyServer.listen(0, "127.0.0.1", resolve));
 
@@ -920,9 +926,12 @@ test("resolveTargetModel handles Fable, Mythos, and current Opus 5.5 fallbacks",
 
 test("OpenAI and Codex models endpoint exposes accurate parameters matching documentation", async () => {
   const am = new AccountManager([]);
+  // Temp AGY paths keep the Gemini catalog away from the real accounts file and homes.
+  const agyDir = fs.mkdtempSync(path.join(os.tmpdir(), "model-context-agy-"));
   const proxyServer = createProxyServer(am, {
     upstream: "http://127.0.0.1:9",
     proxy: { apiKey: "test-key", trustLoopback: false, trustTailnet: false },
+    agy: { accountsPath: path.join(agyDir, "agy.json") },
   });
   await new Promise((resolve) => proxyServer.listen(0, "127.0.0.1", resolve));
 
