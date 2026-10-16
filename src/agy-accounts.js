@@ -77,6 +77,13 @@ function clampCooldown(seconds) {
   return Math.min(MAX_COOLDOWN_S, Math.max(MIN_COOLDOWN_S, value));
 }
 
+export function normalizeAgySubscription(tier) {
+  if (!tier || typeof tier !== 'object') return null;
+  const id = typeof tier.id === 'string' ? tier.id.trim().slice(0, 100) : '';
+  const name = typeof tier.name === 'string' ? tier.name.trim().slice(0, 100) : '';
+  return id || name ? { id: id || null, name: name || id } : null;
+}
+
 export class AgyAccountStore {
   constructor(path = getAgyAccountsPath(), now = () => Date.now()) {
     this.path = path;
@@ -114,6 +121,7 @@ export class AgyAccountStore {
     return this.data.accounts.map((a, index) => ({
       id: a.id,
       email: a.email,
+      name: typeof a.name === 'string' ? a.name : null,
       order: index,
       enabled: a.enabled !== false,
       pinned: this.data.pinned === a.id,
@@ -122,6 +130,7 @@ export class AgyAccountStore {
       addedAt: a.addedAt || null,
       lastUsedAt: a.lastUsedAt || null,
       usage: a.usage || null,
+      subscription: a.subscription ? { ...normalizeAgySubscription(a.subscription), updatedAt: a.subscription.updatedAt || null } : null,
       stats: a.stats || { requests: 0, inputTokens: 0, outputTokens: 0, lastAt: null },
       usedBy: (usedBy[a.id] || []).sort(),
     }));
@@ -158,6 +167,14 @@ export class AgyAccountStore {
     const a = this._find(id);
     if (!a) return false;
     a.enabled = !!enabled;
+    this._save();
+    return true;
+  }
+
+  rename(id, name) {
+    const a = this._find(id);
+    if (!a || typeof name !== 'string' || name.trim().length > 100) return false;
+    a.name = name.trim() || null;
     this._save();
     return true;
   }
@@ -208,7 +225,7 @@ export class AgyAccountStore {
    * Per-model quota as reported by a station (Google's fetchAvailableModels).
    * Matched by account id or e-mail; returns false for an unknown account.
    */
-  setUsage(who, models) {
+  setUsage(who, models, subscription) {
     const key = typeof who === 'string' ? who.trim().toLowerCase() : '';
     const a = key && this.data.accounts.find(x => x.id === who || x.email === key);
     if (!a || !Array.isArray(models)) return false;
@@ -228,6 +245,17 @@ export class AgyAccountStore {
       if (!prev || entry.remaining < prev.remaining) seen.set(label, entry);
     }
     a.usage = { models: [...seen.values()].slice(0, 40), updatedAt: this.now() };
+    const tier = normalizeAgySubscription(subscription);
+    if (tier) a.subscription = { ...tier, updatedAt: this.now() };
+    this._save();
+    return true;
+  }
+
+  setSubscription(id, subscription) {
+    const a = this._find(id);
+    const tier = normalizeAgySubscription(subscription);
+    if (!a || !tier) return false;
+    a.subscription = { ...tier, updatedAt: this.now() };
     this._save();
     return true;
   }
@@ -596,7 +624,7 @@ async function catalogIds(catalog) {
   } finally { clearTimeout(timer); }
 }
 
-export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, clientUsage, store, logins, pool = null, catalog = null, testAccount = null }) {
+export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, clientUsage, store, logins, pool = null, catalog = null, testAccount = null, refreshSubscription = null }) {
   if (normApiPath === '/agy/credential' || normApiPath === '/agy/quota' || normApiPath === '/agy/usage') {
     if (!clientKey || !auth?.ok || !relayPolicyAllowed(auth, clientUsage)) {
       sendJson(res, 403, { ok: false, error: 'an unrestricted station key is required for AGY accounts' });
@@ -614,7 +642,7 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
       const body = await readJson(req, res);
       if (!body) return true;
       const who = typeof body.accountId === 'string' ? body.accountId : body.email;
-      const done = store.setUsage(who, body.models);
+      const done = store.setUsage(who, body.models, body.subscription);
       sendJson(res, done ? 200 : 404, done ? { ok: true } : { ok: false, error: 'no such AGY account' });
       return true;
     }
@@ -665,6 +693,10 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
       case 'accounts/enable':
         { const done = store.setEnabled(body.id, body.enabled); sendJson(res, done ? 200 : 404, done ? { ok: true } : { ok: false, error: 'no such AGY account' }); }
         return true;
+      case 'accounts/rename':
+        if (typeof body.id !== 'string' || !store._find(body.id)) { sendJson(res, 404, { ok: false, error: 'no such AGY account' }); return true; }
+        { const done = store.rename(body.id, body.name); sendJson(res, done ? 200 : 400, done ? { ok: true } : { ok: false, error: 'name must be a string of at most 100 characters' }); }
+        return true;
       case 'accounts/pin':
         { const done = store.pin(typeof body.id === 'string' ? body.id : null); sendJson(res, done ? 200 : 404, done ? { ok: true } : { ok: false, error: 'no such AGY account' }); }
         return true;
@@ -677,6 +709,12 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
         if (!testAccount) { sendJson(res, 501, { ok: false, error: 'AGY test is not available' }); return true; }
         const result = await testAccount(body.id);
         sendJson(res, 200, result.ok ? { ok: true, ms: result.ms, model: result.model } : { ok: false, error: result.error, ...(result.ms != null ? { ms: result.ms } : {}) });
+        return true;
+      }
+      case 'accounts/subscription': {
+        if (typeof body.id !== 'string' || !store._find(body.id)) { sendJson(res, 404, { ok: false, error: 'no such AGY account' }); return true; }
+        if (!refreshSubscription) { sendJson(res, 501, { ok: false, error: 'AGY subscription refresh is not available' }); return true; }
+        sendJson(res, 200, await refreshSubscription(body.id));
         return true;
       }
       case 'accounts/clear-quota':

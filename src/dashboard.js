@@ -6235,6 +6235,57 @@ ${SHARED_HELPERS}
   }
   var agyData = { accounts: [], models: [] };
   var agyTests = {}; // account id -> { running, ok, text }
+  var agySubscriptionBusy = {};
+  var agyRenaming = null;
+  function agyRenameAccount(a, row, card) {
+    if (agyRenaming) return;
+    agyRenaming = a.id;
+    card.draggable = false;
+    row.textContent = '';
+    var form = el('form', 'card-rename-form');
+    var input = el('input', 'card-rename-input');
+    input.type = 'text';
+    input.maxLength = 100;
+    input.value = a.name || '';
+    input.placeholder = a.email;
+    input.title = agyT('Pusta nazwa przywraca adres e-mail', 'An empty name restores the email address');
+    var save = el('button', 'btn btn-xs btn-accent', '✓');
+    save.type = 'submit';
+    save.title = agyT('Zapisz nazwę', 'Save name');
+    var cancel = el('button', 'btn btn-xs btn-outline', '✕');
+    cancel.type = 'button';
+    cancel.title = agyT('Anuluj', 'Cancel');
+    form.appendChild(input); form.appendChild(save); form.appendChild(cancel);
+    row.appendChild(form);
+    input.focus(); input.select();
+    function close() {
+      agyRenaming = null;
+      renderAgyAccounts(agyData.accounts);
+    }
+    cancel.addEventListener('click', close);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !input.disabled) { e.stopPropagation(); close(); }
+    });
+    form.addEventListener('submit', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      input.disabled = save.disabled = cancel.disabled = true;
+      apiCall('/agent-lb/api/agy/accounts/rename', 'POST', { id: a.id, name: input.value.trim() }).then(function (d) {
+        if (d && d.ok) { close(); return loadAgyAccounts(); }
+        if (d) note('error', d.error || 'error');
+      }).catch(function () { note('error', agyT('Nie udało się zapisać nazwy', 'Could not save name')); }).finally(function () {
+        input.disabled = save.disabled = cancel.disabled = false;
+      });
+    });
+  }
+  function agyRefreshSubscription(a) {
+    if (agySubscriptionBusy[a.id]) return;
+    agySubscriptionBusy[a.id] = true;
+    renderAgyAccounts(agyData.accounts);
+    agyAction('accounts/subscription', { id: a.id }).finally(function () {
+      delete agySubscriptionBusy[a.id];
+      renderAgyAccounts(agyData.accounts);
+    });
+  }
   function loadAgyAccounts() {
     if (draggedCard) return Promise.resolve(); // Never replace the DOM mid-drag
     var key = localStorage.getItem(KEY) || '';
@@ -6309,6 +6360,10 @@ ${SHARED_HELPERS}
       });
     }
     titleGroup.appendChild(prio);
+    var subscription = a.subscription;
+    var plan = el('span', 'badge', subscription && subscription.name ? subscription.name : agyT('Plan nieznany', 'Unknown plan'));
+    plan.title = agyT('Subskrypcja Google', 'Google subscription') + (subscription && subscription.id ? ': ' + subscription.id : '');
+    titleGroup.appendChild(plan);
     if (!a.enabled) titleGroup.appendChild(el('span', 'badge bad', t('agyDisabledBadge')));
     else if (spent) titleGroup.appendChild(el('span', 'badge throttled', '⚠️ ' + t('agyLimitSpent')));
     else titleGroup.appendChild(el('span', 'badge badge-healthy', t('agyHealthy')));
@@ -6323,6 +6378,9 @@ ${SHARED_HELPERS}
     btnTest.disabled = running;
     btnTest.addEventListener('click', function (e) { e.stopPropagation(); agyTestAccount(a); });
     acts.appendChild(btnTest);
+    var refreshPlan = agyIconButton(agySubscriptionBusy[a.id] ? '…' : '↻', agyT('Odśwież subskrypcję Google', 'Refresh Google subscription'), function () { agyRefreshSubscription(a); });
+    refreshPlan.disabled = !!agySubscriptionBusy[a.id];
+    acts.appendChild(refreshPlan);
     acts.appendChild(a.pinned
       ? agyIconButton('📍', t('agyUnpinTitle'), function () { agyAction('accounts/pin', { id: null }); })
       : agyIconButton('📌', t('agyPinTitle'), function () { agyAction('accounts/pin', { id: a.id }, agyT('Przypięto ', 'Pinned ') + a.email); }));
@@ -6339,11 +6397,19 @@ ${SHARED_HELPERS}
 
     var nameRow = el('div', 'card-name-row');
     var nameDisplay = el('div', 'card-name-display');
-    var nameText = el('span', 'card-name-text', a.email);
-    nameText.title = a.email;
+    var nameText = el('span', 'card-name-text', a.name || a.email);
+    nameText.title = t('renameAccountDblClick');
     nameDisplay.appendChild(nameText);
+    var rename = el('button', 'btn-rename', '✏️');
+    rename.type = 'button';
+    rename.title = t('renameAccount');
+    function startRename(e) { e.stopPropagation(); agyRenameAccount(a, nameRow, card); }
+    rename.addEventListener('click', startRename);
+    nameText.addEventListener('dblclick', startRename);
+    nameDisplay.appendChild(rename);
     nameRow.appendChild(nameDisplay);
     card.appendChild(nameRow);
+    if (a.name) card.appendChild(el('div', 'agy-state-line', a.email));
 
     var body = el('div', 'card-body');
     if (spent) {
@@ -6367,6 +6433,7 @@ ${SHARED_HELPERS}
     return card;
   }
   function renderAgyAccounts(list) {
+    if (agyRenaming) return; // Polling must not replace an active editor.
     var box = document.getElementById('listAgy');
     if (!box) return;
     attachListDropTarget(box);

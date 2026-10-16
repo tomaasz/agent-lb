@@ -78,6 +78,26 @@ describe('AGY account store', () => {
     assert.equal(store.setUsage('nobody@example.com', []), false);
   });
 
+  it('renames profiles without changing identity, routing or credentials', () => {
+    const store = new AgyAccountStore(path.join(tmpDir(), 'agy.json'));
+    const original = agyToken('a@example.com');
+    const a = store.upsert(original);
+    store.pin(a.id);
+    assert.equal(store.rename(a.id, '  Prywatne Pro  '), true);
+    assert.equal(new AgyAccountStore(store.path).list()[0].name, 'Prywatne Pro');
+    assert.equal(store.list()[0].email, a.email);
+    assert.equal(store.pick().id, a.id);
+    assert.deepEqual(store.credentialFor('test').token, original);
+    // Renewing the login preserves the custom profile name.
+    store.upsert(original);
+    assert.equal(store.list()[0].name, 'Prywatne Pro');
+    assert.equal(store.rename(a.id, 'x'.repeat(101)), false);
+    assert.equal(store.rename(a.id, {}), false);
+    assert.equal(store.rename('missing', 'x'), false);
+    assert.equal(store.rename(a.id, '  '), true);
+    assert.equal(store.list()[0].name, null);
+  });
+
   it('rotates to the next free account when a quota is spent', () => {
     let now = 1_000_000;
     const store = new AgyAccountStore(path.join(tmpDir(), 'agy.json'), () => now);
@@ -231,6 +251,7 @@ describe('AGY routes on the proxy', () => {
       // Fakes keep the catalog and worker pool away from ~/.config/agy-homes and the real agy.
       agyPool: { busy: () => 0, ensureHome: () => dir, acquire: async () => { throw new Error('no workers in this test'); }, stopAll() {} },
       agyModels: { list: async () => [], resolveAlias: () => null },
+      agySubscriptionRefresh: async () => ({ ok: true }),
     }, null, null, null);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     base = `http://127.0.0.1:${server.address().port}`;
@@ -276,6 +297,32 @@ describe('AGY routes on the proxy', () => {
     assert.equal((await call('/agy/credential', restricted)).status, 403);
     assert.equal((await call('/agy/credential', null)).status, 401);
     assert.equal((await call('/agy/credential', 'tc-wrong')).status, 401);
+  });
+
+  it('accepts station subscription reports but restricts refresh to administrators', async () => {
+    const [account] = (await (await call('/api/agy/accounts', admin)).json()).accounts;
+    const report = { accountId: account.id, models: [], subscription: { id: 'g1-pro-tier', name: 'Google AI Pro', token: 'must-not-leak' } };
+    assert.equal((await call('/agy/usage', restricted, report)).status, 403);
+    assert.equal((await call('/agy/usage', station, report)).status, 200);
+    const listed = await (await call('/api/agy/accounts', admin)).json();
+    assert.deepEqual(listed.accounts[0].subscription.id, 'g1-pro-tier');
+    assert.ok(!JSON.stringify(listed).includes('must-not-leak'));
+    assert.equal((await call('/api/agy/accounts/subscription', station, { id: account.id })).status, 403);
+    assert.equal((await call('/api/agy/accounts/subscription', admin, { id: 'missing' })).status, 404);
+    assert.equal((await (await call('/api/agy/accounts/subscription', admin, { id: account.id })).json()).ok, true);
+  });
+
+  it('allows only administrators to edit a Google profile name', async () => {
+    const [account] = (await (await call('/api/agy/accounts', admin)).json()).accounts;
+    const body = { id: account.id, name: 'Praca Ultra' };
+    assert.equal((await call('/api/agy/accounts/rename', station, body)).status, 403);
+    assert.equal((await call('/api/agy/accounts/rename', admin, { id: account.id, name: {} })).status, 400);
+    assert.equal((await call('/api/agy/accounts/rename', admin, { id: 'missing', name: 'X' })).status, 404);
+    assert.equal((await call('/api/agy/accounts/rename', admin, body)).status, 200);
+    const [renamed] = (await (await call('/api/agy/accounts', admin)).json()).accounts;
+    assert.equal(renamed.name, body.name);
+    assert.equal(renamed.id, account.id);
+    assert.equal(renamed.email, account.email);
   });
 
   it('rotates when a station reports a spent quota', async () => {

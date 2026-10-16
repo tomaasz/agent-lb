@@ -72,6 +72,34 @@ describe('agybridge setup (real AGY runs locally, not through the proxy)', () =>
     assert.ok(script.includes('chmod 600 "$ENV_FILE"'), 'env file is private');
   });
 
+  it('quota reporter sends only the actual Google subscription, preferring paid over current', () => {
+    const script = fs.readFileSync('setup/agy-setup.sh', 'utf8');
+    const reporter = script.split("<<'PYREPORT'\n")[1].split('\nPYREPORT')[0];
+    execFileSync('python3', ['-c', `
+import base64, json, sys
+ctx = {"__name__": "test_reporter"}
+exec(sys.stdin.read().rsplit("\\nmain()", 1)[0], ctx)
+ctx["LB"], ctx["KEY"] = "https://lb.invalid", "test-key"
+ctx["subprocess"].run = lambda *a, **k: None
+claims = base64.urlsafe_b64encode(json.dumps({"email": "A@example.com"}).encode()).decode().rstrip("=")
+ctx["read_token"] = lambda: {"id_token": "h." + claims + ".s", "token": {"access_token": "test-secret"}}
+for load, expected in [
+    ({"paidTier": {"id": "pro", "name": "Google AI Pro", "secret": "hidden"}, "currentTier": {"id": "free"}}, {"id": "pro", "name": "Google AI Pro"}),
+    ({"currentTier": {"id": "free"}}, {"id": "free"}),
+    ({"allowedTiers": [{"id": "pro"}]}, {}),
+]:
+    reports = []
+    def post(url, body, headers):
+        if url.endswith("loadCodeAssist"): return load
+        if url.endswith("fetchAvailableModels"): return {"models": {}}
+        reports.append(body)
+        return {"ok": True}
+    ctx["post"] = post
+    ctx["main"]()
+    assert reports == [{"email": "a@example.com", "models": [], "subscription": expected}], reports
+`], { input: reporter, encoding: 'utf8' });
+  });
+
   it('main installers accept --with-agy and delegate to agy-setup.sh', () => {
     const sh = fs.readFileSync('setup/setup.sh', 'utf8');
     assert.ok(sh.includes('--with-agy|--agy) WITH_AGY=1'));

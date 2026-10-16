@@ -373,6 +373,8 @@ def main():
     h = {"Authorization": "Bearer " + tok["token"]["access_token"],
          "Content-Type": "application/json", "User-Agent": "antigravity"}
     load = post(API + "loadCodeAssist", {"metadata": {"ideType": "ANTIGRAVITY"}}, h)
+    subscription = load.get("paidTier") or load.get("currentTier") or {}
+    subscription = {k: subscription[k] for k in ("id", "name") if isinstance(subscription.get(k), str)}
     project = load.get("cloudaicompanionProject")
     found = post(API + "fetchAvailableModels", {"project": project} if project else {}, h)
     models = []
@@ -383,7 +385,7 @@ def main():
             continue
         reset = datetime.fromisoformat(q["resetTime"].replace("Z", "+00:00")).timestamp() * 1000
         models.append({"label": info["displayName"], "remaining": q["remainingFraction"], "resetAt": int(reset)})
-    post(LB + "/agy/usage", {"email": email, "models": models},
+    post(LB + "/agy/usage", {"email": email, "models": models, "subscription": subscription},
          {"x-api-key": KEY, "Content-Type": "application/json"})
 
 

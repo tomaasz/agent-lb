@@ -1,6 +1,7 @@
 import { observeTokenStream } from "./first-token.js";
 import { AgyModelCatalog, createAgyModelsRunner, isAgyModelName, listAgyModelsBounded, AGY_CONTEXT_WINDOW, AGY_MAX_TOKENS } from "./agy-models.js";
 import { AgyWorkerPool, resolveAgyHomesDir } from "./agy-workers.js";
+import { createAgySubscriptionRefresh } from "./agy-subscription.js";
 import { handleAgyCompletion, testAgyAccount } from "./agy-gateway.js";
 import { substitutedModel, substitutionAllowed } from "./model-substitution.js";
 import { handleClientKeys } from "./client-key-admin.js";
@@ -304,6 +305,7 @@ export function createProxyServer(
   let agyModelCatalog = hooks.agyModels || null;
   let agyStore = null;
   let agyPool = hooks.agyPool || null;
+  let agySubscriptionRefresh = null;
   const ensureAgy = () => {
     agyStore ||= hooks.agyStore || new AgyAccountStore(config.agy?.accountsPath || getAgyAccountsPath());
     agyPool ||= new AgyWorkerPool({
@@ -318,6 +320,9 @@ export function createProxyServer(
         const account = agyStore.pick(new Set());
         return account ? agyPool.ensureHome(account.id) : null;
       },
+    });
+    agySubscriptionRefresh ||= hooks.agySubscriptionRefresh || createAgySubscriptionRefresh({
+      store: agyStore, pool: agyPool, run: createAgyModelsRunner(config),
     });
     return { store: agyStore, pool: agyPool, catalog: agyModelCatalog };
   };
@@ -715,6 +720,7 @@ export function createProxyServer(
             pool: agy.pool,
             catalog: agy.catalog,
             testAccount: (id) => testAgyAccount({ ...agy, id }),
+            refreshSubscription: agySubscriptionRefresh,
           })
         )
           return;
