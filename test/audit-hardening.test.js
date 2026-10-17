@@ -198,7 +198,8 @@ test('real CONNECT TLS tunnel revalidates a rotated credential on its next reque
   const am = new AccountManager([{ name: 'fixture', type: 'api-key', apiKey: 'fixture', upstream }]);
   const certs = generateCertChain(['api.anthropic.com']);
   const proxy = http.createServer();
-  proxy.on('connect', createConnectHandler({ config, accountManager: am, clientUsage: new ClientUsageTracker(), ensureLeaf: async () => ({ key: certs.leafKeyPem, cert: certs.leafCertPem }) }));
+  const drainState = {isDraining:false,activeRequests:0};
+  proxy.on('connect', createConnectHandler({ drainState, config, accountManager: am, clientUsage: new ClientUsageTracker(), ensureLeaf: async () => ({ key: certs.leafKeyPem, cert: certs.leafCertPem }) }));
   const sockets = new Set(); proxy.on('connection', sock => { sockets.add(sock); sock.on('close', () => sockets.delete(sock)); });
   const base = await serve(t, proxy);
   t.after(() => { for (const sock of sockets) sock.destroy(); });
@@ -222,6 +223,9 @@ test('real CONNECT TLS tunnel revalidates a rotated credential on its next reque
     req.on('error', reject); req.end(JSON.stringify({ model: 'claude-safe', messages: [{ role: 'user', content: 'hi' }] }));
   });
   assert.equal(await call(), 200);
+  drainState.isDraining=true;
+  assert.equal(await call(),503); assert.equal(drainState.activeRequests,0);
+  drainState.isDraining=false;
   config.proxy.clientKeys[0].key = 'rotated';
   assert.equal(await call(), 401);
   assert.equal(tunnels, 1); assert.equal(upstreamCalls, 1);

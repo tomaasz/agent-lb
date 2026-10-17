@@ -5370,6 +5370,7 @@ export function createProxyServer(
       clientUsage,
       dimensionUsage,
       agyFactory: ensureAgy,
+      drainState,
     }),
   );
   // Remote Control's real-time channel is a WebSocket, not a request/response
@@ -5859,7 +5860,19 @@ export function createProxyRequestListener({
     let uploadTimer = null;
     let requestTimer = null;
     const onFirstToken = metricsFor(config).start(res);
+    const refuseDrain = () => {
+      if (!drainTracker.isDraining) return false;
+      res.writeHead(503, { 'Content-Type': 'application/json', 'Retry-After': '5' });
+      res.end(JSON.stringify({ error: { type: 'api_error', code: 'draining', message: 'AgentLB is draining; retry later' } }));
+      if (openEntry) {
+        const entry = openEntry;
+        openEntry = null;
+        hooks.onRequestEnd?.(entry.reqId, { method: req.method, path: req.url, status: 503, sessionId: entry.sessionId, client: req.tcClient ?? forcedClient ?? null });
+      }
+      return true;
+    };
     try {
+      if (refuseDrain()) return;
       if (forcedCredential != null) {
         const currentAuth = resolveClientAuth(config.proxy, forcedCredential);
         if (!currentAuth.ok) {
@@ -6212,6 +6225,8 @@ export function createProxyRequestListener({
       }
       clearTimeout(uploadTimer);
       const body = Buffer.concat(bodyChunks);
+      // Upload may have started before drain; no await occurs before dispatch.
+      if (refuseDrain()) return;
 
       const model = modelFinder.done
         ? modelFinder.value

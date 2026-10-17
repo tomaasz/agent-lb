@@ -7,6 +7,32 @@ import path from 'node:path';
 import { createProxyServer } from '../src/server.js';
 import { AccountManager } from '../src/account-manager.js';
 
+test('drain during partial upload refuses dispatch after the body completes', async t => {
+  let started;
+  const entered = new Promise(resolve => { started = resolve; });
+  let acquisitions = 0;
+  const manager = new AccountManager([]);
+  manager.beginSession('existing-session');
+  const server = createProxyServer(manager, {proxy:{apiKey:'fixture'},autoHealthCheck:{enabled:false}}, {
+    onRequestStart(){ started(); },
+    agyModels:{list:async()=>[],resolveAlias:()=> 'gemini-real-high'},
+    agyPool:{acquire:async()=>{acquisitions++;throw new Error('must not acquire');},stopAll(){}},
+  });
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+  t.after(()=>{server.closeAllConnections();return new Promise(resolve=>server.close(resolve));});
+  const request=http.request(`http://127.0.0.1:${server.address().port}/v1/chat/completions`,{method:'POST',headers:{'x-api-key':'fixture','content-type':'application/json','x-session-id':'existing-session'}});
+  const reply=new Promise((resolve,reject)=>{request.once('response',res=>{res.resume();res.once('end',()=>resolve(res));});request.once('error',reject);});
+  request.write('{"model":"agy",');
+  await entered;
+  server.__agentLbDrainState.isDraining=true;
+  assert.equal(server.__agentLbDrainState.activeRequests,0);
+  request.end('"stream":false}');
+  assert.equal((await reply).statusCode,503);
+  assert.equal(acquisitions,0);
+  assert.equal(manager.sessionTracker.sessions.get('existing-session').inFlight,1);
+  manager.endSession('existing-session');
+});
+
 async function listen(handler) {
   const server = http.createServer(handler);
   await new Promise(r => server.listen(0, '127.0.0.1', r));
@@ -29,6 +55,12 @@ test('AGY completion closes activity once and participates in drain tracking on 
     const reply=await fetch(`http://127.0.0.1:${server.address().port}/v1/chat/completions`,{method:'POST',headers:{'x-api-key':'k','content-type':'application/json'},body:'{"model":"agy","stream":false}'});
     assert.equal(reply.status,200);assert.equal(activeDuring,1);assert.equal(server.__agentLbDrainState.activeRequests,0);
     assert.equal(ended.length,1);assert.equal(ended[0].status,200);
+    server.__agentLbDrainState.isDraining=true;
+    activeDuring=null;
+    const blocked=await fetch(`http://127.0.0.1:${server.address().port}/v1/chat/completions`,{method:'POST',headers:{'x-api-key':'k','content-type':'application/json'},body:'{"model":"agy","stream":false}'});
+    assert.equal(blocked.status,503);assert.equal(blocked.headers.get('retry-after'),'5');await blocked.text();
+    assert.equal(activeDuring,null);assert.equal(server.__agentLbDrainState.activeRequests,0);
+
   } finally {await new Promise(r=>server.close(r));await new Promise(r=>worker.server.close(r));fs.rmSync(dir,{recursive:true,force:true});}
 });
 
