@@ -15,12 +15,13 @@
 
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getConfigPath } from './config.js';
 import { readControlBody } from './control-body.js';
 import { relayPolicyAllowed } from './access-control.js';
+import { readAgyStorage, writeAgyStorage } from './agy-storage.js';
 
 export const TOKEN_FILE = 'antigravity-oauth-token';
 // Relative to HOME. (~/.gemini/jetski-standalone-oauth-token has the same
@@ -85,28 +86,81 @@ export function normalizeAgySubscription(tier) {
 }
 
 export class AgyAccountStore {
-  constructor(path = getAgyAccountsPath(), now = () => Date.now()) {
+  constructor(path = getAgyAccountsPath(), now = () => Date.now(), { encryptionKeyPath = null, quotaGroups = {} } = {}) {
     this.path = path;
     this.now = now;
+    this.encryptionKeyPath = encryptionKeyPath;
+    this.quotaGroups = Object.fromEntries(Object.entries(quotaGroups || {}).filter(([k, v]) => /^[a-zA-Z0-9._:-]{1,100}$/.test(k) && typeof v === 'string' && /^[a-zA-Z0-9._:-]{1,100}$/.test(v)));
     this.stations = new Map(); // client name -> { accountId, at }
     this.data = this._load();
     this.lastStatsSaveAt = 0;
     this.statsSaveTimer = null;
+    if (encryptionKeyPath) this._save();
   }
 
   _load() {
-    try {
-      const data = JSON.parse(readFileSync(this.path, 'utf8'));
-      if (data && Array.isArray(data.accounts)) return { pinned: data.pinned || null, accounts: data.accounts };
-    } catch { /* first run or unreadable: start empty */ }
-    return { pinned: null, accounts: [] };
+    const data = readAgyStorage(this.path, this.encryptionKeyPath);
+    if (data === undefined) return { pinned: null, accounts: [], events: [] };
+    if (!data || !Array.isArray(data.accounts) || data.accounts.length > 1000) throw new Error('Invalid AGY account storage');
+    const ids = new Set();
+    for (const a of data.accounts) {
+      if (!a || typeof a.id !== 'string' || !/^agy-[a-f0-9]{12}$/.test(a.id) || ids.has(a.id) || parseAgyToken(a.token).email !== a.email) throw new Error('Invalid AGY stored account');
+      a.health = a.health && ['auth_required', 'access_denied', 'transport', 'timeout', 'bridge_auth', 'overloaded'].includes(a.health.reason)
+        ? { reason: a.health.reason, failures: Math.max(1, Math.min(6, Number(a.health.failures) || 1)),
+          until: Number.isFinite(a.health.until) ? a.health.until : null,
+          requiresReview: ['auth_required', 'access_denied'].includes(a.health.reason) } : null;
+      a.modelQuotas = Object.fromEntries(Object.entries(a.modelQuotas || {}).filter(([k, v]) => /^[a-zA-Z0-9._:-]{1,100}$/.test(k) && Number.isFinite(v) && v > this.now()).slice(-100));
+      ids.add(a.id);
+    }
+    return { pinned: data.pinned || null, accounts: data.accounts, events: this._safeEvents(data.events) };
   }
 
   _save() {
-    const tmp = `${this.path}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(this.data, null, 2) + '\n', { mode: 0o600 });
-    chmodSync(tmp, 0o600);
-    renameSync(tmp, this.path);
+    writeAgyStorage(this.path, this.data, this.encryptionKeyPath);
+  }
+
+  _safeEvents(events) {
+    return (Array.isArray(events) ? events : []).slice(-100).map(e => {
+      const row = {};
+      for (const k of ['accountId', 'client', 'model', 'outcome']) {
+        if (typeof e?.[k] === 'string' && /^[a-zA-Z0-9@._:() -]{1,100}$/.test(e[k])) row[k] = e[k];
+      }
+      for (const k of ['at', 'durationMs', 'status', 'retryAt']) {
+        if (typeof e?.[k] === 'number' && Number.isFinite(e[k]) && e[k] >= 0) row[k] = e[k];
+      }
+      return row;
+    });
+  }
+
+  recordEvent(event) {
+    this.data.events = this._safeEvents([...(this.data.events || []), { ...event, at: this.now() }]);
+    this._save();
+  }
+
+  quotaKey(model) {
+    return Object.hasOwn(this.quotaGroups, model) ? this.quotaGroups[model] : model;
+  }
+
+  markFailure(id, reason, seconds = 60) {
+    const a = this._find(id);
+    if (!a || !['auth_required', 'access_denied', 'transport', 'timeout', 'bridge_auth', 'overloaded'].includes(reason)) return;
+    const failures = Math.min(6, (a.health?.failures || 0) + 1);
+    const until = ['auth_required', 'access_denied'].includes(reason) ? null : this.now() + Math.max(seconds, Math.min(900, 30 * 2 ** (failures - 1))) * 1000;
+    a.health = { reason, failures, until, requiresReview: until === null };
+    this._save();
+  }
+
+  recordSuccess(id) {
+    const a = this._find(id);
+    if (a) { a.health = null; this._save(); }
+  }
+
+  clearHealth(id) {
+    const a = this._find(id);
+    if (!a) return false;
+    a.health = null;
+    this._save();
+    return true;
   }
 
   _find(id) {
@@ -130,6 +184,8 @@ export class AgyAccountStore {
       addedAt: a.addedAt || null,
       lastUsedAt: a.lastUsedAt || null,
       usage: a.usage || null,
+      health: a.health ? { ...a.health } : null,
+      modelQuotas: a.modelQuotas || {},
       subscription: a.subscription ? { ...normalizeAgySubscription(a.subscription), updatedAt: a.subscription.updatedAt || null } : null,
       stats: a.stats || { requests: 0, inputTokens: 0, outputTokens: 0, lastAt: null },
       usedBy: (usedBy[a.id] || []).sort(),
@@ -146,6 +202,8 @@ export class AgyAccountStore {
       existing.email = email;
       existing.quotaUntil = null;
       existing.quotaMessage = null;
+      existing.health = null;
+      existing.modelQuotas = {};
       existing.updatedAt = this.now();
     } else {
       this.data.accounts.push({ id, email, enabled: true, token: data, addedAt: this.now() });
@@ -208,14 +266,23 @@ export class AgyAccountStore {
     if (!a) return false;
     a.quotaUntil = null;
     a.quotaMessage = null;
+    a.modelQuotas = {};
     this._save();
     return true;
   }
 
-  markQuota(id, resetSeconds, message) {
+  markQuota(id, resetSeconds, message, model = null) {
     const a = this._find(id);
     if (!a) return false;
-    a.quotaUntil = this.now() + clampCooldown(resetSeconds) * 1000;
+    const until = this.now() + clampCooldown(resetSeconds) * 1000;
+    if (model) {
+      const key = this.quotaKey(model);
+      a.modelQuotas = Object.fromEntries(Object.entries(a.modelQuotas || {}).filter(([, value]) => value > this.now()).slice(-99));
+      a.modelQuotas[key] = until;
+      this._save();
+      return true;
+    }
+    a.quotaUntil = until;
     a.quotaMessage = typeof message === 'string' ? message.slice(0, 300) : null;
     this._save();
     return true;
@@ -260,18 +327,26 @@ export class AgyAccountStore {
     return true;
   }
 
-  _available(a) {
-    return a.enabled !== false && !(a.quotaUntil && a.quotaUntil > this.now());
+  _available(a, model = null) {
+    return a.enabled !== false && !(a.quotaUntil && a.quotaUntil > this.now()) &&
+      !(a.health?.requiresReview || a.health?.until > this.now()) &&
+      !(model && a.modelQuotas?.[this.quotaKey(model)] > this.now());
+  }
+
+  retryAfter(model) {
+    const waits = this.data.accounts.filter(a => a.enabled !== false && !a.health?.requiresReview).map(a => Math.max(
+      a.quotaUntil || 0, a.health?.until || 0, a.modelQuotas?.[this.quotaKey(model)] || 0));
+    return Math.max(1, Math.ceil((Math.min(...waits, this.now() + 3600000) - this.now()) / 1000));
   }
 
   /** Pick for proxy routing: pinned first, then the free account whose model resets soonest. */
-  pick(exclude = new Set()) {
+  pick(exclude = new Set(), model = null, busy = () => 0) {
     const pinned = this.data.pinned && this._find(this.data.pinned);
-    if (pinned && this._available(pinned) && !exclude.has(pinned.id)) return pinned;
+    if (pinned && this._available(pinned, model) && !exclude.has(pinned.id)) return pinned;
     return this.data.accounts
       .map((account, index) => ({ account, index, resetAt: Math.min(...(account.usage?.models || []).map(m => Number(m.resetAt)).filter(Number.isFinite), Infinity) }))
-      .filter(x => this._available(x.account) && !exclude.has(x.account.id))
-      .sort((a, b) => a.resetAt - b.resetAt || a.index - b.index)[0]?.account || null;
+      .filter(x => this._available(x.account, model) && !exclude.has(x.account.id))
+      .sort((a, b) => busy(a.account.id) - busy(b.account.id) || a.resetAt - b.resetAt || a.index - b.index)[0]?.account || null;
   }
 
   /** Persist aggregate request stats, with disk writes throttled to at most once per 10 seconds. */
@@ -626,7 +701,7 @@ async function catalogIds(catalog) {
 
 export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, clientUsage, store, logins, pool = null, catalog = null, testAccount = null, refreshSubscription = null }) {
   if (normApiPath === '/agy/credential' || normApiPath === '/agy/quota' || normApiPath === '/agy/usage') {
-    if (!clientKey || !auth?.ok || !relayPolicyAllowed(auth, clientUsage)) {
+    if (!clientKey || !auth?.ok || !relayPolicyAllowed(auth, clientUsage) || !(auth.primary || auth.entry?.allowCredentialRelay === true)) {
       sendJson(res, 403, { ok: false, error: 'an unrestricted station key is required for AGY accounts' });
       return true;
     }
@@ -664,7 +739,7 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
 
   if (action === 'accounts' && req.method === 'GET') {
     const accounts = store.list().map(a => ({ ...a, busy: Number(pool?.busy?.(a.id)) || 0 }));
-    sendJson(res, 200, { ok: true, pinned: store.data.pinned, accounts, models: await catalogIds(catalog) });
+    sendJson(res, 200, { ok: true, pinned: store.data.pinned, accounts, models: await catalogIds(catalog), events: store.data.events || [], queue: pool?.snapshot?.() || [] });
     return true;
   }
   if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: 'method not allowed' }); return true; }
@@ -717,6 +792,9 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
         sendJson(res, 200, await refreshSubscription(body.id));
         return true;
       }
+      case 'accounts/clear-health':
+        { const done = store.clearHealth(body.id); sendJson(res, done ? 200 : 404, { ok: done }); }
+        return true;
       case 'accounts/clear-quota':
         { const done = store.clearQuota(body.id); sendJson(res, done ? 200 : 404, done ? { ok: true } : { ok: false, error: 'no such AGY account' }); }
         return true;

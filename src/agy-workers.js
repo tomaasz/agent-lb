@@ -13,6 +13,23 @@ import { TOKEN_PATH } from './agy-accounts.js';
 
 const READY_MS = 20_000;
 
+function admissionError(code) {
+  return Object.assign(new Error(code), { code });
+}
+
+function waitReady(promise, signal, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); };
+    const done = (fn, value) => { cleanup(); fn(value); };
+    const abort = () => done(reject, admissionError('AGY_CANCELLED'));
+    const timer = setTimeout(() => done(reject, admissionError('AGY_QUEUE_TIMEOUT')), timeoutMs);
+    timer.unref?.();
+    signal?.addEventListener('abort', abort, { once: true });
+    promise.then(v => done(resolve, v), e => done(reject, e));
+    if (signal?.aborted) abort();
+  });
+}
+
 export function defaultHomesDir() {
   return join(dirname(getConfigPath()), 'agy-homes');
 }
@@ -45,18 +62,27 @@ export class AgyWorkerPool {
   constructor({
     store, baseDir = defaultHomesDir(), command = 'agybridge', agyCommand = null,
     spawn = nodeSpawn, maxPerAccount = 2, idleMs = 600_000, portFrom = 18_800,
-    readyMs = READY_MS, pollMs = 150, setTimer = setTimeout, clearTimer = clearTimeout,
+    readyMs = READY_MS, pollMs = 150, maxQueued = 64, maxQueuedPerClient = 8, queueTimeoutMs = 30_000, setTimer = setTimeout, clearTimer = clearTimeout,
   } = {}) {
     this.store = store;
     this.baseDir = baseDir;
     this.command = command;
     this.agyCommand = agyCommand;
     this.spawn = spawn;
-    this.maxPerAccount = Math.max(1, maxPerAccount);
+    for (const value of [maxPerAccount, maxQueued, maxQueuedPerClient, queueTimeoutMs]) {
+      if (!Number.isSafeInteger(value) || value < 1) throw new Error('Invalid AGY queue capacity or timeout');
+    }
+    this.maxPerAccount = maxPerAccount;
     this.idleMs = idleMs;
     this.portFrom = portFrom;
     this.readyMs = readyMs;
     this.pollMs = pollMs;
+    this.maxQueued = maxQueued;
+    this.maxQueuedPerClient = maxQueuedPerClient;
+    this.queueTimeoutMs = queueTimeoutMs;
+    this.generation = 0;
+    this.queued = 0;
+    this.queuedClients = new Map();
     this.setTimer = setTimer;
     this.clearTimer = clearTimer;
     this.states = new Map(); // accountId -> { worker, active, waiters, idleTimer }
@@ -66,7 +92,7 @@ export class AgyWorkerPool {
 
   _state(id) {
     let st = this.states.get(id);
-    if (!st) this.states.set(id, st = { worker: null, active: 0, waiters: [], idleTimer: null });
+    if (!st) this.states.set(id, st = { worker: null, active: 0, waiters: [], idleTimer: null, clientQueue: [], activeClients: new Map() });
     return st;
   }
 
@@ -80,17 +106,56 @@ export class AgyWorkerPool {
     return this._seed(account);
   }
 
-  async acquire(accountId) {
+  snapshot() {
+    return [...this.states.entries()].map(([accountId, st]) => ({ accountId, active: st.active,
+      queued: st.waiters.length, clients: [...new Set([...st.activeClients.keys(), ...st.waiters.map(w => w.client)])] }));
+  }
+
+  async acquire(accountId, { client = '(unattributed)', signal, timeoutMs = this.queueTimeoutMs } = {}) {
     const account = this.store._find(accountId);
     if (!account) throw new Error(`unknown AGY account: ${accountId}`);
     const st = this._state(accountId);
     if (st.idleTimer) { this.clearTimer(st.idleTimer); st.idleTimer = null; }
-    if (st.active < this.maxPerAccount) st.active++;
-    else await new Promise((resolve, reject) => st.waiters.push({ resolve, reject })); // slot is handed over by release()
+    const generation = this.generation;
+    if (signal?.aborted) throw admissionError('AGY_CANCELLED');
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw admissionError('AGY_QUEUE_TIMEOUT');
+    const deadline = Date.now() + timeoutMs;
+    if (st.active < this.maxPerAccount && st.waiters.length === 0) st.active++;
+    else {
+      if (this.queued >= this.maxQueued || (this.queuedClients.get(client) || 0) >= this.maxQueuedPerClient) throw admissionError('AGY_QUEUE_FULL');
+      await new Promise((resolve, reject) => {
+        const remove = () => {
+          const i = st.waiters.indexOf(waiter);
+          if (i < 0) return false;
+          st.waiters.splice(i, 1);
+          if (!st.waiters.some(w => w.client === client)) st.clientQueue = st.clientQueue.filter(c => c !== client);
+          this.queued--;
+          const left = this.queuedClients.get(client) - 1;
+          if (left) this.queuedClients.set(client, left); else this.queuedClients.delete(client);
+          clearTimeout(timer);
+          signal?.removeEventListener('abort', abort);
+          return true;
+        };
+        const abort = () => { if (remove()) reject(admissionError('AGY_CANCELLED')); };
+        const timer = setTimeout(() => { if (remove()) reject(admissionError('AGY_QUEUE_TIMEOUT')); }, timeoutMs);
+        timer.unref?.();
+        const waiter = { client, resolve: () => { if (remove()) resolve(); }, reject: e => { if (remove()) reject(e); } };
+        st.waiters.push(waiter);
+        if (!st.clientQueue.includes(client)) st.clientQueue.push(client);
+        this.queued++;
+        this.queuedClients.set(client, (this.queuedClients.get(client) || 0) + 1);
+        signal?.addEventListener('abort', abort, { once: true });
+        if (signal?.aborted) abort();
+      });
+    }
+    st.activeClients.set(client, (st.activeClients.get(client) || 0) + 1);
     try {
+      if (generation !== this.generation) throw admissionError('AGY_POOL_STOPPED');
       if (!st.worker || st.worker.dead) st.worker = this._start(account, st);
       const w = st.worker;
-      await w.ready;
+      await waitReady(w.ready, signal, Math.max(1, deadline - Date.now()));
+      if (generation !== this.generation || w.dead) throw admissionError('AGY_POOL_STOPPED');
+      if (signal?.aborted) throw admissionError('AGY_CANCELLED');
       let released = false;
       return {
         port: w.port,
@@ -98,18 +163,27 @@ export class AgyWorkerPool {
         release: () => {
           if (released) return;
           released = true;
-          this._release(st);
+          this._release(st, client);
         },
       };
     } catch (err) {
-      this._release(st);
+      this._release(st, client);
       throw err;
     }
   }
 
-  _release(st) {
-    const next = st.waiters.shift();
-    if (next) { next.resolve(); return; }
+  _release(st, client) {
+    const active = (st.activeClients.get(client) || 0) - 1;
+    if (active > 0) st.activeClients.set(client, active); else st.activeClients.delete(client);
+    // Round-robin clients, FIFO within each client. Removing the final waiter
+    // also removes its identity, keeping this order bounded by the queue cap.
+    const nextClient = st.clientQueue.shift();
+    const next = st.waiters.find(w => w.client === nextClient);
+    if (next) {
+      next.resolve();
+      if (st.waiters.some(w => w.client === nextClient)) st.clientQueue.push(nextClient);
+      return;
+    }
     st.active = Math.max(0, st.active - 1);
     if (st.active === 0 && st.worker && !st.worker.dead && !st.idleTimer) {
       const w = st.worker;
@@ -124,6 +198,7 @@ export class AgyWorkerPool {
   _kill(w) {
     try { w.child?.kill(); } catch { /* already gone */ }
     w.drop?.('stopped');
+    w.dead = true;
   }
 
   _seed(account) {
@@ -159,6 +234,7 @@ export class AgyWorkerPool {
     w.ready = (async () => {
       const home = this._seed(account);
       w.port = await this._allocPort();
+      if (w.dead) { this.usedPorts.delete(w.port); throw admissionError('AGY_POOL_STOPPED'); }
       const pathDirs = [this.command, this.agyCommand]
         .filter(c => typeof c === 'string' && isAbsolute(c)).map(c => dirname(c));
       const env = {
@@ -207,9 +283,10 @@ export class AgyWorkerPool {
   }
 
   stopAll() {
+    this.generation++;
     for (const st of this.states.values()) {
       if (st.idleTimer) { this.clearTimer(st.idleTimer); st.idleTimer = null; }
-      for (const waiter of st.waiters.splice(0)) waiter.reject(new Error('agybridge pool stopped'));
+      for (const waiter of [...st.waiters]) waiter.reject(new Error('agybridge pool stopped'));
       if (st.worker) this._kill(st.worker);
     }
   }

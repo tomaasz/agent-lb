@@ -45,6 +45,13 @@ test("admin creates one restricted key, rejects invalid policies, rotates and de
     await call("/create", { name: "station", ...policy })
   ).json();
   assert.equal(created.ok, true);
+  assert.equal(config.proxy.clientKeys[0].allowCredentialRelay, false);
+  assert.equal((await call('/permissions', {name:'station',allowCredentialRelay:'true'})).status, 400);
+  assert.equal((await call('/permissions', {name:'station',allowCredentialRelay:true})).status, 200);
+  assert.equal(config.proxy.clientKeys[0].allowCredentialRelay, true);
+  assert.equal((await call('/permissions', {name:'station',allowCredentialRelay:false})).status, 200);
+  assert.equal(config.proxy.clientKeys[0].key, created.key);
+
   assert.equal(config.proxy.clientKeys.length, 1);
   for (const [field, value] of Object.entries(policy)) {
     assert.deepEqual(config.proxy.clientKeys[0][field], value);
@@ -71,6 +78,7 @@ test("admin creates one restricted key, rejects invalid policies, rotates and de
     { maxDailyTokens: "Infinity" },
     { allowedModels: [1] },
     { allowedProviders: ["unknown"] },
+    { allowCredentialRelay: "true" },
     { expiresAt: "invalid" },
   ]) {
     const response = await call("/create", { name: "invalid", ...invalid });
@@ -80,17 +88,20 @@ test("admin creates one restricted key, rejects invalid policies, rotates and de
   const collision = await call("/create", { name: "other", key: created.key });
   assert.equal(collision.status, 409);
   await collision.text();
+  await (await call('/permissions', {name:'station',allowCredentialRelay:true})).text();
   const updated = await (
     await call("/create", { name: "station", ...policy })
   ).json();
   assert.equal(config.proxy.clientKeys.length, 1);
   assert.equal(resolveClientAuth(config.proxy, created.key).ok, false);
+  assert.equal(config.proxy.clientKeys[0].allowCredentialRelay, true);
   const rotated = await (await call("/rotate", { name: "station" })).json();
   assert.equal(resolveClientAuth(config.proxy, updated.key).ok, false);
   assert.equal(
     resolveClientAuth(config.proxy, rotated.client.key).entry.maxDailyTokens,
     10,
   );
+  assert.equal(config.proxy.clientKeys[0].allowCredentialRelay, true);
   const revealedAll = await (await call("/reveal", { all: true })).json();
   assert.equal(revealedAll.ok, true);
   assert.equal(revealedAll.keys["station"], rotated.client.key);

@@ -307,12 +307,14 @@ export function createProxyServer(
   let agyPool = hooks.agyPool || null;
   let agySubscriptionRefresh = null;
   const ensureAgy = () => {
-    agyStore ||= hooks.agyStore || new AgyAccountStore(config.agy?.accountsPath || getAgyAccountsPath());
+    agyStore ||= hooks.agyStore || new AgyAccountStore(config.agy?.accountsPath || getAgyAccountsPath(), () => Date.now(), { encryptionKeyPath: config.agy?.encryptionKeyPath, quotaGroups: config.agy?.quotaGroups });
     agyPool ||= new AgyWorkerPool({
       store: agyStore,
       baseDir: resolveAgyHomesDir(config),
       command: config.agy?.bridgeCommand || "agybridge",
       agyCommand: resolveAgyCommand(config),
+      maxQueued: config.agy?.maxQueued ?? 64,
+      maxQueuedPerClient: config.agy?.maxQueuedPerClient ?? 8,
     });
     agyModelCatalog ||= new AgyModelCatalog({
       run: createAgyModelsRunner(config),
@@ -1999,6 +2001,7 @@ export function createProxyServer(
           // key is returned once, at creation time.
           key: maskSecret(k.key),
           created: k.created || null,
+          allowCredentialRelay: k.allowCredentialRelay === true,
         }));
         res.writeHead(200, { "Content-Type": "application/json" });
         // Counters only: how full the upstream admission gate is (see
@@ -6301,6 +6304,10 @@ export function createProxyRequestListener({
       const stripHeaders = usageDimensionHeaderNames(config.proxy);
 
       if (isAgyModelName(model)) {
+        if (entry?.allowedProviders?.length && !entry.allowedProviders.includes('agy')) {
+          denyClientPolicy(res, { status: 403, error: 'AGY provider is not allowed for this key' });
+          return;
+        }
         if (req.url?.split("?")[0] === "/v1/messages") {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: { type: "invalid_request_error", message: "AGY obsługuje /v1/chat/completions, nie /v1/messages" } }));
@@ -6325,6 +6332,7 @@ export function createProxyRequestListener({
               pool: agy.pool,
               catalog: agy.catalog,
               usageRecorder,
+              client: client || "(unattributed)",
               hooks,
             });
             status = res.statusCode || 200;

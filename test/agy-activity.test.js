@@ -15,7 +15,7 @@ async function listen(handler) {
 
 test('AGY completion closes activity once and participates in drain tracking on success', async () => {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'agy-activity-'));const accounts=path.join(dir,'accounts.json');
-  fs.writeFileSync(accounts,JSON.stringify({accounts:[{id:'a',enabled:true,token:{token:{refresh_token:'x'}}}]}));
+  fs.writeFileSync(accounts,JSON.stringify({accounts:[{id:'agy-123456789abc',email:'x@example.com',enabled:true,token:{token:{refresh_token:'x'},id_token:`h.${Buffer.from(JSON.stringify({email:'x@example.com'})).toString('base64url')}.s`}}]}));
   const worker=await listen((_q,r)=>{r.writeHead(200,{'content-type':'application/json'});r.end('{"choices":[]}');});
   const ended=[];let activeDuring=null;let server;
   const hooks={
@@ -34,7 +34,7 @@ test('AGY completion closes activity once and participates in drain tracking on 
 
 test('AGY completion closes activity once with failure status', async () => {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'agy-activity-fail-'));const accounts=path.join(dir,'accounts.json');
-  fs.writeFileSync(accounts,JSON.stringify({accounts:[{id:'a',enabled:true,token:{token:{refresh_token:'x'}}}]}));
+  fs.writeFileSync(accounts,JSON.stringify({accounts:[{id:'agy-123456789abc',email:'x@example.com',enabled:true,token:{token:{refresh_token:'x'},id_token:`h.${Buffer.from(JSON.stringify({email:'x@example.com'})).toString('base64url')}.s`}}]}));
   const ended=[];
   const hooks={
     agyModels:{async list(){return[{id:'gemini-real-high',name:'Gemini'}];},resolveAlias(){return'gemini-real-high';}},

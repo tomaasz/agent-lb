@@ -36,6 +36,7 @@ export async function handleClientKeys({
         key: masked,
         maskedKey: masked,
         created: k.created || null,
+        allowCredentialRelay: k.allowCredentialRelay === true,
         maxDailyTokens:
           k.maxDailyTokens != null ? Number(k.maxDailyTokens) : null,
         maxMonthlyTokens:
@@ -136,6 +137,27 @@ export async function handleClientKeys({
     return true;
   }
 
+  if (req.method === 'POST' && normApiPath === '/api/keys/permissions') {
+    let body;
+    try { body = JSON.parse(await readControlBody(req)); }
+    catch { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'invalid request body' })); return true; }
+    if (typeof body?.name !== 'string' || typeof body?.allowCredentialRelay !== 'boolean') {
+      res.writeHead(400); res.end(JSON.stringify({ ok: false, error: 'invalid credential relay permission' })); return true;
+    }
+    let found = false;
+    const updated = await atomicConfigUpdate(disk => {
+      for (const entry of disk.proxy?.clientKeys || []) {
+        if (entry.name === body.name) { entry.allowCredentialRelay = body.allowCredentialRelay; found = true; }
+      }
+    });
+    if (!found) { res.writeHead(404); res.end(JSON.stringify({ ok: false, error: 'unknown client key' })); return true; }
+    config.proxy.clientKeys = updated.proxy.clientKeys;
+    if (hooks.reload) await hooks.reload();
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, name: body.name, allowCredentialRelay: body.allowCredentialRelay }));
+    return true;
+  }
+
   // Client Keys: Create / Add (POST /agentlb/api/keys/create & POST /agentlb/client-keys/add)
   if (
     req.method === "POST" &&
@@ -172,7 +194,13 @@ export async function handleClientKeys({
     const key = customKey || "tc-" + randomBytes(24).toString("base64url");
     const nowIso = new Date().toISOString();
 
+    if (body.allowCredentialRelay != null && typeof body.allowCredentialRelay !== 'boolean') {
+      res.writeHead(400);
+      res.end(JSON.stringify({ ok: false, error: 'invalid credential relay permission' }));
+      return true;
+    }
     const policy = {};
+    if (typeof body.allowCredentialRelay === 'boolean') policy.allowCredentialRelay = body.allowCredentialRelay;
     for (const field of ["maxDailyTokens", "maxMonthlyTokens"]) {
       if (body[field] == null) continue;
       const value = Number(body[field]);
@@ -203,7 +231,7 @@ export async function handleClientKeys({
             typeof v !== "string" ||
             !v.trim() ||
             (field === "allowedProviders" &&
-              !["anthropic", "codex"].includes(v)),
+              !["anthropic", "codex", "agy"].includes(v)),
         )
       ) {
         res.writeHead(400);
@@ -231,6 +259,7 @@ export async function handleClientKeys({
         name,
         key,
         created: existing?.created || nowIso,
+        allowCredentialRelay: existing?.allowCredentialRelay === true,
         ...policy,
       });
     });

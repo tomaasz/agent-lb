@@ -26,11 +26,12 @@ function responseCapture() {
   return res;
 }
 function fakeStore(accounts) {
-  const spent = []; const stats = [];
+  const spent = []; const stats = []; const failures = [];
   return {
     accounts,
     pick(exclude) { return accounts.find(a => !exclude.has(a.id) && !a.spent) || null; },
     markQuota(id, seconds, message) { spent.push({ id, seconds, message }); accounts.find(a => a.id === id).spent = true; },
+    markFailure(id, reason) { failures.push({id, reason}); }, failures,
     recordRequest(id, usage) { stats.push({ id, ...usage }); }, spent, stats,
   };
 }
@@ -120,8 +121,8 @@ test('client leaving while queued releases the late lease without calling worker
     body:Buffer.from('{"model":"agy","stream":false}'),model:'agy',store:fakeStore([{id:'a'}]),
     pool:{acquire:()=>new Promise(r=>{resolveAcquire=r;})},catalog,usageRecorder:{onUsage(){}},hooks:{},
   });
-  res.emit('close');
   await new Promise(r=>setImmediate(r));
+  res.emit('close');
   resolveAcquire({port:worker.port,token:'secret',release(){releases++;}});
   await pending;
   assert.equal(releases,1);assert.equal(calls,0);
@@ -190,6 +191,26 @@ test('unknown model returns model_not_found', async () => {
   const out=await run({handlers:{a:(_q,r)=>r.end('wrong')},body:{model:'gemini-9',stream:false}}); assert.equal(out.res.statusCode,404); assert.match(out.text,/model_not_found/);
 });
 
+test('local overload rotates without recording Google quota and local auth never rotates', async () => {
+  const overload = await run({handlers:{a:(_q,r)=>{r.writeHead(429);r.end('{"error":{"code":"busy"}}');},b:(_q,r)=>r.end('ok')},body:{model:'agy',stream:false}});
+  assert.equal(overload.text,'ok');
+  assert.equal(overload.store.spent.length,0);
+  assert.deepEqual(overload.store.failures,[{id:'a',reason:'overloaded'}]);
+  let second=0;
+  const auth = await run({handlers:{a:(_q,r)=>{r.writeHead(401);r.end('{"error":{"message":"worker-secret"}}');},b:(_q,r)=>{second++;r.end('wrong');}},body:{model:'agy',stream:false}});
+  assert.equal(second,0); assert.equal(auth.store.spent.length,0);
+  assert.equal(auth.res.statusCode,503);
+  assert.doesNotMatch(auth.text,/worker-secret/);
+});
+
+test('full queue returns retry-after without penalizing the Google account', async () => {
+  const store=fakeStore([{id:'a'}]); const res=responseCapture(); const req=new EventEmitter();
+  await handleAgyCompletion(req,res,{body:Buffer.from('{"model":"agy","stream":false}'),model:'agy',store,catalog,
+    pool:{acquire:async()=>{throw Object.assign(new Error(),{code:'AGY_QUEUE_FULL'});}}});
+  assert.equal(res.statusCode,503);assert.equal(res.headers['retry-after'],'5');
+  assert.equal(store.spent.length,0);assert.equal(store.failures.length,0);
+});
+
 test('response close aborts upstream and releases account slot exactly once', async () => {
   const upstream=await listen(()=>{}); const store=fakeStore([{id:'a'}]);
   let releases=0; const basePool=fakePool({a:{port:upstream.port,token:'secret'}}); const pool={...basePool,async acquire(id){const lease=await basePool.acquire(id);const release=lease.release;return{...lease,release(){releases++;release();}};}};
@@ -211,7 +232,7 @@ test('stream preserves a UTF-8 code point split across TCP chunks', async () => 
 
 test('configured AGY accountsPath is used when model listing initializes AGY first', async () => {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'agy-config-path-')); const configured=path.join(dir,'configured.json');
-  fs.writeFileSync(configured,JSON.stringify({accounts:[{id:'configured-account',email:'x@example.com',enabled:true,token:{token:{refresh_token:'x'}}}]}));
+  fs.writeFileSync(configured,JSON.stringify({accounts:[{id:'agy-123456789abc',email:'x@example.com',enabled:true,token:{token:{refresh_token:'x'},id_token:`h.${Buffer.from(JSON.stringify({email:'x@example.com'})).toString('base64url')}.s`}}]}));
   const worker=await listen((_q,r)=>r.end('{"choices":[]}')); let acquired=null;
   const hooks={
     agyModels:{async list(){return[{id:'gemini-real-high',name:'Gemini'}];},resolveAlias(m){return m==='agy'?'gemini-real-high':m;}},
@@ -222,7 +243,7 @@ test('configured AGY accountsPath is used when model listing initializes AGY fir
   try {
     const models=await fetch(`http://127.0.0.1:${server.address().port}/v1/models`,{headers:{'x-api-key':'k'}}); assert.equal(models.status,200);
     const completion=await fetch(`http://127.0.0.1:${server.address().port}/v1/chat/completions`,{method:'POST',headers:{'x-api-key':'k','content-type':'application/json'},body:'{"model":"agy","stream":false}'});
-    assert.equal(completion.status,200); assert.equal(acquired,'configured-account');
+    assert.equal(completion.status,200); assert.equal(acquired,'agy-123456789abc');
   } finally { await new Promise(r=>server.close(r)); await new Promise(r=>worker.server.close(r)); fs.rmSync(dir,{recursive:true,force:true}); }
 });
 
@@ -243,8 +264,11 @@ test('gemini models are never silently substituted to Claude or GPT', () => {
 
 test('store pick honors available pinned then earliest reset and recordRequest throttles disk writes', () => {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'agy-store-')); const file=path.join(dir,'a.json'); let now=1000;
-  fs.writeFileSync(file,JSON.stringify({pinned:'p',accounts:[{id:'x',enabled:true,usage:{models:[{resetAt:5000}]}},{id:'p',enabled:true},{id:'y',enabled:true,usage:{models:[{resetAt:3000}]}},{id:'off',enabled:false}]}));
-  const s=new AgyAccountStore(file,()=>now); assert.equal(s.pick(new Set()).id,'p'); assert.equal(s.pick(new Set(['p'])).id,'y');
-  s.recordRequest('y',{inputTokens:2,outputTokens:3}); s.recordRequest('y',{inputTokens:4,outputTokens:5}); assert.deepEqual(s._find('y').stats,{requests:2,inputTokens:6,outputTokens:8,lastAt:1000});
+  const s=new AgyAccountStore(file,()=>now);
+  const add = email => s.upsert({ token: {refresh_token:'test'}, id_token:`h.${Buffer.from(JSON.stringify({email})).toString('base64url')}.s` }).id;
+  const x=add('x@example.com'), p=add('p@example.com'), y=add('y@example.com'), off=add('off@example.com');
+  s._find(x).usage={models:[{resetAt:5000}]}; s._find(y).usage={models:[{resetAt:3000}]}; s.setEnabled(off,false); s.pin(p);
+  assert.equal(s.pick(new Set()).id,p); assert.equal(s.pick(new Set([p])).id,y);
+  s.recordRequest(y,{inputTokens:2,outputTokens:3}); s.recordRequest(y,{inputTokens:4,outputTokens:5}); assert.deepEqual(s._find(y).stats,{requests:2,inputTokens:6,outputTokens:8,lastAt:1000});
   fs.rmSync(dir,{recursive:true,force:true});
 });

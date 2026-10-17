@@ -104,7 +104,7 @@ test('restricted keys cannot bypass metering using opaque relays', () => {
   for (const entry of [{ allowedProviders: ['codex'] }, { allowedModels: ['safe'] }, { maxDailyTokens: 100 }, { expiresAt: '2000-01-01' }]) {
     assert.equal(relayPolicyAllowed({ ok: true, client: 'worker', entry }), false);
   }
-  assert.equal(relayPolicyAllowed({ ok: true, client: 'worker', entry: {} }), true);
+  assert.equal(relayPolicyAllowed({ ok: true, client: 'worker', entry: {} }), false);
 });
 
 test('request budgets share capacity, bound memory, and release exactly once', () => {

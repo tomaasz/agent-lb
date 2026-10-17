@@ -20,11 +20,11 @@ test('refresh reads the refreshed worker token, deduplicates requests and keeps 
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const store = new AgyAccountStore(join(dir, 'accounts.json'), () => 1234);
   // No production credentials or files are involved.
-  store.data.accounts.push({ id: 'a', email: 'a@example.com', token: { secret: 'never-public' } });
+  store.data.accounts.push({ id: 'agy-123456789abc', email: 'a@example.com', token: { token: { refresh_token: 'never-public' }, id_token: `h.${Buffer.from(JSON.stringify({email:'a@example.com'})).toString('base64url')}.s` } });
   const tokenFile = join(dir, ...TOKEN_PATH);
   let runs = 0, calls = 0, fail = false;
   const refresh = createAgySubscriptionRefresh({
-    store, pool: { ensureHome: id => { assert.equal(id, 'a'); return dir; } },
+    store, pool: { ensureHome: id => { assert.equal(id, 'agy-123456789abc'); return dir; } },
     run: async home => {
       assert.equal(home, dir);
       runs++;
@@ -40,8 +40,8 @@ test('refresh reads the refreshed worker token, deduplicates requests and keeps 
       return new Response(JSON.stringify({ paidTier: { id: 'g1-pro-tier', name: 'Google AI Pro', token: 'hidden' } }));
     },
   });
-  const first = refresh('a');
-  assert.equal(refresh('a'), first);
+  const first = refresh('agy-123456789abc');
+  assert.equal(refresh('agy-123456789abc'), first);
   assert.deepEqual(await first, { ok: true });
   assert.equal(runs, 1);
   assert.equal(calls, 1);
@@ -50,11 +50,11 @@ test('refresh reads the refreshed worker token, deduplicates requests and keeps 
   assert.deepEqual(new AgyAccountStore(store.path).list()[0].subscription, expected);
   assert.ok(!JSON.stringify(store.list()).includes('secret'));
   // An old station omits the plan; a malformed update must not erase it either.
-  store.setUsage('a', [], undefined);
-  store.setUsage('a', [], { name: {} });
+  store.setUsage('agy-123456789abc', [], undefined);
+  store.setUsage('agy-123456789abc', [], { name: {} });
   assert.deepEqual(store.list()[0].subscription, expected);
   fail = true;
-  const failure = await refresh('a');
+  const failure = await refresh('agy-123456789abc');
   assert.equal(failure.ok, false);
   assert.ok(!failure.error.includes('fresh-secret'));
   assert.deepEqual(store.list()[0].subscription, expected);
@@ -67,8 +67,8 @@ test('a synchronous worker error does not leave refresh stuck in flight', async 
     store: { _find: () => ({}) },
     pool: { ensureHome: () => { runs++; throw new Error('secret'); } },
   });
-  assert.equal((await refresh('a')).ok, false);
-  assert.equal((await refresh('a')).ok, false);
+  assert.equal((await refresh('agy-123456789abc')).ok, false);
+  assert.equal((await refresh('agy-123456789abc')).ok, false);
   assert.equal(runs, 2);
 });
 
@@ -83,23 +83,23 @@ test('account cards render Google plan names as text and expose refresh in both 
     const controls = [];
     const context = vm.createContext({
       el, t: key => key, agyT: (pl, en) => lang === 'pl' ? pl : en,
-      agyTests: {}, agySubscriptionBusy: {}, attachCardDragListeners() {},
+      agyData: {queue:[],events:[]}, agyTests: {}, agySubscriptionBusy: {}, attachCardDragListeners() {},
       agyIconButton: (label, title, action) => { const b = el('button', '', label); b.title = title; b.action = action; controls.push(b); return b; },
       agyUsageBlock: () => el('div'), fmtNum: String,
     });
     vm.runInContext(code, context);
-    const account = { id: 'a', email: 'a@example.com', enabled: true };
-    const card = context.renderAgyCard(account, 0, ['a']);
+    const account = { id: 'agy-123456789abc', email: 'a@example.com', enabled: true };
+    const card = context.renderAgyCard(account, 0, ['agy-123456789abc']);
     const badges = card.children[0].children[0].children;
     assert.ok(badges.some(n => n.textContent === (lang === 'pl' ? 'Plan nieznany' : 'Unknown plan')));
     assert.ok(controls.some(n => n.title === (lang === 'pl' ? 'Odśwież subskrypcję Google' : 'Refresh Google subscription')));
     account.subscription = { name: '<img src=x onerror=alert(1)>', id: 'future-tier' };
-    const named = context.renderAgyCard(account, 0, ['a']);
+    const named = context.renderAgyCard(account, 0, ['agy-123456789abc']);
     const plan = named.children[0].children[0].children.find(n => n.textContent === account.subscription.name);
     assert.ok(plan);
     assert.equal(plan.children.length, 0);
     account.name = 'Profil testowy';
-    const renamed = context.renderAgyCard(account, 0, ['a']);
+    const renamed = context.renderAgyCard(account, 0, ['agy-123456789abc']);
     assert.equal(renamed.children[1].children[0].children[0].textContent, 'Profil testowy');
     assert.equal(renamed.children[2].textContent, account.email);
     assert.ok(renamed.children[1].children[0].children.some(n => n.textContent === '✏️'));

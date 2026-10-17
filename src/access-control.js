@@ -183,7 +183,7 @@ export function resolveClientAuth(proxyConfig, presented) {
       return { ok: true, client: entry.name.trim(), entry };
     }
   }
-  if (shared && safeKeyEqual(presented, shared)) return { ok: true, client: null, entry: null };
+  if (shared && safeKeyEqual(presented, shared)) return { ok: true, client: null, entry: null, primary: true };
   return { ok: false, client: null, entry: null };
 }
 
@@ -193,7 +193,7 @@ export function relayPolicyAllowed(auth, tracker = new ClientUsageTracker()) {
   if (!auth.ok) return false;
   const entry = auth.entry;
   if (!entry) return true;
-  if (!tracker.checkQuota(auth.client, entry).allowed) return false;
+  if (entry.allowCredentialRelay !== true || !tracker.checkQuota(auth.client, entry).allowed) return false;
   return !entry.allowedProviders?.length && !entry.allowedModels?.length &&
     !entry.maxDailyTokens && !entry.maxMonthlyTokens;
 }

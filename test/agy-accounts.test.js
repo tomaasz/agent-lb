@@ -241,7 +241,8 @@ describe('AGY routes on the proxy', () => {
       proxy: {
         apiKey: admin,
         clientKeys: [
-          { name: '1dtl1', key: station },
+          { name: '1dtl1', key: station, allowCredentialRelay: true },
+          { name: 'api-only', key: 'tc-api-only' },
           { name: 'limited', key: restricted, allowedModels: ['claude-haiku-4-5-20251001'] },
         ],
       },
@@ -297,6 +298,7 @@ describe('AGY routes on the proxy', () => {
     assert.equal((await call('/agy/credential', restricted)).status, 403);
     assert.equal((await call('/agy/credential', null)).status, 401);
     assert.equal((await call('/agy/credential', 'tc-wrong')).status, 401);
+    assert.equal((await call('/agy/credential', 'tc-api-only')).status, 403);
   });
 
   it('accepts station subscription reports but restricts refresh to administrators', async () => {

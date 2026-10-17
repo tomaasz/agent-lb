@@ -5572,6 +5572,19 @@ ${SHARED_HELPERS}
 
       topRow.appendChild(nameWrap);
 
+      // Explicit privilege for local AGY credentials and unmetered relays.
+      var relayBtn = el('button', 'btn btn-xs', k.allowCredentialRelay ? agyT('Poświadczenia: dostęp', 'Credentials: allowed') : agyT('Tylko API', 'API only'));
+      relayBtn.title = agyT('Dostęp do tokenów Google i niekontrolowanych tuneli proxy', 'Access to Google tokens and unmetered proxy tunnels');
+      relayBtn.addEventListener('click', function () {
+        if (!k.allowCredentialRelay && !confirm(agyT('Zezwolić tej stacji na pobieranie poświadczeń Google i używanie tuneli proxy?', 'Allow this station to retrieve Google credentials and use proxy tunnels?'))) return;
+        relayBtn.disabled = true;
+        apiCall('/agent-lb/api/keys/permissions', 'POST', { name: k.name, allowCredentialRelay: !k.allowCredentialRelay }).then(function (d) {
+          if (d && d.ok) poll();
+          else note('error', (d && d.error) || 'Permission update failed');
+        }).catch(function (e) { note('error', e.message); }).finally(function () { relayBtn.disabled = false; });
+      });
+      nameWrap.appendChild(relayBtn);
+
       // Actions: Setup and Revoke
       var acts = el('div', 'card-actions');
 
@@ -6295,7 +6308,7 @@ ${SHARED_HELPERS}
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (d) {
         if (d && d.ok) {
-          agyData = { accounts: d.accounts || [], models: d.models || [] };
+          agyData = { accounts: d.accounts || [], models: d.models || [], events: d.events || [], queue: d.queue || [] };
           renderAgyAccounts(agyData.accounts);
           if (lastStatus) renderRoutes(lastStatus);
         }
@@ -6387,7 +6400,7 @@ ${SHARED_HELPERS}
     acts.appendChild(agyIconButton(a.enabled ? '⏸️' : '▶️', a.enabled ? t('btnDisable') : t('btnEnable'), function () {
       agyAction('accounts/enable', { id: a.id, enabled: !a.enabled });
     }));
-    if (spent) acts.appendChild(agyIconButton('🧹', t('agyClearQuotaTitle'), function () { agyAction('accounts/clear-quota', { id: a.id }); }));
+    if (spent || Object.keys(a.modelQuotas || {}).some(function (m) { return a.modelQuotas[m] > Date.now(); })) acts.appendChild(agyIconButton('🧹', t('agyClearQuotaTitle'), function () { agyAction('accounts/clear-quota', { id: a.id }); }));
     acts.appendChild(agyIconButton('🗑️', t('agyRemoveTitle'), function () {
       if (confirm(agyT('Usunąć konto ', 'Remove account ') + a.email + '?')) agyAction('accounts/remove', { id: a.id }, agyT('Usunięto ', 'Removed ') + a.email);
     }, 'btn-icon-del'));
@@ -6416,6 +6429,27 @@ ${SHARED_HELPERS}
       var line = el('div', 'agy-state-line spent', t('agyResetsIn', { time: agyLeft(a.quotaUntil - Date.now()) }));
       if (a.quotaMessage) line.title = a.quotaMessage;
       body.appendChild(line);
+    }
+    if (a.health && (a.health.requiresReview || a.health.until > Date.now())) {
+      var reasons = { auth_required: agyT('Wymagane ponowne logowanie', 'Login required'), access_denied: agyT('Odmowa dostępu Google — wymaga sprawdzenia', 'Google access denied — review required'), transport: agyT('Przerwa po błędzie połączenia', 'Connection failure cooldown'), timeout: agyT('Przekroczono czas odpowiedzi', 'Response timeout'), bridge_auth: agyT('Błąd uwierzytelnienia mostka', 'Bridge authentication failed'), overloaded: agyT('Mostek przeciążony', 'Bridge overloaded') };
+      var healthText = reasons[a.health.reason] || agyT('Konto wymaga sprawdzenia', 'Account requires review');
+      if (a.health.until > Date.now()) healthText += ' · ' + agyLeft(a.health.until - Date.now());
+      body.appendChild(el('div', 'agy-state-line spent', healthText));
+      body.appendChild(agyIconButton('↻', agyT('Ponów po sprawdzeniu konta', 'Retry after reviewing account'), function () { agyAction('accounts/clear-health', { id: a.id }); }));
+    }
+    Object.keys(a.modelQuotas || {}).forEach(function (model) {
+      if (a.modelQuotas[model] > Date.now()) body.appendChild(el('div', 'agy-state-line spent', model + ' · ' + agyLeft(a.modelQuotas[model] - Date.now())));
+    });
+    var queue = (agyData.queue || []).find(function (q) { return q.accountId === a.id; });
+    if (queue && queue.queued) body.appendChild(el('div', 'agy-state-line', agyT('W kolejce: ', 'Queued: ') + queue.queued));
+    var events = (agyData.events || []).filter(function (e) { return e.accountId === a.id; }).slice(-5).reverse();
+    if (events.length) {
+      var history = el('details', 'agy-state-line');
+      history.appendChild(el('summary', '', agyT('Ostatnie zdarzenia', 'Recent events')));
+      events.forEach(function (e) {
+        history.appendChild(el('div', '', new Date(e.at).toLocaleTimeString() + ' · ' + (e.client || '—') + ' · ' + (e.model || '—') + ' · ' + e.outcome + ' · ' + Math.round(e.durationMs / 1000) + 's'));
+      });
+      body.appendChild(history);
     }
     body.appendChild(agyUsageBlock(a.usage));
     var test = agyTests[a.id];
