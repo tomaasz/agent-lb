@@ -125,6 +125,10 @@ test('credential relay requires a real explicit boolean and remains restricted b
 });
 
 test('queue is bounded, round-robin across three clients, cancellable and leak free', async t => {
+  // Real requests keep a socket alive; the in-memory fixture needs its own
+  // referenced handle while waiting on an intentionally unref'ed queue timer.
+  const keepAlive = setInterval(() => {}, 1000);
+  t.after(() => clearInterval(keepAlive));
   const pool = new AgyWorkerPool({ store: { _find: id => ({ id }) }, maxPerAccount: 1, maxQueued: 8, maxQueuedPerClient: 3 });
   t.after(() => pool.stopAll());
   pool._start = () => ({ ready: Promise.resolve(), port: 1, token: 'test', dead: false });
