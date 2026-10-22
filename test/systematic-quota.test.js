@@ -16,6 +16,11 @@ async function serve(t, server) {
 const frame = payload => `data: ${JSON.stringify(payload)}\n\n`;
 const cases = [
   {
+    name: 'native OpenAI JSON', provider: 'codex', path: '/v1/chat/completions', model: 'gpt-4o', stream: false,
+    contentType: 'application/json',
+    response: JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 } }),
+  },
+  {
     name: 'OpenAI SSE translated to Anthropic', provider: 'codex', path: '/v1/messages', model: 'claude-custom', stream: true,
     contentType: 'text/event-stream',
     response: frame({ choices: [{ delta: { content: 'ok' }, finish_reason: null }] }) + frame({ choices: [], usage: { prompt_tokens: 100, completion_tokens: 50 } }) + frame({ choices: [{ delta: {}, finish_reason: 'stop' }] }) + 'data: [DONE]\n\n',

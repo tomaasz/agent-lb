@@ -9973,12 +9973,10 @@ function extractUsageFromBody(
   try {
     const json = JSON.parse(buffer.toString());
     if (json.usage) {
-      accountManager.updateUsage(
-        accountIndex,
-        json.usage.input_tokens,
-        json.usage.output_tokens,
-      );
-      onUsage?.(json.usage.input_tokens || 0, json.usage.output_tokens || 0);
+      const inputTokens = json.usage.input_tokens ?? json.usage.prompt_tokens ?? 0;
+      const outputTokens = json.usage.output_tokens ?? json.usage.completion_tokens ?? 0;
+      accountManager.updateUsage(accountIndex, inputTokens, outputTokens);
+      onUsage?.(inputTokens, outputTokens);
       accountManager.recordTokenUsage(
         accountIndex,
         sessionId,
