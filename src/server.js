@@ -9432,7 +9432,10 @@ export async function forwardRequest(
         const l = getLog();
         const transform = createOpenAIToAnthropicTransformStream(ctx.model);
         await pipeline(
-          Readable.from(idleBody(upstreamRes.body)),
+          Readable.from(usageTrackedBody(
+            upstreamRes.body, account.index, accountManager, ctx.onUsage,
+            ctx.sessionId, ctx.model, ctx.usageDetails,
+          )),
           transform,
           res,
         );
@@ -9481,7 +9484,10 @@ export async function forwardRequest(
         const l = getLog();
         const transform = createAnthropicToOpenAITransformStream(ctx.model);
         await pipeline(
-          Readable.from(idleBody(upstreamRes.body)),
+          Readable.from(usageTrackedBody(
+            upstreamRes.body, account.index, accountManager, ctx.onUsage,
+            ctx.sessionId, ctx.model, ctx.usageDetails,
+          )),
           transform,
           res,
         );
@@ -9750,6 +9756,29 @@ export async function forwardRequest(
     if (ctx.delivered && ctx.status < 400 && ctx.account === account.name) {
       accountManager.clearIdentityVerification(account.index);
       accountManager.recordAccountSuccess(account);
+    }
+  }
+}
+
+// Meter the upstream wire format before translation. Translated frames can
+// omit or estimate usage, so they cannot enforce the client's token limits.
+async function* usageTrackedBody(body, accountIndex, accountManager, onUsage, sessionId, model, details) {
+  const decoder = new TextDecoder();
+  const merged = {};
+  let buffer = "";
+  try {
+    for await (const chunk of idleBody(body)) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const events = buffer.split(/\r?\n\r?\n/);
+      buffer = events.pop();
+      for (const event of events) parseSSEUsage(event, accountIndex, accountManager, onUsage, merged);
+      yield chunk;
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) parseSSEUsage(buffer, accountIndex, accountManager, onUsage, merged);
+  } finally {
+    if (Object.keys(merged).length) {
+      accountManager.recordTokenUsage(accountIndex, sessionId, model, merged, details);
     }
   }
 }
