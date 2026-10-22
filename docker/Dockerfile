@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:24-alpine
 LABEL maintainer="Tomasz"
 LABEL org.opencontainers.image.source="https://github.com/tomaasz/agent-lb"
 LABEL org.opencontainers.image.description="Universal Multi-Account Load Balancer, Quota Rotator & Web Dashboard for Claude Code & OpenAI Codex"
@@ -6,13 +6,15 @@ LABEL org.opencontainers.image.description="Universal Multi-Account Load Balance
 WORKDIR /app
 
 # Install tools used by setup scripts and repository verification
-RUN apk add --no-cache bash curl git python3 py3-bcrypt
+RUN apk upgrade --no-cache && apk add --no-cache bash curl git python3 py3-bcrypt
 
 # Copy package descriptors first for caching
 COPY package.json package-lock.json ./
 
 # Install production dependencies (zero external runtime dependencies by default)
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+        /opt/yarn* /usr/local/bin/yarn /usr/local/bin/yarnpkg
 
 # Copy application files
 COPY src/ ./src/
