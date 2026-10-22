@@ -1,0 +1,410 @@
+{
+  "node": "v24.15.0",
+  "tests": {
+    "tests": 408,
+    "pass": 403,
+    "fail": 0,
+    "skipped": 5
+  },
+  "coverage": {
+    "access-control.js": {
+      "lines": 98.49,
+      "branches": 91.35,
+      "functions": 100.0
+    },
+    "account-id.js": {
+      "lines": 100.0,
+      "branches": 87.5,
+      "functions": 100.0
+    },
+    "account-manager.js": {
+      "lines": 77.1,
+      "branches": 63.09,
+      "functions": 73.15
+    },
+    "account-uuid-rewrite.js": {
+      "lines": 31.3,
+      "branches": 100.0,
+      "functions": 0.0
+    },
+    "adaptive-distribution.js": {
+      "lines": 59.85,
+      "branches": 50.0,
+      "functions": 50.0
+    },
+    "admission-gate.js": {
+      "lines": 69.49,
+      "branches": 50.0,
+      "functions": 66.67
+    },
+    "agy-accounts.js": {
+      "lines": 91.35,
+      "branches": 76.77,
+      "functions": 86.73
+    },
+    "agy-failures.js": {
+      "lines": 100.0,
+      "branches": 92.5,
+      "functions": 100.0
+    },
+    "agy-gateway.js": {
+      "lines": 100.0,
+      "branches": 80.09,
+      "functions": 88.24
+    },
+    "agy-models.js": {
+      "lines": 100.0,
+      "branches": 85.71,
+      "functions": 100.0
+    },
+    "agy-storage.js": {
+      "lines": 100.0,
+      "branches": 85.71,
+      "functions": 100.0
+    },
+    "agy-subscription.js": {
+      "lines": 93.33,
+      "branches": 78.26,
+      "functions": 100.0
+    },
+    "agy-workers.js": {
+      "lines": 98.63,
+      "branches": 87.68,
+      "functions": 87.04
+    },
+    "backend-quota.js": {
+      "lines": 50.39,
+      "branches": 66.67,
+      "functions": 20.0
+    },
+    "band-decision.js": {
+      "lines": 95.85,
+      "branches": 88.24,
+      "functions": 88.24
+    },
+    "cache-control-sanitize.js": {
+      "lines": 50.75,
+      "branches": 66.67,
+      "functions": 16.67
+    },
+    "client-key-admin.js": {
+      "lines": 98.55,
+      "branches": 92.31,
+      "functions": 100.0
+    },
+    "client-usage.js": {
+      "lines": 80.83,
+      "branches": 70.89,
+      "functions": 70.37
+    },
+    "codex-auth.js": {
+      "lines": 63.33,
+      "branches": 59.72,
+      "functions": 48.0
+    },
+    "codex-quota.js": {
+      "lines": 100.0,
+      "branches": 91.67,
+      "functions": 100.0
+    },
+    "codex-reset.js": {
+      "lines": 96.91,
+      "branches": 86.52,
+      "functions": 100.0
+    },
+    "config.js": {
+      "lines": 85.45,
+      "branches": 86.76,
+      "functions": 69.23
+    },
+    "context-drop-sanitize.js": {
+      "lines": 95.34,
+      "branches": 72.06,
+      "functions": 100.0
+    },
+    "control-body.js": {
+      "lines": 100.0,
+      "branches": 77.78,
+      "functions": 100.0
+    },
+    "dashboard.js": {
+      "lines": 96.27,
+      "branches": 100.0,
+      "functions": 23.08
+    },
+    "egress-guard.js": {
+      "lines": 47.73,
+      "branches": 28.57,
+      "functions": 12.5
+    },
+    "fair-share.js": {
+      "lines": 95.12,
+      "branches": 81.82,
+      "functions": 88.89
+    },
+    "first-token.js": {
+      "lines": 100.0,
+      "branches": 96.97,
+      "functions": 100.0
+    },
+    "forward-target.js": {
+      "lines": 47.54,
+      "branches": 100.0,
+      "functions": 0.0
+    },
+    "health-checker.js": {
+      "lines": 70.31,
+      "branches": 67.29,
+      "functions": 62.5
+    },
+    "identity.js": {
+      "lines": 79.77,
+      "branches": 66.67,
+      "functions": 50.0
+    },
+    "json-format-stream.js": {
+      "lines": 31.82,
+      "branches": 100.0,
+      "functions": 0.0
+    },
+    "metrics.js": {
+      "lines": 100.0,
+      "branches": 93.75,
+      "functions": 100.0
+    },
+    "mitm.js": {
+      "lines": 59.26,
+      "branches": 33.33,
+      "functions": 30.23
+    },
+    "model-substitution.js": {
+      "lines": 100.0,
+      "branches": 69.44,
+      "functions": 100.0
+    },
+    "model.js": {
+      "lines": 72.42,
+      "branches": 74.58,
+      "functions": 63.16
+    },
+    "oauth.js": {
+      "lines": 34.03,
+      "branches": 31.25,
+      "functions": 15.38
+    },
+    "prober.js": {
+      "lines": 48.58,
+      "branches": 50.0,
+      "functions": 38.89
+    },
+    "provider-translator.js": {
+      "lines": 81.32,
+      "branches": 72.7,
+      "functions": 85.71
+    },
+    "provider.js": {
+      "lines": 99.01,
+      "branches": 92.68,
+      "functions": 91.67
+    },
+    "quota-summary.js": {
+      "lines": 9.76,
+      "branches": 100.0,
+      "functions": 0.0
+    },
+    "request-budget.js": {
+      "lines": 100.0,
+      "branches": 94.12,
+      "functions": 100.0
+    },
+    "request-log.js": {
+      "lines": 48.0,
+      "branches": 100.0,
+      "functions": 0.0
+    },
+    "rollover.js": {
+      "lines": 80.95,
+      "branches": 100.0,
+      "functions": 0.0
+    },
+    "safe-text.js": {
+      "lines": 100.0,
+      "branches": 75.0,
+      "functions": 100.0
+    },
+    "server.js": {
+      "lines": 77.1,
+      "branches": 79.4,
+      "functions": 59.09
+    },
+    "session-tracker.js": {
+      "lines": 92.22,
+      "branches": 81.6,
+      "functions": 90.0
+    },
+    "status-renderer.js": {
+      "lines": 29.16,
+      "branches": 57.14,
+      "functions": 8.57
+    },
+    "stream-lifecycle.js": {
+      "lines": 100.0,
+      "branches": 93.33,
+      "functions": 77.78
+    },
+    "sx.js": {
+      "lines": 42.13,
+      "branches": 100.0,
+      "functions": 0.0
+    },
+    "tool-call-dedupe.js": {
+      "lines": 92.68,
+      "branches": 78.38,
+      "functions": 90.0
+    },
+    "tool-pair-sanitize.js": {
+      "lines": 79.27,
+      "branches": 67.44,
+      "functions": 75.0
+    },
+    "upstream-fetch.js": {
+      "lines": 86.85,
+      "branches": 69.05,
+      "functions": 87.18
+    },
+    "upstream-proxy.js": {
+      "lines": 60.75,
+      "branches": 61.54,
+      "functions": 31.25
+    },
+    "warmup-schedule.js": {
+      "lines": 35.62,
+      "branches": 68.75,
+      "functions": 18.75
+    },
+    "web-auth.js": {
+      "lines": 90.07,
+      "branches": 80.65,
+      "functions": 83.33
+    },
+    "x509.js": {
+      "lines": 100.0,
+      "branches": 88.64,
+      "functions": 100.0
+    },
+    "all files": {
+      "lines": 79.86,
+      "branches": 75.69,
+      "functions": 66.4
+    }
+  },
+  "coverage_denominator": "Moduły załadowane przez node:test; pominięte nieimportowane pliki nie mają gwarantowanego pokrycia.",
+  "coverage_goal_met": false,
+  "lint_exit": 0,
+  "npm_audit_high_critical": 0,
+  "gitleaks_history_commits": 188,
+  "gitleaks_matches_before": 10,
+  "gitleaks_false_positives": 10,
+  "gitleaks_unsuppressed_after": 0,
+  "semgrep_javascript": {
+    "rules": 68,
+    "targets": 74,
+    "matches": 1,
+    "confirmed": 0,
+    "triage": "False positive agy-storage.js:17 sprawdza tag.length ===16 przed createDecipheriv; bez zmiany kryptografii.",
+    "initial_timeout_warnings": 9,
+    "retry": {
+      "targets": 4,
+      "rules": 68,
+      "timeout_seconds": 60,
+      "errors": 0,
+      "results": 0,
+      "evidence": [
+        "semgrep-retry.json",
+        "semgrep-retry.log"
+      ]
+    }
+  },
+  "semgrep_regression_rule": {
+    "baseline_exit": 1,
+    "final_exit": 0
+  },
+  "checkov": [
+    {
+      "check_type": "dockerfile",
+      "summary": {
+        "passed": 100,
+        "failed": 0,
+        "skipped": 0,
+        "parsing_errors": 0,
+        "resource_count": 1,
+        "checkov_version": "3.3.30"
+      },
+      "failed_checks": []
+    },
+    {
+      "check_type": "github_actions",
+      "summary": {
+        "passed": 43,
+        "failed": 0,
+        "skipped": 0,
+        "parsing_errors": 0,
+        "resource_count": 0,
+        "checkov_version": "3.3.30"
+      },
+      "failed_checks": []
+    },
+    {
+      "check_type": "dockerfile",
+      "summary": {
+        "passed": 100,
+        "failed": 0,
+        "skipped": 0,
+        "parsing_errors": 0,
+        "resource_count": 1,
+        "checkov_version": "3.3.30"
+      },
+      "failed_checks": []
+    }
+  ],
+  "trivy_image_before": {
+    "HIGH": 26,
+    "MEDIUM": 27,
+    "LOW": 35,
+    "UNKNOWN": 2,
+    "CRITICAL": 1
+  },
+  "trivy_image_after": {},
+  "image_id": "sha256:525f0b9790416e435e9627e382cd52a29002b0cbad2a958eeabb733bdc8d55fd",
+  "sbom_signature": "RSA2048/SHA256, Verify OK; klucz tymczasowy usunięty, publiczny dołączony. Podpis integralności bez potwierdzonej tożsamości organizacji/Sigstore.",
+  "skips": "5 zastanych pominięć: ruamel.yaml/ttok, bez nowych skip/TODO.",
+  "not_run": [
+    "real Windows",
+    "browser E2E",
+    "provider inference",
+    "SMTP",
+    "production DAST",
+    "long-running performance/chaos",
+    "organizational signing/branch protection"
+  ],
+  "container_tests": {
+    "tests": 27,
+    "pass": 27,
+    "fail": 0,
+    "skipped": 0,
+    "network": "none",
+    "filesystem": "read-only, tmpfs /tmp"
+  },
+  "junit_representation": {
+    "summary_same_run": {
+      "tests": 408,
+      "pass": 403,
+      "fail": 0,
+      "skipped": 5
+    },
+    "xml_testcase_elements": 406,
+    "xml_skipped_elements": 6,
+    "note": "Stopka JUnit identyczna ze spec i czasem tego samego przebiegu. Reporter nie mapuje hierarchii 1:1; skipped suite gemini jest elementem skipped testcase. Nie wyciągamy z liczby XML elementów innego wyniku przebiegu."
+  },
+  "gitleaks_current_commits_scanned": 195
+}

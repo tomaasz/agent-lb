@@ -1,0 +1,445 @@
+--- a/setup/codexlb-setup.js
++++ b/setup/codexlb-setup.js
+@@ -20,7 +20,7 @@
+ const http = require('http');
+ const https = require('https');
+ const readline = require('readline');
+-const { execSync } = require('child_process');
++const { execSync, execFileSync } = require('child_process');
+
+ const isWin = process.platform === 'win32';
+
+@@ -205,7 +205,7 @@
+             } catch {}
+             resolve({ statusCode: 200, models });
+           } else if (res.statusCode === 401 || res.statusCode === 403) {
+-            reject(new Error(`Serwer odrzucił klucz API (kod HTTP ${res.statusCode}). Wygeneruj nowy w panelu ${urlStr} (zakładka /apis).`));
++            reject(Object.assign(new Error(`Serwer odrzucił klucz API (kod HTTP ${res.statusCode}). Wygeneruj nowy w panelu ${urlStr} (zakładka /apis).`), { statusCode: res.statusCode }));
+           } else {
+             resolve({ statusCode: res.statusCode, models });
+           }
+@@ -230,12 +230,15 @@
+   try {
+     return await checkConnectionNative(urlStr, key, insecure);
+   } catch (err) {
++    // Authentication failures are definitive; curl must not turn them into success.
++    if (err.statusCode === 401 || err.statusCode === 403) throw err;
+     // Fallback: jeśli natywne żądanie Node zawiedzie (np. specyficzne proxy systemowe), spróbuj curl
+     if (hasCommand('curl')) {
+       try {
+-        const insecureArg = insecure ? '-k ' : '';
+-        const curlCmd = `curl -s -m 25 ${insecureArg}-H "Authorization: Bearer ${key}" "${urlStr}/backend-api/codex/models"`;
+-        const body = execSync(curlCmd, { encoding: 'utf-8', timeout: 26000 });
++        const curlArgs = ['--silent', '--show-error', '--fail', '--max-time', '25'];
++        if (insecure) curlArgs.push('--insecure');
++        curlArgs.push('--header', `Authorization: Bearer ${key}`, '--url', `${urlStr}/backend-api/codex/models`);
++        const body = execFileSync('curl', curlArgs, { encoding: 'utf-8', timeout: 26000 });
+         let models = [];
+         try {
+           const json = JSON.parse(body);
+@@ -510,8 +513,9 @@
+   if (isWin) {
+     try {
+       // Bezpieczne przekazanie wartości przez zmienną środowiskową procesu potomnego
+-      execSync(`powershell.exe -NoProfile -Command "[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', '${targetUrl}/v1', 'User'); [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', '${targetUrl}/backend-api/codex', 'User')"`, {
+-        env: { ...process.env, TMP_KEY: apiKey },
++      execFileSync('powershell.exe', ['-NoProfile', '-Command',
++        "[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', ($env:TMP_URL + '/v1'), 'User'); [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', ($env:TMP_URL + '/backend-api/codex'), 'User')"], {
++        env: { ...process.env, TMP_KEY: apiKey, TMP_URL: targetUrl },
+       });
+       console.log('[OK] Zapisano zmienne CODEX_LB_API_KEY, OPENAI_API_KEY i OPENAI_BASE_URL w profilu Windows.');
+     } catch (err) {
+@@ -522,18 +526,19 @@
+     try {
+       const configDir = path.dirname(envFile);
+       if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
++      const shellQuote = (value) => "'" + String(value).replaceAll("'", "'\\''") + "'";
+       const envLines = [
+         '# Agent LB / Codex environment configuration',
+-        `export CODEX_LB_API_KEY="${apiKey}"`,
+-        `export AGENT_LB_API_KEY="${apiKey}"`,
+-        `export OPENAI_BASE_URL="${targetUrl}/v1"`,
+-        `export OPENAI_API_KEY="${apiKey}"`,
+-        `export CODEX_BASE_URL="${targetUrl}/backend-api/codex"`,
++        `export CODEX_LB_API_KEY=${shellQuote(apiKey)}`,
++        `export AGENT_LB_API_KEY=${shellQuote(apiKey)}`,
++        `export OPENAI_BASE_URL=${shellQuote(`${targetUrl}/v1`)}`,
++        `export OPENAI_API_KEY=${shellQuote(apiKey)}`,
++        `export CODEX_BASE_URL=${shellQuote(`${targetUrl}/backend-api/codex`)}`,
+       ].join('\n') + '\n';
+       fs.writeFileSync(envFile, envLines, { mode: 0o600 });
+       console.log(`[OK] Klucz i zmienne środowiskowe zapisane w ${envFile} (chmod 600).`);
+
+-      const srcLine = `. "${envFile}"  # codexlb`;
++      const srcLine = `. ${shellQuote(envFile)}  # codexlb`;
+       for (const rcName of ['.bashrc', '.zshrc']) {
+         const rcPath = path.join(os.homedir(), rcName);
+         if (fs.existsSync(rcPath)) {
+--- a/setup/claw-setup.sh
++++ b/setup/claw-setup.sh
+@@ -8,6 +8,9 @@
+ #   ./setup/claw-setup.sh --key <KLUCZ_STACJI> [--url https://agentlb.gotova.pl]
+
+ set -eu
++
++# Configuration files and backups contain API keys.
++umask 077
+
+ URL="${AGENT_LB_URL:-${AGENTLB_URL:-https://agentlb.gotova.pl}}"
+ KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${OPENAI_API_KEY:-}}}"
+@@ -43,46 +46,51 @@
+ TIMESTAMP=$(date +%s)
+ if [ -f "$CONFIG_FILE" ]; then
+   cp "$CONFIG_FILE" "$CONFIG_FILE.bak-$TIMESTAMP"
++  chmod 600 "$CONFIG_FILE.bak-$TIMESTAMP"
+   echo "Utworzono kopię zapasową: $CONFIG_FILE.bak-$TIMESTAMP"
+ fi
+
+ if command -v node >/dev/null 2>&1; then
+-  node - << EOF
++  AGENTLB_SETUP_CONFIG_FILE="$CONFIG_FILE" AGENTLB_SETUP_URL="$URL" AGENTLB_SETUP_KEY="$KEY" node - << 'EOF'
+ const fs = require('fs');
+-const path = "$CONFIG_FILE";
++const path = process.env.AGENTLB_SETUP_CONFIG_FILE;
+ let cfg = {};
+ if (fs.existsSync(path)) {
+-  try { cfg = JSON.parse(fs.readFileSync(path, 'utf8')); } catch (e) {}
++  cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
++  if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('Configuration must be a JSON object');
+ }
+ cfg.models = cfg.models || {};
+ cfg.models.providers = cfg.models.providers || {};
+ cfg.models.providers.agentlb = {
+-  baseUrl: "$URL/v1",
++  baseUrl: process.env.AGENTLB_SETUP_URL + "/v1",
+   api: "openai-completions",
+-  apiKey: "$KEY"
++  apiKey: process.env.AGENTLB_SETUP_KEY
+ };
+-fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
++if (fs.existsSync(path)) fs.chmodSync(path, 0o600);
++fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
+ EOF
+ elif command -v python3 >/dev/null 2>&1; then
+-  python3 - << EOF
++  AGENTLB_SETUP_CONFIG_FILE="$CONFIG_FILE" AGENTLB_SETUP_URL="$URL" AGENTLB_SETUP_KEY="$KEY" python3 - << 'EOF'
+ import os, json
+-path = "$CONFIG_FILE"
++path = os.environ["AGENTLB_SETUP_CONFIG_FILE"]
+ cfg = {}
+ if os.path.exists(path):
+-    try:
+-        with open(path, "r", encoding="utf-8") as f:
+-            cfg = json.load(f)
+-    except: pass
++    with open(path, "r", encoding="utf-8") as f:
++        cfg = json.load(f)
++    if not isinstance(cfg, dict):
++        raise ValueError("Configuration must be a JSON object")
+ if "models" not in cfg:
+     cfg["models"] = {}
+ if "providers" not in cfg["models"]:
+     cfg["models"]["providers"] = {}
+ cfg["models"]["providers"]["agentlb"] = {
+-    "baseUrl": "$URL/v1",
++    "baseUrl": os.environ["AGENTLB_SETUP_URL"] + "/v1",
+     "api": "openai-completions",
+-    "apiKey": "$KEY"
++    "apiKey": os.environ["AGENTLB_SETUP_KEY"]
+ }
+-with open(path, "w", encoding="utf-8") as f:
++if os.path.exists(path):
++    os.chmod(path, 0o600)
++with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+     json.dump(cfg, f, indent=2)
+     f.write("\n")
+ EOF
+--- a/setup/opencode-setup.sh
++++ b/setup/opencode-setup.sh
+@@ -9,6 +9,9 @@
+ #   ./setup/opencode-setup.sh --key <KLUCZ_STACJI> [--url https://agentlb.gotova.pl]
+
+ set -eu
++
++# Configuration files and backups contain API keys.
++umask 077
+
+ URL="${AGENT_LB_URL:-${AGENTLB_URL:-https://agentlb.gotova.pl}}"
+ KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${OPENAI_API_KEY:-}}}"
+@@ -48,17 +51,19 @@
+ TIMESTAMP=$(date +%s)
+ if [ -f "$CONFIG_FILE" ]; then
+   cp "$CONFIG_FILE" "$CONFIG_FILE.bak-$TIMESTAMP"
++  chmod 600 "$CONFIG_FILE.bak-$TIMESTAMP"
+   echo "Utworzono kopię zapasową: $CONFIG_FILE.bak-$TIMESTAMP"
+ fi
+
+ # Aktualizacja pliku JSON przez Node.js lub Python
+ if command -v node >/dev/null 2>&1; then
+-  node - << EOF
++  AGENTLB_SETUP_CONFIG_FILE="$CONFIG_FILE" AGENTLB_SETUP_URL="$URL" AGENTLB_SETUP_KEY="$KEY" AGENTLB_SETUP_AUTH_FILE="$AUTH_FILE" node - << 'EOF'
+ const fs = require('fs');
+-const path = "$CONFIG_FILE";
++const path = process.env.AGENTLB_SETUP_CONFIG_FILE;
+ let cfg = {};
+ if (fs.existsSync(path)) {
+-  try { cfg = JSON.parse(fs.readFileSync(path, 'utf8')); } catch (e) {}
++  cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
++  if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('Configuration must be a JSON object');
+ }
+
+ const models = {
+@@ -101,8 +106,8 @@
+   npm: "@ai-sdk/openai-compatible",
+   name: "AgentLB (All Models)",
+   options: {
+-    baseURL: "$URL/v1",
+-    apiKey: "$KEY"
++    baseURL: process.env.AGENTLB_SETUP_URL + "/v1",
++    apiKey: process.env.AGENTLB_SETUP_KEY
+   },
+   models: models
+ };
+@@ -114,38 +119,40 @@
+   name: "AgentLB (All Models)",
+   package: "@opencode/ai/providers/openai-compatible",
+   settings: {
+-    baseURL: "$URL/v1"
++    baseURL: process.env.AGENTLB_SETUP_URL + "/v1"
+   },
+   options: {
+-    baseURL: "$URL/v1",
+-    apiKey: "$KEY"
++    baseURL: process.env.AGENTLB_SETUP_URL + "/v1",
++    apiKey: process.env.AGENTLB_SETUP_KEY
+   },
+-  apiKey: "$KEY",
++  apiKey: process.env.AGENTLB_SETUP_KEY,
+   models: models
+ };
+
+-fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
++if (fs.existsSync(path)) fs.chmodSync(path, 0o600);
++fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
+
+ // Update auth.json
+ try {
+   let auth = {};
+-  if (fs.existsSync("$AUTH_FILE")) {
+-    auth = JSON.parse(fs.readFileSync("$AUTH_FILE", 'utf8'));
++  if (fs.existsSync(process.env.AGENTLB_SETUP_AUTH_FILE)) {
++    auth = JSON.parse(fs.readFileSync(process.env.AGENTLB_SETUP_AUTH_FILE, 'utf8'));
+   }
+-  auth.agentlb = { type: "api", key: "$KEY" };
+-  fs.writeFileSync("$AUTH_FILE", JSON.stringify(auth, null, 2) + '\n');
++  auth.agentlb = { type: "api", key: process.env.AGENTLB_SETUP_KEY };
++  if (fs.existsSync(process.env.AGENTLB_SETUP_AUTH_FILE)) fs.chmodSync(process.env.AGENTLB_SETUP_AUTH_FILE, 0o600);
++  fs.writeFileSync(process.env.AGENTLB_SETUP_AUTH_FILE, JSON.stringify(auth, null, 2) + '\n', { mode: 0o600 });
+ } catch (e) {}
+ EOF
+ elif command -v python3 >/dev/null 2>&1; then
+-  python3 - << EOF
++  AGENTLB_SETUP_CONFIG_FILE="$CONFIG_FILE" AGENTLB_SETUP_URL="$URL" AGENTLB_SETUP_KEY="$KEY" AGENTLB_SETUP_AUTH_FILE="$AUTH_FILE" python3 - << 'EOF'
+ import os, json
+-path = "$CONFIG_FILE"
++path = os.environ["AGENTLB_SETUP_CONFIG_FILE"]
+ cfg = {}
+ if os.path.exists(path):
+-    try:
+-        with open(path, "r", encoding="utf-8") as f:
+-            cfg = json.load(f)
+-    except: pass
++    with open(path, "r", encoding="utf-8") as f:
++        cfg = json.load(f)
++    if not isinstance(cfg, dict):
++        raise ValueError("Configuration must be a JSON object")
+
+ models = {
+     "claude-fable-5-1": { "name": "Claude Fable 5.1" },
+@@ -187,8 +194,8 @@
+     "npm": "@ai-sdk/openai-compatible",
+     "name": "AgentLB (All Models)",
+     "options": {
+-        "baseURL": "$URL/v1",
+-        "apiKey": "$KEY"
++        "baseURL": os.environ["AGENTLB_SETUP_URL"] + "/v1",
++        "apiKey": os.environ["AGENTLB_SETUP_KEY"]
+     },
+     "models": models
+ }
+@@ -200,28 +207,32 @@
+     "name": "AgentLB (All Models)",
+     "package": "@opencode/ai/providers/openai-compatible",
+     "settings": {
+-        "baseURL": "$URL/v1"
++        "baseURL": os.environ["AGENTLB_SETUP_URL"] + "/v1"
+     },
+     "options": {
+-        "baseURL": "$URL/v1",
+-        "apiKey": "$KEY"
++        "baseURL": os.environ["AGENTLB_SETUP_URL"] + "/v1",
++        "apiKey": os.environ["AGENTLB_SETUP_KEY"]
+     },
+-    "apiKey": "$KEY",
++    "apiKey": os.environ["AGENTLB_SETUP_KEY"],
+     "models": models
+ }
+
+-with open(path, "w", encoding="utf-8") as f:
++if os.path.exists(path):
++    os.chmod(path, 0o600)
++with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+     json.dump(cfg, f, indent=2)
+     f.write("\n")
+
+-auth_path = "$AUTH_FILE"
++auth_path = os.environ["AGENTLB_SETUP_AUTH_FILE"]
+ try:
+     auth = {}
+     if os.path.exists(auth_path):
+         with open(auth_path, "r", encoding="utf-8") as f:
+             auth = json.load(f)
+-    auth["agentlb"] = { "type": "api", "key": "$KEY" }
+-    with open(auth_path, "w", encoding="utf-8") as f:
++    auth["agentlb"] = { "type": "api", "key": os.environ["AGENTLB_SETUP_KEY"] }
++    if os.path.exists(auth_path):
++        os.chmod(auth_path, 0o600)
++    with os.fdopen(os.open(auth_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+         json.dump(auth, f, indent=2)
+         f.write("\n")
+ except: pass
+--- /dev/null
++++ b/test/systematic-setup.test.js
+@@ -0,0 +1,132 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import path from 'node:path';
++import os from 'node:os';
++import vm from 'node:vm';
++import { spawnSync } from 'node:child_process';
++import { fileURLToPath } from 'node:url';
++
++// Execute only extracted validation/serialization fragments: no installers or network.
++const root = process.env.SETUP_AUDIT_ROOT || fileURLToPath(new URL('../', import.meta.url));
++const source = name => fs.readFileSync(path.join(root, 'setup', name), 'utf8');
++function connection(overrides = {}) {
++  const src = source('codexlb-setup.js');
++  const code = src.slice(src.indexOf('async function checkConnection('), src.indexOf('async function handleRestore('));
++  const state = {
++    checkConnectionNative: async () => { throw new Error('socket disconnected'); },
++    hasCommand: () => true,
++    execSync: () => { throw new Error('Shell execution is forbidden'); },
++    execFileSync: () => '{"data":[{"id":"test-model"}]}',
++    ...overrides,
++  };
++  vm.createContext(state);
++  vm.runInContext(code, state);
++  return state;
++}
++
++test('curl fallback passes hostile-looking credentials as literal arguments', async () => {
++  const key = '$(printf SHELL_COMMAND)";&';
++  let invoked = false;
++  const c = connection({ execFileSync(cmd, args) {
++    invoked = true;
++    assert.equal(cmd, 'curl');
++    assert.ok(args.includes(`Authorization: Bearer ${key}`));
++    assert.ok(args.includes('--fail'));
++    return '{"data":[{"id":"test-model"}]}';
++  } });
++  const result = await c.checkConnection('https://example.invalid', key, false);
++  assert.equal(invoked, true);
++  assert.equal(result.models[0], 'test-model');
++});
++
++for (const statusCode of [401, 403]) test(`native HTTP ${statusCode} is rejected without fallback`, async () => {
++  let fallback = false;
++  const c = connection({
++    checkConnectionNative: async () => { throw Object.assign(new Error(`kod HTTP ${statusCode}`), { statusCode }); },
++    execSync: () => { fallback = true; return '{"error":"unauthorized"}'; },
++    execFileSync: () => { fallback = true; return '{"error":"unauthorized"}'; },
++  });
++  await assert.rejects(c.checkConnection('https://example.invalid', 'invalid', false));
++  assert.equal(fallback, false);
++});
++
++test('curl non-success response rejects configuration', async () => {
++  const c = connection({
++    execSync: () => '{"error":"unauthorized"}',
++    execFileSync: () => { throw new Error('curl exited 22'); },
++  });
++  await assert.rejects(c.checkConnection('https://example.invalid', 'invalid', false));
++});
++
++for (const script of ['claw-setup.sh', 'opencode-setup.sh']) {
++  for (const runtime of ['node', 'python3']) {
++    function runFragment(dir, key = 'tc-DUMMY-TEST') {
++      const src = source(script);
++      const marker = [`${runtime} - << EOF\n`, `${runtime} - << 'EOF'\n`].find(value => src.includes(value));
++      assert.ok(marker);
++      const start = src.indexOf(marker) + marker.length;
++      assert.ok(start >= marker.length);
++      const code = src.slice(start, src.indexOf('\nEOF', start))
++        .replaceAll('$CONFIG_FILE', path.join(dir, 'config.json'))
++        .replaceAll('$AUTH_FILE', path.join(dir, 'auth.json'))
++        .replaceAll('$URL', 'https://example.invalid')
++        .replaceAll('$KEY', key);
++      // Child inherits normal 022 umask; serializer must explicitly protect secrets.
++      return spawnSync(runtime, runtime === 'node' ? ['--input-type=commonjs', '-'] : ['-'], { input: code, encoding: 'utf8', env: { ...process.env, AGENTLB_SETUP_CONFIG_FILE: path.join(dir, 'config.json'), AGENTLB_SETUP_AUTH_FILE: path.join(dir, 'auth.json'), AGENTLB_SETUP_URL: 'https://example.invalid', AGENTLB_SETUP_KEY: key } });
++    }
++    test(`${script} ${runtime}: config and auth files are private, including existing files`, { skip: runtime === 'python3' && spawnSync('python3', ['--version']).status !== 0 }, () => {
++      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-lb-serializer-'));
++      const mask = process.umask(0o022);
++      try {
++        let r = runFragment(dir);
++        assert.equal(r.status, 0, r.stderr);
++        const names = script.startsWith('opencode') ? ['config.json', 'auth.json'] : ['config.json'];
++        for (const name of names) {
++          const f = path.join(dir, name);
++          assert.equal(fs.statSync(f).mode & 0o777, 0o600, name);
++          fs.chmodSync(f, 0o644);
++        }
++        r = runFragment(dir);
++        assert.equal(r.status, 0, r.stderr);
++        for (const name of names) assert.equal(fs.statSync(path.join(dir, name)).mode & 0o777, 0o600, name);
++      } finally { process.umask(mask); fs.rmSync(dir, { recursive: true, force: true }); }
++    });
++    test(`${script} ${runtime}: key remains literal when serialized`, { skip: runtime === 'python3' && spawnSync('python3', ['--version']).status !== 0 }, () => {
++      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-lb-serializer-'));
++      const key = 'x" + "INJECTED" + "y';
++      try {
++        const r = runFragment(dir, key);
++        assert.equal(r.status, 0, r.stderr);
++        const config = JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf8'));
++        assert.equal(script.startsWith('claw') ? config.models.providers.agentlb.apiKey : config.provider.agentlb.options.apiKey, key);
++      } finally { fs.rmSync(dir, { recursive: true, force: true }); }
++    });
++    test(`${script} ${runtime}: malformed config is preserved and reported`, { skip: runtime === 'python3' && spawnSync('python3', ['--version']).status !== 0 }, () => {
++      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-lb-serializer-'));
++      try {
++        const f = path.join(dir, 'config.json');
++        const original = '{"existing":"must survive",';
++        fs.writeFileSync(f, original);
++        const r = runFragment(dir);
++        assert.notEqual(r.status, 0, 'invalid JSON must stop setup');
++        assert.equal(fs.readFileSync(f, 'utf8'), original);
++      } finally { fs.rmSync(dir, { recursive: true, force: true }); }
++    });
++  }
++}
++
++test('Codex shell environment quotes key, URL and sourced path literally', () => {
++  const src = source('codexlb-setup.js');
++  const start = src.indexOf('      const shellQuote =');
++  assert.ok(start > 0, 'shell quoting helper is required');
++  const end = src.indexOf('      fs.writeFileSync(envFile', start);
++  const key = `$(printf EXECUTED)'`;
++  const url = 'https://example.invalid/$(printf EXECUTED)';
++  const c = { apiKey: key, targetUrl: url };
++  vm.createContext(c);
++  vm.runInContext(src.slice(start, end) + '\nglobalThis.environmentText = envLines;', c);
++  const r = spawnSync('/bin/sh', ['-c', c.environmentText + '\nprintf "%s\\n%s" "$CODEX_LB_API_KEY" "$OPENAI_BASE_URL"'], { encoding: 'utf8' });
++  assert.equal(r.status, 0, r.stderr);
++  assert.equal(r.stdout, key + '\n' + url + '/v1');
++});

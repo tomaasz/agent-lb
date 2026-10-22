@@ -1,0 +1,25 @@
+{
+  "node": "v24.15.0",
+  "iterations": 1000,
+  "scope": "one complete SSE frame, local Transform; no network/SLO claim",
+  "before": {
+    "p50_ms": 0.07596099999997818,
+    "p95_ms": 0.2743419999999901,
+    "p99_ms": 1.4353810000000067,
+    "cpu_us": {
+      "user": 163639,
+      "system": 21363
+    },
+    "heap_delta_bytes": 3043976
+  },
+  "after": {
+    "p50_ms": 0.0588910000000169,
+    "p95_ms": 0.12197100000003047,
+    "p99_ms": 0.18233200000000238,
+    "cpu_us": {
+      "user": 112626,
+      "system": 11116
+    },
+    "heap_delta_bytes": 4961688
+  }
+}

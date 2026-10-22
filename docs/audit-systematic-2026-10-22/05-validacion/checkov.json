@@ -1,0 +1,38 @@
+[
+  {
+    "check_type": "dockerfile",
+    "summary": {
+      "passed": 100,
+      "failed": 0,
+      "skipped": 0,
+      "parsing_errors": 0,
+      "resource_count": 1,
+      "checkov_version": "3.3.30"
+    },
+    "failed_checks": []
+  },
+  {
+    "check_type": "github_actions",
+    "summary": {
+      "passed": 43,
+      "failed": 0,
+      "skipped": 0,
+      "parsing_errors": 0,
+      "resource_count": 0,
+      "checkov_version": "3.3.30"
+    },
+    "failed_checks": []
+  },
+  {
+    "check_type": "dockerfile",
+    "summary": {
+      "passed": 100,
+      "failed": 0,
+      "skipped": 0,
+      "parsing_errors": 0,
+      "resource_count": 1,
+      "checkov_version": "3.3.30"
+    },
+    "failed_checks": []
+  }
+]

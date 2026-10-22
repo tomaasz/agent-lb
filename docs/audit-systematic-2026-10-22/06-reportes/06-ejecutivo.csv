@@ -1,0 +1,16 @@
+metric,value
+date,2026-10-22
+baseline,509ddf1
+branch,ai/systematic-audit-2026-10-22
+findings_total,11
+severities,"{""High"": 6, ""Medium"": 5}"
+verified,11
+remediated_percent,100
+mttr,
+mttr_note,Brak historycznych timestampów wykrycia/naprawy per finding; nie wyliczano pozornego MTTR.
+tests,"{""tests"": 408, ""pass"": 403, ""fail"": 0, ""skipped"": 5}"
+coverage,"{""lines"": 79.86, ""branches"": 75.69, ""functions"": 66.4}"
+definition_of_done_met,False
+remaining_acceptance_gaps,"[""Pokrycie 80% linii/70% gałęzi per moduł krytyczny nieosiągnięte."", ""Brak realnych testów Windows/browser/SMTP/inference i potwierdzenia SLO."", ""Podpis SBOM lokalny, bez tożsamości organizacji; brak sesji lessons-learned z człowiekiem.""]"
+compliance,Kontrole OWASP/SOC2/ISO27001/GDPR zmapowane; brak podstaw do potwierdzenia zgodności/certyfikacji.
+top_risks,"[{""id"": ""BUG-001"", ""title"": ""Poświadczenia panelu i proxy przekazywane do upstream"", ""impact"": ""Przejęcie sesji/klucza przez operatora upstream; zależy od użycia ścieżek relay."", ""status"": ""Verified""}, {""id"": ""BUG-002"", ""title"": ""Strumieniowy fallback pomijał limity tokenów"", ""impact"": ""Nieograniczone wydatki/zużycie kont przez delegowany klucz."", ""status"": ""Verified""}, {""id"": ""BUG-003"", ""title"": ""JSON OpenAI nie naliczał limitu klienta"", ""impact"": ""Obejście limitów klienta w natywnym OpenAI JSON."", ""status"": ""Verified""}, {""id"": ""BUG-006"", ""title"": ""Wykonywanie kodu z parametrów instalatora"", ""impact"": ""Lokalne wykonanie kodu w kontekście instalacji; wymaga przekazania danych kontrolowanych przez napastnika, nie zdalne anonymous RCE."", ""status"": ""Verified""}, {""id"": ""BUG-010"", ""title"": ""Podatne składniki bazowego obrazu Docker"", ""impact"": ""Warunkowy DoS/odczyt/zapis przez podatne narzędzia; brak dowodu osiągalności krytycznego tar przez API proxy."", ""status"": ""Verified""}]"

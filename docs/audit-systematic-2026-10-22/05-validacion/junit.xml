@@ -1,0 +1,539 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+	<testsuite name="Account Limit Usage Attribution &amp; Inspector" time="0.214196" disabled="0" errors="0" tests="7" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="records token usage broken down by client, model, and session" time="0.021537" classname="test" file="/home/tomaasz/agent-lb/test/account-usage-attribution.test.js"/>
+		<testcase name="enforces maximum boundary limits on sessions and recent items" time="0.021790" classname="test" file="/home/tomaasz/agent-lb/test/account-usage-attribution.test.js"/>
+		<testcase name="exports and restores usage attribution in quota state" time="0.002995" classname="test" file="/home/tomaasz/agent-lb/test/account-usage-attribution.test.js"/>
+		<testcase name="returns breakdown and supports resetting usage via AccountManager methods" time="0.001728" classname="test" file="/home/tomaasz/agent-lb/test/account-usage-attribution.test.js"/>
+		<testcase name="isolates internal usage object when retrieved via getStatus()" time="0.000807" classname="test" file="/home/tomaasz/agent-lb/test/account-usage-attribution.test.js"/>
+		<testcase name="serves /api/accounts/usage and /api/accounts/usage/reset via proxy server" time="0.156490" classname="test" file="/home/tomaasz/agent-lb/test/account-usage-attribution.test.js"/>
+		<testcase name="renders modal elements and usage action buttons in dashboard HTML" time="0.002540" classname="test" file="/home/tomaasz/agent-lb/test/account-usage-attribution.test.js"/>
+	</testsuite>
+	<testsuite name="OpenAI/Codex cached input tokens" time="0.003990" disabled="0" errors="0" tests="4" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="reads cached_tokens from Responses usage as cache and keeps the total" time="0.000790" classname="test" file="/home/tomaasz/agent-lb/test/account-usage-attribution.test.js"/>
+		<testcase name="reads cached_tokens from Chat usage (prompt_tokens_details)" time="0.000692" classname="test" file="/home/tomaasz/agent-lb/test/account-usage-attribution.test.js"/>
+		<testcase name="leaves Anthropic usage untouched" time="0.001238" classname="test" file="/home/tomaasz/agent-lb/test/account-usage-attribution.test.js"/>
+		<testcase name="does not report negative input when cached exceeds input" time="0.000635" classname="test" file="/home/tomaasz/agent-lb/test/account-usage-attribution.test.js"/>
+	</testsuite>
+	<testcase name="Faza 1: Session Affinity and Routing Policy Endpoint" time="0.181090" classname="test" file="/home/tomaasz/agent-lb/test/advanced-features.test.js"/>
+	<testcase name="Faza 2: Client Usage Tracker Granular Quotas &amp; Model Permissions" time="0.039888" classname="test" file="/home/tomaasz/agent-lb/test/advanced-features.test.js"/>
+	<testcase name="Faza 3: Circuit Breaker &amp; Graceful Drain Operations" time="0.054882" classname="test" file="/home/tomaasz/agent-lb/test/advanced-features.test.js"/>
+	<testcase name="Faza 4: Cross-Provider Fallback &amp; Protocol Translator" time="0.010517" classname="test" file="/home/tomaasz/agent-lb/test/advanced-features.test.js"/>
+	<testcase name="OpenAI -> Anthropic request translation with tool_calls, results and coalescence" time="0.017633" classname="test" file="/home/tomaasz/agent-lb/test/advanced-features.test.js"/>
+	<testsuite name="agent prompt + jcode setup" time="0.302846" disabled="0" errors="0" tests="5" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="serves jcode-setup.sh as a shell script with the request origin baked in" time="0.115153" classname="test" file="/home/tomaasz/agent-lb/test/agent-prompt-jcode-setup.test.js"/>
+		<testcase name="serves agent-prompt.md as markdown (also via /agentlb prefix and without extension)" time="0.041347" classname="test" file="/home/tomaasz/agent-lb/test/agent-prompt-jcode-setup.test.js"/>
+		<testcase name="has no Windows variant of jcode-setup and does not fall back to setup.sh" time="0.018911" classname="test" file="/home/tomaasz/agent-lb/test/agent-prompt-jcode-setup.test.js"/>
+		<testcase name="jcode-setup.sh parses and contains no secrets or personal paths" time="0.061612" classname="test" file="/home/tomaasz/agent-lb/test/agent-prompt-jcode-setup.test.js"/>
+		<testcase name="dashboard setup modal offers the agent prompt and jcode command" time="0.003535" classname="test" file="/home/tomaasz/agent-lb/test/agent-prompt-jcode-setup.test.js"/>
+	</testsuite>
+	<testsuite name="AGY account store" time="0.048180" disabled="0" errors="0" tests="7" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="stores accounts privately and never lists their tokens" time="0.011293" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="stores per-model usage reported by a station, keeping the most spent duplicate" time="0.004977" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="renames profiles without changing identity, routing or credentials" time="0.005565" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="rotates to the next free account when a quota is spent" time="0.006578" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="honours pin, enable and order" time="0.007678" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="a failing deferred stats save is logged briefly and never thrown into the process" time="0.006517" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="asks Google for the account chooser" time="0.001001" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+	</testsuite>
+	<testsuite name="AGY login through AGY itself" time="1.420973" disabled="0" errors="0" tests="6" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="adds an account from the authorization code (pty via script)" time="0.203950" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="adds an account from the authorization code (pipes)" time="0.154288" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="reports a wrong code and refuses junk before it reaches AGY" time="0.113112" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="leaves no AGY process behind when a login is cancelled (pty)" time="0.531065" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="checks one code per login at a time" time="0.167340" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="removes the throwaway HOME after the login" time="0.249775" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+	</testsuite>
+	<testsuite name="AGY routes on the proxy" time="1.180584" disabled="0" errors="0" tests="6" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="keeps account management for the administrator" time="0.193375" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="logs an account in from the dashboard and hands it to a station" time="0.570075" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="refuses credentials to restricted or missing keys" time="0.086060" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="accepts station subscription reports but restricts refresh to administrators" time="0.134937" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="allows only administrators to edit a Google profile name" time="0.057518" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="rotates when a station reports a spent quota" time="0.047765" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+	</testsuite>
+	<testsuite name="AGY accounts in the dashboard" time="0.004694" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="has the AGY section and the login dialog" time="0.004428" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+	</testsuite>
+	<testsuite name="AGY account cards: stats, busy and the Test button" time="0.282475" disabled="0" errors="0" tests="8" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="lists stats, busy and the model ids without any token or seededAt" time="0.048204" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="keeps the list working when the model catalog fails" time="0.028726" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="tests only the chosen account on the first -low model and never leaks the worker token" time="0.069331" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="reports an in-band SSE error event as a failure and still releases once" time="0.020194" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="reports a dead worker as an error, releases once, and does not leak the token" time="0.019988" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="refuses a disabled or quota-spent account without touching any worker" time="0.025589" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="reports a catalog failure as a test error only" time="0.012087" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="rejects unknown ids and non-administrators" time="0.032293" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+	</testsuite>
+	<testsuite name="AGY test isolation: no default config, accounts or homes are touched" time="0.180544" disabled="0" errors="0" tests="3" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="keeps homes next to the configured accounts file and never under the real HOME" time="0.166167" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="spawns nothing and seeds nothing while the store has no account" time="0.013022" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="honors an explicit config.agy.homesDir" time="0.000929" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+	</testsuite>
+	<testsuite name="testAgyAccount acquire timeout" time="0.295238" disabled="0" errors="0" tests="2" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="gives up on a hanging acquire after the timeout and returns an error" time="0.051501" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+		<testcase name="releases a lease that arrives after the timeout" time="0.241476" classname="test" file="/home/tomaasz/agent-lb/test/agy-accounts.test.js"/>
+	</testsuite>
+	<testcase name="drain during partial upload refuses dispatch after the body completes" time="0.087349" classname="test" file="/home/tomaasz/agent-lb/test/agy-activity.test.js"/>
+	<testcase name="AGY completion closes activity once and participates in drain tracking on success" time="0.068964" classname="test" file="/home/tomaasz/agent-lb/test/agy-activity.test.js"/>
+	<testcase name="AGY completion closes activity once with failure status" time="0.022864" classname="test" file="/home/tomaasz/agent-lb/test/agy-activity.test.js"/>
+	<testcase name="streams completion unchanged, rewrites alias, records final usage, and hides worker token" time="0.231795" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="HTTP 429 marks quota and retries next account" time="0.039315" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="in-band quota after keep-alive retries and forwards keep-alives" time="0.045482" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="all spent returns 429 without looping" time="0.021694" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="all accounts exhausted after keep-alives returns an SSE error and DONE" time="0.032915" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="real HTTP client promptly receives a path-free 502 when acquire rejects" time="0.194027" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="client leaving while queued releases the late lease without calling worker" time="0.019696" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="truncated HTTP 429 answers the real client and releases the slot once" time="0.106040" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="truncated JSON answers the real client and releases the slot once" time="0.018688" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="truncated SSE after keep-alive answers the real client and releases the slot once" time="0.018206" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="stalled HTTP 429 answers the real client and releases the slot once" time="0.157487" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="hung worker is aborted at injected timeout, reports 504, and releases slot" time="0.021873" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="error after real content is passed through without retry" time="0.045241" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="unknown model returns model_not_found" time="0.007833" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="local overload rotates without recording Google quota and local auth never rotates" time="0.092378" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="full queue returns retry-after without penalizing the Google account" time="0.000820" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="response close aborts upstream and releases account slot exactly once" time="0.031259" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="stream preserves a UTF-8 code point split across TCP chunks" time="0.015818" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="configured AGY accountsPath is used when model listing initializes AGY first" time="0.180631" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="parseQuotaResetSeconds uses duration then Retry-After then one hour" time="0.000352" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="gemini models are never silently substituted to Claude or GPT" time="0.000823" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="store pick honors available pinned then earliest reset and recordRequest throttles disk writes" time="0.031500" classname="test" file="/home/tomaasz/agent-lb/test/agy-gateway.test.js"/>
+	<testcase name="encrypted account migration, randomized writes and restart preserve accounts" time="0.021058" classname="test" file="/home/tomaasz/agent-lb/test/agy-hardening.test.js"/>
+	<testcase name="corruption, null, missing/wrong keys fail closed without overwriting accounts" time="0.008592" classname="test" file="/home/tomaasz/agent-lb/test/agy-hardening.test.js"/>
+	<testcase name="encryption refuses nested and symlinked key placement in account directory" time="0.003699" classname="test" file="/home/tomaasz/agent-lb/test/agy-hardening.test.js"/>
+	<testcase name="exact model cooldown and explicit quota groups filter pinned accounts independently" time="0.012729" classname="test" file="/home/tomaasz/agent-lb/test/agy-hardening.test.js"/>
+	<testcase name="failure classification separates local status from explicit upstream quota and auth" time="0.001216" classname="test" file="/home/tomaasz/agent-lb/test/agy-hardening.test.js"/>
+	<testcase name="diagnostic ring persists only bounded allowlisted fields" time="0.095289" classname="test" file="/home/tomaasz/agent-lb/test/agy-hardening.test.js"/>
+	<testcase name="credential relay requires a real explicit boolean and remains restricted by policies" time="0.002388" classname="test" file="/home/tomaasz/agent-lb/test/agy-hardening.test.js"/>
+	<testcase name="queue is bounded, round-robin across three clients, cancellable and leak free" time="0.043864" classname="test" file="/home/tomaasz/agent-lb/test/agy-hardening.test.js"/>
+	<testcase name="shutdown between admission and startup never issues a late lease" time="0.001845" classname="test" file="/home/tomaasz/agent-lb/test/agy-hardening.test.js"/>
+	<testsuite name="agy models" time="0.050347" disabled="0" errors="0" tests="11" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="parseAgyModels keeps only gemini rows in agy order" time="0.016127" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+		<testcase name="parseAgyModels ignores the banner" time="0.004950" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+		<testcase name="aliases resolve to high and low variants" time="0.001627" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+		<testcase name="isAgyModelName" time="0.004997" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+		<testcase name="list() is cached for ttlMs and refreshed after" time="0.001810" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+		<testcase name="listing failure keeps last known models" time="0.004953" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+		<testcase name="first failure does not cache an empty list for the full TTL" time="0.000793" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+		<testcase name="failure backoff doubles from its base to 15 minutes and resets after success" time="0.001038" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+		<testcase name="failure backoff is capped at 15 minutes" time="0.006918" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+		<testcase name="empty or banner-only result keeps last known models and retries after backoff" time="0.001056" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+		<testcase name="no account home gives empty list and run is not called" time="0.000638" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+	</testsuite>
+	<testsuite name="GET /v1/models with agy catalog" time="2.731506" disabled="0" errors="0" tests="2" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="GET /v1/models answers within 2.5 seconds when a cold AGY catalog never resolves" time="2.451787" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+		<testcase name="GET /v1/models lists gemini ids and hides agy aliases" time="0.190884" classname="test" file="/home/tomaasz/agent-lb/test/agy-models.test.js"/>
+	</testsuite>
+	<testsuite name="agybridge setup (real AGY runs locally, not through the proxy)" time="0.844896" disabled="0" errors="0" tests="7" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="serves agy-setup.sh without auth and never falls back to the generic installer" time="0.309175" classname="test" file="/home/tomaasz/agent-lb/test/agy-setup.test.js"/>
+		<testcase name="advertises live Gemini models but keeps legacy aliases hidden" time="0.150876" classname="test" file="/home/tomaasz/agent-lb/test/agy-setup.test.js"/>
+		<testcase name="keeps AGY out of the agentlb provider in client installers" time="0.000868" classname="test" file="/home/tomaasz/agent-lb/test/agy-setup.test.js"/>
+		<testcase name="agy-setup.sh is valid bash and keeps the token out of argv and output" time="0.034432" classname="test" file="/home/tomaasz/agent-lb/test/agy-setup.test.js"/>
+		<testcase name="quota reporter sends only the actual Google subscription, preferring paid over current" time="0.333014" classname="test" file="/home/tomaasz/agent-lb/test/agy-setup.test.js"/>
+		<testcase name="main installers accept --with-agy and delegate to agy-setup.sh" time="0.001068" classname="test" file="/home/tomaasz/agent-lb/test/agy-setup.test.js"/>
+		<testcase name="dashboard offers an AGY quick-install button" time="0.004440" classname="test" file="/home/tomaasz/agent-lb/test/agy-setup.test.js"/>
+	</testsuite>
+	<testcase name="Google paid tier takes precedence; unknown plans are preserved without guessing" time="0.005864" classname="test" file="/home/tomaasz/agent-lb/test/agy-subscription.test.js"/>
+	<testcase name="refresh reads the refreshed worker token, deduplicates requests and keeps old metadata on failures" time="0.059609" classname="test" file="/home/tomaasz/agent-lb/test/agy-subscription.test.js"/>
+	<testcase name="a synchronous worker error does not leave refresh stuck in flight" time="0.000684" classname="test" file="/home/tomaasz/agent-lb/test/agy-subscription.test.js"/>
+	<testcase name="account cards render Google plan names as text and expose refresh in both languages" time="0.010132" classname="test" file="/home/tomaasz/agent-lb/test/agy-subscription.test.js"/>
+	<testsuite name="AgyWorkerPool" time="1.336623" disabled="0" errors="0" tests="18" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="ensureHome seeds the account without starting a worker" time="0.025531" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="first acquire seeds the token file 0600 and starts one worker" time="0.169317" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="worker env has no AGENT_LB_URL or AGENT_LB_API_KEY" time="0.028732" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="worker runs inside the account home, never in the proxy working directory" time="0.018093" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="does not overwrite a token file refreshed by agy" time="0.098892" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="re-login (updatedAt > seededAt) reseeds the token" time="0.100607" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="seededAt is persisted but never listed, and tokens never appear in list()" time="0.080716" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="concurrent first requests share one worker" time="0.078156" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="restarts a worker that exited" time="0.111555" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="more than maxPerAccount waits until release" time="0.119613" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="release is idempotent" time="0.033645" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="idle worker is stopped after idleMs" time="0.065985" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="a new acquire cancels the pending idle stop" time="0.032333" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="two accounts get distinct ports" time="0.037877" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="skips a port that is already taken" time="0.058648" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="rejects for an unknown account" time="0.011591" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="rejects all waiters when the worker never becomes ready, and recovers afterwards" time="0.189627" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+		<testcase name="rejects when the worker exits before it is ready" time="0.052908" classname="test" file="/home/tomaasz/agent-lb/test/agy-workers.test.js"/>
+	</testsuite>
+	<testcase name="all management aliases refuse client keys before handlers, master lists only masked keys" time="1.408576" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="forwarded spoofing and invalid credentials never gain local trust" time="0.098742" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="MITM listener revalidates credential, expiry, quotas and models on every request" time="0.045627" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="selected provider authorization prevents cross-provider spending" time="0.051074" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="restricted keys cannot bypass metering using opaque relays" time="0.000740" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="request budgets share capacity, bound memory, and release exactly once" time="0.000290" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="health check rejects SSE failure and missing terminal success" time="0.008444" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="health probe aborts stalled transport within its deadline" time="0.021903" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="translated pipeline aborts idle body and cancels upstream" time="0.040300" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="active count excludes breaker and recognizes expired rate-limit holds" time="0.001347" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="contended config lock times out without deleting live owner lock" time="0.097199" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="health stop cancels the cycle without probing subsequent accounts" time="0.001723" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="OAuth token relay is covered by the shared request admission budget" time="0.036030" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="real CONNECT TLS tunnel revalidates a rotated credential on its next request" time="0.741360" classname="test" file="/home/tomaasz/agent-lb/test/audit-hardening.test.js"/>
+	<testcase name="trusted origin: a foreign Bearer (the client's own login) is not a wrong proxy key" time="0.265825" classname="test" file="/home/tomaasz/agent-lb/test/auth-gate-websocket.test.js"/>
+	<testcase name="trusted origin: a wrong explicit x-api-key still fails loudly" time="0.064999" classname="test" file="/home/tomaasz/agent-lb/test/auth-gate-websocket.test.js"/>
+	<testcase name="trusted origin: a Bearer that is a client key is still honoured" time="0.073963" classname="test" file="/home/tomaasz/agent-lb/test/auth-gate-websocket.test.js"/>
+	<testcase name="untrusted origin: a foreign Bearer is refused" time="0.048261" classname="test" file="/home/tomaasz/agent-lb/test/auth-gate-websocket.test.js"/>
+	<testcase name="trusted origin: a foreign Bearer cannot reach management endpoints" time="0.050725" classname="test" file="/home/tomaasz/agent-lb/test/auth-gate-websocket.test.js"/>
+	<testcase name="codex WebSocket handshakes are refused with 426 before the key gate and never relayed" time="0.124951" classname="test" file="/home/tomaasz/agent-lb/test/auth-gate-websocket.test.js"/>
+	<testcase name="non-codex WebSocket handshakes still go through the key gate" time="0.040420" classname="test" file="/home/tomaasz/agent-lb/test/auth-gate-websocket.test.js"/>
+	<testcase name="tailnetDomains: only direct peers addressing this tailnet are exempt" time="0.019650" classname="test" file="/home/tomaasz/agent-lb/test/auth-gate-websocket.test.js"/>
+	<testcase name="tailnetDomains: the Host check refuses other tailnets' MagicDNS names" time="0.001257" classname="test" file="/home/tomaasz/agent-lb/test/auth-gate-websocket.test.js"/>
+	<testsuite name="burn routing through AccountManager" time="0.079071" disabled="0" errors="0" tests="4" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="sends a new session to the account whose week is expiring, not the session-burn one" time="0.046931" classname="test" file="/home/tomaasz/agent-lb/test/burn-routing.test.js"/>
+		<testcase name="moves a session pinned to the other account (weekly burn preempts the pin)" time="0.007896" classname="test" file="/home/tomaasz/agent-lb/test/burn-routing.test.js"/>
+		<testcase name="keeps the pin when preemptPinned is off" time="0.000595" classname="test" file="/home/tomaasz/agent-lb/test/burn-routing.test.js"/>
+		<testcase name="session burn still applies when no week is expiring" time="0.011848" classname="test" file="/home/tomaasz/agent-lb/test/burn-routing.test.js"/>
+	</testsuite>
+	<testsuite name="weekly burn across priority tiers" time="0.017790" disabled="0" errors="0" tests="2" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="spends a fallback account whose week is expiring" time="0.011471" classname="test" file="/home/tomaasz/agent-lb/test/burn-routing.test.js"/>
+		<testcase name="keeps operator priority when crossPriority is off" time="0.005716" classname="test" file="/home/tomaasz/agent-lb/test/burn-routing.test.js"/>
+	</testsuite>
+	<testcase name="admin creates one restricted key, rejects invalid policies, rotates and deletes without leaking" time="1.395724" classname="test" file="/home/tomaasz/agent-lb/test/client-key-admin.test.js"/>
+	<testsuite name="Codex Auto-Reset Mechanism (R205)" time="0.323127" disabled="0" errors="0" tests="6" failures="0" skipped="0" hostname="debian-lite">
+		<testsuite name="Threshold detection (&lt;10% limit / >=90% utilization)" time="0.050208" disabled="0" errors="0" tests="5" failures="0" skipped="0" hostname="debian-lite">
+			<testcase name="detects &lt;10% remaining limit based on 5h utilization" time="0.010153" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+			<testcase name="detects exhausted account status as critical quota" time="0.007047" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+			<testcase name="detects weekly window critical quota" time="0.000457" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+			<testcase name="rejects non-Codex or non-OAuth accounts" time="0.000417" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+			<testcase name="evaluates eligibility via isCodexResetEligible" time="0.029693" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+		</testsuite>
+		<testsuite name="Feature flag and configuration" time="0.019890" disabled="0" errors="0" tests="3" failures="0" skipped="0" hostname="debian-lite">
+			<testcase name="resolves feature flag status correctly" time="0.003214" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+			<testcase name="resolves threshold from options or environment" time="0.002054" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+			<testcase name="AccountManager respects autoResetCredits flag" time="0.014055" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+		</testsuite>
+		<testsuite name="Concurrency protection and mutex" time="0.010758" disabled="0" errors="0" tests="2" failures="0" skipped="0" hostname="debian-lite">
+			<testcase name="skips auto-reset if another reset is already in progress" time="0.005011" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+			<testcase name="releases _resetInProgress lock even when consume throws" time="0.005393" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+		</testsuite>
+		<testsuite name="Loop prevention and error cooldown backoff" time="0.007970" disabled="0" errors="0" tests="3" failures="0" skipped="0" hostname="debian-lite">
+			<testcase name="applies cooldown after failed reset attempt" time="0.001632" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+			<testcase name="escalates to extended cooldown after 3 consecutive failures" time="0.002910" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+			<testcase name="applies 5-minute cooldown when zero credits are available" time="0.001704" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+		</testsuite>
+		<testsuite name="Successful reset and status recovery" time="0.018316" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+			<testcase name="resets quota, clears exhausted status, and updates audit log" time="0.016567" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+		</testsuite>
+		<testsuite name="End-to-end trigger integration" time="0.213977" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+			<testcase name="automatically triggers reset when response headers report >=90% utilization" time="0.182725" classname="test" file="/home/tomaasz/agent-lb/test/codex-auto-reset.test.js"/>
+		</testsuite>
+	</testsuite>
+	<testsuite name="Codex Device Code Auth" time="0.345733" disabled="0" errors="0" tests="5" failures="0" skipped="0" hostname="debian-lite">
+		<testsuite name="requestDeviceCode" time="0.300258" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+			<testcase name="should parse a successful usercode response" time="0.294572" classname="test" file="/home/tomaasz/agent-lb/test/codex-device-auth.test.js"/>
+		</testsuite>
+		<testsuite name="DEVICE_VERIFICATION_URL" time="0.006223" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+			<testcase name="should point to the OpenAI device code verification page" time="0.005797" classname="test" file="/home/tomaasz/agent-lb/test/codex-device-auth.test.js"/>
+		</testsuite>
+		<testsuite name="credentialsFromTokenResponse" time="0.007319" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+			<testcase name="should extract account info from a token response with id_token" time="0.004134" classname="test" file="/home/tomaasz/agent-lb/test/codex-device-auth.test.js"/>
+		</testsuite>
+		<testsuite name="pollDeviceAuthorization" time="0.023443" disabled="0" errors="0" tests="2" failures="0" skipped="0" hostname="debian-lite">
+			<testcase name="should reject when signal is already aborted" time="0.005283" classname="test" file="/home/tomaasz/agent-lb/test/codex-device-auth.test.js"/>
+			<testcase name="should reject when deadline is in the past" time="0.015046" classname="test" file="/home/tomaasz/agent-lb/test/codex-device-auth.test.js"/>
+		</testsuite>
+		<testsuite name="buildCodexAuthUrl" time="0.005023" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+			<testcase name="should include the client id and PKCE parameters" time="0.004715" classname="test" file="/home/tomaasz/agent-lb/test/codex-device-auth.test.js"/>
+		</testsuite>
+	</testsuite>
+	<testsuite name="Codex Device Code protocol" time="0.427169" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="sends client_id, treats 403 as pending, and exchanges with the server-issued verifier" time="0.424554" classname="test" file="/home/tomaasz/agent-lb/test/codex-device-auth.test.js"/>
+	</testsuite>
+	<testsuite name="Codex Responses &lt;-> OpenAI Chat Completions Translation" time="1.052726" disabled="0" errors="0" tests="6" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="translates OpenAI Chat Completions body to Codex Responses input format" time="0.027575" classname="test" file="/home/tomaasz/agent-lb/test/codex-responses-translation.test.js"/>
+		<testcase name="translates streaming Codex Responses SSE into OpenAI Chat Completion chunks" time="0.068775" classname="test" file="/home/tomaasz/agent-lb/test/codex-responses-translation.test.js"/>
+		<testcase name="translates non-streaming Codex Responses SSE into OpenAI Chat Completion response" time="0.005274" classname="test" file="/home/tomaasz/agent-lb/test/codex-responses-translation.test.js"/>
+		<testcase name="translates streaming function calls into OpenAI tool_calls chunks" time="0.011417" classname="test" file="/home/tomaasz/agent-lb/test/codex-responses-translation.test.js"/>
+		<testcase name="end-to-end: serves /v1/chat/completions by routing to Codex Responses API (both streaming &amp; non-streaming)" time="0.650754" classname="test" file="/home/tomaasz/agent-lb/test/codex-responses-translation.test.js"/>
+		<testcase name="end-to-end: serves /v1/messages cross-provider to Codex OAuth Responses API (streaming &amp; non-streaming)" time="0.281314" classname="test" file="/home/tomaasz/agent-lb/test/codex-responses-translation.test.js"/>
+	</testsuite>
+	<testsuite name="Codex translation and the AGY aliases" time="0.001246" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="no longer maps agy / agy-fast onto GPT models" time="0.000861" classname="test" file="/home/tomaasz/agent-lb/test/codex-responses-translation.test.js"/>
+	</testsuite>
+	<testsuite name="Codex Provider Support" time="0.614648" disabled="0" errors="0" tests="7" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="correctly maps Codex and OpenAI paths to codex provider" time="0.003805" classname="test" file="/home/tomaasz/agent-lb/test/codex-support.test.js"/>
+		<testcase name="maps provider hosts correctly" time="0.003934" classname="test" file="/home/tomaasz/agent-lb/test/codex-support.test.js"/>
+		<testcase name="resolves correct upstream for Codex OAuth vs API key accounts" time="0.000527" classname="test" file="/home/tomaasz/agent-lb/test/codex-support.test.js"/>
+		<testcase name="applies ChatGPT-Account-Id and Bearer header for Codex accounts" time="0.000370" classname="test" file="/home/tomaasz/agent-lb/test/codex-support.test.js"/>
+		<testcase name="correctly parses Codex /backend-api/wham/usage responses" time="0.483700" classname="test" file="/home/tomaasz/agent-lb/test/codex-support.test.js"/>
+		<testcase name="correctly parses Codex /backend-api/wham/rate-limit-reset-credits responses" time="0.011279" classname="test" file="/home/tomaasz/agent-lb/test/codex-support.test.js"/>
+		<testcase name="honors burn-first routing policy in AccountManager candidate selection" time="0.104780" classname="test" file="/home/tomaasz/agent-lb/test/codex-support.test.js"/>
+	</testsuite>
+	<testsuite name="Context Drop Log Truncation and Synthesis" time="0.155970" disabled="0" errors="0" tests="9" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="estimates token count using ~4 chars per token heuristic" time="0.008725" classname="test" file="/home/tomaasz/agent-lb/test/context-drop-sanitize.test.js"/>
+		<testcase name="detects likely raw command and error logs" time="0.004232" classname="test" file="/home/tomaasz/agent-lb/test/context-drop-sanitize.test.js"/>
+		<testcase name="leaves text under maxLogChars untouched" time="0.003073" classname="test" file="/home/tomaasz/agent-lb/test/context-drop-sanitize.test.js"/>
+		<testcase name="truncates heavy log dumps to head + banner with error signals + tail" time="0.079777" classname="test" file="/home/tomaasz/agent-lb/test/context-drop-sanitize.test.js"/>
+		<testcase name="bypasses JSON parse on short bodies returning exact Buffer reference (fast path)" time="0.001312" classname="test" file="/home/tomaasz/agent-lb/test/context-drop-sanitize.test.js"/>
+		<testcase name="truncates large tool_result blocks in Anthropic /v1/messages" time="0.004578" classname="test" file="/home/tomaasz/agent-lb/test/context-drop-sanitize.test.js"/>
+		<testcase name="truncates large function_call_output items in Codex Responses API" time="0.006936" classname="test" file="/home/tomaasz/agent-lb/test/context-drop-sanitize.test.js"/>
+		<testcase name="integrates seamlessly into rewriteRequestBody with account overrides" time="0.011241" classname="test" file="/home/tomaasz/agent-lb/test/context-drop-sanitize.test.js"/>
+		<testcase name="Spike verification: measures token and cost savings across 30 turns" time="0.026913" classname="test" file="/home/tomaasz/agent-lb/test/context-drop-sanitize.test.js"/>
+	</testsuite>
+	<testsuite name="Dashboard Authentication and Layout" time="0.825317" disabled="0" errors="0" tests="13" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="renders modern login card and auth elements in dashboard HTML" time="0.021815" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="removes duplicate probe button and updates accounts heading" time="0.007321" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="embedded dashboard script has valid syntax and compiles cleanly" time="0.031700" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="computes valid Content-Security-Policy with sha256 hash" time="0.007531" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="safely verifies admin keys" time="0.000977" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="renders both Claude and Codex setup commands and scripts in setup directory" time="0.007344" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="validates host header correctly for agentlb.gotova.pl and custom domains" time="0.002246" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="renders valid JavaScript without syntax errors in dashboard script" time="0.002465" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="renders 2-column layout and drag-and-drop elements for Claude and Codex accounts" time="0.003473" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="renders spacious policy panel with explanations, PL/EN dual-language support, and dark/light themes" time="0.001856" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="renders redesigned workstations section with dedicated master banner and integrated cards" time="0.001483" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="updates account priority and persists order on POST /api/accounts/reorder" time="0.629325" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="renders Reboot button and handles POST /api/system/reboot" time="0.080425" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+	</testsuite>
+	<testsuite name="Dashboard login error text" time="0.000867" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="never renders an error object as &amp;quot;[object Object]&amp;quot;" time="0.000582" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+	</testsuite>
+	<testsuite name="Account deletion and re-login upsert targeting" time="0.618347" disabled="0" errors="0" tests="2" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="removes specifically by id without deleting accounts with same name" time="0.117274" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+		<testcase name="re-login upsert replaces existing account by name even if accountUuid changes" time="0.500654" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-auth.test.js"/>
+	</testsuite>
+	<testsuite name="dashboard views have their own addresses" time="0.925454" disabled="0" errors="0" tests="3" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="serves the dashboard page for every view address" time="0.720527" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-routes.test.js"/>
+		<testcase name="does not turn arbitrary paths into the page" time="0.087204" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-routes.test.js"/>
+		<testcase name="knows every view in the page script" time="0.002579" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-routes.test.js"/>
+	</testsuite>
+	<testsuite name="dashboard AGY column (same card vocabulary as Claude and Codex)" time="0.049839" disabled="0" errors="0" tests="4" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="puts AGY in the accounts grid next to Claude and Codex" time="0.011821" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-routes.test.js"/>
+		<testcase name="has the card controls, the Test call and PL/EN strings" time="0.022747" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-routes.test.js"/>
+		<testcase name="shows a Gemini row in the routing table from AGY data" time="0.009456" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-routes.test.js"/>
+		<testcase name="saves a drag in the AGY list through the AGY reorder action" time="0.004975" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-routes.test.js"/>
+	</testsuite>
+	<testsuite name="dashboard t() placeholder substitution" time="0.001582" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="inserts parameters literally, even when they contain replacement patterns" time="0.001258" classname="test" file="/home/tomaasz/agent-lb/test/dashboard-routes.test.js"/>
+	</testsuite>
+	<testcase name="integration: delegated and missing keys never mint administrator sessions" time="0.500909" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="integration: master login, password change session revocation, logout cookie" time="0.196220" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="integration: malformed auth input fails with 400, no side effects or cookies" time="0.334381" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="integration: auth attempt limit covers aliases and ignores spoofed forwarding headers" time="0.177344" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="auth limiter bounds peers, enforces global cap, recovers after expiry" time="0.482034" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="known legacy default secret cannot forge a session without a configured secret" time="0.004006" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="reset: trusted URL, configured recipient, delivery failure and single-use persistence" time="2.045614" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="usage restore preserves current counters, ignores stale periods and corrupt numbers" time="0.025537" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="dashboard: polls coalesce, reveal no secrets, and stale response cannot reopen after logout" time="0.007731" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="dashboard: failed status reports a visible fallback and permits the next poll" time="0.002518" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="integration: malformed usage reset preserves counters; explicit empty object resets fleet" time="0.032973" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="integration: health settings validate types and persistence failure leaves runtime unchanged" time="0.047630" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="dashboard: session table bounds DOM rows, navigates pages, clamps after filtering" time="0.007432" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testcase name="dashboard: an in-flight key reveal cannot restore credentials after logout" time="0.003598" classname="test" file="/home/tomaasz/agent-lb/test/deep-audit.test.js"/>
+	<testsuite name="Fair Share Stream Admission" time="0.017632" disabled="0" errors="0" tests="4" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="admits all requests when pool is uncongested" time="0.001969" classname="test" file="/home/tomaasz/agent-lb/test/fair-share.test.js"/>
+		<testcase name="throttles a key that exceeds its fair share during congestion" time="0.000579" classname="test" file="/home/tomaasz/agent-lb/test/fair-share.test.js"/>
+		<testcase name="guarantees min streams for interactive sessions even under heavy congestion" time="0.000307" classname="test" file="/home/tomaasz/agent-lb/test/fair-share.test.js"/>
+		<testcase name="FairShareController correctly tracks and releases key streams" time="0.000565" classname="test" file="/home/tomaasz/agent-lb/test/fair-share.test.js"/>
+	</testsuite>
+	<testcase name="SessionTracker records and sums cumulative tokens per session across buckets" time="0.032949" classname="test" file="/home/tomaasz/agent-lb/test/hard-session-budget.test.js"/>
+	<testcase name="AccountManager queries and resets session tokens" time="0.027506" classname="test" file="/home/tomaasz/agent-lb/test/hard-session-budget.test.js"/>
+	<testcase name="Config helper functions resolve session token budget and status code" time="0.006177" classname="test" file="/home/tomaasz/agent-lb/test/hard-session-budget.test.js"/>
+	<testcase name="createProxyRequestListener blocks request with 429 when session exceeds 100k hard budget cap" time="0.236109" classname="test" file="/home/tomaasz/agent-lb/test/hard-session-budget.test.js"/>
+	<testcase name="createProxyRequestListener supports 402 Payment Required status code for hard budget cap" time="0.006278" classname="test" file="/home/tomaasz/agent-lb/test/hard-session-budget.test.js"/>
+	<testcase name="key-level maxSessionTokens overrides proxy config" time="0.003109" classname="test" file="/home/tomaasz/agent-lb/test/hard-session-budget.test.js"/>
+	<testcase name="end-to-end: live HTTP proxy blocks request when session reaches 100k cap without calling upstream" time="0.435739" classname="test" file="/home/tomaasz/agent-lb/test/hard-session-budget.test.js"/>
+	<testcase name="a non-streaming request outlives the stream time-to-first-byte guard" time="1.570950" classname="test" file="/home/tomaasz/agent-lb/test/headers-timeout.test.js"/>
+	<testcase name="a streaming request keeps the short headers guard" time="0.388438" classname="test" file="/home/tomaasz/agent-lb/test/headers-timeout.test.js"/>
+	<testsuite name="FleetHealthChecker Intelligent Auto Diagnostics" time="0.659628" disabled="0" errors="0" tests="5" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="correctly evaluates skip rules to preserve tokens" time="0.010051" classname="test" file="/home/tomaasz/agent-lb/test/health-checker.test.js"/>
+		<testcase name="runs micro-ping with max_tokens: 1 and updates account state" time="0.082462" classname="test" file="/home/tomaasz/agent-lb/test/health-checker.test.js"/>
+		<testcase name="skips accounts with recent traffic and only checks idle accounts during cycle" time="0.018976" classname="test" file="/home/tomaasz/agent-lb/test/health-checker.test.js"/>
+		<testcase name="exposes /api/health-check/status, /run, and /config endpoints via proxy server" time="0.528365" classname="test" file="/home/tomaasz/agent-lb/test/health-checker.test.js"/>
+		<testcase name="correctly executes health check for Codex OAuth accounts with store: false and stream: true" time="0.013621" classname="test" file="/home/tomaasz/agent-lb/test/health-checker.test.js"/>
+	</testsuite>
+	<testsuite name="hermes-setup.sh" time="0.019365" disabled="0" errors="0" tests="3" failures="0" skipped="2" hostname="debian-lite">
+		<testcase name="is valid bash" time="0.014972" classname="test" file="/home/tomaasz/agent-lb/test/hermes-setup.test.js"/>
+		<testcase name="merges idempotently, heals the legacy block, keeps the key out of config.yaml" time="0.000417" classname="test" file="/home/tomaasz/agent-lb/test/hermes-setup.test.js">
+			<skipped type="skipped" message="no python with ruamel.yaml"/>
+		</testcase>
+		<testcase name="gemini models via /v1/models" time="0.000316" classname="test" file="/home/tomaasz/agent-lb/test/hermes-setup.test.js">
+			<skipped type="skipped" message="no python with ruamel.yaml"/>
+		</testcase>
+	</testsuite>
+	<testcase name="Claude 5 family ids route to their dedicated quota semantics" time="0.003985" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="proxy body cap is a byte safety limit, not a token or max_tokens limit" time="0.004825" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="only the explicit Anthropic identity-verification 400 is account-scoped" time="0.000977" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="identity verification cooldown removes only the affected account from rotation" time="0.012894" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="proxy retries compaction on a healthy OAuth account after identity-verification 400" time="0.198148" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="all-identity response ignores unrelated Codex accounts and reports a clear 502" time="0.071563" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="all-identity response ignores disabled accounts and reports 502" time="0.063054" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="successful response clears identityVerification cooldown" time="0.124689" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="exhaustedMessage formats clear errors for disabled, partitioned and identity-blocked fleets" time="0.017391" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="eligibility reports identity verification and entitlement cooldown reasons" time="0.003985" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="prober clears identity verification cooldown upon successful probe" time="0.008338" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="formatAccountStatus and UNAVAILABLE_TEXT clearly distinguish identity verification from active status" time="0.005578" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="Claude models endpoint exposes accurate parameters matching documentation" time="0.105693" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="normalizeAnthropicModelForOAuth normalizes modern aliases to canonical IDs" time="0.006330" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="resolveTargetModel handles Fable, Mythos, and current Opus 5.5 fallbacks" time="0.000792" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="OpenAI and Codex models endpoint exposes accurate parameters matching documentation" time="0.062409" classname="test" file="/home/tomaasz/agent-lb/test/model-context.test.js"/>
+	<testcase name="first-token detection ignores metadata, handles split frames and observes once" time="0.016788" classname="test" file="/home/tomaasz/agent-lb/test/observability-policy.test.js"/>
+	<testcase name="unbounded malformed SSE frame is discarded and parsing recovers" time="0.032236" classname="test" file="/home/tomaasz/agent-lb/test/observability-policy.test.js"/>
+	<testcase name="metrics distinguish first token from headers and evaluate operational alerts" time="0.014072" classname="test" file="/home/tomaasz/agent-lb/test/observability-policy.test.js"/>
+	<testcase name="explicit substitution is exact, rejects unknown/duplicate rules, and supports legacy migration" time="0.001885" classname="test" file="/home/tomaasz/agent-lb/test/observability-policy.test.js"/>
+	<testcase name="configured cross-provider model mapping controls real upstream delivery" time="0.393634" classname="test" file="/home/tomaasz/agent-lb/test/observability-policy.test.js"/>
+	<testcase name="concurrent large requests reject excess load and release shared budget" time="0.712679" classname="test" file="/home/tomaasz/agent-lb/test/observability-policy.test.js"/>
+	<testcase name="live SSE records first token only on content, not headers or metadata" time="0.119409" classname="test" file="/home/tomaasz/agent-lb/test/observability-policy.test.js"/>
+	<testsuite name="extractPromptSummary" time="0.025677" disabled="0" errors="0" tests="6" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="reads the last user message of a Chat/Anthropic body" time="0.010964" classname="test" file="/home/tomaasz/agent-lb/test/prompt-summary.test.js"/>
+		<testcase name="reads the last user message of a Codex Responses body (input array)" time="0.005080" classname="test" file="/home/tomaasz/agent-lb/test/prompt-summary.test.js"/>
+		<testcase name="skips tool output items after the prompt in a Responses tool loop" time="0.000553" classname="test" file="/home/tomaasz/agent-lb/test/prompt-summary.test.js"/>
+		<testcase name="accepts a plain string input" time="0.000699" classname="test" file="/home/tomaasz/agent-lb/test/prompt-summary.test.js"/>
+		<testcase name="truncates long Responses prompts to one short line" time="0.000607" classname="test" file="/home/tomaasz/agent-lb/test/prompt-summary.test.js"/>
+		<testcase name="returns null when there is no user text" time="0.001867" classname="test" file="/home/tomaasz/agent-lb/test/prompt-summary.test.js"/>
+	</testsuite>
+	<testcase name="anthropic: quota-rejection 429 on the first account is absorbed by the second" time="0.217440" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="anthropic: OAuth 401 forces one refresh and the retry carries the new token" time="0.048256" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="anthropic: a credential upstream keeps rejecting (401) fails over instead of logging the client out" time="0.068557" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="anthropic: tool_use streamed in 7-byte fragments reaches the client byte-for-byte with valid JSON" time="3.967982" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="codex: usage_limit_reached 429 rotates to the next account and takes the spent one out of rotation" time="0.090734" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="codex: x-codex-* quota headers on live traffic update the account quota" time="0.027244" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="codex → chat completions: tool calls after a reasoning item get dense indexes and intact JSON" time="0.408773" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="codex → chat completions: arguments sent only in output_item.done are not lost" time="0.012944" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="codex → chat completions: response.failed surfaces as an error, not a silent empty answer" time="0.011159" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="codex → anthropic chain: text + tool blocks get distinct indexes and one terminal stop_reason" time="0.008158" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="anthropic: when every account is rejected with 401 the client gets a proxy error, not a 401" time="0.009842" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="codex non-stream: response.failed becomes an error status, not an empty 200" time="0.012335" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="codex non-stream: a server-side failure maps to 502" time="0.013592" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="codex non-stream: a stream cut off before response.completed is an error" time="0.013409" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="codex non-stream: a completed answer with a tool call is translated whole" time="0.011113" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="codex non-stream: response.incomplete reports finish_reason length" time="0.011996" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testcase name="codexResponseFailure classifies and ignores non-SSE bodies" time="0.001032" classname="test" file="/home/tomaasz/agent-lb/test/proxy-failover-e2e.test.js"/>
+	<testsuite name="credential redaction" time="0.029810" disabled="0" errors="0" tests="3" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="masks client keys in status-shaped values" time="0.008322" classname="test" file="/home/tomaasz/agent-lb/test/security-redaction.test.js"/>
+		<testcase name="redacts credentials and cookies from request log headers" time="0.007555" classname="test" file="/home/tomaasz/agent-lb/test/security-redaction.test.js"/>
+		<testcase name="parses usage events with RFC-compliant CRLF delimiters" time="0.004503" classname="test" file="/home/tomaasz/agent-lb/test/security-redaction.test.js"/>
+	</testsuite>
+	<testsuite name="decideSessionBurn" time="0.024557" disabled="0" errors="0" tests="8" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="picks an account whose session resets soon with quota left" time="0.010291" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+		<testcase name="ignores a session that resets later than the horizon" time="0.000744" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+		<testcase name="ignores a nearly spent session" time="0.000501" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+		<testcase name="does not burn an account whose week is nearly spent" time="0.000546" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+		<testcase name="ignores unknown readings and passed resets" time="0.001179" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+		<testcase name="prefers the highest unspent-per-second among qualifiers" time="0.000835" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+		<testcase name="is off when disabled" time="0.000546" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+		<testcase name="normalizes bad config to defaults" time="0.002716" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+	</testsuite>
+	<testsuite name="decideWeeklyBurn" time="0.013495" disabled="0" errors="0" tests="5" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="picks the account whose week expires soon with quota left (the 1.8d / 47% case)" time="0.001969" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+		<testcase name="ignores a week that resets beyond the horizon or is nearly spent" time="0.000891" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+		<testcase name="ignores unknown readings and passed resets" time="0.008688" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+		<testcase name="prefers the larger unspent-per-second among qualifiers" time="0.000722" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+		<testcase name="is off when disabled and normalizes bad config" time="0.000449" classname="test" file="/home/tomaasz/agent-lb/test/session-burn.test.js"/>
+	</testsuite>
+	<testsuite name="setup hardening" time="35.835910" disabled="0" errors="0" tests="7" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="setup.js: no global OPENAI_*, codex-lb default provider, one backup per file" time="18.794649" classname="test" file="/home/tomaasz/agent-lb/test/setup-hardening.test.js"/>
+		<testcase name="setup.js: user's own default Codex profile is left alone" time="6.271346" classname="test" file="/home/tomaasz/agent-lb/test/setup-hardening.test.js"/>
+		<testcase name="setup.js: uninstall cleans VS Code Server settings and reports legacy backups" time="6.261380" classname="test" file="/home/tomaasz/agent-lb/test/setup-hardening.test.js"/>
+		<testcase name="setup.sh (bash fallback): no global OPENAI_*, codex-lb default provider, one backup per file" time="2.650789" classname="test" file="/home/tomaasz/agent-lb/test/setup-hardening.test.js"/>
+		<testcase name="setup.sh (bash fallback): user's own default Codex profile is left alone" time="0.997646" classname="test" file="/home/tomaasz/agent-lb/test/setup-hardening.test.js"/>
+		<testcase name="setup.sh (bash fallback): uninstall cleans VS Code Server settings and reports legacy backups" time="0.808582" classname="test" file="/home/tomaasz/agent-lb/test/setup-hardening.test.js"/>
+		<testcase name="setup.sh does not mass-kill codex or install system packages silently" time="0.002240" classname="test" file="/home/tomaasz/agent-lb/test/setup-hardening.test.js"/>
+	</testsuite>
+	<testcase name="dashboard install commands pass the station key via environment, not argv" time="0.005115" classname="test" file="/home/tomaasz/agent-lb/test/setup-hardening.test.js"/>
+	<testcase name="jcode sandbox hides .env files but keeps templates visible" time="0.138084" classname="test" file="/home/tomaasz/agent-lb/test/setup-hardening.test.js"/>
+	<testsuite name="installers preserve Claude OAuth and authenticate to the proxy with a custom header" time="12.522811" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="setup/setup.js" time="12.504709" classname="test" file="/home/tomaasz/agent-lb/test/setup-oauth.test.js"/>
+	</testsuite>
+	<testsuite name="installers preserve existing non-proxy custom headers on install and uninstall" time="6.331728" disabled="0" errors="0" tests="1" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="setup/setup.js" time="6.324737" classname="test" file="/home/tomaasz/agent-lb/test/setup-oauth.test.js"/>
+	</testsuite>
+	<testcase name="all setup bash scripts pass syntax validation" time="0.132251" classname="test" file="/home/tomaasz/agent-lb/test/setup-oauth.test.js"/>
+	<testcase name="test/support/config-guard.js" time="0.130375" classname="test" file="/home/tomaasz/agent-lb/test/support/config-guard.js"/>
+	<testcase name="test/support/isolate-config.js" time="0.102049" classname="test" file="/home/tomaasz/agent-lb/test/support/isolate-config.js"/>
+	<testcase name="native OpenAI JSON: upstream usage is booked once and enforces client quota" time="0.220263" classname="test" file="/home/tomaasz/agent-lb/test/systematic-quota.test.js"/>
+	<testcase name="OpenAI SSE translated to Anthropic: upstream usage is booked once and enforces client quota" time="0.110224" classname="test" file="/home/tomaasz/agent-lb/test/systematic-quota.test.js"/>
+	<testcase name="Anthropic SSE translated to OpenAI: upstream usage is booked once and enforces client quota" time="0.063107" classname="test" file="/home/tomaasz/agent-lb/test/systematic-quota.test.js"/>
+	<testcase name="HTTP account-bound relays remove proxy sessions and proxy bearer keys, preserve upstream identity" time="0.255070" classname="test" file="/home/tomaasz/agent-lb/test/systematic-relay.test.js"/>
+	<testcase name="WebSocket relays remove proxy sessions and proxy bearer keys, preserve upstream identity" time="0.071852" classname="test" file="/home/tomaasz/agent-lb/test/systematic-relay.test.js"/>
+	<testcase name="curl fallback sends hostile-looking credentials through stdin without secret arguments" time="0.013205" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="CR/LF credentials are rejected before native or curl requests" time="0.004206" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="CR/LF credentials are rejected before native or curl requests" time="0.002470" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="installed curl reads authorization header from stdin against local HTTP fixture" time="0.087067" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="OpenCode full script never prints the configured API key" time="0.152663" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="native HTTP 401 is rejected without fallback" time="0.005420" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="native HTTP 403 is rejected without fallback" time="0.002701" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="curl non-success response rejects configuration" time="0.002942" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="claw-setup.sh node: config and auth files are private, including existing files" time="0.266594" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="claw-setup.sh node: key remains literal when serialized" time="0.103704" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="claw-setup.sh node: malformed config is preserved and reported" time="0.064531" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="claw-setup.sh python3: config and auth files are private, including existing files" time="0.072059" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="claw-setup.sh python3: key remains literal when serialized" time="0.046494" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="claw-setup.sh python3: malformed config is preserved and reported" time="0.082819" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="opencode-setup.sh node: config and auth files are private, including existing files" time="0.164858" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="opencode-setup.sh node: key remains literal when serialized" time="0.062816" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="opencode-setup.sh node: invalid auth stops before either file is written" time="0.256339" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="opencode-setup.sh node: malformed config is preserved and reported" time="0.076322" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="opencode-setup.sh python3: config and auth files are private, including existing files" time="0.068883" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="opencode-setup.sh python3: key remains literal when serialized" time="0.035532" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="opencode-setup.sh python3: invalid auth stops before either file is written" time="0.172699" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="opencode-setup.sh python3: malformed config is preserved and reported" time="0.049817" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="Codex shell environment quotes key, URL and sourced path literally" time="0.007050" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="Codex existing environment file is restricted before writing credentials" time="0.003374" classname="test" file="/home/tomaasz/agent-lb/test/systematic-setup.test.js"/>
+	<testcase name="OpenAI → Anthropic: every UTF-8 byte boundary preserves text" time="0.054874" classname="test" file="/home/tomaasz/agent-lb/test/systematic-utf8.test.js"/>
+	<testcase name="Anthropic → OpenAI: every UTF-8 byte boundary preserves text" time="0.033608" classname="test" file="/home/tomaasz/agent-lb/test/systematic-utf8.test.js"/>
+	<testcase name="Codex → OpenAI: every UTF-8 byte boundary preserves text" time="0.031220" classname="test" file="/home/tomaasz/agent-lb/test/systematic-utf8.test.js"/>
+	<testsuite name="Test Chat &amp; Playground Support" time="0.495839" disabled="0" errors="0" tests="12" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="renders test chat button and modal in dashboard HTML" time="0.003257" classname="test" file="/home/tomaasz/agent-lb/test/test-chat.test.js"/>
+		<testcase name="handles POST /api/test/chat for Anthropic and Codex accounts" time="0.200002" classname="test" file="/home/tomaasz/agent-lb/test/test-chat.test.js"/>
+		<testcase name="automatically falls over to healthy account when first candidate fails" time="0.043701" classname="test" file="/home/tomaasz/agent-lb/test/test-chat.test.js"/>
+		<testcase name="maintains identity-verification error state without prober clearing it" time="0.019418" classname="test" file="/home/tomaasz/agent-lb/test/test-chat.test.js"/>
+		<testcase name="marks account throttled and records lastError when upstream returns 429 Rate Limit" time="0.032400" classname="test" file="/home/tomaasz/agent-lb/test/test-chat.test.js"/>
+		<testcase name="correctly parses Codex SSE responses even when Content-Type is text/plain or not event-stream" time="0.017022" classname="test" file="/home/tomaasz/agent-lb/test/test-chat.test.js"/>
+		<testcase name="correctly parses Codex response.output_text.delta streaming events" time="0.020603" classname="test" file="/home/tomaasz/agent-lb/test/test-chat.test.js"/>
+		<testcase name="sends Claude Code billing header, modern headers, and filters thinking blocks in Anthropic test chat" time="0.015381" classname="test" file="/home/tomaasz/agent-lb/test/test-chat.test.js"/>
+		<testcase name="does not mark account throttled when receiving a request-scoped 429 without rate limit headers" time="0.019061" classname="test" file="/home/tomaasz/agent-lb/test/test-chat.test.js"/>
+		<testcase name="normalizes gpt-5.6 and gpt-5 model aliases to gpt-5.6-sol for Codex OAuth accounts" time="0.001459" classname="test" file="/home/tomaasz/agent-lb/test/test-chat.test.js"/>
+		<testcase name="maps gpt-5.6 to gpt-5.6-sol in test-chat for Codex OAuth accounts" time="0.075228" classname="test" file="/home/tomaasz/agent-lb/test/test-chat.test.js"/>
+		<testcase name="correctly handles Codex 429 quota exhaustion and recovers on subsequent success, probe headroom, and hold expiry" time="0.044440" classname="test" file="/home/tomaasz/agent-lb/test/test-chat.test.js"/>
+	</testsuite>
+	<testcase name="the default AGY accounts path of a test process stays outside the real config dir" time="0.002513" classname="test" file="/home/tomaasz/agent-lb/test/test-isolation.test.js"/>
+	<testcase name="guard rejects the real-home accounts file and homes dir" time="0.001890" classname="test" file="/home/tomaasz/agent-lb/test/test-isolation.test.js"/>
+	<testcase name="guard accepts a temp config dir" time="0.000633" classname="test" file="/home/tomaasz/agent-lb/test/test-isolation.test.js"/>
+	<testsuite name="Tool Call Deduplication &amp; Replay Safety" time="0.008018" disabled="0" errors="0" tests="3" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="correctly classifies side-effect vs idempotent tools" time="0.002418" classname="test" file="/home/tomaasz/agent-lb/test/tool-call-dedupe.test.js"/>
+		<testcase name="records and detects duplicate side-effect calls within TTL" time="0.002953" classname="test" file="/home/tomaasz/agent-lb/test/tool-call-dedupe.test.js"/>
+		<testcase name="inspects Anthropic request bodies for replayed tool_use" time="0.000638" classname="test" file="/home/tomaasz/agent-lb/test/tool-call-dedupe.test.js"/>
+	</testsuite>
+	<testsuite name="Tool Call Deduplication across conversation turns" time="0.003549" disabled="0" errors="0" tests="4" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="does not flag the history every following turn re-sends" time="0.000508" classname="test" file="/home/tomaasz/agent-lb/test/tool-call-dedupe.test.js"/>
+		<testcase name="flags a replay of the same turn" time="0.001811" classname="test" file="/home/tomaasz/agent-lb/test/tool-call-dedupe.test.js"/>
+		<testcase name="records only the latest assistant turn, not the whole history" time="0.000376" classname="test" file="/home/tomaasz/agent-lb/test/tool-call-dedupe.test.js"/>
+		<testcase name="handles OpenAI tool_calls the same way" time="0.000504" classname="test" file="/home/tomaasz/agent-lb/test/tool-call-dedupe.test.js"/>
+	</testsuite>
+	<testsuite name="ttok log trimming &amp; token counting (ttok 1.0)" time="0.004467" disabled="0" errors="0" tests="4" failures="0" skipped="4" hostname="debian-lite">
+		<testcase name="verifies ttok binary availability and version if present" time="0.001604" classname="test" file="/home/tomaasz/agent-lb/test/ttok-log-trim.test.js">
+			<skipped type="skipped" message="ttok not installed"/>
+		</testcase>
+		<testcase name="counts tokens on input file and returns exit code 0" time="0.000287" classname="test" file="/home/tomaasz/agent-lb/test/ttok-log-trim.test.js">
+			<skipped type="skipped" message="ttok not installed"/>
+		</testcase>
+		<testcase name="counts tokens via stdin and returns exit code 0" time="0.000182" classname="test" file="/home/tomaasz/agent-lb/test/ttok-log-trim.test.js">
+			<skipped type="skipped" message="ttok not installed"/>
+		</testcase>
+		<testcase name="truncates log to specified token budget (-t) and returns exit code 0" time="0.000137" classname="test" file="/home/tomaasz/agent-lb/test/ttok-log-trim.test.js">
+			<skipped type="skipped" message="ttok not installed"/>
+		</testcase>
+	</testsuite>
+	<testsuite name="Working Hours Keep-Warm Planner" time="0.029512" disabled="0" errors="0" tests="3" failures="0" skipped="0" hostname="debian-lite">
+		<testcase name="returns true when workingHours is disabled or omitted" time="0.001655" classname="test" file="/home/tomaasz/agent-lb/test/warmup-schedule.test.js"/>
+		<testcase name="correctly gates active working hours during work days" time="0.025267" classname="test" file="/home/tomaasz/agent-lb/test/warmup-schedule.test.js"/>
+		<testcase name="blocks warm-ups on weekends" time="0.000417" classname="test" file="/home/tomaasz/agent-lb/test/warmup-schedule.test.js"/>
+	</testsuite>
+	<testcase name="Session cookie creation and verification" time="0.003536" classname="test" file="/home/tomaasz/agent-lb/test/web-auth.test.js"/>
+	<testcase name="Logout cookie serialization" time="0.000393" classname="test" file="/home/tomaasz/agent-lb/test/web-auth.test.js"/>
+	<testcase name="Password verification with fallback API key" time="0.000422" classname="test" file="/home/tomaasz/agent-lb/test/web-auth.test.js"/>
+	<testcase name="Password verification with bcrypt hash" time="0.691481" classname="test" file="/home/tomaasz/agent-lb/test/web-auth.test.js"/>
+	<testcase name="Password reset validation and completion" time="0.001074" classname="test" file="/home/tomaasz/agent-lb/test/web-auth.test.js"/>
+	<!-- tests 408 -->
+	<!-- suites 53 -->
+	<!-- pass 403 -->
+	<!-- fail 0 -->
+	<!-- cancelled 0 -->
+	<!-- skipped 5 -->
+	<!-- todo 0 -->
+	<!-- duration_ms 67787.700064 -->
+</testsuites>
