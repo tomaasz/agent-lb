@@ -11,9 +11,10 @@ host debian-lite, `/home/tomaasz/agent-lb`, domena `agentlb.gotova.pl`.
 3. Prywatny backup konfiguracji/stanu/zaszyfrowanych kont AGY poza repo:
    katalog0700, pliki0600, bez wyświetlania wartości. Klucz szyfrowania pozostaje oddzielnie.
 4. Oznaczyć PR4 jako gotowy i scalić do main po zielonych kontrolach.
-   Zsynchronizować lokalny main fast-forward; zachować rollback starego kodu509ddf1.
+   Zachować rollback starego kodu509ddf1; lokalne drzewo aktualizować dopiero po drain.
 5. Zainicjować drain istniejącego procesu, poczekać na activeRequests0, restartować
-   istniejącą usługę; w razie nieosiągnięcia bezczynności anulować drain bez zabijania żądań.
+   istniejącą usługę; lokalny main fast-forward dopiero po activeRequests0 i dodatkowym backupie stanu.
+   W razie nieosiągnięcia bezczynności anulować drain bez zabijania żądań.
 6. Zweryfikować nowy PID/start, service active/running, ready=true/draining=false,
    anonimowe401, delegowane admin403, sesję admina, katalog modeli, panel lokalnie/publicznie.
    Porównać tożsamości kont i kluczy wyłącznie wewnątrz procesu, wypisać tylko wynik bool/count.
