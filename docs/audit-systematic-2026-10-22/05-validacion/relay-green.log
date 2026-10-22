@@ -1,0 +1,13 @@
+✔ HTTP account-bound relays remove proxy sessions and proxy bearer keys, preserve upstream identity (890.440969ms)
+[AgentLB] WebSocket /v1/session_ingress/ws/fixture refused by upstream (403)
+[AgentLB] WebSocket /v1/session_ingress/ws/fixture refused by upstream (403)
+[AgentLB] WebSocket /v1/session_ingress/ws/fixture refused by upstream (403)
+✔ WebSocket relays remove proxy sessions and proxy bearer keys, preserve upstream identity (318.140214ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2766.341196

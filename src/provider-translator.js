@@ -5,6 +5,7 @@
 // Enables seamless failover when all accounts of one provider are exhausted.
 
 import { Transform } from 'node:stream';
+import { StringDecoder } from 'node:string_decoder';
 import { randomUUID } from 'node:crypto';
 import { sanitizeToolPairs } from './tool-pair-sanitize.js';
 
@@ -257,6 +258,7 @@ export function translateOpenAIToAnthropicResponse(openaiJson, requestedModel = 
  * Creates a Transform stream converting OpenAI SSE chunks into Anthropic SSE events.
  */
 export function createOpenAIToAnthropicTransformStream(requestedModel = 'claude-3-5-sonnet-20241022') {
+  const decoder = new StringDecoder('utf8');
   let buffer = '';
   let msgStarted = false;
   let finished = false;
@@ -295,7 +297,7 @@ export function createOpenAIToAnthropicTransformStream(requestedModel = 'claude-
 
   return new Transform({
     transform(chunk, encoding, callback) {
-      buffer += chunk.toString('utf8');
+      buffer += decoder.write(chunk);
       const lines = buffer.split('\n');
       buffer = lines.pop() || ''; // Keep incomplete line
 
@@ -655,6 +657,7 @@ export function translateAnthropicToOpenAIResponse(anthropicJson, requestedModel
  * Creates a Transform stream converting Anthropic SSE chunks into OpenAI SSE events.
  */
 export function createAnthropicToOpenAITransformStream(requestedModel = 'gpt-4o') {
+  const decoder = new StringDecoder('utf8');
   let buffer = '';
   const chunkId = `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
   const created = Math.floor(Date.now() / 1000);
@@ -662,7 +665,7 @@ export function createAnthropicToOpenAITransformStream(requestedModel = 'gpt-4o'
 
   return new Transform({
     transform(chunk, encoding, callback) {
-      buffer += chunk.toString('utf8');
+      buffer += decoder.write(chunk);
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
 
@@ -856,6 +859,7 @@ export function translateChatCompletionsToCodexResponses(body, targetModel = 'gp
  * Creates a Transform stream converting Codex Responses SSE events into OpenAI Chat Completion chunks.
  */
 export function createCodexResponsesToOpenAITransformStream(requestedModel = 'gpt-5.6-sol', onUsage = null) {
+  const decoder = new StringDecoder('utf8');
   let buffer = '';
   let chunkId = null;
   let created = Math.floor(Date.now() / 1000);
@@ -878,7 +882,7 @@ export function createCodexResponsesToOpenAITransformStream(requestedModel = 'gp
 
   return new Transform({
     transform(chunk, encoding, callback) {
-      buffer += chunk.toString('utf8');
+      buffer += decoder.write(chunk);
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
 

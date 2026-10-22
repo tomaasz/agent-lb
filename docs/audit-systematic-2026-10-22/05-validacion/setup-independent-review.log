@@ -1,0 +1,32 @@
+✔ curl fallback sends hostile-looking credentials through stdin without secret arguments (7.853906ms)
+✔ CR/LF credentials are rejected before native or curl requests (3.514109ms)
+✔ CR/LF credentials are rejected before native or curl requests (1.726304ms)
+✔ installed curl reads authorization header from stdin against local HTTP fixture (57.303708ms)
+✔ OpenCode full script never prints the configured API key (120.660576ms)
+✔ native HTTP 401 is rejected without fallback (2.37405ms)
+✔ native HTTP 403 is rejected without fallback (1.949046ms)
+✔ curl non-success response rejects configuration (10.075754ms)
+✔ claw-setup.sh node: config and auth files are private, including existing files (122.28745ms)
+✔ claw-setup.sh node: key remains literal when serialized (54.523015ms)
+✔ claw-setup.sh node: malformed config is preserved and reported (51.143227ms)
+✔ claw-setup.sh python3: config and auth files are private, including existing files (71.193984ms)
+✔ claw-setup.sh python3: key remains literal when serialized (34.620238ms)
+✔ claw-setup.sh python3: malformed config is preserved and reported (45.886123ms)
+✔ opencode-setup.sh node: config and auth files are private, including existing files (104.180368ms)
+✔ opencode-setup.sh node: key remains literal when serialized (56.837914ms)
+✔ opencode-setup.sh node: invalid auth stops before either file is written (233.509507ms)
+✔ opencode-setup.sh node: malformed config is preserved and reported (52.155625ms)
+✔ opencode-setup.sh python3: config and auth files are private, including existing files (73.957886ms)
+✔ opencode-setup.sh python3: key remains literal when serialized (42.999819ms)
+✔ opencode-setup.sh python3: invalid auth stops before either file is written (193.575903ms)
+✔ opencode-setup.sh python3: malformed config is preserved and reported (48.944999ms)
+✔ Codex shell environment quotes key, URL and sourced path literally (7.14566ms)
+✔ Codex existing environment file is restricted before writing credentials (3.041516ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1674.196158

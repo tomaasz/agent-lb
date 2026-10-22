@@ -1,0 +1,52 @@
+✖ HTTP account-bound relays remove proxy sessions and proxy bearer keys, preserve upstream identity (675.158385ms)
+[AgentLB] WebSocket /v1/session_ingress/ws/fixture refused by upstream (403)
+✖ WebSocket relays remove proxy sessions and proxy bearer keys, preserve upstream identity (285.41984ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 0
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2209.105374
+
+✖ failing tests:
+
+test at test/systematic-relay.test.js:46:1
+✖ HTTP account-bound relays remove proxy sessions and proxy bearer keys, preserve upstream identity (675.158385ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'upstream_sid=own; agentlb_session=eyJ1IjoidG9tYWFzeiIsImV4cCI6MTc5NTI5MDk1MDU5M30.iu957WpiiodySFggYWDP8h15FUy7X8mRAovWvfVnEpA; other=kept'
+  - 'upstream_sid=own; other=kept'
+
+      at TestContext.<anonymous> (file:///home/tomaasz/agent-lb/test/systematic-relay.test.js:53:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'upstream_sid=own; agentlb_session=eyJ1IjoidG9tYWFzeiIsImV4cCI6MTc5NTI5MDk1MDU5M30.iu957WpiiodySFggYWDP8h15FUy7X8mRAovWvfVnEpA; other=kept',
+    expected: 'upstream_sid=own; other=kept',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/systematic-relay.test.js:63:1
+✖ WebSocket relays remove proxy sessions and proxy bearer keys, preserve upstream identity (285.41984ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'agentlb_session=eyJ1IjoidG9tYWFzeiIsImV4cCI6MTc5NTI5MDk1MTE0NX0.tN7l_KCq6tdeXRjS3NubH5f5wjeGKMsxVJY-f_IEct8; upstream_sid=own'
+  - 'upstream_sid=own'
+
+      at TestContext.<anonymous> (file:///home/tomaasz/agent-lb/test/systematic-relay.test.js:69:12)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'agentlb_session=eyJ1IjoidG9tYWFzeiIsImV4cCI6MTc5NTI5MDk1MTE0NX0.tN7l_KCq6tdeXRjS3NubH5f5wjeGKMsxVJY-f_IEct8; upstream_sid=own',
+    expected: 'upstream_sid=own',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

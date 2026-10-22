@@ -5418,6 +5418,7 @@ export function createProxyServer(
     relayUpgrade(req, socket, head, upstream, sx, {
       client: auth.client,
       clientUsage,
+      proxyConfig: config.proxy,
     });
   });
 
@@ -6007,7 +6008,7 @@ export function createProxyRequestListener({
       // paired identity, so fetching them with a rotated token 403s and Claude
       // Code silently drops the image from the message.
       if (CLIENT_CREDENTIAL_PATHS.some((p) => (req.url || "").startsWith(p))) {
-        await relayStream(req, res, upstream, sx);
+        await relayStream(req, res, upstream, sx, config.proxy);
         return;
       }
 
@@ -6870,7 +6871,24 @@ function sxAgent(sx, targetHost) {
  * buffering, no timeout, no reconstruction — just pipe bytes both ways as they
  * arrive, exactly like a transparent proxy would.
  */
-function relayStream(req, res, upstream, sx) {
+// Account-bound relays retain the client's upstream identity, but proxy
+// credentials and the dashboard session belong only to this hop.
+function relayHeaderValue(key, value, proxyConfig) {
+  if (key === "cookie") {
+    const cookies = String(value).split(";")
+      .map(part => part.trim())
+      .filter(part => part && part.split("=", 1)[0].trim() !== "agentlb_session");
+    return cookies.length ? cookies.join("; ") : undefined;
+  }
+  if (key === "authorization" && typeof value === "string") {
+    const bearer = /^Bearer\s+(\S+)$/i.exec(value)?.[1];
+    if (bearer && (safeKeyEqual(bearer, proxyConfig?.apiKey) ||
+      proxyConfig?.clientKeys?.some(entry => safeKeyEqual(bearer, entry.key)))) return undefined;
+  }
+  return value;
+}
+
+function relayStream(req, res, upstream, sx, proxyConfig) {
   const target = new URL(`${upstream}${req.url}`);
   const headers = {};
   for (const [key, value] of Object.entries(req.headers)) {
@@ -6881,11 +6899,10 @@ function relayStream(req, res, upstream, sx) {
       lk === "accept-encoding"
     )
       continue;
-    // The client's identity on this path is its bearer; x-api-key is how it
-    // authenticated to THIS proxy, so relaying it would hand the operator's
-    // proxy key to upstream.
+    // Proxy-only headers never belong to the upstream identity.
     if (lk === "x-api-key" || lk === "proxy-authorization") continue;
-    headers[key] = value;
+    const forwarded = relayHeaderValue(lk, value, proxyConfig);
+    if (forwarded !== undefined) headers[key] = forwarded;
   }
 
   const useProxy = !!(sx?.useByDefault() && sx.isProvisioned());
@@ -7048,7 +7065,7 @@ export function relayUpgrade(
   head,
   upstream,
   sx,
-  { client = null, clientUsage = null, log = console.log } = {},
+  { client = null, clientUsage = null, log = console.log, proxyConfig = null } = {},
 ) {
   const target = new URL(`${upstream}${req.url}`);
   // The channel's log lines, prefixed `[name]` like a request line when a
@@ -7061,9 +7078,8 @@ export function relayUpgrade(
   for (const [key, value] of Object.entries(req.headers)) {
     const lk = key.toLowerCase();
     // Unlike relayStream, do NOT strip 'upgrade'/'connection' here — they ARE
-    // the handshake. Only 'host' (the client transport reconstructs it from
-    // `target`), h2 pseudo-headers and the proxy's own x-api-key (the client's
-    // credential to us, not to upstream) are dropped.
+    // the handshake. Drop 'host' (reconstructed from `target`), h2 pseudo-headers
+    // and proxy-only headers; filter proxy sessions/bearers separately below.
     if (
       lk.startsWith(":") ||
       lk === "host" ||
@@ -7071,7 +7087,8 @@ export function relayUpgrade(
       lk === "proxy-authorization"
     )
       continue;
-    headers[key] = value;
+    const forwarded = relayHeaderValue(lk, value, proxyConfig);
+    if (forwarded !== undefined) headers[key] = forwarded;
   }
 
   const useProxy = !!(sx?.useByDefault() && sx.isProvisioned());
@@ -9415,7 +9432,10 @@ export async function forwardRequest(
         const l = getLog();
         const transform = createOpenAIToAnthropicTransformStream(ctx.model);
         await pipeline(
-          Readable.from(idleBody(upstreamRes.body)),
+          Readable.from(usageTrackedBody(
+            upstreamRes.body, account.index, accountManager, ctx.onUsage,
+            ctx.sessionId, ctx.model, ctx.usageDetails,
+          )),
           transform,
           res,
         );
@@ -9464,7 +9484,10 @@ export async function forwardRequest(
         const l = getLog();
         const transform = createAnthropicToOpenAITransformStream(ctx.model);
         await pipeline(
-          Readable.from(idleBody(upstreamRes.body)),
+          Readable.from(usageTrackedBody(
+            upstreamRes.body, account.index, accountManager, ctx.onUsage,
+            ctx.sessionId, ctx.model, ctx.usageDetails,
+          )),
           transform,
           res,
         );
@@ -9737,6 +9760,29 @@ export async function forwardRequest(
   }
 }
 
+// Meter the upstream wire format before translation. Translated frames can
+// omit or estimate usage, so they cannot enforce the client's token limits.
+async function* usageTrackedBody(body, accountIndex, accountManager, onUsage, sessionId, model, details) {
+  const decoder = new TextDecoder();
+  const merged = {};
+  let buffer = "";
+  try {
+    for await (const chunk of idleBody(body)) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const events = buffer.split(/\r?\n\r?\n/);
+      buffer = events.pop();
+      for (const event of events) parseSSEUsage(event, accountIndex, accountManager, onUsage, merged);
+      yield chunk;
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) parseSSEUsage(buffer, accountIndex, accountManager, onUsage, merged);
+  } finally {
+    if (Object.keys(merged).length) {
+      accountManager.recordTokenUsage(accountIndex, sessionId, model, merged, details);
+    }
+  }
+}
+
 /**
  * Stream an SSE response to the client, parsing usage data along the way.
  */
@@ -9927,12 +9973,10 @@ function extractUsageFromBody(
   try {
     const json = JSON.parse(buffer.toString());
     if (json.usage) {
-      accountManager.updateUsage(
-        accountIndex,
-        json.usage.input_tokens,
-        json.usage.output_tokens,
-      );
-      onUsage?.(json.usage.input_tokens || 0, json.usage.output_tokens || 0);
+      const inputTokens = json.usage.input_tokens ?? json.usage.prompt_tokens ?? 0;
+      const outputTokens = json.usage.output_tokens ?? json.usage.completion_tokens ?? 0;
+      accountManager.updateUsage(accountIndex, inputTokens, outputTokens);
+      onUsage?.(inputTokens, outputTokens);
       accountManager.recordTokenUsage(
         accountIndex,
         sessionId,

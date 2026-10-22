@@ -1,0 +1,9 @@
+rules:
+  - id: setup-network-check-no-shell
+    languages: [javascript]
+    severity: ERROR
+    message: Connection checks must pass credentials as execFileSync arguments, never through a shell.
+    patterns:
+      - pattern-inside: |
+          async function checkConnection(...) { ... }
+      - pattern: execSync(...)

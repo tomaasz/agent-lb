@@ -1,0 +1,25 @@
+✔ curl fallback passes hostile-looking credentials as literal arguments (27.701028ms)
+✔ native HTTP 401 is rejected without fallback (14.697572ms)
+✔ native HTTP 403 is rejected without fallback (23.935733ms)
+✔ curl non-success response rejects configuration (17.785308ms)
+✔ claw-setup.sh node: config and auth files are private, including existing files (207.260981ms)
+✔ claw-setup.sh node: key remains literal when serialized (153.797063ms)
+✔ claw-setup.sh node: malformed config is preserved and reported (97.385119ms)
+✔ claw-setup.sh python3: config and auth files are private, including existing files (139.411104ms)
+✔ claw-setup.sh python3: key remains literal when serialized (85.893777ms)
+✔ claw-setup.sh python3: malformed config is preserved and reported (119.359985ms)
+✔ opencode-setup.sh node: config and auth files are private, including existing files (345.11131ms)
+✔ opencode-setup.sh node: key remains literal when serialized (205.854017ms)
+✔ opencode-setup.sh node: malformed config is preserved and reported (121.170211ms)
+✔ opencode-setup.sh python3: config and auth files are private, including existing files (178.723553ms)
+✔ opencode-setup.sh python3: key remains literal when serialized (94.860857ms)
+✔ opencode-setup.sh python3: malformed config is preserved and reported (110.358015ms)
+✔ Codex shell environment quotes key, URL and sourced path literally (9.292484ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2636.705282

@@ -1,0 +1,94 @@
+✔ curl fallback passes hostile-looking credentials as literal arguments (5.997433ms)
+✔ native HTTP 401 is rejected without fallback (1.865616ms)
+✔ native HTTP 403 is rejected without fallback (1.371691ms)
+✔ curl non-success response rejects configuration (1.642394ms)
+✔ claw-setup.sh node: config and auth files are private, including existing files (100.405399ms)
+✔ claw-setup.sh node: key remains literal when serialized (69.113708ms)
+✔ claw-setup.sh node: malformed config is preserved and reported (59.234523ms)
+✔ claw-setup.sh python3: config and auth files are private, including existing files (61.613604ms)
+✔ claw-setup.sh python3: key remains literal when serialized (30.871327ms)
+✔ claw-setup.sh python3: malformed config is preserved and reported (48.888893ms)
+✔ opencode-setup.sh node: config and auth files are private, including existing files (187.379933ms)
+✔ opencode-setup.sh node: key remains literal when serialized (126.044421ms)
+✖ opencode-setup.sh node: invalid auth stops before either file is written (72.139515ms)
+✔ opencode-setup.sh node: malformed config is preserved and reported (58.218454ms)
+✔ opencode-setup.sh python3: config and auth files are private, including existing files (75.285842ms)
+✔ opencode-setup.sh python3: key remains literal when serialized (68.663115ms)
+✖ opencode-setup.sh python3: invalid auth stops before either file is written (52.062601ms)
+✔ opencode-setup.sh python3: malformed config is preserved and reported (55.553841ms)
+✔ Codex shell environment quotes key, URL and sourced path literally (7.865808ms)
+✖ Codex existing environment file is restricted before writing credentials (3.383258ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 17
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1273.949874
+
+✖ failing tests:
+
+test at test/systematic-setup.test.js:105:41
+✖ opencode-setup.sh node: invalid auth stops before either file is written (72.139515ms)
+  AssertionError [ERR_ASSERTION]: invalid auth {"broken": must stop setup
+      at TestContext.<anonymous> (file:///home/tomaasz/agent-lb/test/systematic-setup.test.js:115:18)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/systematic-setup.test.js:105:41
+✖ opencode-setup.sh python3: invalid auth stops before either file is written (52.062601ms)
+  AssertionError [ERR_ASSERTION]: invalid auth {"broken": must stop setup
+      at TestContext.<anonymous> (file:///home/tomaasz/agent-lb/test/systematic-setup.test.js:115:18)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/systematic-setup.test.js:151:1
+✖ Codex existing environment file is restricted before writing credentials (3.383258ms)
+  node:assert:152
+    throw new AssertionError(obj);
+    ^
+
+  AssertionError [ERR_ASSERTION]: permissions must be private before the new key is written
+
+  420 !== 384
+
+      at Object.writeFileSync (file:///home/tomaasz/agent-lb/test/systematic-setup.test.js:161:14)
+      at evalmachine.<anonymous>:10:10
+      at Script.runInContext (node:vm:149:12)
+      at Object.runInContext (node:vm:301:6)
+      at TestContext.<anonymous> (file:///home/tomaasz/agent-lb/test/systematic-setup.test.js:166:8)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 420,
+    expected: 384,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,742 @@
+
+> agent-lb@2.1.0 test
+> node --import ./test/support/isolate-config.js --test --test-timeout=120000
+
+▶ Account Limit Usage Attribution & Inspector
+  ✔ records token usage broken down by client, model, and session (32.278136ms)
+  ✔ enforces maximum boundary limits on sessions and recent items (82.610078ms)
+  ✔ exports and restores usage attribution in quota state (8.17098ms)
+  ✔ returns breakdown and supports resetting usage via AccountManager methods (11.655655ms)
+  ✔ isolates internal usage object when retrieved via getStatus() (4.05344ms)
+  ✔ serves /api/accounts/usage and /api/accounts/usage/reset via proxy server (432.369196ms)
+  ✔ renders modal elements and usage action buttons in dashboard HTML (20.775193ms)
+✔ Account Limit Usage Attribution & Inspector (596.272549ms)
+▶ OpenAI/Codex cached input tokens
+  ✔ reads cached_tokens from Responses usage as cache and keeps the total (0.97585ms)
+  ✔ reads cached_tokens from Chat usage (prompt_tokens_details) (14.606783ms)
+  ✔ leaves Anthropic usage untouched (0.809808ms)
+  ✔ does not report negative input when cached exceeds input (0.428574ms)
+✔ OpenAI/Codex cached input tokens (17.487861ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+[Agent-LB] Fleet routing policy updated: distributeSessions=even, expiryRouting=false, fallback=true
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+[Agent-LB] Fleet routing policy updated: distributeSessions=adaptive, expiryRouting=true, fallback=true
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+✔ Faza 1: Session Affinity and Routing Policy Endpoint (507.796325ms)
+✔ Faza 2: Client Usage Tracker Granular Quotas & Model Permissions (155.882123ms)
+[Agent-LB] Drain initiated (web control). Active requests: 0
+[Agent-LB] Drain cancelled (web control). Active requests: 0
+✔ Faza 3: Circuit Breaker & Graceful Drain Operations (268.527694ms)
+✔ Faza 4: Cross-Provider Fallback & Protocol Translator (39.85545ms)
+✔ OpenAI -> Anthropic request translation with tool_calls, results and coalescence (10.22816ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+▶ agent prompt + jcode setup
+  ✔ serves jcode-setup.sh as a shell script with the request origin baked in (352.941838ms)
+  ✔ serves agent-prompt.md as markdown (also via /agentlb prefix and without extension) (134.829577ms)
+  ✔ has no Windows variant of jcode-setup and does not fall back to setup.sh (58.913765ms)
+  ✔ jcode-setup.sh parses and contains no secrets or personal paths (181.930317ms)
+  ✔ dashboard setup modal offers the agent prompt and jcode command (15.3063ms)
+✔ agent prompt + jcode setup (910.459684ms)
+▶ AGY account store
+  ✔ stores accounts privately and never lists their tokens (48.842518ms)
+  ✔ stores per-model usage reported by a station, keeping the most spent duplicate (8.842827ms)
+  ✔ renames profiles without changing identity, routing or credentials (12.37193ms)
+  ✔ rotates to the next free account when a quota is spent (9.08997ms)
+  ✔ honours pin, enable and order (7.242931ms)
+  ✔ a failing deferred stats save is logged briefly and never thrown into the process (18.044946ms)
+  ✔ asks Google for the account chooser (5.159591ms)
+✔ AGY account store (117.930482ms)
+▶ AGY login through AGY itself
+  ✔ adds an account from the authorization code (pty via script) (491.963395ms)
+  ✔ adds an account from the authorization code (pipes) (368.495389ms)
+[AgentLB] AGY login failed: authentication failed: token exchange failed: oauth2: "invalid_grant" "Malformed auth code." — Error: authentication failed: token exchange failed: oauth2: "invalid_grant" "Malformed auth code."
+  ✔ reports a wrong code and refuses junk before it reaches AGY (517.12998ms)
+  ✔ leaves no AGY process behind when a login is cancelled (pty) (963.389174ms)
+  ✔ checks one code per login at a time (324.343556ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ removes the throwaway HOME after the login (279.563728ms)
+✔ AGY login through AGY itself (2946.179546ms)
+▶ AGY routes on the proxy
+  ✔ keeps account management for the administrator (205.795777ms)
+[AgentLB] AGY account route@example.com logged in (web control)
+  ✔ logs an account in from the dashboard and hands it to a station (497.675105ms)
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agy/credential',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agy/credential',
+  hasHeader: true,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+  ✔ refuses credentials to restricted or missing keys (72.973983ms)
+  ✔ accepts station subscription reports but restricts refresh to administrators (96.997516ms)
+  ✔ allows only administrators to edit a Google profile name (64.858623ms)
+[AgentLB] AGY quota spent on agy-ef4e4a3ee617 (reported by 1dtl1); next: none
+  ✔ rotates when a station reports a spent quota (60.337659ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+✔ AGY routes on the proxy (1106.978839ms)
+▶ AGY accounts in the dashboard
+  ✔ has the AGY section and the login dialog (6.604544ms)
+✔ AGY accounts in the dashboard (6.769916ms)
+▶ AGY account cards: stats, busy and the Test button
+  ✔ lists stats, busy and the model ids without any token or seededAt (43.228701ms)
+  ✔ keeps the list working when the model catalog fails (40.701277ms)
+  ✔ tests only the chosen account on the first -low model and never leaks the worker token (119.860169ms)
+  ✔ reports an in-band SSE error event as a failure and still releases once (24.014294ms)
+  ✔ reports a dead worker as an error, releases once, and does not leak the token (40.802478ms)
+  ✔ refuses a disabled or quota-spent account without touching any worker (41.766917ms)
+  ✔ reports a catalog failure as a test error only (23.892753ms)
+  ✔ rejects unknown ids and non-administrators (49.867866ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+✔ AGY account cards: stats, busy and the Test button (426.943624ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+▶ AGY test isolation: no default config, accounts or homes are touched
+  ✔ keeps homes next to the configured accounts file and never under the real HOME (406.737396ms)
+  ✔ spawns nothing and seeds nothing while the store has no account (77.666187ms)
+  ✔ honors an explicit config.agy.homesDir (0.996641ms)
+✔ AGY test isolation: no default config, accounts or homes are touched (485.812459ms)
+▶ testAgyAccount acquire timeout
+  ✔ gives up on a hanging acquire after the timeout and returns an error (67.905262ms)
+  ✔ releases a lease that arrives after the timeout (241.701306ms)
+✔ testAgyAccount acquire timeout (314.316335ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+✔ drain during partial upload refuses dispatch after the body completes (211.672325ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+✔ AGY completion closes activity once and participates in drain tracking on success (270.41628ms)
+✔ AGY completion closes activity once with failure status (139.883606ms)
+✔ streams completion unchanged, rewrites alias, records final usage, and hides worker token (203.544054ms)
+✔ HTTP 429 marks quota and retries next account (90.718765ms)
+✔ in-band quota after keep-alive retries and forwards keep-alives (56.3795ms)
+✔ all spent returns 429 without looping (44.872067ms)
+✔ all accounts exhausted after keep-alives returns an SSE error and DONE (86.421744ms)
+✔ real HTTP client promptly receives a path-free 502 when acquire rejects (146.490788ms)
+✔ client leaving while queued releases the late lease without calling worker (12.472242ms)
+✔ truncated HTTP 429 answers the real client and releases the slot once (62.357408ms)
+✔ truncated JSON answers the real client and releases the slot once (23.425188ms)
+✔ truncated SSE after keep-alive answers the real client and releases the slot once (25.944263ms)
+✔ stalled HTTP 429 answers the real client and releases the slot once (128.040139ms)
+✔ hung worker is aborted at injected timeout, reports 504, and releases slot (27.893602ms)
+✔ error after real content is passed through without retry (23.938984ms)
+✔ unknown model returns model_not_found (7.643425ms)
+✔ local overload rotates without recording Google quota and local auth never rotates (52.817395ms)
+✔ full queue returns retry-after without penalizing the Google account (2.216532ms)
+✔ response close aborts upstream and releases account slot exactly once (26.397458ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+✔ stream preserves a UTF-8 code point split across TCP chunks (19.375898ms)
+✔ configured AGY accountsPath is used when model listing initializes AGY first (289.319191ms)
+✔ parseQuotaResetSeconds uses duration then Retry-After then one hour (12.25137ms)
+✔ gemini models are never silently substituted to Claude or GPT (2.308311ms)
+✔ store pick honors available pinned then earliest reset and recordRequest throttles disk writes (47.683746ms)
+✔ encrypted account migration, randomized writes and restart preserve accounts (75.378125ms)
+✔ corruption, null, missing/wrong keys fail closed without overwriting accounts (28.880871ms)
+✔ encryption refuses nested and symlinked key placement in account directory (19.45244ms)
+✔ exact model cooldown and explicit quota groups filter pinned accounts independently (41.050849ms)
+✔ failure classification separates local status from explicit upstream quota and auth (1.464415ms)
+✔ diagnostic ring persists only bounded allowlisted fields (186.373416ms)
+✔ credential relay requires a real explicit boolean and remains restricted by policies (1.334553ms)
+✔ queue is bounded, round-robin across three clients, cancellable and leak free (75.267044ms)
+✔ shutdown between admission and startup never issues a late lease (6.211591ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+▶ agy models
+  ✔ parseAgyModels keeps only gemini rows in agy order (5.958209ms)
+  ✔ parseAgyModels ignores the banner (2.690896ms)
+  ✔ aliases resolve to high and low variants (5.13166ms)
+  ✔ isAgyModelName (0.513155ms)
+  ✔ list() is cached for ttlMs and refreshed after (5.983209ms)
+  ✔ listing failure keeps last known models (0.978949ms)
+  ✔ first failure does not cache an empty list for the full TTL (6.23307ms)
+  ✔ failure backoff doubles from its base to 15 minutes and resets after success (3.533444ms)
+  ✔ failure backoff is capped at 15 minutes (7.12874ms)
+  ✔ empty or banner-only result keeps last known models and retries after backoff (2.102711ms)
+  ✔ no account home gives empty list and run is not called (2.080369ms)
+✔ agy models (48.766075ms)
+▶ GET /v1/models with agy catalog
+  ✔ GET /v1/models answers within 2.5 seconds when a cold AGY catalog never resolves (2469.812718ms)
+  ✔ GET /v1/models lists gemini ids and hides agy aliases (143.075393ms)
+✔ GET /v1/models with agy catalog (2682.838233ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+▶ agybridge setup (real AGY runs locally, not through the proxy)
+  ✔ serves agy-setup.sh without auth and never falls back to the generic installer (238.982149ms)
+  ✔ advertises live Gemini models but keeps legacy aliases hidden (143.919982ms)
+  ✔ keeps AGY out of the agentlb provider in client installers (1.408574ms)
+  ✔ agy-setup.sh is valid bash and keeps the token out of argv and output (56.383889ms)
+  ✔ quota reporter sends only the actual Google subscription, preferring paid over current (350.891588ms)
+  ✔ main installers accept --with-agy and delegate to agy-setup.sh (4.429644ms)
+  ✔ dashboard offers an AGY quick-install button (7.559454ms)
+✔ agybridge setup (real AGY runs locally, not through the proxy) (807.090362ms)
+✔ Google paid tier takes precedence; unknown plans are preserved without guessing (17.377919ms)
+✔ refresh reads the refreshed worker token, deduplicates requests and keeps old metadata on failures (199.314441ms)
+✔ a synchronous worker error does not leave refresh stuck in flight (7.712176ms)
+✔ account cards render Google plan names as text and expose refresh in both languages (41.936558ms)
+▶ AgyWorkerPool
+  ✔ ensureHome seeds the account without starting a worker (67.280373ms)
+  ✔ first acquire seeds the token file 0600 and starts one worker (256.246943ms)
+  ✔ worker env has no AGENT_LB_URL or AGENT_LB_API_KEY (80.401093ms)
+  ✔ worker runs inside the account home, never in the proxy working directory (65.344336ms)
+  ✔ does not overwrite a token file refreshed by agy (139.7682ms)
+  ✔ re-login (updatedAt > seededAt) reseeds the token (177.764171ms)
+  ✔ seededAt is persisted but never listed, and tokens never appear in list() (60.165325ms)
+  ✔ concurrent first requests share one worker (71.864ms)
+  ✔ restarts a worker that exited (133.451148ms)
+  ✔ more than maxPerAccount waits until release (104.396135ms)
+  ✔ release is idempotent (84.248799ms)
+  ✔ idle worker is stopped after idleMs (100.847081ms)
+  ✔ a new acquire cancels the pending idle stop (39.569614ms)
+  ✔ two accounts get distinct ports (68.709268ms)
+  ✔ skips a port that is already taken (75.559316ms)
+  ✔ rejects for an unknown account (20.311548ms)
+  ✔ rejects all waiters when the worker never becomes ready, and recovers afterwards (217.312075ms)
+  ✔ rejects when the worker exits before it is ready (104.207184ms)
+✔ AgyWorkerPool (1904.650572ms)
+✔ all management aliases refuse client keys before handlers, master lists only masked keys (1025.097434ms)
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/keys',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/keys',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/keys',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/keys',
+  hasHeader: true,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+✔ forwarded spoofing and invalid credentials never gain local trust (78.350572ms)
+✔ MITM listener revalidates credential, expiry, quotas and models on every request (196.551212ms)
+✔ selected provider authorization prevents cross-provider spending (210.548088ms)
+✔ restricted keys cannot bypass metering using opaque relays (12.30578ms)
+✔ request budgets share capacity, bound memory, and release exactly once (1.353683ms)
+✔ health check rejects SSE failure and missing terminal success (14.739623ms)
+✔ health probe aborts stalled transport within its deadline (33.638398ms)
+[AgentLB] Account "a" rate limit expired, marking active
+✔ translated pipeline aborts idle body and cancels upstream (35.676857ms)
+✔ active count excludes breaker and recognizes expired rate-limit holds (14.874415ms)
+[HealthCheck] Cycle complete: 0 ok, 1 err, 0 skipped (0-token pass), 0 tokens used
+✔ contended config lock times out without deleting live owner lock (195.772993ms)
+✔ health stop cancels the cycle without probing subsequent accounts (1.92092ms)
+✔ OAuth token relay is covered by the shared request admission budget (80.107109ms)
+✔ real CONNECT TLS tunnel revalidates a rotated credential on its next request (1586.521784ms)
+✔ trusted origin: a foreign Bearer (the client's own login) is not a wrong proxy key (775.330196ms)
+[AgentLB Auth Rejection] {
+  method: 'POST',
+  path: '/v1/messages',
+  hasHeader: true,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+✔ trusted origin: a wrong explicit x-api-key still fails loudly (122.017035ms)
+✔ trusted origin: a Bearer that is a client key is still honoured (201.381897ms)
+[AgentLB Auth Rejection] {
+  method: 'POST',
+  path: '/v1/messages',
+  hasHeader: false,
+  hasBearer: true,
+  remote: '127.0.0.1'
+}
+✔ untrusted origin: a foreign Bearer is refused (174.038401ms)
+✔ trusted origin: a foreign Bearer cannot reach management endpoints (85.543011ms)
+[AgentLB] Codex WebSocket /backend-api/codex/responses refused (426) — Codex is served over HTTP; set supports_websockets = false
+[AgentLB] Codex WebSocket /v1/responses refused (426) — Codex is served over HTTP; set supports_websockets = false
+[AgentLB] Codex WebSocket /backend-api/codex/responses refused (426) — Codex is served over HTTP; set supports_websockets = false
+✔ codex WebSocket handshakes are refused with 426 before the key gate and never relayed (115.057697ms)
+[AgentLB] WebSocket upgrade refused (no proxy key) from 127.0.0.1 for /v1/session_ingress/ws/abc
+✔ non-codex WebSocket handshakes still go through the key gate (35.325852ms)
+✔ tailnetDomains: only direct peers addressing this tailnet are exempt (34.432194ms)
+✔ tailnetDomains: the Host check refuses other tailnets' MagicDNS names (20.156186ms)
+[AgentLB] Switched to account "two"
+[AgentLB] Switched to account "two"
+[AgentLB] Switched to account "one"
+[AgentLB] Switched to account "two"
+[AgentLB] Switched to account "two"
+▶ burn routing through AccountManager
+  ✔ sends a new session to the account whose week is expiring, not the session-burn one (107.220152ms)
+  ✔ moves a session pinned to the other account (weekly burn preempts the pin) (34.351083ms)
+  ✔ keeps the pin when preemptPinned is off (1.00999ms)
+  ✔ session burn still applies when no week is expiring (26.339165ms)
+✔ burn routing through AccountManager (171.337224ms)
+▶ weekly burn across priority tiers
+  ✔ spends a fallback account whose week is expiring (13.215528ms)
+  ✔ keeps operator priority when crossPriority is off (0.719707ms)
+✔ weekly burn across priority tiers (14.30976ms)
+[AgentLB] Created/updated client access key (web control)
+[AgentLB] Created/updated client access key (web control)
+[AgentLB] Rotated client access key (web control)
+✔ admin creates one restricted key, rejects invalid policies, rotates and deletes without leaking (1791.392ms)
+[AgentLB] [AutoReset] Account "codex-throw" reached critical quota (5h utilization: 95%, headroom <10%, trigger: threshold_reached). Initiating automated Codex reset...
+[AgentLB] [AutoReset] Exception during reset for account "codex-throw": Network timeout. Cooldown active for 60s.
+[AgentLB] [AutoReset] Account "codex-fail" reached critical quota (5h utilization: 95%, headroom <10%, trigger: threshold_reached). Initiating automated Codex reset...
+[AgentLB] [AutoReset] Failed to consume reset credit for account "codex-fail": ChatGPT API 500. Cooldown active for 60s (failure count: 1).
+[AgentLB] [AutoReset] Account "codex-repeated-fail" reached critical quota (5h utilization: 95%, headroom <10%, trigger: threshold_reached). Initiating automated Codex reset...
+[AgentLB] [AutoReset] Account "codex-no-credits" reached critical quota (5h utilization: 95%, headroom <10%, trigger: threshold_reached). Initiating automated Codex reset...
+[AgentLB] [AutoReset] Failed to consume reset credit for account "codex-repeated-fail": Rate limit error. Cooldown active for 900s (failure count: 3).
+[AgentLB] [AutoReset] Failed to consume reset credit for account "codex-no-credits": Brak dostępnych kredytów resetu dla tego konta.. Cooldown active for 300s (failure count: 1).
+[AgentLB] [AutoReset] Account "codex-success" reached critical quota (5h utilization: 100%, headroom <10%, trigger: threshold_reached). Initiating automated Codex reset...
+[AgentLB] [AutoReset] Successfully consumed reset credit (credit-uuid-xyz) for account "codex-success". 5h utilization: 100% -> 0%. Credits remaining: 1.
+[AgentLB] [AutoReset] Account "codex-live" reached critical quota (5h utilization: 94%, headroom <10%, trigger: response_headers). Initiating automated Codex reset...
+[AgentLB] [AutoReset] Successfully consumed reset credit (auto-credit-1) for account "codex-live". 5h utilization: 94% -> 0%.
+▶ Codex Auto-Reset Mechanism (R205)
+  ▶ Threshold detection (<10% limit / >=90% utilization)
+    ✔ detects <10% remaining limit based on 5h utilization (31.469926ms)
+    ✔ detects exhausted account status as critical quota (0.726687ms)
+    ✔ detects weekly window critical quota (1.08527ms)
+    ✔ rejects non-Codex or non-OAuth accounts (0.922389ms)
+    ✔ evaluates eligibility via isCodexResetEligible (51.837053ms)
+  ✔ Threshold detection (<10% limit / >=90% utilization) (123.266177ms)
+  ▶ Feature flag and configuration
+    ✔ resolves feature flag status correctly (8.742374ms)
+    ✔ resolves threshold from options or environment (0.764947ms)
+    ✔ AccountManager respects autoResetCredits flag (41.400712ms)
+  ✔ Feature flag and configuration (78.190759ms)
+  ▶ Concurrency protection and mutex
+    ✔ skips auto-reset if another reset is already in progress (35.933439ms)
+    ✔ releases _resetInProgress lock even when consume throws (44.510552ms)
+  ✔ Concurrency protection and mutex (80.932385ms)
+  ▶ Loop prevention and error cooldown backoff
+    ✔ applies cooldown after failed reset attempt (34.173082ms)
+    ✔ escalates to extended cooldown after 3 consecutive failures (18.392269ms)
+    ✔ applies 5-minute cooldown when zero credits are available (0.96707ms)
+  ✔ Loop prevention and error cooldown backoff (68.98585ms)
+  ▶ Successful reset and status recovery
+    ✔ resets quota, clears exhausted status, and updates audit log (75.655684ms)
+  ✔ Successful reset and status recovery (75.928477ms)
+  ▶ End-to-end trigger integration
+    ✔ automatically triggers reset when response headers report >=90% utilization (167.732107ms)
+  ✔ End-to-end trigger integration (167.98169ms)
+✔ Codex Auto-Reset Mechanism (R205) (635.839802ms)
+▶ Codex Device Code Auth
+  ▶ requestDeviceCode
+    ✔ should parse a successful usercode response (707.448053ms)
+  ✔ requestDeviceCode (749.679893ms)
+  ▶ DEVICE_VERIFICATION_URL
+    ✔ should point to the OpenAI device code verification page (9.380082ms)
+  ✔ DEVICE_VERIFICATION_URL (9.682044ms)
+  ▶ credentialsFromTokenResponse
+    ✔ should extract account info from a token response with id_token (1.572676ms)
+  ✔ credentialsFromTokenResponse (1.96665ms)
+  ▶ pollDeviceAuthorization
+    ✔ should reject when signal is already aborted (50.271037ms)
+    ✔ should reject when deadline is in the past (4.770456ms)
+  ✔ pollDeviceAuthorization (55.956892ms)
+  ▶ buildCodexAuthUrl
+    ✔ should include the client id and PKCE parameters (4.086249ms)
+  ✔ buildCodexAuthUrl (5.030539ms)
+✔ Codex Device Code Auth (832.087311ms)
+▶ Codex Device Code protocol
+  ✔ sends client_id, treats 403 as pending, and exchanges with the server-issued verifier (874.332849ms)
+✔ Codex Device Code protocol (874.770003ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+▶ Codex Responses <-> OpenAI Chat Completions Translation
+  ✔ translates OpenAI Chat Completions body to Codex Responses input format (9.071388ms)
+  ✔ translates streaming Codex Responses SSE into OpenAI Chat Completion chunks (40.325611ms)
+  ✔ translates non-streaming Codex Responses SSE into OpenAI Chat Completion response (1.294453ms)
+  ✔ translates streaming function calls into OpenAI tool_calls chunks (11.190668ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ end-to-end: serves /v1/chat/completions by routing to Codex Responses API (both streaming & non-streaming) (1303.035502ms)
+  ✔ end-to-end: serves /v1/messages cross-provider to Codex OAuth Responses API (streaming & non-streaming) (319.525477ms)
+✔ Codex Responses <-> OpenAI Chat Completions Translation (1698.993028ms)
+▶ Codex translation and the AGY aliases
+  ✔ no longer maps agy / agy-fast onto GPT models (0.565945ms)
+✔ Codex translation and the AGY aliases (0.871118ms)
+▶ Codex Provider Support
+  ✔ correctly maps Codex and OpenAI paths to codex provider (17.57358ms)
+  ✔ maps provider hosts correctly (0.481645ms)
+  ✔ resolves correct upstream for Codex OAuth vs API key accounts (0.458594ms)
+  ✔ applies ChatGPT-Account-Id and Bearer header for Codex accounts (0.554885ms)
+  ✔ correctly parses Codex /backend-api/wham/usage responses (397.680574ms)
+  ✔ correctly parses Codex /backend-api/wham/rate-limit-reset-credits responses (7.20138ms)
+  ✔ honors burn-first routing policy in AccountManager candidate selection (217.929812ms)
+✔ Codex Provider Support (659.202977ms)
+▶ Context Drop Log Truncation and Synthesis
+  ✔ estimates token count using ~4 chars per token heuristic (24.87054ms)
+  ✔ detects likely raw command and error logs (2.634106ms)
+  ✔ leaves text under maxLogChars untouched (2.974489ms)
+  ✔ truncates heavy log dumps to head + banner with error signals + tail (189.716017ms)
+  ✔ bypasses JSON parse on short bodies returning exact Buffer reference (fast path) (1.211842ms)
+  ✔ truncates large tool_result blocks in Anthropic /v1/messages (23.093313ms)
+  ✔ truncates large function_call_output items in Codex Responses API (11.023066ms)
+  ✔ integrates seamlessly into rewriteRequestBody with account overrides (4.718156ms)
+  ✔ Spike verification: measures token and cost savings across 30 turns (13.926766ms)
+✔ Context Drop Log Truncation and Synthesis (286.365033ms)
+▶ Dashboard Authentication and Layout
+  ✔ renders modern login card and auth elements in dashboard HTML (5.345893ms)
+  ✔ removes duplicate probe button and updates accounts heading (1.231672ms)
+  ✔ embedded dashboard script has valid syntax and compiles cleanly (70.990387ms)
+  ✔ computes valid Content-Security-Policy with sha256 hash (20.460978ms)
+  ✔ safely verifies admin keys (1.224282ms)
+  ✔ renders both Claude and Codex setup commands and scripts in setup directory (10.859405ms)
+  ✔ validates host header correctly for agentlb.gotova.pl and custom domains (9.404501ms)
+  ✔ renders valid JavaScript without syntax errors in dashboard script (9.971946ms)
+  ✔ renders 2-column layout and drag-and-drop elements for Claude and Codex accounts (16.368418ms)
+  ✔ renders spacious policy panel with explanations, PL/EN dual-language support, and dark/light themes (15.113286ms)
+  ✔ renders redesigned workstations section with dedicated master banner and integrated cards (4.155161ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+[Agent-LB] Reordered 2 accounts (web control)
+[Agent-LB] Renamed account "konto-a" to "konto-glówne" (web control)
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/keys',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/keys',
+  hasHeader: true,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/auth/verify',
+  hasHeader: true,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ updates account priority and persists order on POST /api/accounts/reorder (1069.895906ms)
+[AgentLB Auth Rejection] {
+  method: 'POST',
+  path: '/api/system/reboot',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB] Server reboot requested by authorized client
+  ✔ renders Reboot button and handles POST /api/system/reboot (112.119845ms)
+✔ Dashboard Authentication and Layout (1356.288749ms)
+▶ Dashboard login error text
+  ✔ never renders an error object as "[object Object]" (12.935505ms)
+✔ Dashboard login error text (13.269538ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+[AgentLB] Removed account "duplicate-name" (web control)
+▶ Account deletion and re-login upsert targeting
+  ✔ removes specifically by id without deleting accounts with same name (277.366073ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+[AgentLB] Added/updated OAuth account "target-account" (web control)
+  ✔ re-login upsert replaces existing account by name even if accountUuid changes (644.706889ms)
+✔ Account deletion and re-login upsert targeting (922.629107ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+▶ dashboard views have their own addresses
+  ✔ serves the dashboard page for every view address (887.672359ms)
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/dashboard/a/b/c',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/dashboard/UPPER',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/dashboard/a..b',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/dashboard/x.js',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+  ✔ does not turn arbitrary paths into the page (79.389618ms)
+  ✔ knows every view in the page script (7.043959ms)
+✔ dashboard views have their own addresses (1052.634995ms)
+▶ dashboard AGY column (same card vocabulary as Claude and Codex)
+  ✔ puts AGY in the accounts grid next to Claude and Codex (5.506043ms)
+  ✔ has the card controls, the Test call and PL/EN strings (7.954037ms)
+  ✔ shows a Gemini row in the routing table from AGY data (1.788117ms)
+  ✔ saves a drag in the AGY list through the AGY reorder action (4.256822ms)
+✔ dashboard AGY column (same card vocabulary as Claude and Codex) (24.914481ms)
+▶ dashboard t() placeholder substitution
+  ✔ inserts parameters literally, even when they contain replacement patterns (1.453595ms)
+✔ dashboard t() placeholder substitution (1.809177ms)
+✔ integration: delegated and missing keys never mint administrator sessions (714.689708ms)
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/keys',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+✔ integration: master login, password change session revocation, logout cookie (159.445831ms)
+✔ integration: malformed auth input fails with 400, no side effects or cookies (352.933181ms)
+✔ integration: auth attempt limit covers aliases and ignores spoofed forwarding headers (131.905084ms)
+✔ auth limiter bounds peers, enforces global cap, recovers after expiry (232.447636ms)
+✔ known legacy default secret cannot forge a session without a configured secret (0.611106ms)
+✔ reset: trusted URL, configured recipient, delivery failure and single-use persistence (2998.489516ms)
+✔ usage restore preserves current counters, ignores stale periods and corrupt numbers (167.612449ms)
+✔ dashboard: polls coalesce, reveal no secrets, and stale response cannot reopen after logout (43.113937ms)
+✔ dashboard: failed status reports a visible fallback and permits the next poll (11.692852ms)
+✔ integration: malformed usage reset preserves counters; explicit empty object resets fleet (93.28385ms)
+[AgentLB] Unhandled error: Error: EISDIR: illegal operation on a directory, read
+    at async readFileHandle (node:internal/fs/promises:556:24)
+    at async loadConfig (file:///home/tomaasz/agent-lb/src/config.js:132:31)
+    at async run (file:///home/tomaasz/agent-lb/src/config.js:281:22) {
+  errno: -21,
+  code: 'EISDIR',
+  syscall: 'read'
+}
+✔ integration: health settings validate types and persistence failure leaves runtime unchanged (281.353645ms)
+✔ dashboard: session table bounds DOM rows, navigates pages, clamps after filtering (37.815086ms)
+✔ dashboard: an in-flight key reveal cannot restore credentials after logout (20.620109ms)
+▶ Fair Share Stream Admission
+  ✔ admits all requests when pool is uncongested (17.678202ms)
+  ✔ throttles a key that exceeds its fair share during congestion (3.707857ms)
+  ✔ guarantees min streams for interactive sessions even under heavy congestion (0.456124ms)
+  ✔ FairShareController correctly tracks and releases key streams (4.800466ms)
+✔ Fair Share Stream Admission (33.822147ms)
+✔ SessionTracker records and sums cumulative tokens per session across buckets (8.069578ms)
+✔ AccountManager queries and resets session tokens (10.156018ms)
+✔ Config helper functions resolve session token budget and status code (10.011777ms)
+✔ createProxyRequestListener blocks request with 429 when session exceeds 100k hard budget cap (249.040518ms)
+✔ createProxyRequestListener supports 402 Payment Required status code for hard budget cap (1.157391ms)
+✔ key-level maxSessionTokens overrides proxy config (15.48101ms)
+✔ end-to-end: live HTTP proxy blocks request when session reaches 100k cap without calling upstream (350.426378ms)
+✔ a non-streaming request outlives the stream time-to-first-byte guard (1711.093514ms)
+[AgentLB] Upstream error (account "A"): upstream response headers timed out after 300ms
+✔ a streaming request keeps the short headers guard (393.737621ms)
+▶ FleetHealthChecker Intelligent Auto Diagnostics
+  ✔ correctly evaluates skip rules to preserve tokens (11.543103ms)
+[HealthCheck] Cycle complete: 1 ok, 0 err, 0 skipped (0-token pass), 2 tokens used
+  ✔ runs micro-ping with max_tokens: 1 and updates account state (132.442467ms)
+[HealthCheck] Cycle complete: 1 ok, 0 err, 1 skipped (0-token pass), 2 tokens used
+[HealthCheck] Auto health-check active (every 600s, grace period 900s)
+  ✔ skips accounts with recent traffic and only checks idle accounts during cycle (66.3765ms)
+[HealthCheck] Cycle complete: 0 ok, 1 err, 0 skipped (0-token pass), 0 tokens used
+[HealthCheck] Auto health-check disabled
+  ✔ exposes /api/health-check/status, /run, and /config endpoints via proxy server (729.290426ms)
+[HealthCheck] Cycle complete: 1 ok, 0 err, 0 skipped (0-token pass), 2 tokens used
+  ✔ correctly executes health check for Codex OAuth accounts with store: false and stream: true (39.639732ms)
+✔ FleetHealthChecker Intelligent Auto Diagnostics (992.312411ms)
+▶ hermes-setup.sh
+  ✔ is valid bash (36.964797ms)
+  ﹣ merges idempotently, heals the legacy block, keeps the key out of config.yaml (0.344483ms) # no python with ruamel.yaml
+  ﹣ gemini models via /v1/models (0.210431ms) # no python with ruamel.yaml
+✔ hermes-setup.sh (41.081766ms)
+[AgentLB] Switched to account "healthy"
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+✔ Claude 5 family ids route to their dedicated quota semantics (7.399952ms)
+✔ proxy body cap is a byte safety limit, not a token or max_tokens limit (8.051728ms)
+✔ only the explicit Anthropic identity-verification 400 is account-scoped (1.151782ms)
+✔ identity verification cooldown removes only the affected account from rotation (12.345739ms)
+[AgentLB] 400 on "verify-me"; Anthropic requires identity verification — excluding account until 2026-10-22T20:24:15.570Z and retrying
+[AgentLB] Switched to account "healthy"
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+✔ proxy retries compaction on a healthy OAuth account after identity-verification 400 (450.967568ms)
+[AgentLB] 400 on "claude-a"; Anthropic requires identity verification — excluding account until 2026-10-22T20:24:15.803Z and retrying
+[AgentLB] Switched to account "claude-b"
+[AgentLB] 400 on "claude-b"; Anthropic requires identity verification — excluding account until 2026-10-22T20:24:15.858Z and retrying
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+✔ all-identity response ignores unrelated Codex accounts and reports a clear 502 (184.56383ms)
+[AgentLB] 400 on "claude-active"; Anthropic requires identity verification — excluding account until 2026-10-22T20:24:15.935Z and retrying
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+✔ all-identity response ignores disabled accounts and reports 502 (71.883354ms)
+[AgentLB] 400 on "claude-test"; Anthropic requires identity verification — excluding account until 2026-10-22T20:24:16.005Z and retrying
+[AgentLB] Account "claude-test" identity-verification cooldown cleared — back in rotation
+[AgentLB] Account "acct-1" identity-verification cooldown cleared — back in rotation
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+✔ successful response clears identityVerification cooldown (113.950199ms)
+✔ exhaustedMessage formats clear errors for disabled, partitioned and identity-blocked fleets (4.868697ms)
+✔ eligibility reports identity verification and entitlement cooldown reasons (12.225387ms)
+✔ prober clears identity verification cooldown upon successful probe (6.070448ms)
+✔ formatAccountStatus and UNAVAILABLE_TEXT clearly distinguish identity verification from active status (7.173209ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+✔ Claude models endpoint exposes accurate parameters matching documentation (94.088497ms)
+✔ normalizeAnthropicModelForOAuth normalizes modern aliases to canonical IDs (2.244322ms)
+✔ resolveTargetModel handles Fable, Mythos, and current Opus 5.5 fallbacks (0.604686ms)
+✔ OpenAI and Codex models endpoint exposes accurate parameters matching documentation (46.825741ms)
+✔ first-token detection ignores metadata, handles split frames and observes once (15.53412ms)
+✔ unbounded malformed SSE frame is discarded and parsing recovers (29.793817ms)
+✔ metrics distinguish first token from headers and evaluate operational alerts (8.684544ms)
+✔ explicit substitution is exact, rejects unknown/duplicate rules, and supports legacy migration (4.621135ms)
+✔ configured cross-provider model mapping controls real upstream delivery (461.56333ms)
+✔ concurrent large requests reject excess load and release shared budget (886.598255ms)
+✔ live SSE records first token only on content, not headers or metadata (195.476724ms)
+▶ extractPromptSummary
+  ✔ reads the last user message of a Chat/Anthropic body (13.186117ms)
+  ✔ reads the last user message of a Codex Responses body (input array) (0.748236ms)
+  ✔ skips tool output items after the prompt in a Responses tool loop (1.688157ms)
+  ✔ accepts a plain string input (0.425744ms)
+  ✔ truncates long Responses prompts to one short line (0.669586ms)
+  ✔ returns null when there is no user text (0.592575ms)
+✔ extractPromptSummary (27.375723ms)
+[AgentLB] Account "A" at ?% usage — will switch on next request
+[AgentLB] Quota rejection (429) on "A" — throttling 120s and switching account
+[AgentLB] Account "A" rate limited for 120s
+[AgentLB] Switched to account "B"
+✔ anthropic: quota-rejection 429 on the first account is absorbed by the second (482.856001ms)
+[AgentLB] 401 on "O" — token rejected; forcing refresh and retrying
+[AgentLB] Refreshing token for account "O"...
+[AgentLB] Token refreshed for account "O"
+✔ anthropic: OAuth 401 forces one refresh and the retry carries the new token (144.898836ms)
+[AgentLB] 401 on "dead"; upstream rejected the account credential — failing over
+[AgentLB] Switched to account "live"
+✔ anthropic: a credential upstream keeps rejecting (401) fails over instead of logging the client out (94.40966ms)
+✔ anthropic: tool_use streamed in 7-byte fragments reaches the client byte-for-byte with valid JSON (5428.523981ms)
+[AgentLB] "C1" near weekly quota
+[AgentLB] [AutoReset] Account "C1" reached critical quota (5h utilization: 100%, headroom <10%, trigger: response_headers). Initiating automated Codex reset...
+[AgentLB] Codex usage limit reached on "C1" — holding 3000s and switching account
+[AgentLB] Account "C1" rate limited for 3000s
+[AgentLB] Switched to account "C2"
+✔ codex: usage_limit_reached 429 rotates to the next account and takes the spent one out of rotation (140.696053ms)
+✔ codex: x-codex-* quota headers on live traffic update the account quota (35.580702ms)
+[AgentLB] [AutoReset] Failed to consume reset credit for account "C1": Brak dostępnych kredytów resetu dla tego konta.. Cooldown active for 300s (failure count: 1).
+✔ codex → chat completions: tool calls after a reasoning item get dense indexes and intact JSON (769.437207ms)
+✔ codex → chat completions: arguments sent only in output_item.done are not lost (30.20232ms)
+✔ codex → chat completions: response.failed surfaces as an error, not a silent empty answer (35.909196ms)
+✔ codex → anthropic chain: text + tool blocks get distinct indexes and one terminal stop_reason (16.985863ms)
+[AgentLB] 401 on "dead"; upstream rejected the account credential — failing over
+✔ anthropic: when every account is rejected with 401 the client gets a proxy error, not a 401 (38.229837ms)
+[AgentLB] Codex response failed on "C1" (context_length_exceeded): Your input exceeds the context window of this model.
+✔ codex non-stream: response.failed becomes an error status, not an empty 200 (33.669724ms)
+[AgentLB] Codex response failed on "C1" (server_error): An error occurred while processing your request.
+✔ codex non-stream: a server-side failure maps to 502 (38.052165ms)
+[AgentLB] Codex response failed on "C1" (stream_truncated): Upstream stream ended before the response completed
+✔ codex non-stream: a stream cut off before response.completed is an error (57.702695ms)
+✔ codex non-stream: a completed answer with a tool call is translated whole (45.480277ms)
+✔ codex non-stream: response.incomplete reports finish_reason length (44.069483ms)
+✔ codexResponseFailure classifies and ignores non-SSE bodies (0.96101ms)
+▶ credential redaction
+  ✔ masks client keys in status-shaped values (9.895514ms)
+  ✔ redacts credentials and cookies from request log headers (0.940879ms)
+  ✔ parses usage events with RFC-compliant CRLF delimiters (2.160901ms)
+✔ credential redaction (17.534039ms)
+▶ decideSessionBurn
+  ✔ picks an account whose session resets soon with quota left (10.869785ms)
+  ✔ ignores a session that resets later than the horizon (0.706507ms)
+  ✔ ignores a nearly spent session (0.400354ms)
+  ✔ does not burn an account whose week is nearly spent (0.337403ms)
+  ✔ ignores unknown readings and passed resets (5.490424ms)
+  ✔ prefers the highest unspent-per-second among qualifiers (0.442864ms)
+  ✔ is off when disabled (0.476414ms)
+  ✔ normalizes bad config to defaults (0.411704ms)
+✔ decideSessionBurn (21.549597ms)
+▶ decideWeeklyBurn
+  ✔ picks the account whose week expires soon with quota left (the 1.8d / 47% case) (0.96424ms)
+  ✔ ignores a week that resets beyond the horizon or is nearly spent (4.304302ms)
+  ✔ ignores unknown readings and passed resets (0.544635ms)
+  ✔ prefers the larger unspent-per-second among qualifiers (0.713307ms)
+  ✔ is off when disabled and normalizes bad config (0.368644ms)
+✔ decideWeeklyBurn (7.544243ms)
+▶ setup hardening
+  ✔ setup.js: no global OPENAI_*, codex-lb default provider, one backup per file (21541.832638ms)
+  ✔ setup.js: user's own default Codex profile is left alone (7765.223915ms)
+  ✔ setup.js: uninstall cleans VS Code Server settings and reports legacy backups (7493.844074ms)
+  ✔ setup.sh (bash fallback): no global OPENAI_*, codex-lb default provider, one backup per file (8293.250746ms)
+  ✔ setup.sh (bash fallback): user's own default Codex profile is left alone (2681.633237ms)
+  ✔ setup.sh (bash fallback): uninstall cleans VS Code Server settings and reports legacy backups (3714.150603ms)
+  ✔ setup.sh does not mass-kill codex or install system packages silently (13.620679ms)
+✔ setup hardening (51577.132819ms)
+✔ dashboard install commands pass the station key via environment, not argv (27.224347ms)
+✔ jcode sandbox hides .env files but keeps templates visible (717.44896ms)
+▶ installers preserve Claude OAuth and authenticate to the proxy with a custom header
+  ✔ setup/setup.js (14374.6055ms)
+✔ installers preserve Claude OAuth and authenticate to the proxy with a custom header (14491.607873ms)
+▶ installers preserve existing non-proxy custom headers on install and uninstall
+  ✔ setup/setup.js (7739.070074ms)
+✔ installers preserve existing non-proxy custom headers on install and uninstall (7775.24948ms)
+✔ all setup bash scripts pass syntax validation (696.015596ms)
+✔ test/support/config-guard.js (527.886393ms)
+✔ test/support/isolate-config.js (527.438676ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+▶ Test Chat & Playground Support
+  ✔ renders test chat button and modal in dashboard HTML (23.209011ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ handles POST /api/test/chat for Anthropic and Codex accounts (895.687309ms)
+[AgentLB] Test chat failed on "acc-broken" (403): Odmowa dostępu OAuth (403 Organization Block). Anthropic zablokował użycie tokenów OAuth dla organizacji konta "acc-broken".. Sprawdzanie kolejnego konta...
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ automatically falls over to healthy account when first candidate fails (169.316402ms)
+[AgentLB] Account "acc-sms" identity-verification cooldown cleared — back in rotation
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ maintains identity-verification error state without prober clearing it (108.606333ms)
+[AgentLB] Account "nathan-petit" rate limited for 45s
+[AgentLB] Account "nathan-petit" revalidated — rate limit no longer applies, back in rotation
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ marks account throttled and records lastError when upstream returns 429 Rate Limit (132.659203ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ correctly parses Codex SSE responses even when Content-Type is text/plain or not event-stream (84.638676ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ correctly parses Codex response.output_text.delta streaming events (39.313184ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ sends Claude Code billing header, modern headers, and filters thinking blocks in Anthropic test chat (43.391603ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ does not mark account throttled when receiving a request-scoped 429 without rate limit headers (40.510315ms)
+  ✔ normalizes gpt-5.6 and gpt-5 model aliases to gpt-5.6-sol for Codex OAuth accounts (1.440284ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ maps gpt-5.6 to gpt-5.6-sol in test-chat for Codex OAuth accounts (290.079663ms)
+[AgentLB] Account "codex-exhaust-test" revalidated — rate limit no longer applies, back in rotation
+[AgentLB] Account "codex-exhaust-test" recovered from exhausted state (utilization: 0%)
+[AgentLB] Account "codex-exhaust-test" exhausted hold expired, marking active
+  ✔ correctly handles Codex 429 quota exhaustion and recovers on subsequent success, probe headroom, and hold expiry (165.417694ms)
+✔ Test Chat & Playground Support (2006.305814ms)
+✔ the default AGY accounts path of a test process stays outside the real config dir (6.170399ms)
+✔ guard rejects the real-home accounts file and homes dir (5.245919ms)
+✔ guard accepts a temp config dir (0.715657ms)
+▶ Tool Call Deduplication & Replay Safety
+  ✔ correctly classifies side-effect vs idempotent tools (2.222111ms)
+  ✔ records and detects duplicate side-effect calls within TTL (14.656539ms)
+  ✔ inspects Anthropic request bodies for replayed tool_use (1.540805ms)
+✔ Tool Call Deduplication & Replay Safety (43.942858ms)
+▶ Tool Call Deduplication across conversation turns
+  ✔ does not flag the history every following turn re-sends (1.181002ms)
+  ✔ flags a replay of the same turn (14.606718ms)
+  ✔ records only the latest assistant turn, not the whole history (0.712097ms)
+  ✔ handles OpenAI tool_calls the same way (37.256065ms)
+✔ Tool Call Deduplication across conversation turns (54.714181ms)
+▶ ttok log trimming & token counting (ttok 1.0)
+  ﹣ verifies ttok binary availability and version if present (6.148909ms) # ttok not installed
+  ﹣ counts tokens on input file and returns exit code 0 (0.298963ms) # ttok not installed
+  ﹣ counts tokens via stdin and returns exit code 0 (0.224682ms) # ttok not installed
+  ﹣ truncates log to specified token budget (-t) and returns exit code 0 (1.380333ms) # ttok not installed
+✔ ttok log trimming & token counting (ttok 1.0) (10.354308ms)
+▶ Working Hours Keep-Warm Planner
+  ✔ returns true when workingHours is disabled or omitted (24.581094ms)
+  ✔ correctly gates active working hours during work days (133.843393ms)
+  ✔ blocks warm-ups on weekends (5.849476ms)
+✔ Working Hours Keep-Warm Planner (170.614122ms)
+✔ Session cookie creation and verification (34.448187ms)
+✔ Logout cookie serialization (0.552955ms)
+✔ Password verification with fallback API key (13.799081ms)
+✔ Password verification with bcrypt hash (3843.332994ms)
+✔ Password reset validation and completion (1.284922ms)
+ℹ tests 376
+ℹ suites 53
+ℹ pass 371
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 5
+ℹ todo 0
+ℹ duration_ms 96929.499723

@@ -1,0 +1,635 @@
+diff --git a/docker/Dockerfile b/docker/Dockerfile
+index 25ab28b..a9ba2b7 100644
+--- a/docker/Dockerfile
++++ b/docker/Dockerfile
+@@ -1,4 +1,4 @@
+-FROM node:20-alpine
++FROM node:24-alpine
+ LABEL maintainer="Tomasz"
+ LABEL org.opencontainers.image.source="https://github.com/tomaasz/agent-lb"
+ LABEL org.opencontainers.image.description="Universal Multi-Account Load Balancer, Quota Rotator & Web Dashboard for Claude Code & OpenAI Codex"
+@@ -6,13 +6,15 @@ LABEL org.opencontainers.image.description="Universal Multi-Account Load Balance
+ WORKDIR /app
+
+ # Install tools used by setup scripts and repository verification
+-RUN apk add --no-cache bash curl git python3 py3-bcrypt
++RUN apk upgrade --no-cache && apk add --no-cache bash curl git python3 py3-bcrypt
+
+ # Copy package descriptors first for caching
+ COPY package.json package-lock.json ./
+
+ # Install production dependencies (zero external runtime dependencies by default)
+-RUN npm ci --omit=dev
++RUN npm ci --omit=dev \
++    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
++        /opt/yarn* /usr/local/bin/yarn /usr/local/bin/yarnpkg
+
+ # Copy application files
+ COPY src/ ./src/
+diff --git a/package-lock.json b/package-lock.json
+index c66cd8d..5b7e8a3 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -317,9 +317,9 @@
+       "license": "MIT"
+     },
+     "node_modules/brace-expansion": {
+-      "version": "1.1.18",
+-      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.18.tgz",
+-      "integrity": "sha512-Edep/X9fGqVNmzKBVsDYIOtD+z1tuezV70LBjdCst9Tqu76lsnvRiZ6oTic1n+/BIwX6QDGAO94PN4N2SADvtw==",
++      "version": "1.1.21",
++      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.21.tgz",
++      "integrity": "sha512-9zeA+KLZNNzglF2TPKRQEDyx6Yby7daAkuy8MiPzpXPsYDWi/DRM8jmwUDxokQjYqBpv5DgPiwD4h4ZZSy1Ujw==",
+       "dev": true,
+       "license": "MIT",
+       "dependencies": {
+diff --git a/setup/claw-setup.sh b/setup/claw-setup.sh
+index e3f415d..c455e27 100755
+--- a/setup/claw-setup.sh
++++ b/setup/claw-setup.sh
+@@ -9,6 +9,9 @@
+
+ set -eu
+
++# Configuration files and backups contain API keys.
++umask 077
++
+ URL="${AGENT_LB_URL:-${AGENTLB_URL:-https://agentlb.gotova.pl}}"
+ KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${OPENAI_API_KEY:-}}}"
+
+@@ -43,46 +46,51 @@ CONFIG_FILE="$CLAW_DIR/openclaw.json"
+ TIMESTAMP=$(date +%s)
+ if [ -f "$CONFIG_FILE" ]; then
+   cp "$CONFIG_FILE" "$CONFIG_FILE.bak-$TIMESTAMP"
++  chmod 600 "$CONFIG_FILE.bak-$TIMESTAMP"
+   echo "Utworzono kopię zapasową: $CONFIG_FILE.bak-$TIMESTAMP"
+ fi
+
+ if command -v node >/dev/null 2>&1; then
+-  node - << EOF
++  AGENTLB_SETUP_CONFIG_FILE="$CONFIG_FILE" AGENTLB_SETUP_URL="$URL" AGENTLB_SETUP_KEY="$KEY" node - << 'EOF'
+ const fs = require('fs');
+-const path = "$CONFIG_FILE";
++const path = process.env.AGENTLB_SETUP_CONFIG_FILE;
+ let cfg = {};
+ if (fs.existsSync(path)) {
+-  try { cfg = JSON.parse(fs.readFileSync(path, 'utf8')); } catch (e) {}
++  cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
++  if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('Configuration must be a JSON object');
+ }
+ cfg.models = cfg.models || {};
+ cfg.models.providers = cfg.models.providers || {};
+ cfg.models.providers.agentlb = {
+-  baseUrl: "$URL/v1",
++  baseUrl: process.env.AGENTLB_SETUP_URL + "/v1",
+   api: "openai-completions",
+-  apiKey: "$KEY"
++  apiKey: process.env.AGENTLB_SETUP_KEY
+ };
+-fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
++if (fs.existsSync(path)) fs.chmodSync(path, 0o600);
++fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
+ EOF
+ elif command -v python3 >/dev/null 2>&1; then
+-  python3 - << EOF
++  AGENTLB_SETUP_CONFIG_FILE="$CONFIG_FILE" AGENTLB_SETUP_URL="$URL" AGENTLB_SETUP_KEY="$KEY" python3 - << 'EOF'
+ import os, json
+-path = "$CONFIG_FILE"
++path = os.environ["AGENTLB_SETUP_CONFIG_FILE"]
+ cfg = {}
+ if os.path.exists(path):
+-    try:
+-        with open(path, "r", encoding="utf-8") as f:
+-            cfg = json.load(f)
+-    except: pass
++    with open(path, "r", encoding="utf-8") as f:
++        cfg = json.load(f)
++    if not isinstance(cfg, dict):
++        raise ValueError("Configuration must be a JSON object")
+ if "models" not in cfg:
+     cfg["models"] = {}
+ if "providers" not in cfg["models"]:
+     cfg["models"]["providers"] = {}
+ cfg["models"]["providers"]["agentlb"] = {
+-    "baseUrl": "$URL/v1",
++    "baseUrl": os.environ["AGENTLB_SETUP_URL"] + "/v1",
+     "api": "openai-completions",
+-    "apiKey": "$KEY"
++    "apiKey": os.environ["AGENTLB_SETUP_KEY"]
+ }
+-with open(path, "w", encoding="utf-8") as f:
++if os.path.exists(path):
++    os.chmod(path, 0o600)
++with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+     json.dump(cfg, f, indent=2)
+     f.write("\n")
+ EOF
+diff --git a/setup/codexlb-setup.js b/setup/codexlb-setup.js
+index 63cd8e2..4a59a08 100755
+--- a/setup/codexlb-setup.js
++++ b/setup/codexlb-setup.js
+@@ -20,7 +20,7 @@ const os = require('os');
+ const http = require('http');
+ const https = require('https');
+ const readline = require('readline');
+-const { execSync } = require('child_process');
++const { execSync, execFileSync } = require('child_process');
+
+ const isWin = process.platform === 'win32';
+
+@@ -205,7 +205,7 @@ function checkConnectionNative(urlStr, key, insecure) {
+             } catch {}
+             resolve({ statusCode: 200, models });
+           } else if (res.statusCode === 401 || res.statusCode === 403) {
+-            reject(new Error(`Serwer odrzucił klucz API (kod HTTP ${res.statusCode}). Wygeneruj nowy w panelu ${urlStr} (zakładka /apis).`));
++            reject(Object.assign(new Error(`Serwer odrzucił klucz API (kod HTTP ${res.statusCode}). Wygeneruj nowy w panelu ${urlStr} (zakładka /apis).`), { statusCode: res.statusCode }));
+           } else {
+             resolve({ statusCode: res.statusCode, models });
+           }
+@@ -227,15 +227,21 @@ function checkConnectionNative(urlStr, key, insecure) {
+ }
+
+ async function checkConnection(urlStr, key, insecure) {
++  if (/[\r\n]/.test(key)) throw new Error('Klucz API nie może zawierać znaków nowej linii.');
+   try {
+     return await checkConnectionNative(urlStr, key, insecure);
+   } catch (err) {
++    // Authentication failures are definitive; curl must not turn them into success.
++    if (err.statusCode === 401 || err.statusCode === 403) throw err;
+     // Fallback: jeśli natywne żądanie Node zawiedzie (np. specyficzne proxy systemowe), spróbuj curl
+     if (hasCommand('curl')) {
+       try {
+-        const insecureArg = insecure ? '-k ' : '';
+-        const curlCmd = `curl -s -m 25 ${insecureArg}-H "Authorization: Bearer ${key}" "${urlStr}/backend-api/codex/models"`;
+-        const body = execSync(curlCmd, { encoding: 'utf-8', timeout: 26000 });
++        const curlArgs = ['--silent', '--show-error', '--fail', '--max-time', '25'];
++        if (insecure) curlArgs.push('--insecure');
++        curlArgs.push('--header', '@-', '--url', `${urlStr}/backend-api/codex/models`);
++        const body = execFileSync('curl', curlArgs, {
++          input: `Authorization: Bearer ${key}\n`, encoding: 'utf-8', timeout: 26000,
++        });
+         let models = [];
+         try {
+           const json = JSON.parse(body);
+@@ -510,8 +516,9 @@ async function main() {
+   if (isWin) {
+     try {
+       // Bezpieczne przekazanie wartości przez zmienną środowiskową procesu potomnego
+-      execSync(`powershell.exe -NoProfile -Command "[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', '${targetUrl}/v1', 'User'); [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', '${targetUrl}/backend-api/codex', 'User')"`, {
+-        env: { ...process.env, TMP_KEY: apiKey },
++      execFileSync('powershell.exe', ['-NoProfile', '-Command',
++        "[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', ($env:TMP_URL + '/v1'), 'User'); [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', ($env:TMP_URL + '/backend-api/codex'), 'User')"], {
++        env: { ...process.env, TMP_KEY: apiKey, TMP_URL: targetUrl },
+       });
+       console.log('[OK] Zapisano zmienne CODEX_LB_API_KEY, OPENAI_API_KEY i OPENAI_BASE_URL w profilu Windows.');
+     } catch (err) {
+@@ -522,18 +529,20 @@ async function main() {
+     try {
+       const configDir = path.dirname(envFile);
+       if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
++      const shellQuote = (value) => "'" + String(value).replaceAll("'", "'\\''") + "'";
+       const envLines = [
+         '# Agent LB / Codex environment configuration',
+-        `export CODEX_LB_API_KEY="${apiKey}"`,
+-        `export AGENT_LB_API_KEY="${apiKey}"`,
+-        `export OPENAI_BASE_URL="${targetUrl}/v1"`,
+-        `export OPENAI_API_KEY="${apiKey}"`,
+-        `export CODEX_BASE_URL="${targetUrl}/backend-api/codex"`,
++        `export CODEX_LB_API_KEY=${shellQuote(apiKey)}`,
++        `export AGENT_LB_API_KEY=${shellQuote(apiKey)}`,
++        `export OPENAI_BASE_URL=${shellQuote(`${targetUrl}/v1`)}`,
++        `export OPENAI_API_KEY=${shellQuote(apiKey)}`,
++        `export CODEX_BASE_URL=${shellQuote(`${targetUrl}/backend-api/codex`)}`,
+       ].join('\n') + '\n';
++      if (fs.existsSync(envFile)) fs.chmodSync(envFile, 0o600);
+       fs.writeFileSync(envFile, envLines, { mode: 0o600 });
+       console.log(`[OK] Klucz i zmienne środowiskowe zapisane w ${envFile} (chmod 600).`);
+
+-      const srcLine = `. "${envFile}"  # codexlb`;
++      const srcLine = `. ${shellQuote(envFile)}  # codexlb`;
+       for (const rcName of ['.bashrc', '.zshrc']) {
+         const rcPath = path.join(os.homedir(), rcName);
+         if (fs.existsSync(rcPath)) {
+diff --git a/setup/opencode-setup.sh b/setup/opencode-setup.sh
+index 8cc386a..049c71e 100755
+--- a/setup/opencode-setup.sh
++++ b/setup/opencode-setup.sh
+@@ -10,6 +10,9 @@
+
+ set -eu
+
++# Configuration files and backups contain API keys.
++umask 077
++
+ URL="${AGENT_LB_URL:-${AGENTLB_URL:-https://agentlb.gotova.pl}}"
+ KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${OPENAI_API_KEY:-}}}"
+
+@@ -48,19 +51,28 @@ AUTH_FILE="$AUTH_DIR/auth.json"
+ TIMESTAMP=$(date +%s)
+ if [ -f "$CONFIG_FILE" ]; then
+   cp "$CONFIG_FILE" "$CONFIG_FILE.bak-$TIMESTAMP"
++  chmod 600 "$CONFIG_FILE.bak-$TIMESTAMP"
+   echo "Utworzono kopię zapasową: $CONFIG_FILE.bak-$TIMESTAMP"
+ fi
+
+ # Aktualizacja pliku JSON przez Node.js lub Python
+ if command -v node >/dev/null 2>&1; then
+-  node - << EOF
++  AGENTLB_SETUP_CONFIG_FILE="$CONFIG_FILE" AGENTLB_SETUP_URL="$URL" AGENTLB_SETUP_KEY="$KEY" AGENTLB_SETUP_AUTH_FILE="$AUTH_FILE" node - << 'EOF'
+ const fs = require('fs');
+-const path = "$CONFIG_FILE";
++const path = process.env.AGENTLB_SETUP_CONFIG_FILE;
+ let cfg = {};
+ if (fs.existsSync(path)) {
+-  try { cfg = JSON.parse(fs.readFileSync(path, 'utf8')); } catch (e) {}
++  cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
++  if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('Configuration must be a JSON object');
+ }
+
++// Validate both documents before writing either one.
++const authPath = process.env.AGENTLB_SETUP_AUTH_FILE;
++let auth = {};
++if (fs.existsSync(authPath)) auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));
++if (!auth || typeof auth !== 'object' || Array.isArray(auth)) throw new Error('Auth must be a JSON object');
++auth.agentlb = { type: "api", key: process.env.AGENTLB_SETUP_KEY };
++
+ const models = {
+   "claude-fable-5-1": { name: "Claude Fable 5.1" },
+   "claude-fable-5": { name: "Claude Fable 5" },
+@@ -101,8 +113,8 @@ cfg.provider.agentlb = {
+   npm: "@ai-sdk/openai-compatible",
+   name: "AgentLB (All Models)",
+   options: {
+-    baseURL: "$URL/v1",
+-    apiKey: "$KEY"
++    baseURL: process.env.AGENTLB_SETUP_URL + "/v1",
++    apiKey: process.env.AGENTLB_SETUP_KEY
+   },
+   models: models
+ };
+@@ -114,38 +126,43 @@ cfg.providers.agentlb = {
+   name: "AgentLB (All Models)",
+   package: "@opencode/ai/providers/openai-compatible",
+   settings: {
+-    baseURL: "$URL/v1"
++    baseURL: process.env.AGENTLB_SETUP_URL + "/v1"
+   },
+   options: {
+-    baseURL: "$URL/v1",
+-    apiKey: "$KEY"
++    baseURL: process.env.AGENTLB_SETUP_URL + "/v1",
++    apiKey: process.env.AGENTLB_SETUP_KEY
+   },
+-  apiKey: "$KEY",
++  apiKey: process.env.AGENTLB_SETUP_KEY,
+   models: models
+ };
+
+-fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
++if (fs.existsSync(path)) fs.chmodSync(path, 0o600);
++fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
+
+-// Update auth.json
+-try {
+-  let auth = {};
+-  if (fs.existsSync("$AUTH_FILE")) {
+-    auth = JSON.parse(fs.readFileSync("$AUTH_FILE", 'utf8'));
+-  }
+-  auth.agentlb = { type: "api", key: "$KEY" };
+-  fs.writeFileSync("$AUTH_FILE", JSON.stringify(auth, null, 2) + '\n');
+-} catch (e) {}
++// Update auth.json; failures must stop setup instead of reporting success.
++if (fs.existsSync(authPath)) fs.chmodSync(authPath, 0o600);
++fs.writeFileSync(authPath, JSON.stringify(auth, null, 2) + '\n', { mode: 0o600 });
+ EOF
+ elif command -v python3 >/dev/null 2>&1; then
+-  python3 - << EOF
++  AGENTLB_SETUP_CONFIG_FILE="$CONFIG_FILE" AGENTLB_SETUP_URL="$URL" AGENTLB_SETUP_KEY="$KEY" AGENTLB_SETUP_AUTH_FILE="$AUTH_FILE" python3 - << 'EOF'
+ import os, json
+-path = "$CONFIG_FILE"
++path = os.environ["AGENTLB_SETUP_CONFIG_FILE"]
+ cfg = {}
+ if os.path.exists(path):
+-    try:
+-        with open(path, "r", encoding="utf-8") as f:
+-            cfg = json.load(f)
+-    except: pass
++    with open(path, "r", encoding="utf-8") as f:
++        cfg = json.load(f)
++    if not isinstance(cfg, dict):
++        raise ValueError("Configuration must be a JSON object")
++
++# Validate both documents before writing either one.
++auth_path = os.environ["AGENTLB_SETUP_AUTH_FILE"]
++auth = {}
++if os.path.exists(auth_path):
++    with open(auth_path, "r", encoding="utf-8") as f:
++        auth = json.load(f)
++if not isinstance(auth, dict):
++    raise ValueError("Auth must be a JSON object")
++auth["agentlb"] = { "type": "api", "key": os.environ["AGENTLB_SETUP_KEY"] }
+
+ models = {
+     "claude-fable-5-1": { "name": "Claude Fable 5.1" },
+@@ -187,8 +204,8 @@ cfg["provider"]["agentlb"] = {
+     "npm": "@ai-sdk/openai-compatible",
+     "name": "AgentLB (All Models)",
+     "options": {
+-        "baseURL": "$URL/v1",
+-        "apiKey": "$KEY"
++        "baseURL": os.environ["AGENTLB_SETUP_URL"] + "/v1",
++        "apiKey": os.environ["AGENTLB_SETUP_KEY"]
+     },
+     "models": models
+ }
+@@ -200,31 +217,27 @@ cfg["providers"]["agentlb"] = {
+     "name": "AgentLB (All Models)",
+     "package": "@opencode/ai/providers/openai-compatible",
+     "settings": {
+-        "baseURL": "$URL/v1"
++        "baseURL": os.environ["AGENTLB_SETUP_URL"] + "/v1"
+     },
+     "options": {
+-        "baseURL": "$URL/v1",
+-        "apiKey": "$KEY"
++        "baseURL": os.environ["AGENTLB_SETUP_URL"] + "/v1",
++        "apiKey": os.environ["AGENTLB_SETUP_KEY"]
+     },
+-    "apiKey": "$KEY",
++    "apiKey": os.environ["AGENTLB_SETUP_KEY"],
+     "models": models
+ }
+
+-with open(path, "w", encoding="utf-8") as f:
++if os.path.exists(path):
++    os.chmod(path, 0o600)
++with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+     json.dump(cfg, f, indent=2)
+     f.write("\n")
+
+-auth_path = "$AUTH_FILE"
+-try:
+-    auth = {}
+-    if os.path.exists(auth_path):
+-        with open(auth_path, "r", encoding="utf-8") as f:
+-            auth = json.load(f)
+-    auth["agentlb"] = { "type": "api", "key": "$KEY" }
+-    with open(auth_path, "w", encoding="utf-8") as f:
+-        json.dump(auth, f, indent=2)
+-        f.write("\n")
+-except: pass
++if os.path.exists(auth_path):
++    os.chmod(auth_path, 0o600)
++with os.fdopen(os.open(auth_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
++    json.dump(auth, f, indent=2)
++    f.write("\n")
+ EOF
+ fi
+
+@@ -259,5 +272,5 @@ echo "1. Jeśli lista dostawców nie odświeżyła się automatycznie, w oknie '
+ echo "   -> 'Niestandardowy dostawca zgodny z OpenAI' (sekcja Inne)"
+ echo "   i podaj:"
+ echo "     Base URL: $URL/v1"
+-echo "     Klucz API: $KEY"
++echo "     Klucz API: zapisany w konfiguracji (wartość ukryta)"
+ echo "2. W terminalu / CLI możesz sprawdzić: opencode models"
+diff --git a/src/mitm.js b/src/mitm.js
+index 31a4f9a..57e5d02 100644
+--- a/src/mitm.js
++++ b/src/mitm.js
+@@ -257,7 +257,7 @@ export function createConnectHandler({ config, accountManager, ensureLeaf, logDi
+       }
+       // The CONNECT's client identity is bound to this listener (see getServer),
+       // so the channel is attributed the way the requests in the tunnel are.
+-      relayUpgrade(req, socket, head, target, sx, { client, clientUsage, log });
++      relayUpgrade(req, socket, head, target, sx, { client, clientUsage, log, proxyConfig: config.proxy });
+     });
+     // Make the h2-WebSocket dead end audible. Without this the only evidence is
+     // a message that never arrives, which is what made #164 cost a day to
+diff --git a/src/provider-translator.js b/src/provider-translator.js
+index 48bfc82..9023b6a 100644
+--- a/src/provider-translator.js
++++ b/src/provider-translator.js
+@@ -5,6 +5,7 @@
+ // Enables seamless failover when all accounts of one provider are exhausted.
+
+ import { Transform } from 'node:stream';
++import { StringDecoder } from 'node:string_decoder';
+ import { randomUUID } from 'node:crypto';
+ import { sanitizeToolPairs } from './tool-pair-sanitize.js';
+
+@@ -257,6 +258,7 @@ export function translateOpenAIToAnthropicResponse(openaiJson, requestedModel =
+  * Creates a Transform stream converting OpenAI SSE chunks into Anthropic SSE events.
+  */
+ export function createOpenAIToAnthropicTransformStream(requestedModel = 'claude-3-5-sonnet-20241022') {
++  const decoder = new StringDecoder('utf8');
+   let buffer = '';
+   let msgStarted = false;
+   let finished = false;
+@@ -295,7 +297,7 @@ export function createOpenAIToAnthropicTransformStream(requestedModel = 'claude-
+
+   return new Transform({
+     transform(chunk, encoding, callback) {
+-      buffer += chunk.toString('utf8');
++      buffer += decoder.write(chunk);
+       const lines = buffer.split('\n');
+       buffer = lines.pop() || ''; // Keep incomplete line
+
+@@ -655,6 +657,7 @@ export function translateAnthropicToOpenAIResponse(anthropicJson, requestedModel
+  * Creates a Transform stream converting Anthropic SSE chunks into OpenAI SSE events.
+  */
+ export function createAnthropicToOpenAITransformStream(requestedModel = 'gpt-4o') {
++  const decoder = new StringDecoder('utf8');
+   let buffer = '';
+   const chunkId = `chatcmpl-${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+   const created = Math.floor(Date.now() / 1000);
+@@ -662,7 +665,7 @@ export function createAnthropicToOpenAITransformStream(requestedModel = 'gpt-4o'
+
+   return new Transform({
+     transform(chunk, encoding, callback) {
+-      buffer += chunk.toString('utf8');
++      buffer += decoder.write(chunk);
+       const lines = buffer.split('\n');
+       buffer = lines.pop() || '';
+
+@@ -856,6 +859,7 @@ export function translateChatCompletionsToCodexResponses(body, targetModel = 'gp
+  * Creates a Transform stream converting Codex Responses SSE events into OpenAI Chat Completion chunks.
+  */
+ export function createCodexResponsesToOpenAITransformStream(requestedModel = 'gpt-5.6-sol', onUsage = null) {
++  const decoder = new StringDecoder('utf8');
+   let buffer = '';
+   let chunkId = null;
+   let created = Math.floor(Date.now() / 1000);
+@@ -878,7 +882,7 @@ export function createCodexResponsesToOpenAITransformStream(requestedModel = 'gp
+
+   return new Transform({
+     transform(chunk, encoding, callback) {
+-      buffer += chunk.toString('utf8');
++      buffer += decoder.write(chunk);
+       const lines = buffer.split('\n');
+       buffer = lines.pop() || '';
+
+diff --git a/src/server.js b/src/server.js
+index 9a757a2..7b1efcc 100644
+--- a/src/server.js
++++ b/src/server.js
+@@ -5418,6 +5418,7 @@ export function createProxyServer(
+     relayUpgrade(req, socket, head, upstream, sx, {
+       client: auth.client,
+       clientUsage,
++      proxyConfig: config.proxy,
+     });
+   });
+
+@@ -6007,7 +6008,7 @@ export function createProxyRequestListener({
+       // paired identity, so fetching them with a rotated token 403s and Claude
+       // Code silently drops the image from the message.
+       if (CLIENT_CREDENTIAL_PATHS.some((p) => (req.url || "").startsWith(p))) {
+-        await relayStream(req, res, upstream, sx);
++        await relayStream(req, res, upstream, sx, config.proxy);
+         return;
+       }
+
+@@ -6870,7 +6871,24 @@ function sxAgent(sx, targetHost) {
+  * buffering, no timeout, no reconstruction — just pipe bytes both ways as they
+  * arrive, exactly like a transparent proxy would.
+  */
+-function relayStream(req, res, upstream, sx) {
++// Account-bound relays retain the client's upstream identity, but proxy
++// credentials and the dashboard session belong only to this hop.
++function relayHeaderValue(key, value, proxyConfig) {
++  if (key === "cookie") {
++    const cookies = String(value).split(";")
++      .map(part => part.trim())
++      .filter(part => part && part.split("=", 1)[0].trim() !== "agentlb_session");
++    return cookies.length ? cookies.join("; ") : undefined;
++  }
++  if (key === "authorization" && typeof value === "string") {
++    const bearer = /^Bearer\s+(\S+)$/i.exec(value)?.[1];
++    if (bearer && (safeKeyEqual(bearer, proxyConfig?.apiKey) ||
++      proxyConfig?.clientKeys?.some(entry => safeKeyEqual(bearer, entry.key)))) return undefined;
++  }
++  return value;
++}
++
++function relayStream(req, res, upstream, sx, proxyConfig) {
+   const target = new URL(`${upstream}${req.url}`);
+   const headers = {};
+   for (const [key, value] of Object.entries(req.headers)) {
+@@ -6881,11 +6899,10 @@ function relayStream(req, res, upstream, sx) {
+       lk === "accept-encoding"
+     )
+       continue;
+-    // The client's identity on this path is its bearer; x-api-key is how it
+-    // authenticated to THIS proxy, so relaying it would hand the operator's
+-    // proxy key to upstream.
++    // Proxy-only headers never belong to the upstream identity.
+     if (lk === "x-api-key" || lk === "proxy-authorization") continue;
+-    headers[key] = value;
++    const forwarded = relayHeaderValue(lk, value, proxyConfig);
++    if (forwarded !== undefined) headers[key] = forwarded;
+   }
+
+   const useProxy = !!(sx?.useByDefault() && sx.isProvisioned());
+@@ -7048,7 +7065,7 @@ export function relayUpgrade(
+   head,
+   upstream,
+   sx,
+-  { client = null, clientUsage = null, log = console.log } = {},
++  { client = null, clientUsage = null, log = console.log, proxyConfig = null } = {},
+ ) {
+   const target = new URL(`${upstream}${req.url}`);
+   // The channel's log lines, prefixed `[name]` like a request line when a
+@@ -7061,9 +7078,8 @@ export function relayUpgrade(
+   for (const [key, value] of Object.entries(req.headers)) {
+     const lk = key.toLowerCase();
+     // Unlike relayStream, do NOT strip 'upgrade'/'connection' here — they ARE
+-    // the handshake. Only 'host' (the client transport reconstructs it from
+-    // `target`), h2 pseudo-headers and the proxy's own x-api-key (the client's
+-    // credential to us, not to upstream) are dropped.
++    // the handshake. Drop 'host' (reconstructed from `target`), h2 pseudo-headers
++    // and proxy-only headers; filter proxy sessions/bearers separately below.
+     if (
+       lk.startsWith(":") ||
+       lk === "host" ||
+@@ -7071,7 +7087,8 @@ export function relayUpgrade(
+       lk === "proxy-authorization"
+     )
+       continue;
+-    headers[key] = value;
++    const forwarded = relayHeaderValue(lk, value, proxyConfig);
++    if (forwarded !== undefined) headers[key] = forwarded;
+   }
+
+   const useProxy = !!(sx?.useByDefault() && sx.isProvisioned());
+@@ -9415,7 +9432,10 @@ export async function forwardRequest(
+         const l = getLog();
+         const transform = createOpenAIToAnthropicTransformStream(ctx.model);
+         await pipeline(
+-          Readable.from(idleBody(upstreamRes.body)),
++          Readable.from(usageTrackedBody(
++            upstreamRes.body, account.index, accountManager, ctx.onUsage,
++            ctx.sessionId, ctx.model, ctx.usageDetails,
++          )),
+           transform,
+           res,
+         );
+@@ -9464,7 +9484,10 @@ export async function forwardRequest(
+         const l = getLog();
+         const transform = createAnthropicToOpenAITransformStream(ctx.model);
+         await pipeline(
+-          Readable.from(idleBody(upstreamRes.body)),
++          Readable.from(usageTrackedBody(
++            upstreamRes.body, account.index, accountManager, ctx.onUsage,
++            ctx.sessionId, ctx.model, ctx.usageDetails,
++          )),
+           transform,
+           res,
+         );
+@@ -9737,6 +9760,29 @@ export async function forwardRequest(
+   }
+ }
+
++// Meter the upstream wire format before translation. Translated frames can
++// omit or estimate usage, so they cannot enforce the client's token limits.
++async function* usageTrackedBody(body, accountIndex, accountManager, onUsage, sessionId, model, details) {
++  const decoder = new TextDecoder();
++  const merged = {};
++  let buffer = "";
++  try {
++    for await (const chunk of idleBody(body)) {
++      buffer += decoder.decode(chunk, { stream: true });
++      const events = buffer.split(/\r?\n\r?\n/);
++      buffer = events.pop();
++      for (const event of events) parseSSEUsage(event, accountIndex, accountManager, onUsage, merged);
++      yield chunk;
++    }
++    buffer += decoder.decode();
++    if (buffer.trim()) parseSSEUsage(buffer, accountIndex, accountManager, onUsage, merged);
++  } finally {
++    if (Object.keys(merged).length) {
++      accountManager.recordTokenUsage(accountIndex, sessionId, model, merged, details);
++    }
++  }
++}
++
+ /**
+  * Stream an SSE response to the client, parsing usage data along the way.
+  */
+@@ -9927,12 +9973,10 @@ function extractUsageFromBody(
+   try {
+     const json = JSON.parse(buffer.toString());
+     if (json.usage) {
+-      accountManager.updateUsage(
+-        accountIndex,
+-        json.usage.input_tokens,
+-        json.usage.output_tokens,
+-      );
+-      onUsage?.(json.usage.input_tokens || 0, json.usage.output_tokens || 0);
++      const inputTokens = json.usage.input_tokens ?? json.usage.prompt_tokens ?? 0;
++      const outputTokens = json.usage.output_tokens ?? json.usage.completion_tokens ?? 0;
++      accountManager.updateUsage(accountIndex, inputTokens, outputTokens);
++      onUsage?.(inputTokens, outputTokens);
+       accountManager.recordTokenUsage(
+         accountIndex,
+         sessionId,

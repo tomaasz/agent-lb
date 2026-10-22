@@ -1,0 +1,447 @@
+[
+  {
+    "id": "BUG-001",
+    "title": "Poświadczenia panelu i proxy przekazywane do upstream",
+    "severity": "High",
+    "category": "Security",
+    "cvss_v3": null,
+    "cwe": "CWE-200",
+    "owasp": null,
+    "files": [
+      "src/server.js:6876",
+      "src/server.js:7059"
+    ],
+    "locations_reference_commit": "509ddf1",
+    "component": "relay",
+    "current_behavior": "HTTP/WS relay kopiował cookie sesji i Bearer klucza proxy.",
+    "expected_behavior": "Upstream otrzymuje wyłącznie własną tożsamość klienta.",
+    "root_cause": "Brak rozdzielenia poświadczeń obu hopów.",
+    "impact": {
+      "user": "Przejęcie sesji/klucza przez operatora upstream; zależy od użycia ścieżek relay.",
+      "system": "Przejęcie sesji/klucza przez operatora upstream; zależy od użycia ścieżek relay.",
+      "business": "Przejęcie sesji/klucza przez operatora upstream; zależy od użycia ścieżek relay."
+    },
+    "reproduction": [
+      "node --import ./test/support/isolate-config.js --test test/systematic-relay.test.js"
+    ],
+    "evidence": [
+      "05-validacion/relay-red.log",
+      "05-validacion/relay-green.log"
+    ],
+    "proposed_fix": "Filtrowanie agentlb_session i Bearer odpowiadającego master/client key; zachowanie upstream cookies/Bearer.",
+    "tests_to_add": [
+      "systematic-relay"
+    ],
+    "priority_score": 18,
+    "sla_fix": "72h",
+    "owner": "Tomasz / AgentLB",
+    "status": "Verified",
+    "references": [],
+    "commit": "5cb0116"
+  },
+  {
+    "id": "BUG-002",
+    "title": "Strumieniowy fallback pomijał limity tokenów",
+    "severity": "High",
+    "category": "Functional",
+    "cvss_v3": null,
+    "cwe": "CWE-840",
+    "owasp": null,
+    "files": [
+      "src/server.js:9414",
+      "src/server.js:9463"
+    ],
+    "locations_reference_commit": "509ddf1",
+    "component": "quota",
+    "current_behavior": "Dwa żądania po 150 tokenów zwracały 200 przy limicie dobowym 1; licznik pozostawał 0.",
+    "expected_behavior": "Drugie żądanie otrzymuje 429; pierwsze księguje 150 tokenów raz.",
+    "root_cause": "Pipeline translacji nie wywoływał księgowania SSE.",
+    "impact": {
+      "user": "Nieograniczone wydatki/zużycie kont przez delegowany klucz.",
+      "system": "Nieograniczone wydatki/zużycie kont przez delegowany klucz.",
+      "business": "Nieograniczone wydatki/zużycie kont przez delegowany klucz."
+    },
+    "reproduction": [
+      "node --import ./test/support/isolate-config.js --test test/systematic-quota.test.js"
+    ],
+    "evidence": [
+      "05-validacion/quota-red.log",
+      "05-validacion/quota-green.log"
+    ],
+    "proposed_fix": "Pomiar surowego SSE przed translacją; jeden scalony zapis w finally.",
+    "tests_to_add": [
+      "systematic-quota"
+    ],
+    "priority_score": 18,
+    "sla_fix": "72h",
+    "owner": "Tomasz / AgentLB",
+    "status": "Verified",
+    "references": [],
+    "commit": "2adee31"
+  },
+  {
+    "id": "BUG-003",
+    "title": "JSON OpenAI nie naliczał limitu klienta",
+    "severity": "High",
+    "category": "Functional",
+    "cvss_v3": null,
+    "cwe": "CWE-840",
+    "owasp": null,
+    "files": [
+      "src/server.js:9930"
+    ],
+    "locations_reference_commit": "509ddf1",
+    "component": "quota",
+    "current_behavior": "Dwa żądania JSON po 150 tokenów zwracały 200 przy limicie 1.",
+    "expected_behavior": "Standardowe prompt_tokens/completion_tokens obciążają limit i sesję.",
+    "root_cause": "Parser rozumiał wyłącznie input_tokens/output_tokens.",
+    "impact": {
+      "user": "Obejście limitów klienta w natywnym OpenAI JSON.",
+      "system": "Obejście limitów klienta w natywnym OpenAI JSON.",
+      "business": "Obejście limitów klienta w natywnym OpenAI JSON."
+    },
+    "reproduction": [
+      "node --import ./test/support/isolate-config.js --test test/systematic-quota.test.js"
+    ],
+    "evidence": [
+      "05-validacion/quota-red.log",
+      "05-validacion/quota-green.log"
+    ],
+    "proposed_fix": "Normalizacja aliasów z operatorem ?? bez podwójnego księgowania.",
+    "tests_to_add": [
+      "systematic-quota"
+    ],
+    "priority_score": 18,
+    "sla_fix": "72h",
+    "owner": "Tomasz / AgentLB",
+    "status": "Verified",
+    "references": [],
+    "commit": "4493ca1"
+  },
+  {
+    "id": "BUG-004",
+    "title": "Uszkadzanie Unicode na granicach fragmentów SSE",
+    "severity": "Medium",
+    "category": "Integration",
+    "cvss_v3": null,
+    "cwe": "CWE-176",
+    "owasp": null,
+    "files": [
+      "src/provider-translator.js:298",
+      "src/provider-translator.js:665",
+      "src/provider-translator.js:881"
+    ],
+    "locations_reference_commit": "509ddf1",
+    "component": "translator",
+    "current_behavior": "Oddzielne dekodowanie fragmentów TCP zmieniało polskie znaki/emoji w znaki zastępcze.",
+    "expected_behavior": "Tekst pozostaje identyczny niezależnie od podziału bajtów.",
+    "root_cause": "chunk.toString(utf8) bez stanu dekodera.",
+    "impact": {
+      "user": "Uszkodzenie odpowiedzi i potencjalnie argumentów narzędzi.",
+      "system": "Uszkodzenie odpowiedzi i potencjalnie argumentów narzędzi.",
+      "business": "Uszkodzenie odpowiedzi i potencjalnie argumentów narzędzi."
+    },
+    "reproduction": [
+      "node --import ./test/support/isolate-config.js --test test/systematic-utf8.test.js"
+    ],
+    "evidence": [
+      "05-validacion/utf8-red.log",
+      "05-validacion/utf8-green.log"
+    ],
+    "proposed_fix": "StringDecoder osobno dla każdego z trzech transformatorów.",
+    "tests_to_add": [
+      "systematic-utf8"
+    ],
+    "priority_score": 8,
+    "sla_fix": "14d",
+    "owner": "Tomasz / AgentLB",
+    "status": "Verified",
+    "references": [],
+    "commit": "36a3931"
+  },
+  {
+    "id": "BUG-005",
+    "title": "Podatny brace-expansion w narzędziach deweloperskich",
+    "severity": "High",
+    "category": "SupplyChain",
+    "cvss_v3": 7.5,
+    "cwe": "CWE-674",
+    "owasp": "A06:2021",
+    "files": [
+      "package-lock.json:319"
+    ],
+    "locations_reference_commit": "509ddf1",
+    "component": "dependencies",
+    "current_behavior": "npm audit zgłaszał high dla brace-expansion 1.1.18.",
+    "expected_behavior": "Brak znanych high/critical w grafie npm.",
+    "root_cause": "Stary lockfile zależności ESLint.",
+    "impact": {
+      "user": "DoS narzędzi przy spreparowanym wzorcu; brak tej zależności w runtime proxy.",
+      "system": "DoS narzędzi przy spreparowanym wzorcu; brak tej zależności w runtime proxy.",
+      "business": "DoS narzędzi przy spreparowanym wzorcu; brak tej zależności w runtime proxy."
+    },
+    "reproduction": [
+      "npm audit --json"
+    ],
+    "evidence": [
+      "05-validacion/npm-audit-before.json",
+      "05-validacion/npm-audit-after.json"
+    ],
+    "proposed_fix": "Aktualizacja tylko lockfile do 1.1.21.",
+    "tests_to_add": [
+      "dependency"
+    ],
+    "priority_score": 18,
+    "sla_fix": "72h",
+    "owner": "Tomasz / AgentLB",
+    "status": "Verified",
+    "references": [
+      "https://github.com/advisories/GHSA-qhr7-859c-m2p7"
+    ],
+    "commit": "8b70bb6"
+  },
+  {
+    "id": "BUG-006",
+    "title": "Wykonywanie kodu z parametrów instalatora",
+    "severity": "High",
+    "category": "Security",
+    "cvss_v3": null,
+    "cwe": "CWE-78",
+    "owasp": null,
+    "files": [
+      "setup/codexlb-setup.js:237",
+      "setup/codexlb-setup.js:527",
+      "setup/claw-setup.sh:51",
+      "setup/opencode-setup.sh:57"
+    ],
+    "locations_reference_commit": "509ddf1",
+    "component": "setup",
+    "current_behavior": "Klucz/URL trafiały do komendy curl, kodu JS/Python i sourced pliku powłoki.",
+    "expected_behavior": "Dane pozostają literalnymi wartościami.",
+    "root_cause": "Interpolowanie wejścia w kod wykonywalny.",
+    "impact": {
+      "user": "Lokalne wykonanie kodu w kontekście instalacji; wymaga przekazania danych kontrolowanych przez napastnika, nie zdalne anonymous RCE.",
+      "system": "Lokalne wykonanie kodu w kontekście instalacji; wymaga przekazania danych kontrolowanych przez napastnika, nie zdalne anonymous RCE.",
+      "business": "Lokalne wykonanie kodu w kontekście instalacji; wymaga przekazania danych kontrolowanych przez napastnika, nie zdalne anonymous RCE."
+    },
+    "reproduction": [
+      "node --import ./test/support/isolate-config.js --test test/systematic-setup.test.js"
+    ],
+    "evidence": [
+      "05-validacion/setup-red.log",
+      "05-validacion/setup-green.log"
+    ],
+    "proposed_fix": "execFileSync, quoted heredoc z env, quoting pliku środowiskowego i stały kod PowerShell.",
+    "tests_to_add": [
+      "systematic-setup"
+    ],
+    "priority_score": 18,
+    "sla_fix": "72h",
+    "owner": "Tomasz / AgentLB",
+    "status": "Verified",
+    "references": [],
+    "commit": "dd434ed"
+  },
+  {
+    "id": "BUG-007",
+    "title": "Fallback instalatora akceptował odrzucony klucz",
+    "severity": "Medium",
+    "category": "Functional",
+    "cvss_v3": null,
+    "cwe": "CWE-754",
+    "owasp": null,
+    "files": [
+      "setup/codexlb-setup.js:233"
+    ],
+    "locations_reference_commit": "509ddf1",
+    "component": "setup",
+    "current_behavior": "401/403 przechodziło do curl, który ignorował status i raportował 200.",
+    "expected_behavior": "Odrzucenie poświadczeń zatrzymuje konfigurację.",
+    "root_cause": "Brak rozróżnienia błędu auth/transportu, brak --fail.",
+    "impact": {
+      "user": "Instalator zapisywał niedziałającą konfigurację; nie omijało to auth serwera.",
+      "system": "Instalator zapisywał niedziałającą konfigurację; nie omijało to auth serwera.",
+      "business": "Instalator zapisywał niedziałającą konfigurację; nie omijało to auth serwera."
+    },
+    "reproduction": [
+      "node --import ./test/support/isolate-config.js --test test/systematic-setup.test.js"
+    ],
+    "evidence": [
+      "05-validacion/setup-red.log",
+      "05-validacion/setup-green.log"
+    ],
+    "proposed_fix": "Propagacja statusu native i curl --fail.",
+    "tests_to_add": [
+      "systematic-setup"
+    ],
+    "priority_score": 8,
+    "sla_fix": "14d",
+    "owner": "Tomasz / AgentLB",
+    "status": "Verified",
+    "references": [],
+    "commit": "dd434ed"
+  },
+  {
+    "id": "BUG-008",
+    "title": "Pliki z kluczami mogły być odczytywane przez innych użytkowników",
+    "severity": "Medium",
+    "category": "Security",
+    "cvss_v3": null,
+    "cwe": "CWE-732",
+    "owasp": null,
+    "files": [
+      "setup/claw-setup.sh:64",
+      "setup/opencode-setup.sh:127",
+      "setup/codexlb-setup.js:531"
+    ],
+    "locations_reference_commit": "509ddf1",
+    "component": "setup",
+    "current_behavior": "Nowe pliki miały 0644 przy umask 022; istniejący env zachowywał 0644.",
+    "expected_behavior": "Pliki konfiguracji, auth, env i backupy mają 0600.",
+    "root_cause": "Domyślny mode i błędne założenie, że writeFile(mode) zmienia istniejące uprawnienia.",
+    "impact": {
+      "user": "Odczyt klucza przez lokalne inne UID.",
+      "system": "Odczyt klucza przez lokalne inne UID.",
+      "business": "Odczyt klucza przez lokalne inne UID."
+    },
+    "reproduction": [
+      "node --import ./test/support/isolate-config.js --test test/systematic-setup.test.js"
+    ],
+    "evidence": [
+      "05-validacion/setup-red.log",
+      "05-validacion/setup-green.log"
+    ],
+    "proposed_fix": "umask 077, jawne mode 0600 i chmod istniejących plików/backupów.",
+    "tests_to_add": [
+      "systematic-setup"
+    ],
+    "priority_score": 8,
+    "sla_fix": "14d",
+    "owner": "Tomasz / AgentLB",
+    "status": "Verified",
+    "references": [],
+    "commit": "dd434ed"
+  },
+  {
+    "id": "BUG-009",
+    "title": "Niepoprawna konfiguracja była nadpisywana lub ignorowana",
+    "severity": "Medium",
+    "category": "Functional",
+    "cvss_v3": null,
+    "cwe": "CWE-703",
+    "owasp": null,
+    "files": [
+      "setup/claw-setup.sh:55",
+      "setup/opencode-setup.sh:61",
+      "setup/opencode-setup.sh:130"
+    ],
+    "locations_reference_commit": "509ddf1",
+    "component": "setup",
+    "current_behavior": "Błąd JSON skutkował pustym obiektem i nadpisaniem konfiguracji; błąd auth był ukrywany.",
+    "expected_behavior": "Błędne dokumenty pozostają bez zmian i kończą setup błędem.",
+    "root_cause": "Puste catch i brak walidacji shape dokumentów.",
+    "impact": {
+      "user": "Utrata ustawień, częściowa konfiguracja i fałszywy sukces; backup pozwalał na odzyskanie.",
+      "system": "Utrata ustawień, częściowa konfiguracja i fałszywy sukces; backup pozwalał na odzyskanie.",
+      "business": "Utrata ustawień, częściowa konfiguracja i fałszywy sukces; backup pozwalał na odzyskanie."
+    },
+    "reproduction": [
+      "node --import ./test/support/isolate-config.js --test test/systematic-setup.test.js"
+    ],
+    "evidence": [
+      "05-validacion/setup-red.log",
+      "05-validacion/setup-green.log"
+    ],
+    "proposed_fix": "Walidacja config/auth przed zapisami; jawny błąd; zachowanie obcych pól.",
+    "tests_to_add": [
+      "systematic-setup"
+    ],
+    "priority_score": 8,
+    "sla_fix": "14d",
+    "owner": "Tomasz / AgentLB",
+    "status": "Verified",
+    "references": [],
+    "commit": "dd434ed"
+  },
+  {
+    "id": "BUG-010",
+    "title": "Podatne składniki bazowego obrazu Docker",
+    "severity": "High",
+    "category": "SupplyChain",
+    "cvss_v3": null,
+    "cwe": "CWE-1104",
+    "owasp": "A06:2021",
+    "files": [
+      "docker/Dockerfile:1",
+      "docker/Dockerfile:9",
+      "docker/Dockerfile:18"
+    ],
+    "locations_reference_commit": "509ddf1",
+    "component": "image",
+    "current_behavior": "Trivy: 1 CRITICAL, 26 HIGH, 27 MEDIUM, 35 LOW, 2 UNKNOWN.",
+    "expected_behavior": "Brak wykrytych znanych podatności w końcowym obrazie.",
+    "root_cause": "Node20 Alpine i podatne składniki npm/global tooling oraz OpenSSL.",
+    "impact": {
+      "user": "Warunkowy DoS/odczyt/zapis przez podatne narzędzia; brak dowodu osiągalności krytycznego tar przez API proxy.",
+      "system": "Warunkowy DoS/odczyt/zapis przez podatne narzędzia; brak dowodu osiągalności krytycznego tar przez API proxy.",
+      "business": "Warunkowy DoS/odczyt/zapis przez podatne narzędzia; brak dowodu osiągalności krytycznego tar przez API proxy."
+    },
+    "reproduction": [
+      "docker build -f docker/Dockerfile -t agent-lb:audit .; docker save agent-lb:audit -o /tmp/image.tar; trivy image --input /tmp/image.tar --scanners vuln --severity HIGH,CRITICAL --exit-code 1"
+    ],
+    "evidence": [
+      "05-validacion/trivy-image-before.json",
+      "05-validacion/trivy-image-after.json"
+    ],
+    "proposed_fix": "Node24 Alpine, aktualizacja pakietów systemowych, usunięcie npm/yarn niewymaganych przez runtime.",
+    "tests_to_add": [
+      "image"
+    ],
+    "priority_score": 18,
+    "sla_fix": "72h",
+    "owner": "Tomasz / AgentLB",
+    "status": "Verified",
+    "references": [],
+    "commit": "5ad665f"
+  },
+  {
+    "id": "BUG-011",
+    "title": "Klucze instalatora ujawniane przez argv i stdout",
+    "severity": "Medium",
+    "category": "Security",
+    "cvss_v3": null,
+    "cwe": "CWE-214",
+    "owasp": null,
+    "files": [
+      "setup/codexlb-setup.js:238",
+      "setup/opencode-setup.sh:275"
+    ],
+    "locations_reference_commit": "509ddf1",
+    "component": "setup",
+    "current_behavior": "Curl otrzymywał klucz przez argv, OpenCode wypisywał go na stdout.",
+    "expected_behavior": "Sekret nie trafia do argumentów procesów ani logu instalacji.",
+    "root_cause": "Brak rozdzielenia danych wrażliwych od argumentów i komunikatów.",
+    "impact": {
+      "user": "Ekspozycja przez ps/logi sesji/CI.",
+      "system": "Ekspozycja przez ps/logi sesji/CI.",
+      "business": "Ekspozycja przez ps/logi sesji/CI."
+    },
+    "reproduction": [
+      "node --import ./test/support/isolate-config.js --test test/systematic-setup.test.js"
+    ],
+    "evidence": [
+      "05-validacion/setup-secrets-red.log",
+      "05-validacion/setup-secrets-green.log"
+    ],
+    "proposed_fix": "Curl --header @- z stdin; odrzucenie CR/LF; usunięcie echo klucza.",
+    "tests_to_add": [
+      "systematic-setup"
+    ],
+    "priority_score": 8,
+    "sla_fix": "14d",
+    "owner": "Tomasz / AgentLB",
+    "status": "Verified",
+    "references": [],
+    "commit": "dd434ed"
+  }
+]

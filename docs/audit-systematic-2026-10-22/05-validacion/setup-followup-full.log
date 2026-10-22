@@ -1,0 +1,3 @@
+OpenCode full script node : 4 invalid auth variants preserve both files; valid writes preserve unrelated data; config/auth/backups 0600 PASS
+OpenCode full script python3 : 4 invalid auth variants preserve both files; valid writes preserve unrelated data; config/auth/backups 0600 PASS
+CodexLB full script: local HTTP mock, isolated HOME, existing env 0644 becomes0600 PASS

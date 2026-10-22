@@ -9,6 +9,9 @@
 
 set -eu
 
+# Configuration files and backups contain API keys.
+umask 077
+
 URL="${AGENT_LB_URL:-${AGENTLB_URL:-https://agentlb.gotova.pl}}"
 KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${OPENAI_API_KEY:-}}}"
 
@@ -43,46 +46,51 @@ CONFIG_FILE="$CLAW_DIR/openclaw.json"
 TIMESTAMP=$(date +%s)
 if [ -f "$CONFIG_FILE" ]; then
   cp "$CONFIG_FILE" "$CONFIG_FILE.bak-$TIMESTAMP"
+  chmod 600 "$CONFIG_FILE.bak-$TIMESTAMP"
   echo "Utworzono kopię zapasową: $CONFIG_FILE.bak-$TIMESTAMP"
 fi
 
 if command -v node >/dev/null 2>&1; then
-  node - << EOF
+  AGENTLB_SETUP_CONFIG_FILE="$CONFIG_FILE" AGENTLB_SETUP_URL="$URL" AGENTLB_SETUP_KEY="$KEY" node - << 'EOF'
 const fs = require('fs');
-const path = "$CONFIG_FILE";
+const path = process.env.AGENTLB_SETUP_CONFIG_FILE;
 let cfg = {};
 if (fs.existsSync(path)) {
-  try { cfg = JSON.parse(fs.readFileSync(path, 'utf8')); } catch (e) {}
+  cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
+  if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('Configuration must be a JSON object');
 }
 cfg.models = cfg.models || {};
 cfg.models.providers = cfg.models.providers || {};
 cfg.models.providers.agentlb = {
-  baseUrl: "$URL/v1",
+  baseUrl: process.env.AGENTLB_SETUP_URL + "/v1",
   api: "openai-completions",
-  apiKey: "$KEY"
+  apiKey: process.env.AGENTLB_SETUP_KEY
 };
-fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
+if (fs.existsSync(path)) fs.chmodSync(path, 0o600);
+fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
 EOF
 elif command -v python3 >/dev/null 2>&1; then
-  python3 - << EOF
+  AGENTLB_SETUP_CONFIG_FILE="$CONFIG_FILE" AGENTLB_SETUP_URL="$URL" AGENTLB_SETUP_KEY="$KEY" python3 - << 'EOF'
 import os, json
-path = "$CONFIG_FILE"
+path = os.environ["AGENTLB_SETUP_CONFIG_FILE"]
 cfg = {}
 if os.path.exists(path):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-    except: pass
+    with open(path, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+    if not isinstance(cfg, dict):
+        raise ValueError("Configuration must be a JSON object")
 if "models" not in cfg:
     cfg["models"] = {}
 if "providers" not in cfg["models"]:
     cfg["models"]["providers"] = {}
 cfg["models"]["providers"]["agentlb"] = {
-    "baseUrl": "$URL/v1",
+    "baseUrl": os.environ["AGENTLB_SETUP_URL"] + "/v1",
     "api": "openai-completions",
-    "apiKey": "$KEY"
+    "apiKey": os.environ["AGENTLB_SETUP_KEY"]
 }
-with open(path, "w", encoding="utf-8") as f:
+if os.path.exists(path):
+    os.chmod(path, 0o600)
+with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
 EOF
