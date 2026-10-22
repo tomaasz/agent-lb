@@ -68,7 +68,6 @@ export class ClientUsageTracker {
   // set only for the header-derived dimension trackers, whose values come from
   // callers and are therefore unbounded.
   constructor({ now = () => Date.now(), maxKeys = Infinity } = {}) {
-    this.clients = new Map(); // name → { requests, connections, inputTokens, outputTokens, lastUsed(ms) }
     this.clients = new Map(); // name → { requests, connections, inputTokens, outputTokens, dailyTokens, dailyResetDay, monthlyTokens, monthlyResetMonth, lastUsed(ms) }
     this._now = now;
     this.maxKeys = maxKeys;
@@ -78,7 +77,6 @@ export class ClientUsageTracker {
     let c = this.clients.get(name);
     if (!c) {
       if (this.clients.size >= this.maxKeys && name !== OVERFLOW_KEY) return this._ensure(OVERFLOW_KEY);
-      c = { requests: 0, connections: 0, inputTokens: 0, outputTokens: 0, lastUsed: null };
       c = {
         requests: 0,
         connections: 0,
@@ -114,7 +112,6 @@ export class ClientUsageTracker {
     c.connections += connections;
     c.inputTokens += inputTokens;
     c.outputTokens += outputTokens;
-    c.lastUsed = this._now();
     const tokens = (inputTokens || 0) + (outputTokens || 0);
     c.dailyTokens += tokens;
     c.monthlyTokens += tokens;
@@ -244,14 +241,17 @@ export class ClientUsageTracker {
     for (const [name, s] of Object.entries(saved)) {
       if (!name || !s || typeof s !== 'object') continue;
       const c = this._ensure(name);
-      c.requests += Number(s.requests) || 0;
-      c.connections += Number(s.connections) || 0;
-      c.inputTokens += Number(s.inputTokens) || 0;
-      c.outputTokens += Number(s.outputTokens) || 0;
-      c.dailyTokens = Number(s.dailyTokens) || 0;
-      c.dailyResetDay = s.dailyResetDay || currentUtcDay(this._now());
-      c.monthlyTokens = Number(s.monthlyTokens) || 0;
-      c.monthlyResetMonth = s.monthlyResetMonth || currentUtcMonth(this._now());
+      const count = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
+      c.requests += count(s.requests);
+      c.connections += count(s.connections);
+      c.inputTokens += count(s.inputTokens);
+      c.outputTokens += count(s.outputTokens);
+      const today = currentUtcDay(this._now());
+      const month = currentUtcMonth(this._now());
+      if (c.dailyResetDay !== today) { c.dailyTokens = 0; c.dailyResetDay = today; }
+      if (c.monthlyResetMonth !== month) { c.monthlyTokens = 0; c.monthlyResetMonth = month; }
+      if (s.dailyResetDay === today) c.dailyTokens += count(s.dailyTokens);
+      if (s.monthlyResetMonth === month) c.monthlyTokens += count(s.monthlyTokens);
       const t = s.lastUsed ? Date.parse(s.lastUsed) : NaN;
       if (!Number.isNaN(t) && (c.lastUsed == null || t > c.lastUsed)) c.lastUsed = t;
     }

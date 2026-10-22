@@ -5,7 +5,7 @@ import { createAgySubscriptionRefresh } from "./agy-subscription.js";
 import { handleAgyCompletion, testAgyAccount } from "./agy-gateway.js";
 import { substitutedModel, substitutionAllowed } from "./model-substitution.js";
 import { handleClientKeys } from "./client-key-admin.js";
-import { readControlBody } from "./control-body.js";
+import { readControlBody, readControlJson } from "./control-body.js";
 import {
   AgyAccountStore,
   AgyLoginManager,
@@ -46,6 +46,7 @@ export {
   SENSITIVE_HEADER_NAMES,
 } from "./access-control.js";
 import {
+  AuthAttemptLimiter,
   verifySession,
   serializeSessionCookie,
   serializeLogoutCookie,
@@ -302,6 +303,13 @@ export function createProxyServer(
   clientUsage = null,
   dimensionUsage = null,
 ) {
+  const authLimiter = new AuthAttemptLimiter();
+  const resetLimiter = new AuthAttemptLimiter({ limit: 5, totalLimit: 20, windowMs: 15 * 60000 });
+  const ephemeralSessionSecret = randomBytes(32).toString('hex');
+  // Password changes invalidate old sessions; no configured key uses a random secret.
+  const sessionSecret = () => createHash('sha256')
+    .update(config.proxy?.apiKey || ephemeralSessionSecret)
+    .update('\0').update(config.proxy?.webAuth?.passwordHash || '').digest('hex');
   let agyModelCatalog = hooks.agyModels || null;
   let agyStore = null;
   let agyPool = hooks.agyPool || null;
@@ -561,7 +569,7 @@ export function createProxyServer(
         config.proxy,
       );
       const isTrustedOrigin = isLocal || isTailnet;
-      const sessionAuth = verifySession(req.headers.cookie, config.proxy?.apiKey);
+      const sessionAuth = verifySession(req.headers.cookie, sessionSecret());
       const isSessionAdmin = Boolean(sessionAuth?.valid);
       const isPublicAuthAction =
         normApiPath === "/api/auth/login" ||
@@ -588,12 +596,7 @@ export function createProxyServer(
       if (!auth.ok && !isSessionAdmin && !isPublicAuthAction && (clientKey || !isTrustedOrigin)) {
         console.warn("[AgentLB Auth Rejection]", {
           method: req.method,
-          url: req.url,
-          clientKey: clientKey
-            ? clientKey.length > 8
-              ? clientKey.slice(0, 4) + "..." + clientKey.slice(-4)
-              : clientKey
-            : null,
+          path: reqPath,
           hasHeader: !!headerKey,
           hasBearer: !!bearerKey,
           remote: req.socket.remoteAddress,
@@ -2343,20 +2346,36 @@ export function createProxyServer(
         return;
       }
 
-      if (req.method === "POST" && normApiPath === "/api/auth/login") {
-        let body = {};
+      let authBody;
+      if (req.method === "POST" && ["/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password"].includes(normApiPath)) {
+        const retryAfter = (normApiPath === "/api/auth/login" ? authLimiter : resetLimiter).take(req.socket.remoteAddress);
+        if (retryAfter) {
+          res.writeHead(429, { "Content-Type": "application/json", "Retry-After": String(retryAfter) });
+          res.end(JSON.stringify({ ok: false, error: "Too many authentication attempts" }));
+          return;
+        }
         try {
-          const raw = await readControlBody(req);
-          body = JSON.parse(raw || "{}");
-        } catch {}
+          authBody = await readControlJson(req);
+          const fields = ["username", "user", "password", "key", "target", "email", "code", "token", "pin", "newPassword"];
+          if (!authBody || typeof authBody !== "object" || Array.isArray(authBody) ||
+              fields.some(key => authBody[key] != null && (typeof authBody[key] !== "string" || Buffer.byteLength(authBody[key]) > 1024))) {
+            throw new Error("invalid auth body");
+          }
+        } catch {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Invalid authentication request" }));
+          return;
+        }
+      }
+
+      if (req.method === "POST" && normApiPath === "/api/auth/login") {
+        const body = authBody;
         const username = (body.username || body.user || "").trim();
-        const candidate = (body.password || body.key || clientKey || "").trim();
+        const candidate = body.password || body.key || clientKey || "";
         const hasAdminKey = Boolean(config.proxy?.apiKey);
         const webAuth = config.proxy?.webAuth || {};
         const expectedUser = (webAuth.username || "tomaasz").trim();
-        const passwordHash =
-          webAuth.passwordHash ||
-          "$2a$14$Wv8KE1RqpU2SRRAlNsqWx.AAy.7VpAOuOY.S53R.44JwyioUzICfi";
+        const passwordHash = webAuth.passwordHash;
 
         let authenticated = false;
         let authUser = null;
@@ -2364,7 +2383,7 @@ export function createProxyServer(
         // 1. Check webAuth username and password
         if (
           (!username || username.toLowerCase() === expectedUser.toLowerCase()) &&
-          verifyPassword(candidate, passwordHash, config.proxy?.apiKey)
+          await verifyPassword(candidate, passwordHash, config.proxy?.apiKey)
         ) {
           authenticated = true;
           authUser = expectedUser;
@@ -2376,20 +2395,10 @@ export function createProxyServer(
           authUser = "admin";
         }
 
-        // 3. Check client workstation keys
-        const clientAuth =
-          !authenticated && candidate
-            ? resolveClientAuth(config.proxy, candidate)
-            : null;
-        if (!authenticated && (!hasAdminKey || clientAuth?.ok)) {
-          authenticated = true;
-          authUser = clientAuth?.client || "admin";
-        }
-
         if (authenticated) {
           const sessionCookie = serializeSessionCookie(
             authUser,
-            config.proxy?.apiKey,
+            sessionSecret(),
           );
           res.writeHead(200, {
             "Content-Type": "application/json",
@@ -2419,14 +2428,9 @@ export function createProxyServer(
       }
 
       if (req.method === "POST" && normApiPath === "/api/auth/forgot-password") {
-        let body = {};
-        try {
-          const raw = await readControlBody(req);
-          body = JSON.parse(raw || "{}");
-        } catch {}
+        const body = authBody;
         const target = (body.target || body.username || body.email || "").trim();
-        const host = req.headers.host || "agentlb.gotova.pl";
-        const result = requestPasswordReset(target, config, host);
+        const result = await requestPasswordReset(target, config);
         res.writeHead(result.ok ? 200 : 400, {
           "Content-Type": "application/json",
         });
@@ -2435,37 +2439,33 @@ export function createProxyServer(
       }
 
       if (req.method === "POST" && normApiPath === "/api/auth/reset-password") {
-        let body = {};
-        try {
-          const raw = await readControlBody(req);
-          body = JSON.parse(raw || "{}");
-        } catch {}
+        const body = authBody;
         const code = (body.code || body.token || body.pin || "").trim();
-        const newPassword = (body.newPassword || body.password || "").trim();
-        const result = completePasswordReset(code, newPassword);
+        const newPassword = body.newPassword || body.password || "";
+        const result = await completePasswordReset(code, newPassword, async (reset) => {
+          const currentAuth = config.proxy?.webAuth || {};
+          if (reset.username !== (currentAuth.username || 'tomaasz').trim().toLowerCase() ||
+              reset.email !== (currentAuth.email || '').trim().toLowerCase()) {
+            throw new Error('Reset account configuration changed');
+          }
+          await atomicConfigUpdate((disk) => {
+            disk.proxy ||= {};
+            disk.proxy.webAuth ||= {};
+            Object.assign(disk.proxy.webAuth, { username: reset.username, passwordHash: reset.newHash, email: reset.email });
+          });
+          config.proxy ||= {};
+          config.proxy.webAuth ||= {};
+          Object.assign(config.proxy.webAuth, { username: reset.username, passwordHash: reset.newHash, email: reset.email });
+        });
         if (!result.ok) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify(result));
           return;
         }
 
-        await atomicConfigUpdate((disk) => {
-          disk.proxy = disk.proxy || {};
-          disk.proxy.webAuth = disk.proxy.webAuth || {};
-          disk.proxy.webAuth.username = result.username;
-          disk.proxy.webAuth.passwordHash = result.newHash;
-          disk.proxy.webAuth.email = result.email;
-        });
-
-        config.proxy = config.proxy || {};
-        config.proxy.webAuth = config.proxy.webAuth || {};
-        config.proxy.webAuth.username = result.username;
-        config.proxy.webAuth.passwordHash = result.newHash;
-        config.proxy.webAuth.email = result.email;
-
         const sessionCookie = serializeSessionCookie(
           result.username,
-          config.proxy?.apiKey,
+          sessionSecret(),
         );
         res.writeHead(200, {
           "Content-Type": "application/json",
@@ -3044,12 +3044,14 @@ export function createProxyServer(
       ) {
         let body;
         try {
-          const raw = await readControlBody(req);
-          body = JSON.parse(raw || "{}");
+          body = await readControlJson(req);
+          if ([body.account, body.name].some(value => value != null && typeof value !== 'string')) throw new Error('invalid account');
         } catch {
-          body = {};
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "invalid request body" }));
+          return;
         }
-        const target = body?.account || body?.name || null;
+        const target = body.account || body.name || null;
         accountManager.resetUsage(target);
         hooks.saveState?.();
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -4246,11 +4248,15 @@ export function createProxyServer(
         (normApiPath === "/api/health-check/run" ||
           normApiPath === "/health-check/run")
       ) {
-        let bodyObj = {};
+        let bodyObj;
         try {
-          const raw = await readControlBody(req);
-          if (raw) bodyObj = JSON.parse(raw);
-        } catch {}
+          bodyObj = await readControlJson(req);
+          if (bodyObj.force != null && typeof bodyObj.force !== 'boolean') throw new Error('invalid force');
+        } catch {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "invalid health-check settings" }));
+          return;
+        }
         const urlObj = new URL(req.url, "http://127.0.0.1");
         const force =
           bodyObj.force != null
@@ -4268,11 +4274,19 @@ export function createProxyServer(
         (normApiPath === "/api/health-check/config" ||
           normApiPath === "/health-check/config")
       ) {
-        let bodyObj = {};
+        let bodyObj;
         try {
-          const raw = await readControlBody(req);
-          if (raw) bodyObj = JSON.parse(raw);
-        } catch {}
+          bodyObj = await readControlJson(req);
+          if (bodyObj.enabled != null && typeof bodyObj.enabled !== 'boolean') throw new Error('invalid enabled');
+          for (const field of ['intervalSeconds', 'trafficGracePeriodSeconds', 'errorBackoffSeconds']) {
+            if (bodyObj[field] != null && (typeof bodyObj[field] !== 'number' || !Number.isFinite(bodyObj[field]) || bodyObj[field] < 0 || bodyObj[field] * 1000 > 2147483647)) throw new Error('invalid duration');
+          }
+          if (bodyObj.intervalSeconds > 0 && bodyObj.intervalSeconds < 1) throw new Error('interval too small');
+        } catch {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "invalid health-check settings" }));
+          return;
+        }
         const enabled =
           bodyObj.enabled != null ? !!bodyObj.enabled : healthChecker.enabled;
         const intervalMs =
@@ -4288,25 +4302,16 @@ export function createProxyServer(
             ? Number(bodyObj.errorBackoffSeconds) * 1000
             : healthChecker.errorBackoffMs;
 
-        healthChecker.reschedule({
+        const settings = {
           enabled,
-          intervalMs,
-          trafficGracePeriodMs,
-          errorBackoffMs,
-        });
-
-        config.autoHealthCheck = {
-          enabled: healthChecker.enabled,
-          intervalSeconds: Math.round(healthChecker.intervalMs / 1000),
-          trafficGracePeriodSeconds: Math.round(
-            healthChecker.trafficGracePeriodMs / 1000,
-          ),
-          errorBackoffSeconds: Math.round(healthChecker.errorBackoffMs / 1000),
+          intervalSeconds: intervalMs / 1000,
+          trafficGracePeriodSeconds: trafficGracePeriodMs / 1000,
+          errorBackoffSeconds: errorBackoffMs / 1000,
         };
-
-        atomicConfigUpdate((cfg) => {
-          cfg.autoHealthCheck = { ...config.autoHealthCheck };
-        }).catch(() => {});
+        // Persist before applying; an unsuccessful write cannot report success.
+        await atomicConfigUpdate((cfg) => { cfg.autoHealthCheck = settings; });
+        config.autoHealthCheck = settings;
+        healthChecker.reschedule({ enabled, intervalMs, trafficGracePeriodMs, errorBackoffMs });
 
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(

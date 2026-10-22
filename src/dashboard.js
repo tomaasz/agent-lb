@@ -1113,7 +1113,7 @@ const PAGE = `<!doctype html>
         </div>
         <div class="login-field">
           <label for="resetNewPass" data-i18n="resetNewPassLabel">Nowe hasło</label>
-          <input id="resetNewPass" type="password" autocomplete="new-password" placeholder="Minimum 4 znaki">
+          <input id="resetNewPass" type="password" autocomplete="new-password" minlength="12" placeholder="Minimum 12 znaków">
         </div>
         <button id="btnCompleteReset" type="button" class="btn btn-ok" style="width:100%; min-height:42px; margin-top:8px;" data-i18n="btnCompleteReset">Ustaw nowe hasło i zaloguj</button>
       </div>
@@ -3566,6 +3566,8 @@ ${SHARED_HELPERS}
     { key: 'lastSeen', label: 'Last seen', num: true },
   ];
 
+  var sessionPage = 0;
+  var sessionPageSize = 100;
   function renderSessions(sessions) {
     var wrap = document.getElementById('sessionsWrap');
     // Absent unless proxy.sessionDetail is on — the aggregate counts in the
@@ -3582,7 +3584,18 @@ ${SHARED_HELPERS}
     sessionFilters.client = clientSel.value;
 
     var rows = sortRows(filterSessionRows(all, sessionFilters), sortState.sessions.key, sortState.sessions.dir);
-    document.getElementById('sessionCount').textContent = rows.length + ' of ' + all.length + ' sessions';
+    sessionPage = Math.max(0, Math.min(sessionPage, Math.ceil(rows.length / sessionPageSize) - 1));
+    var offset = sessionPage * sessionPageSize;
+    var count = document.getElementById('sessionCount');
+    count.textContent = (rows.length ? offset + 1 : 0) + '–' + Math.min(offset + sessionPageSize, rows.length) + ' / ' + rows.length + ' (' + all.length + ') ';
+    [{ label: '←', step: -1 }, { label: '→', step: 1 }].forEach(function (nav) {
+      var btn = el('button', '', nav.label);
+      btn.type = 'button';
+      btn.disabled = nav.step < 0 ? sessionPage === 0 : offset + sessionPageSize >= rows.length;
+      btn.addEventListener('click', function () { sessionPage += nav.step; renderSessions(lastStatus.sessions); });
+      count.appendChild(btn);
+    });
+    rows = rows.slice(offset, offset + sessionPageSize);
 
     var table = document.getElementById('sessions');
     table.textContent = '';
@@ -3973,26 +3986,16 @@ ${SHARED_HELPERS}
 
   var revealedKeys = Object.create(null);
   var cachedClientKeys = Object.create(null);
-  try {
-    var storedKeys = JSON.parse(localStorage.getItem('agentlb_cached_keys') || '{}');
-    if (storedKeys && typeof storedKeys === 'object') {
-      for (var sk in storedKeys) {
-        if (typeof storedKeys[sk] === 'string' && !storedKeys[sk].includes('...')) {
-          cachedClientKeys[sk] = storedKeys[sk];
-        }
-      }
-    }
-  } catch (e) {}
-
+  // Purge credentials persisted by older versions; revealed keys stay in memory.
   function saveCachedKeys() {
-    try {
-      localStorage.setItem('agentlb_cached_keys', JSON.stringify(cachedClientKeys));
-    } catch (e) {}
+    try { localStorage.removeItem('agentlb_cached_keys'); } catch (e) {}
   }
+  saveCachedKeys();
   var primaryAdminKey = '';
   var pendingOAuthState = null;
 
   function apiCall(url, method, body) {
+    var generation = pollGeneration;
     var key = localStorage.getItem(KEY) || '';
     var headers = {
       'content-type': 'application/json',
@@ -4004,6 +4007,7 @@ ${SHARED_HELPERS}
     };
     if (body != null) init.body = JSON.stringify(body);
     return fetch(url, init).then(function (res) {
+      if (generation !== pollGeneration) return null;
       if (res.status === 401 || res.status === 403) {
         if (key) localStorage.removeItem(KEY);
         showKeybox(currentLang === 'pl' ? 'Wymagana autoryzacja administracyjna. Wprowadź klucz proxy (proxy.apiKey).' : 'Administrative authorization required. Enter proxy key (proxy.apiKey).');
@@ -4012,7 +4016,7 @@ ${SHARED_HELPERS}
       return res.json().catch(function () {
         return { ok: false, error: 'status ' + res.status };
       });
-    });
+    }).then(function (body) { return generation === pollGeneration ? body : null; });
   }
 
   function copyToClipboard(text, label) {
@@ -5835,12 +5839,20 @@ ${SHARED_HELPERS}
     }
   }
 
+  var pollPending = false;
+  var pollGeneration = 0;
   function poll() {
+    if (pollPending) return;
+    pollPending = true;
+    var generation = pollGeneration;
+    var controller = new AbortController();
+    var timeout = setTimeout(function () { controller.abort(); }, 10000);
     var apiKey = localStorage.getItem(KEY) || '';
     var headers = {};
     if (apiKey) headers['x-api-key'] = apiKey;
-    fetch('/agent-lb/status', { headers: headers })
+    return fetch('/agent-lb/status', { headers: headers, signal: controller.signal })
       .then(function (res) {
+        if (generation !== pollGeneration) return null;
         if (res.status === 401 || res.status === 403) {
           if (apiKey) {
             localStorage.removeItem(KEY);
@@ -5854,7 +5866,7 @@ ${SHARED_HELPERS}
         return res.json();
       })
       .then(function (s) {
-        if (!s) return;
+        if (!s || generation !== pollGeneration) return;
         document.getElementById('keybox').style.display = 'none';
         document.getElementById('app').style.display = '';
         document.getElementById('err').style.display = 'none';
@@ -5863,35 +5875,28 @@ ${SHARED_HELPERS}
         // Also fetch full client keys info with live stats
         var apiHeaders = {};
         if (apiKey) apiHeaders['x-api-key'] = apiKey;
-        fetch('/agent-lb/api/keys', { headers: apiHeaders })
+        return fetch('/agent-lb/api/keys', { headers: apiHeaders, signal: controller.signal })
           .then(function (kr) { return kr.ok ? kr.json() : null; })
           .then(function (kd) {
-            if (kd) {
+            if (kd && generation === pollGeneration) {
               if (kd.primaryKey) primaryAdminKey = kd.primaryKey;
               else if (apiKey) primaryAdminKey = apiKey;
               if (Array.isArray(kd.keys)) {
                 renderClientKeys(kd.keys, s.clients);
               }
-              apiCall('/agent-lb/api/keys/reveal', 'POST', { all: true })
-                .then(function (rev) {
-                  if (rev && rev.ok && rev.keys) {
-                    Object.assign(cachedClientKeys, rev.keys);
-                    if (rev.primaryKey) primaryAdminKey = rev.primaryKey;
-                    saveCachedKeys();
-                    if (Array.isArray(kd.keys)) renderClientKeys(kd.keys, s.clients);
-                    updateQuickCmd();
-                  }
-                })
-                .catch(function () {});
+              updateQuickCmd();
             }
           })
-          .catch(function () { /* best effort */ });
+          .catch(function () {
+            if (generation === pollGeneration) note('error', currentLang === 'pl' ? 'Nie udało się odświeżyć listy kluczy.' : 'Could not refresh client keys.');
+          });
       })
       .catch(function (e) {
+        if (generation !== pollGeneration) return;
         var err = document.getElementById('err');
         err.style.display = 'block';
         err.textContent = 'Cannot reach the proxy: ' + e.message;
-      });
+      }).finally(function () { clearTimeout(timeout); pollPending = false; });
   }
 
   function start() {
@@ -6004,7 +6009,7 @@ ${SHARED_HELPERS}
       e.preventDefault();
       var btn = document.getElementById('go');
       var user = (document.getElementById('loginUser').value || '').trim();
-      var pass = (document.getElementById('loginPass').value || '').trim();
+      var pass = document.getElementById('loginPass').value || '';
       if (!pass) {
         showKeybox(currentLang === 'pl' ? 'Wprowadź hasło przed logowaniem.' : 'Please enter your password.');
         return;
@@ -6082,7 +6087,7 @@ ${SHARED_HELPERS}
   if (btnCompleteReset) {
     btnCompleteReset.addEventListener('click', function () {
       var code = (document.getElementById('resetCode').value || '').trim();
-      var newPass = (document.getElementById('resetNewPass').value || '').trim();
+      var newPass = document.getElementById('resetNewPass').value || '';
       if (!code || !newPass) {
         showKeybox(currentLang === 'pl' ? 'Wprowadź kod PIN oraz nowe hasło.' : 'Please enter the PIN code and new password.');
         return;
@@ -6170,15 +6175,26 @@ ${SHARED_HELPERS}
   var btnLogout = document.getElementById('btnLogout');
   if (btnLogout) {
     btnLogout.addEventListener('click', function () {
+      pollGeneration++;
+      cachedClientKeys = Object.create(null);
+      revealedKeys = Object.create(null);
+      primaryAdminKey = '';
+      currentQuickKey = '';
+      saveCachedKeys();
       localStorage.removeItem(KEY);
-      fetch('/agent-lb/api/auth/logout', { method: 'POST' }).finally(function () {
+      showKeybox();
+      fetch('/agent-lb/api/auth/logout', { method: 'POST' }).then(function (res) {
+        if (!res.ok) throw new Error('status ' + res.status);
         showKeybox(null, currentLang === 'pl' ? 'Zostałeś pomyślnie wylogowany.' : 'You have been logged out successfully.');
+      }).catch(function () {
+        showKeybox(currentLang === 'pl' ? 'Nie udało się zakończyć sesji na serwerze. Spróbuj ponownie.' : 'Could not end the server session. Please try again.');
       });
     });
   }
 
   ['fProject', 'fClient'].forEach(function (id) {
     document.getElementById(id).addEventListener('change', function () {
+      sessionPage = 0;
       sessionFilters[id === 'fProject' ? 'project' : 'client'] = this.value;
       if (lastStatus) render(lastStatus);
     });
@@ -7180,7 +7196,7 @@ ${SHARED_HELPERS}
   if (selQuick) {
     selQuick.addEventListener('change', function () {
       var val = this.value;
-      if (val === '__primary__') {
+      if (val === '__primary__' && primaryAdminKey) {
         currentQuickKey = primaryAdminKey;
         updateQuickCmd();
       } else if (cachedClientKeys[val]) {
@@ -7190,7 +7206,8 @@ ${SHARED_HELPERS}
         apiCall('/agent-lb/api/keys/reveal', 'POST', { name: val })
           .then(function (rev) {
             if (rev && rev.ok && rev.key) {
-              cachedClientKeys[val] = rev.key;
+              if (val === '__primary__') primaryAdminKey = rev.key;
+              else cachedClientKeys[val] = rev.key;
               saveCachedKeys();
               currentQuickKey = rev.key;
               updateQuickCmd();

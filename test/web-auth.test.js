@@ -44,20 +44,20 @@ test('Logout cookie serialization', () => {
   assert.match(logout, /Expires=Thu, 01 Jan 1970/);
 });
 
-test('Password verification with fallback API key', () => {
+test('Password verification with fallback API key', async () => {
   const apiKey = 'tc-master-admin-token-test';
-  assert.equal(verifyPassword(apiKey, null, apiKey), true);
-  assert.equal(verifyPassword('wrong-key', null, apiKey), false);
-  assert.equal(verifyPassword('', null, apiKey), false);
+  assert.equal(await verifyPassword(apiKey, null, apiKey), true);
+  assert.equal(await verifyPassword('wrong-key', null, apiKey), false);
+  assert.equal(await verifyPassword('', null, apiKey), false);
 });
 
-test('Password verification with bcrypt hash', () => {
+test('Password verification with bcrypt hash', async () => {
   const testHash = '$2b$12$/8fNK1u.RKEur36.134sluPNnyoTBWgE4bZlrBfpQmJ9eORa97RVm'; // generated for 'test123'
-  assert.equal(verifyPassword('test123', testHash, 'fallback-key'), true);
-  assert.equal(verifyPassword('wrong', testHash, 'fallback-key'), false);
+  assert.equal(await verifyPassword('test123', testHash, 'fallback-key'), true);
+  assert.equal(await verifyPassword('wrong', testHash, 'fallback-key'), false);
 });
 
-test('Password reset validation and completion', () => {
-  const invalid = completePasswordReset('non-existent-code', 'newpassword123');
+test('Password reset validation and completion', async () => {
+  const invalid = await completePasswordReset('non-existent-code', 'newpassword123');
   assert.equal(invalid.ok, false);
 });

@@ -6,7 +6,7 @@ LABEL org.opencontainers.image.description="Universal Multi-Account Load Balance
 WORKDIR /app
 
 # Install tools used by setup scripts and repository verification
-RUN apk add --no-cache bash curl git
+RUN apk add --no-cache bash curl git python3 py3-bcrypt
 
 # Copy package descriptors first for caching
 COPY package.json package-lock.json ./

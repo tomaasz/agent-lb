@@ -1,5 +1,48 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { execFile } from 'node:child_process';
+
+const PROCESS_SESSION_SECRET = randomBytes(32);
+let pythonJobs = 0;
+
+// Secrets travel over stdin, never in the process list or child error text.
+function runPython(script, values, timeout = 5000) {
+  if (pythonJobs >= 4) return Promise.reject(new Error('Authentication service busy'));
+  pythonJobs++;
+  return new Promise((resolve, reject) => {
+    const child = execFile('python3', ['-c', script], { timeout, maxBuffer: 4096 }, (err, stdout) => {
+      pythonJobs--;
+      if (err) reject(new Error('Authentication helper failed'));
+      else resolve(stdout.trim());
+    });
+    child.stdin.on('error', () => {}); // exit/timeout may close stdin first
+    child.stdin.end(JSON.stringify(values));
+  });
+}
+
+// Bounded, per-socket-peer and global limits; forwarded IP headers are untrusted.
+export class AuthAttemptLimiter {
+  constructor({ limit = 10, totalLimit = 60, windowMs = 60000, now = Date.now } = {}) {
+    Object.assign(this, { limit, totalLimit, windowMs, now });
+    this.peers = new Map();
+    this.total = { count: 0, until: 0 };
+  }
+  /** @returns {number} Retry-After in seconds, or zero when admitted. */
+  take(peer) {
+    const now = this.now();
+    for (const [key, entry] of this.peers) if (entry.until <= now) this.peers.delete(key);
+    if (this.total.until <= now) this.total = { count: 0, until: now + this.windowMs };
+    let entry = this.peers.get(peer);
+    if (!entry && this.peers.size < 1024) {
+      entry = { count: 0, until: now + this.windowMs };
+      this.peers.set(peer, entry);
+    }
+    const blocked = !entry || entry.count >= this.limit || this.total.count >= this.totalLimit;
+    if (blocked) return Math.max(1, Math.ceil(((entry?.count >= this.limit ? entry.until : this.total.until) - now) / 1000));
+    entry.count++;
+    this.total.count++;
+    return 0;
+  }
+}
 
 // In-memory store for active password reset requests (expires in 15 minutes)
 const RESET_EXPIRY_MS = 15 * 60 * 1000;
@@ -20,56 +63,30 @@ function cleanExpiredResets() {
  * Verify candidate password against a hash or fallback API key.
  * Supports bcrypt ($2a$, $2b$) via python3 or fallback key comparison.
  */
-export function verifyPassword(candidate, passwordHash, fallbackApiKey) {
-  if (!candidate || typeof candidate !== 'string') return false;
-
-  // 1. If passwordHash looks like bcrypt ($2a$ or $2b$), test via python3 bcrypt
-  if (passwordHash && (passwordHash.startsWith('$2a$') || passwordHash.startsWith('$2b$'))) {
-    try {
-      execFileSync('python3', [
-        '-c',
-        'import bcrypt, sys; sys.exit(0 if bcrypt.checkpw(sys.argv[1].encode(), sys.argv[2].encode()) else 1)',
-        candidate,
-        passwordHash
-      ], { timeout: 4000, stdio: 'ignore' });
-      return true;
-    } catch {
-      // Failed bcrypt check or python3 not available
-    }
+export async function verifyPassword(candidate, passwordHash, fallbackApiKey) {
+  if (typeof candidate !== 'string' || !candidate || Buffer.byteLength(candidate) > 1024) return false;
+  // Check the master key before launching the expensive password helper.
+  if (typeof fallbackApiKey === 'string' && fallbackApiKey) {
+    const a = Buffer.from(candidate), b = Buffer.from(fallbackApiKey);
+    if (a.length === b.length && timingSafeEqual(a, b)) return true;
   }
-
-  // 2. Check fallback API key (master key) using constant-time comparison
-  if (fallbackApiKey && typeof fallbackApiKey === 'string') {
-    const ba = Buffer.from(candidate);
-    const bb = Buffer.from(fallbackApiKey);
-    if (ba.length === bb.length && timingSafeEqual(ba, bb)) {
-      return true;
-    }
+  if (typeof passwordHash !== 'string' || !/^\$2[ab]\$/.test(passwordHash)) return false;
+  try {
+    return await runPython('import bcrypt, json, sys; p, h = json.load(sys.stdin); print("yes" if bcrypt.checkpw(p.encode(), h.encode()) else "no")', [candidate, passwordHash]) === 'yes';
+  } catch {
+    console.error('[AgentLB] Password verification helper unavailable or failed');
+    return false;
   }
-
-  return false;
 }
 
-/**
- * Hash a new password using bcrypt (via python3) with cost 12.
- */
-export function hashPassword(plainText) {
-  if (!plainText || typeof plainText !== 'string') {
-    throw new Error('Password must be a non-empty string');
+/** Hash using the existing bcrypt format without blocking the proxy event loop. */
+export async function hashPassword(plainText) {
+  if (typeof plainText !== 'string' || plainText.length < 12 || Buffer.byteLength(plainText) > 72) {
+    throw new Error('Password must contain at least 12 characters and at most 72 UTF-8 bytes');
   }
-  try {
-    const out = execFileSync('python3', [
-      '-c',
-      'import bcrypt, sys; print(bcrypt.hashpw(sys.argv[1].encode(), bcrypt.gensalt(12)).decode())',
-      plainText
-    ], { timeout: 5000 });
-    const hash = out.toString().trim();
-    if (hash.startsWith('$2')) return hash;
-  } catch (err) {
-    // If python3 bcrypt is not installed, fallback or rethrow
-    throw new Error(`Failed to generate password hash: ${err.message}`);
-  }
-  throw new Error('Failed to generate password hash');
+  const hash = await runPython('import bcrypt, json, sys; p = json.load(sys.stdin); print(bcrypt.hashpw(p.encode(), bcrypt.gensalt(12)).decode())', plainText);
+  if (!hash.startsWith('$2')) throw new Error('Failed to generate password hash');
+  return hash;
 }
 
 /**
@@ -82,7 +99,7 @@ export function createSessionToken(username, secret, maxAgeSeconds = 30 * 24 * 3
   };
   const json = JSON.stringify(payload);
   const b64 = Buffer.from(json).toString('base64url');
-  const hmac = createHmac('sha256', secret || 'agent-lb-default-secret')
+  const hmac = createHmac('sha256', secret || PROCESS_SESSION_SECRET)
     .update(b64)
     .digest('base64url');
   return `${b64}.${hmac}`;
@@ -118,7 +135,7 @@ export function verifySession(cookieHeader, secret) {
   if (parts.length !== 2) return { valid: false };
 
   const [b64, signature] = parts;
-  const expectedHmac = createHmac('sha256', secret || 'agent-lb-default-secret')
+  const expectedHmac = createHmac('sha256', secret || PROCESS_SESSION_SECRET)
     .update(b64)
     .digest('base64url');
 
@@ -130,7 +147,7 @@ export function verifySession(cookieHeader, secret) {
 
   try {
     const payload = JSON.parse(Buffer.from(b64, 'base64url').toString('utf8'));
-    if (!payload.u || !payload.exp || typeof payload.exp !== 'number') {
+    if (typeof payload.u !== 'string' || !payload.u || !Number.isFinite(payload.exp)) {
       return { valid: false };
     }
     if (Date.now() > payload.exp) {
@@ -145,26 +162,21 @@ export function verifySession(cookieHeader, secret) {
 /**
  * Send email via Postfix on Tailscale (100.96.24.39:25).
  */
-export function sendEmail(toAddress, subject, bodyText) {
+export async function sendEmail(toAddress, subject, bodyText) {
   try {
-    execFileSync('python3', [
-      '-c',
-      `import smtplib, sys
+    await runPython(`import smtplib, json, sys
 from email.message import EmailMessage
+to, subject, body = json.load(sys.stdin)
 m = EmailMessage()
 m["From"] = "agentlb@gotovalues.com"
-m["To"] = sys.argv[1]
-m["Subject"] = sys.argv[2]
-m.set_content(sys.argv[3])
+m["To"] = to
+m["Subject"] = subject
+m.set_content(body)
 with smtplib.SMTP("100.96.24.39", 25, timeout=10) as s:
-    s.send_message(m)`,
-      toAddress,
-      subject,
-      bodyText
-    ], { timeout: 15000, stdio: 'ignore' });
+    s.send_message(m)`, [toAddress, subject, bodyText], 15000);
     return true;
-  } catch (err) {
-    console.error(`[AgentLB] Failed to send email to ${toAddress}:`, err.message);
+  } catch {
+    console.error('[AgentLB] Password reset email delivery failed');
     return false;
   }
 }
@@ -172,20 +184,25 @@ with smtplib.SMTP("100.96.24.39", 25, timeout=10) as s:
 /**
  * Initiate password reset for user or email.
  */
-export function requestPasswordReset(target, config, host = 'agentlb.gotova.pl') {
+export async function requestPasswordReset(target, config, { send = sendEmail } = {}) {
   cleanExpiredResets();
 
   const webAuth = config.proxy?.webAuth || {};
   const validUser = (webAuth.username || 'tomaasz').trim().toLowerCase();
-  const validEmail = (webAuth.email || 'tomaasz@gmail.com').trim().toLowerCase();
-
-  const input = (target || '').trim().toLowerCase();
-  if (input !== validUser && input !== validEmail && input !== 'tomaasz' && input !== 'tomaasz@gmail.com') {
-    return { ok: false, error: 'Nie znaleziono użytkownika lub adresu e-mail.' };
+  const validEmail = (webAuth.email || '').trim().toLowerCase();
+  // Public URL is operator configuration, never a request Host header.
+  const publicUrl = new URL(webAuth.publicUrl || 'https://agentlb.gotova.pl');
+  if (publicUrl.protocol !== 'https:' || publicUrl.username || publicUrl.password) {
+    throw new Error('webAuth.publicUrl must be an HTTPS URL without credentials');
   }
+  const host = publicUrl.host;
+
+  const input = typeof target === 'string' ? target.trim().toLowerCase() : '';
+  const response = { ok: true, message: 'Jeśli konto istnieje, instrukcje resetowania zostały wysłane.' };
+  if (!validEmail || (input !== validUser && input !== validEmail)) return response;
 
   const token = randomBytes(32).toString('hex');
-  const pin = Math.floor(100000 + Math.random() * 900000).toString();
+  const pin = randomInt(100000, 1000000).toString();
   const expiresAt = Date.now() + RESET_EXPIRY_MS;
 
   const data = {
@@ -195,9 +212,6 @@ export function requestPasswordReset(target, config, host = 'agentlb.gotova.pl')
     pin,
     expiresAt
   };
-
-  resetByToken.set(token, data);
-  resetByPin.set(pin, data);
 
   const resetUrl = `https://${host}/dashboard?reset_token=${token}`;
   const emailBody = `Cześć Tomasz,
@@ -217,17 +231,18 @@ Jeśli nie prosiłeś o reset hasła, możesz bezpiecznie zignorować tę wiadom
 Agent LB Security System
 `;
 
-  const sent = sendEmail(validEmail, '[Agent LB] Resetowanie hasła do panelu', emailBody);
+  const sent = await send(validEmail, '[Agent LB] Resetowanie hasła do panelu', emailBody);
   if (!sent) {
     return { ok: false, error: 'Błąd podczas wysyłania wiadomości e-mail. Spróbuj ponownie później.' };
   }
 
-  const masked = validEmail.replace(/^(.)(.*)(@.*)$/, (_, a, b, c) => a + '*'.repeat(Math.min(b.length, 5)) + c);
-  return {
-    ok: true,
-    message: `Link oraz kod PIN do zresetowania hasła zostały wysłane na adres ${masked}.`,
-    email: masked
-  };
+  // Keep one active reset per user and only commit after successful delivery.
+  for (const [oldToken, old] of resetByToken) {
+    if (old.username === validUser) { resetByToken.delete(oldToken); resetByPin.delete(old.pin); }
+  }
+  resetByToken.set(token, data);
+  resetByPin.set(pin, data);
+  return response;
 }
 
 /**
@@ -245,25 +260,23 @@ export function validateResetCode(code) {
 /**
  * Complete password reset: verify token/PIN, hash new password, consume token.
  */
-export function completePasswordReset(code, newPassword) {
+export async function completePasswordReset(code, newPassword, persist = async () => {}) {
   const data = validateResetCode(code);
-  if (!data) {
-    return { ok: false, error: 'Kod resetujący lub link wygasł bądź jest nieprawidłowy.' };
+  if (!data || data.processing) return { ok: false, error: 'Kod resetujący lub link wygasł bądź jest nieprawidłowy.' };
+  if (typeof newPassword !== 'string' || newPassword.length < 12 || Buffer.byteLength(newPassword) > 72) {
+    return { ok: false, error: 'Nowe hasło musi zawierać co najmniej 12 znaków i najwyżej 72 bajty UTF-8.' };
   }
-  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 4) {
-    return { ok: false, error: 'Nowe hasło musi zawierać co najmniej 4 znaki.' };
+  data.processing = true;
+  try {
+    const newHash = await hashPassword(newPassword);
+    if (validateResetCode(code) !== data) return { ok: false, error: 'Kod resetujący wygasł.' };
+    const result = { ok: true, username: data.username, newHash, email: data.email };
+    await persist(result);
+    // Failed persistence leaves the code usable for a retry.
+    resetByToken.delete(data.token);
+    resetByPin.delete(data.pin);
+    return result;
+  } finally {
+    data.processing = false;
   }
-
-  const newHash = hashPassword(newPassword);
-
-  // Consume the reset token & PIN so it cannot be reused
-  resetByToken.delete(data.token);
-  resetByPin.delete(data.pin);
-
-  return {
-    ok: true,
-    username: data.username,
-    newHash,
-    email: data.email
-  };
 }
