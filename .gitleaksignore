@@ -1,0 +1,11 @@
+# Verified synthetic test fixtures only; see docs/audit-systematic-2026-10-22/05-validacion/secrets-triage.json
+75fa66b2ed5d4f1e0478f4882adef7a6ad0bc1b5:test/advanced-features.test.js:generic-api-key:102
+75fa66b2ed5d4f1e0478f4882adef7a6ad0bc1b5:test/auth-gate-websocket.test.js:generic-api-key:89
+75fa66b2ed5d4f1e0478f4882adef7a6ad0bc1b5:test/dashboard-auth.test.js:generic-api-key:85
+75fa66b2ed5d4f1e0478f4882adef7a6ad0bc1b5:test/dashboard-auth.test.js:generic-api-key:87
+ac3514429346d81ac8403d88c3a200ec444da11f:test/dashboard-auth.test.js:generic-api-key:85
+ac3514429346d81ac8403d88c3a200ec444da11f:test/dashboard-auth.test.js:generic-api-key:87
+c8f76a184c76d8691f0aba230e14d7f441e5e85b:test/auth-gate-websocket.test.js:generic-api-key:89
+9a3cc65c844cacd91467ed3ad5da92138b1cb32e:test/advanced-features.test.js:generic-api-key:88
+e29673dc7b9053e22a06faa36e2950e0adfe3b1f:test/dashboard-auth.test.js:generic-api-key:35
+e29673dc7b9053e22a06faa36e2950e0adfe3b1f:test/dashboard-auth.test.js:generic-api-key:36

@@ -1,0 +1,33 @@
+name: Security
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=high
+      - run: npm sbom --sbom-format cyclonedx > sbom.cdx.json
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Regression rule for installer command injection
+        run: |
+          pipx run --spec semgrep==1.182.1 semgrep scan --config security/semgrep.yml --metrics off --error src setup
+      - name: Build and scan runtime image
+        run: |
+          docker build --pull -f docker/Dockerfile -t agent-lb:security .
+          docker save agent-lb:security -o /tmp/agent-lb-image.tar
+          docker run --rm -v /tmp/agent-lb-image.tar:/image.tar:ro aquasec/trivy@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c image --input /image.tar --scanners vuln --severity HIGH,CRITICAL --exit-code 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
