@@ -34,3 +34,5 @@ Nie wykonano CodeQL/SonarQube, ZAP/Burp/AFL, długiego profilu, realnego Windows
 Semgrep: początkowy skan miał 9 timeoutów reguł w 4 dużych modułach. Powtórzenie tych 4 plików z limitem 60 s/regułę zakończyło się bez timeoutów i nowych dopasowań (68 reguł). Dowody: `05-validacion/semgrep-retry.*` (ścieżka względem katalogu audytu).
 
 Uwaga o JUnit: stopka zawiera ten sam wynik node:test 408/403/0/5 i czas 67787.700064 ms co log spec. XML ma 406 elementów testcase i 6 skipped (m.in. skipped suite). Hierarchia reporterów nie mapuje się 1:1; obie reprezentacje zachowano bez ręcznej korekty.
+
+Tekstowe podglądy logów mają usunięte końcowe spacje/taby i puste linie EOF dla `git diff --check`. Dokładne oryginały są obok jako `.log.gz`; hashe obu postaci zawiera `05-validacion/log-normalization.json`. Nie usuwano komunikatów ani błędów.

@@ -1,0 +1,53 @@
+✔ integration: delegated and missing keys never mint administrator sessions (252.363447ms)
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/keys',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+✔ integration: master login, password change session revocation, logout cookie (68.914335ms)
+✔ integration: malformed auth input fails with 400, no side effects or cookies (313.065725ms)
+✔ integration: auth attempt limit covers aliases and ignores spoofed forwarding headers (76.96921ms)
+✔ auth limiter bounds peers, enforces global cap, recovers after expiry (306.685362ms)
+✔ known legacy default secret cannot forge a session without a configured secret (0.794067ms)
+✔ reset: trusted URL, configured recipient, delivery failure and single-use persistence (1922.457318ms)
+✔ usage restore preserves current counters, ignores stale periods and corrupt numbers (73.121419ms)
+✔ dashboard: polls coalesce, reveal no secrets, and stale response cannot reopen after logout (12.17255ms)
+✔ dashboard: failed status reports a visible fallback and permits the next poll (3.806642ms)
+✔ integration: malformed usage reset preserves counters; explicit empty object resets fleet (54.258055ms)
+[AgentLB] Unhandled error: Error: EISDIR: illegal operation on a directory, read
+    at async readFileHandle (node:internal/fs/promises:1261:24)
+    at async loadConfig (file:///app/src/config.js:132:31)
+    at async run (file:///app/src/config.js:281:22) {
+  errno: -21,
+  code: 'EISDIR',
+  syscall: 'read'
+}
+✔ integration: health settings validate types and persistence failure leaves runtime unchanged (94.777236ms)
+✔ dashboard: session table bounds DOM rows, navigates pages, clamps after filtering (17.627644ms)
+✔ dashboard: an in-flight key reveal cannot restore credentials after logout (8.815421ms)
+✔ native OpenAI JSON: upstream usage is booked once and enforces client quota (403.311454ms)
+✔ OpenAI SSE translated to Anthropic: upstream usage is booked once and enforces client quota (379.65459ms)
+✔ Anthropic SSE translated to OpenAI: upstream usage is booked once and enforces client quota (158.803971ms)
+✔ HTTP account-bound relays remove proxy sessions and proxy bearer keys, preserve upstream identity (479.902982ms)
+[AgentLB] WebSocket /v1/session_ingress/ws/fixture refused by upstream (403)
+[AgentLB] WebSocket /v1/session_ingress/ws/fixture refused by upstream (403)
+[AgentLB] WebSocket /v1/session_ingress/ws/fixture refused by upstream (403)
+✔ WebSocket relays remove proxy sessions and proxy bearer keys, preserve upstream identity (188.609565ms)
+✔ OpenAI → Anthropic: every UTF-8 byte boundary preserves text (165.027302ms)
+✔ Anthropic → OpenAI: every UTF-8 byte boundary preserves text (173.102788ms)
+✔ Codex → OpenAI: every UTF-8 byte boundary preserves text (68.632262ms)
+✔ Session cookie creation and verification (5.891989ms)
+✔ Logout cookie serialization (0.646686ms)
+✔ Password verification with fallback API key (0.901337ms)
+✔ Password verification with bcrypt hash (903.168837ms)
+✔ Password reset validation and completion (2.46144ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4811.618806

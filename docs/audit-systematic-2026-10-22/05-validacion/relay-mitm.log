@@ -1,0 +1,52 @@
+✔ all management aliases refuse client keys before handlers, master lists only masked keys (353.824425ms)
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/keys',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/keys',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/keys',
+  hasHeader: false,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+[AgentLB Auth Rejection] {
+  method: 'GET',
+  path: '/agent-lb/api/keys',
+  hasHeader: true,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+✔ forwarded spoofing and invalid credentials never gain local trust (44.215535ms)
+✔ MITM listener revalidates credential, expiry, quotas and models on every request (42.841132ms)
+✔ selected provider authorization prevents cross-provider spending (37.301242ms)
+✔ restricted keys cannot bypass metering using opaque relays (1.455843ms)
+✔ request budgets share capacity, bound memory, and release exactly once (0.402564ms)
+✔ health check rejects SSE failure and missing terminal success (3.801715ms)
+✔ health probe aborts stalled transport within its deadline (20.933482ms)
+[AgentLB] Account "a" rate limit expired, marking active
+✔ translated pipeline aborts idle body and cancels upstream (28.593362ms)
+✔ active count excludes breaker and recognizes expired rate-limit holds (0.764237ms)
+[HealthCheck] Cycle complete: 0 ok, 1 err, 0 skipped (0-token pass), 0 tokens used
+✔ contended config lock times out without deleting live owner lock (59.703667ms)
+✔ health stop cancels the cycle without probing subsequent accounts (1.351293ms)
+✔ OAuth token relay is covered by the shared request admission budget (10.250214ms)
+✔ real CONNECT TLS tunnel revalidates a rotated credential on its next request (383.80156ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1405.733252

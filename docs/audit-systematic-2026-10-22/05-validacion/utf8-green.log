@@ -1,0 +1,11 @@
+✔ OpenAI → Anthropic: every UTF-8 byte boundary preserves text (185.123608ms)
+✔ Anthropic → OpenAI: every UTF-8 byte boundary preserves text (117.338879ms)
+✔ Codex → OpenAI: every UTF-8 byte boundary preserves text (121.129965ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 889.335397

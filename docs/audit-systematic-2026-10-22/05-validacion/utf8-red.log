@@ -1,0 +1,76 @@
+✖ OpenAI → Anthropic: every UTF-8 byte boundary preserves text (47.17852ms)
+✖ Anthropic → OpenAI: every UTF-8 byte boundary preserves text (50.859373ms)
+✖ Codex → OpenAI: every UTF-8 byte boundary preserves text (29.272963ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 0
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 325.13342
+
+✖ failing tests:
+
+test at test/systematic-utf8.test.js:26:3
+✖ OpenAI → Anthropic: every UTF-8 byte boundary preserves text (47.17852ms)
+  AssertionError [ERR_ASSERTION]: split at byte 42
+  + actual - expected
+
+  + 'Za��ółć gęślą jaźń 🧪 漢字'
+  - 'Zażółć gęślą jaźń 🧪 漢字'
+       ^
+
+      at TestContext.<anonymous> (file:///home/tomaasz/agent-lb/test/systematic-utf8.test.js:41:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'Za��ółć gęślą jaźń 🧪 漢字',
+    expected: 'Zażółć gęślą jaźń 🧪 漢字',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/systematic-utf8.test.js:26:3
+✖ Anthropic → OpenAI: every UTF-8 byte boundary preserves text (50.859373ms)
+  AssertionError [ERR_ASSERTION]: split at byte 76
+  + actual - expected
+
+  + 'Za��ółć gęślą jaźń 🧪 漢字'
+  - 'Zażółć gęślą jaźń 🧪 漢字'
+       ^
+
+      at TestContext.<anonymous> (file:///home/tomaasz/agent-lb/test/systematic-utf8.test.js:41:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'Za��ółć gęślą jaźń 🧪 漢字',
+    expected: 'Zażółć gęślą jaźń 🧪 漢字',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at test/systematic-utf8.test.js:26:3
+✖ Codex → OpenAI: every UTF-8 byte boundary preserves text (29.272963ms)
+  AssertionError [ERR_ASSERTION]: split at byte 55
+  + actual - expected
+
+  + 'Za��ółć gęślą jaźń 🧪 漢字'
+  - 'Zażółć gęślą jaźń 🧪 漢字'
+       ^
+
+      at TestContext.<anonymous> (file:///home/tomaasz/agent-lb/test/systematic-utf8.test.js:41:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 'Za��ółć gęślą jaźń 🧪 漢字',
+    expected: 'Zażółć gęślą jaźń 🧪 漢字',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

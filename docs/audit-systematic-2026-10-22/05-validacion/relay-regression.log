@@ -1,0 +1,40 @@
+✔ trusted origin: a foreign Bearer (the client's own login) is not a wrong proxy key (404.929666ms)
+[AgentLB Auth Rejection] {
+  method: 'POST',
+  path: '/v1/messages',
+  hasHeader: true,
+  hasBearer: false,
+  remote: '127.0.0.1'
+}
+✔ trusted origin: a wrong explicit x-api-key still fails loudly (72.747611ms)
+✔ trusted origin: a Bearer that is a client key is still honoured (100.181465ms)
+[AgentLB Auth Rejection] {
+  method: 'POST',
+  path: '/v1/messages',
+  hasHeader: false,
+  hasBearer: true,
+  remote: '127.0.0.1'
+}
+✔ untrusted origin: a foreign Bearer is refused (116.657747ms)
+✔ trusted origin: a foreign Bearer cannot reach management endpoints (95.158547ms)
+[AgentLB] Codex WebSocket /backend-api/codex/responses refused (426) — Codex is served over HTTP; set supports_websockets = false
+[AgentLB] Codex WebSocket /v1/responses refused (426) — Codex is served over HTTP; set supports_websockets = false
+[AgentLB] Codex WebSocket /backend-api/codex/responses refused (426) — Codex is served over HTTP; set supports_websockets = false
+✔ codex WebSocket handshakes are refused with 426 before the key gate and never relayed (50.228263ms)
+[AgentLB] WebSocket upgrade refused (no proxy key) from 127.0.0.1 for /v1/session_ingress/ws/abc
+✔ non-codex WebSocket handshakes still go through the key gate (24.795999ms)
+✔ tailnetDomains: only direct peers addressing this tailnet are exempt (17.262229ms)
+✔ tailnetDomains: the Host check refuses other tailnets' MagicDNS names (4.4036ms)
+✔ HTTP account-bound relays remove proxy sessions and proxy bearer keys, preserve upstream identity (734.194403ms)
+[AgentLB] WebSocket /v1/session_ingress/ws/fixture refused by upstream (403)
+[AgentLB] WebSocket /v1/session_ingress/ws/fixture refused by upstream (403)
+[AgentLB] WebSocket /v1/session_ingress/ws/fixture refused by upstream (403)
+✔ WebSocket relays remove proxy sessions and proxy bearer keys, preserve upstream identity (200.227727ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1771.146481

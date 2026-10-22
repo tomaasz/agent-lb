@@ -1,0 +1,75 @@
+▶ Account Limit Usage Attribution & Inspector
+  ✔ records token usage broken down by client, model, and session (14.793378ms)
+  ✔ enforces maximum boundary limits on sessions and recent items (33.566322ms)
+  ✔ exports and restores usage attribution in quota state (3.739594ms)
+  ✔ returns breakdown and supports resetting usage via AccountManager methods (3.16999ms)
+  ✔ isolates internal usage object when retrieved via getStatus() (2.229501ms)
+  ✔ serves /api/accounts/usage and /api/accounts/usage/reset via proxy server (196.998992ms)
+  ✔ renders modal elements and usage action buttons in dashboard HTML (2.630665ms)
+✔ Account Limit Usage Attribution & Inspector (260.701725ms)
+▶ OpenAI/Codex cached input tokens
+  ✔ reads cached_tokens from Responses usage as cache and keeps the total (1.544304ms)
+  ✔ reads cached_tokens from Chat usage (prompt_tokens_details) (0.804788ms)
+  ✔ leaves Anthropic usage untouched (0.779867ms)
+  ✔ does not report negative input when cached exceeds input (0.946879ms)
+✔ OpenAI/Codex cached input tokens (6.434969ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+▶ Codex Responses <-> OpenAI Chat Completions Translation
+  ✔ translates OpenAI Chat Completions body to Codex Responses input format (20.245548ms)
+  ✔ translates streaming Codex Responses SSE into OpenAI Chat Completion chunks (35.232518ms)
+  ✔ translates non-streaming Codex Responses SSE into OpenAI Chat Completion response (8.389557ms)
+  ✔ translates streaming function calls into OpenAI tool_calls chunks (14.716538ms)
+[HealthCheck] Auto health-check active (every 900s, grace period 900s)
+  ✔ end-to-end: serves /v1/chat/completions by routing to Codex Responses API (both streaming & non-streaming) (252.184096ms)
+  ✔ end-to-end: serves /v1/messages cross-provider to Codex OAuth Responses API (streaming & non-streaming) (60.359102ms)
+✔ Codex Responses <-> OpenAI Chat Completions Translation (396.180136ms)
+▶ Codex translation and the AGY aliases
+  ✔ no longer maps agy / agy-fast onto GPT models (0.9873ms)
+✔ Codex translation and the AGY aliases (1.844627ms)
+[AgentLB] Account "A" at ?% usage — will switch on next request
+[AgentLB] Quota rejection (429) on "A" — throttling 120s and switching account
+[AgentLB] Account "A" rate limited for 120s
+[AgentLB] Switched to account "B"
+✔ anthropic: quota-rejection 429 on the first account is absorbed by the second (384.571186ms)
+[AgentLB] 401 on "O" — token rejected; forcing refresh and retrying
+[AgentLB] Refreshing token for account "O"...
+[AgentLB] Token refreshed for account "O"
+✔ anthropic: OAuth 401 forces one refresh and the retry carries the new token (111.79718ms)
+[AgentLB] 401 on "dead"; upstream rejected the account credential — failing over
+[AgentLB] Switched to account "live"
+✔ anthropic: a credential upstream keeps rejecting (401) fails over instead of logging the client out (107.224517ms)
+✔ anthropic: tool_use streamed in 7-byte fragments reaches the client byte-for-byte with valid JSON (7267.042366ms)
+[AgentLB] "C1" near weekly quota
+[AgentLB] [AutoReset] Account "C1" reached critical quota (5h utilization: 100%, headroom <10%, trigger: response_headers). Initiating automated Codex reset...
+[AgentLB] Codex usage limit reached on "C1" — holding 3000s and switching account
+[AgentLB] Account "C1" rate limited for 3000s
+[AgentLB] Switched to account "C2"
+✔ codex: usage_limit_reached 429 rotates to the next account and takes the spent one out of rotation (117.218808ms)
+✔ codex: x-codex-* quota headers on live traffic update the account quota (30.236511ms)
+[AgentLB] [AutoReset] Failed to consume reset credit for account "C1": Brak dostępnych kredytów resetu dla tego konta.. Cooldown active for 300s (failure count: 1).
+✔ codex → chat completions: tool calls after a reasoning item get dense indexes and intact JSON (647.82637ms)
+✔ codex → chat completions: arguments sent only in output_item.done are not lost (44.540823ms)
+✔ codex → chat completions: response.failed surfaces as an error, not a silent empty answer (27.303472ms)
+✔ codex → anthropic chain: text + tool blocks get distinct indexes and one terminal stop_reason (11.486286ms)
+[AgentLB] 401 on "dead"; upstream rejected the account credential — failing over
+✔ anthropic: when every account is rejected with 401 the client gets a proxy error, not a 401 (28.957779ms)
+[AgentLB] Codex response failed on "C1" (context_length_exceeded): Your input exceeds the context window of this model.
+✔ codex non-stream: response.failed becomes an error status, not an empty 200 (24.255356ms)
+[AgentLB] Codex response failed on "C1" (server_error): An error occurred while processing your request.
+✔ codex non-stream: a server-side failure maps to 502 (12.782268ms)
+[AgentLB] Codex response failed on "C1" (stream_truncated): Upstream stream ended before the response completed
+✔ codex non-stream: a stream cut off before response.completed is an error (40.337294ms)
+✔ codex non-stream: a completed answer with a tool call is translated whole (33.40326ms)
+✔ codex non-stream: response.incomplete reports finish_reason length (40.734938ms)
+✔ codexResponseFailure classifies and ignores non-SSE bodies (5.962375ms)
+✔ native OpenAI JSON: upstream usage is booked once and enforces client quota (424.533749ms)
+✔ OpenAI SSE translated to Anthropic: upstream usage is booked once and enforces client quota (170.567176ms)
+✔ Anthropic SSE translated to OpenAI: upstream usage is booked once and enforces client quota (158.270022ms)
+ℹ tests 38
+ℹ suites 4
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10565.34288

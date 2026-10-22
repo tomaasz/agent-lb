@@ -1,0 +1,173 @@
+{
+  "normalization": "Usunięto wyłącznie końcowe białe znaki i puste linie EOF w tekstowym podglądzie, aby przechodził git diff --check. Dokładne oryginały zachowano w gzip.",
+  "logs": [
+    {
+      "file": "quota-green.log",
+      "raw_sha256": "900dfac83bf7b2d002081e30cb6d1743cc67753823bad4138ee5de610b60d3c2",
+      "normalized_sha256": "900dfac83bf7b2d002081e30cb6d1743cc67753823bad4138ee5de610b60d3c2",
+      "raw_gzip": "quota-green.log.gz"
+    },
+    {
+      "file": "semgrep-custom-red.log",
+      "raw_sha256": "732e2b0df47a965a5d2da5dceae4c180a09de2facb42fddd4268fb210ede5843",
+      "normalized_sha256": "d2139e9026d4f88ee7ff378ac702b4333b48b9970e3ee0b596ae4349b000bb4c",
+      "raw_gzip": "semgrep-custom-red.log.gz"
+    },
+    {
+      "file": "semgrep-custom-green.log",
+      "raw_sha256": "54fdda2024f77b6cdcc0e0929b49fe4d9184dec392ca247bf3a99a67c97a0d86",
+      "normalized_sha256": "62aee86c664351381c4a85a5f9a016e67ddd3945bda848fa40f8f8e0832c788c",
+      "raw_gzip": "semgrep-custom-green.log.gz"
+    },
+    {
+      "file": "tests-after.log",
+      "raw_sha256": "bef223103da265e2d2e58cbff3c191c7414026ccc6f2d8343c80056ba1c583fd",
+      "normalized_sha256": "5ed50dd69950b8950263f921e54ba8d39666b622d2b3e56b15a774d60a9648e4",
+      "raw_gzip": "tests-after.log.gz"
+    },
+    {
+      "file": "lint.log",
+      "raw_sha256": "f7e06044d433e021aea632d3ee56a65163a8ee042ec24a2ca936f02304e5cc33",
+      "normalized_sha256": "213d715f511e4b2628b81e947165535b44951b697088bf20b23d6e6698eab21a",
+      "raw_gzip": "lint.log.gz"
+    },
+    {
+      "file": "setup-red.log",
+      "raw_sha256": "0f0ead5f8bf0932f99049d2e3a9fc17e0a33407303fce828f4971b0203d43445",
+      "normalized_sha256": "a1b2c7dd9353ad59cd0074ff9fec37a4fe5772fc74564e315b947856801d3168",
+      "raw_gzip": "setup-red.log.gz"
+    },
+    {
+      "file": "setup-followup-red.log",
+      "raw_sha256": "fd6f093881d157e4390190e53180fff30b534c1cb02cd1048291730bf64389a7",
+      "normalized_sha256": "dc120bf677fe4a60413e7308c9199b904057f273334d42bc76fc6caaa309626d",
+      "raw_gzip": "setup-followup-red.log.gz"
+    },
+    {
+      "file": "relay-regression.log",
+      "raw_sha256": "358082ccb5f87abf3c52ac98b341ca13d3fee2c27de6c4c286e9db6c1d53effd",
+      "normalized_sha256": "358082ccb5f87abf3c52ac98b341ca13d3fee2c27de6c4c286e9db6c1d53effd",
+      "raw_gzip": "relay-regression.log.gz"
+    },
+    {
+      "file": "gitleaks-current.log",
+      "raw_sha256": "b837b65709211b983c00205137ed7617edc917d53f92612c88e2efb539a6814b",
+      "normalized_sha256": "b837b65709211b983c00205137ed7617edc917d53f92612c88e2efb539a6814b",
+      "raw_gzip": "gitleaks-current.log.gz"
+    },
+    {
+      "file": "relay-mitm.log",
+      "raw_sha256": "fae46441d28c0990bd534569d424730f3b0ab072ace111747c8cb9b085baeeb4",
+      "normalized_sha256": "fae46441d28c0990bd534569d424730f3b0ab072ace111747c8cb9b085baeeb4",
+      "raw_gzip": "relay-mitm.log.gz"
+    },
+    {
+      "file": "tests-before.log",
+      "raw_sha256": "a2c42b57a4812c3a316ba994a341d50301cb5fb4353482434af5732d51440363",
+      "normalized_sha256": "a2c42b57a4812c3a316ba994a341d50301cb5fb4353482434af5732d51440363",
+      "raw_gzip": "tests-before.log.gz"
+    },
+    {
+      "file": "setup-followup-green.log",
+      "raw_sha256": "80b69a9b37b233f8b6e3cc0ae69c7092f275d9ae4b82ba3dcf17619f16eae768",
+      "normalized_sha256": "80b69a9b37b233f8b6e3cc0ae69c7092f275d9ae4b82ba3dcf17619f16eae768",
+      "raw_gzip": "setup-followup-green.log.gz"
+    },
+    {
+      "file": "utf8-red.log",
+      "raw_sha256": "2eb9bba8794e7d5e48af90f7fba43effc8137464883a903e2d9540be7ce095a2",
+      "normalized_sha256": "1ce86bc41c03bdf6242cf89304482ae77fe8aa097cac5eb8462eb9824277e595",
+      "raw_gzip": "utf8-red.log.gz"
+    },
+    {
+      "file": "setup-followup-full.log",
+      "raw_sha256": "7ebb21d5287d052e122e0ac1560b90fb135ed4c89fe41b6b8951b63baa72e1fd",
+      "normalized_sha256": "7ebb21d5287d052e122e0ac1560b90fb135ed4c89fe41b6b8951b63baa72e1fd",
+      "raw_gzip": "setup-followup-full.log.gz"
+    },
+    {
+      "file": "semgrep-retry.log",
+      "raw_sha256": "db3e807a8ce6cb00ff19f5527503275b73bf73a86ed19d659e8a323dce505200",
+      "normalized_sha256": "28fcdfea94b0b644a90e78fe2a4bc73860434e6b35c233abb08fb4eff6b5575e",
+      "raw_gzip": "semgrep-retry.log.gz"
+    },
+    {
+      "file": "container-tests.log",
+      "raw_sha256": "0b399fadf80076b03e0c821f553f97686f4504edcabe228ffd1b435bbf50f15a",
+      "normalized_sha256": "0b399fadf80076b03e0c821f553f97686f4504edcabe228ffd1b435bbf50f15a",
+      "raw_gzip": "container-tests.log.gz"
+    },
+    {
+      "file": "quota-regression.log",
+      "raw_sha256": "cc19d9e58b405f395e44147d1f053744e86bc83f4d05c53f9fe15a392d298318",
+      "normalized_sha256": "cc19d9e58b405f395e44147d1f053744e86bc83f4d05c53f9fe15a392d298318",
+      "raw_gzip": "quota-regression.log.gz"
+    },
+    {
+      "file": "setup-secrets-green.log",
+      "raw_sha256": "6b6b2de66e618ab4ae79581db659c10887f2600d926f714d968ad69160e58a83",
+      "normalized_sha256": "6b6b2de66e618ab4ae79581db659c10887f2600d926f714d968ad69160e58a83",
+      "raw_gzip": "setup-secrets-green.log.gz"
+    },
+    {
+      "file": "verified-lint.log",
+      "raw_sha256": "f7e06044d433e021aea632d3ee56a65163a8ee042ec24a2ca936f02304e5cc33",
+      "normalized_sha256": "213d715f511e4b2628b81e947165535b44951b697088bf20b23d6e6698eab21a",
+      "raw_gzip": "verified-lint.log.gz"
+    },
+    {
+      "file": "relay-green.log",
+      "raw_sha256": "18ba3b00e93f89985c00150c1917d6c324582278d5ac514eec9cb59196165e63",
+      "normalized_sha256": "18ba3b00e93f89985c00150c1917d6c324582278d5ac514eec9cb59196165e63",
+      "raw_gzip": "relay-green.log.gz"
+    },
+    {
+      "file": "report-lint.log",
+      "raw_sha256": "f7e06044d433e021aea632d3ee56a65163a8ee042ec24a2ca936f02304e5cc33",
+      "normalized_sha256": "213d715f511e4b2628b81e947165535b44951b697088bf20b23d6e6698eab21a",
+      "raw_gzip": "report-lint.log.gz"
+    },
+    {
+      "file": "setup-independent-review.log",
+      "raw_sha256": "bf9363f4f6d2034beb91edcd6cf91f59c3f4af8e663178abdde2a328c5970d9b",
+      "normalized_sha256": "bf9363f4f6d2034beb91edcd6cf91f59c3f4af8e663178abdde2a328c5970d9b",
+      "raw_gzip": "setup-independent-review.log.gz"
+    },
+    {
+      "file": "utf8-green.log",
+      "raw_sha256": "44ff594850217bf878782a29f7d87bcd6dea0c07b00ced755abfa45fa99ee79d",
+      "normalized_sha256": "44ff594850217bf878782a29f7d87bcd6dea0c07b00ced755abfa45fa99ee79d",
+      "raw_gzip": "utf8-green.log.gz"
+    },
+    {
+      "file": "setup-green.log",
+      "raw_sha256": "a396c763e55854dc80d78e56e86ca86376094307335787d07b76f1b5c26db376",
+      "normalized_sha256": "a396c763e55854dc80d78e56e86ca86376094307335787d07b76f1b5c26db376",
+      "raw_gzip": "setup-green.log.gz"
+    },
+    {
+      "file": "setup-secrets-red.log",
+      "raw_sha256": "5529f304b6adf2dbefcdf392f4cc973928738ae7c28e2c37e496703a24e77d16",
+      "normalized_sha256": "1d88a513e8532b70e679fbb04c36c5790c1ce714f93c78b804da020b5e9fac76",
+      "raw_gzip": "setup-secrets-red.log.gz"
+    },
+    {
+      "file": "quota-red.log",
+      "raw_sha256": "f6b7a86bc30b0aae012f5c342f5d2c348ba94c5c8ab51f98c1c626bbac517332",
+      "normalized_sha256": "083e201dc87852b0deace7f2b1b902e8b0a46d7ccc638b342484baf7df6e1e05",
+      "raw_gzip": "quota-red.log.gz"
+    },
+    {
+      "file": "relay-red.log",
+      "raw_sha256": "562281cda5468c26213f64c43450ed084da77f7cf770c2d08781badfa584f112",
+      "normalized_sha256": "942578c05f14ad1fa1186b88a2a763a6b9dab0a11af411711e17b08d8f22a743",
+      "raw_gzip": "relay-red.log.gz"
+    },
+    {
+      "file": "semgrep-custom.log",
+      "raw_sha256": "54fdda2024f77b6cdcc0e0929b49fe4d9184dec392ca247bf3a99a67c97a0d86",
+      "normalized_sha256": "62aee86c664351381c4a85a5f9a016e67ddd3945bda848fa40f8f8e0832c788c",
+      "raw_gzip": "semgrep-custom.log.gz"
+    }
+  ]
+}

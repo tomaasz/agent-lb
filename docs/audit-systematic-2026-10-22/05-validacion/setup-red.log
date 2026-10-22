@@ -1,0 +1,343 @@
+✖ curl fallback passes hostile-looking credentials as literal arguments (8.377855ms)
+✖ native HTTP 401 is rejected without fallback (4.67546ms)
+✖ native HTTP 403 is rejected without fallback (5.544009ms)
+✖ curl non-success response rejects configuration (4.127157ms)
+✖ claw-setup.sh node: config and auth files are private, including existing files (79.104777ms)
+✖ claw-setup.sh node: key remains literal when serialized (87.39608ms)
+✖ claw-setup.sh node: malformed config is preserved and reported (67.440272ms)
+✖ claw-setup.sh python3: config and auth files are private, including existing files (48.333292ms)
+✖ claw-setup.sh python3: key remains literal when serialized (93.160802ms)
+✖ claw-setup.sh python3: malformed config is preserved and reported (71.363677ms)
+✖ opencode-setup.sh node: config and auth files are private, including existing files (76.24773ms)
+✖ opencode-setup.sh node: key remains literal when serialized (57.479813ms)
+✖ opencode-setup.sh node: malformed config is preserved and reported (55.748057ms)
+✖ opencode-setup.sh python3: config and auth files are private, including existing files (57.736607ms)
+✖ opencode-setup.sh python3: key remains literal when serialized (97.177917ms)
+✖ opencode-setup.sh python3: malformed config is preserved and reported (57.950667ms)
+✖ Codex shell environment quotes key, URL and sourced path literally (2.591873ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 0
+ℹ fail 17
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1144.443139
+
+✖ failing tests:
+
+test at ../../../tmp/systematic-setup.test.mjs:28:1
+✖ curl fallback passes hostile-looking credentials as literal arguments (8.377855ms)
+  Error: Błąd połączenia z https://example.invalid (socket disconnected). W sieci firmowej sprawdź proxy: export https_proxy=... lub użyj flagi --insecure (-k).
+      at Object.checkConnection (evalmachine.<anonymous>:23:11)
+      at async TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:38:18)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+
+test at ../../../tmp/systematic-setup.test.mjs:43:38
+✖ native HTTP 401 is rejected without fallback (4.67546ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:50:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:43:38
+✖ native HTTP 403 is rejected without fallback (5.544009ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:50:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:54:1
+✖ curl non-success response rejects configuration (4.127157ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:59:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:78:5
+✖ claw-setup.sh node: config and auth files are private, including existing files (79.104777ms)
+  AssertionError [ERR_ASSERTION]: config.json
+
+  420 !== 384
+
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:87:18)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 420,
+    expected: 384,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:95:5
+✖ claw-setup.sh node: key remains literal when serialized (87.39608ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'xINJECTEDy'
+  - 'x" + "INJECTED" + "y'
+
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:102:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'xINJECTEDy',
+    expected: 'x" + "INJECTED" + "y',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:105:5
+✖ claw-setup.sh node: malformed config is preserved and reported (67.440272ms)
+  AssertionError [ERR_ASSERTION]: invalid JSON must stop setup
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:112:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:78:5
+✖ claw-setup.sh python3: config and auth files are private, including existing files (48.333292ms)
+  AssertionError [ERR_ASSERTION]: config.json
+
+  420 !== 384
+
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:87:18)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 420,
+    expected: 384,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:95:5
+✖ claw-setup.sh python3: key remains literal when serialized (93.160802ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'xINJECTEDy'
+  - 'x" + "INJECTED" + "y'
+
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:102:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'xINJECTEDy',
+    expected: 'x" + "INJECTED" + "y',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:105:5
+✖ claw-setup.sh python3: malformed config is preserved and reported (71.363677ms)
+  AssertionError [ERR_ASSERTION]: invalid JSON must stop setup
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:112:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:78:5
+✖ opencode-setup.sh node: config and auth files are private, including existing files (76.24773ms)
+  AssertionError [ERR_ASSERTION]: config.json
+
+  420 !== 384
+
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:87:18)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 420,
+    expected: 384,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:95:5
+✖ opencode-setup.sh node: key remains literal when serialized (57.479813ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'xINJECTEDy'
+  - 'x" + "INJECTED" + "y'
+
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:102:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'xINJECTEDy',
+    expected: 'x" + "INJECTED" + "y',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:105:5
+✖ opencode-setup.sh node: malformed config is preserved and reported (55.748057ms)
+  AssertionError [ERR_ASSERTION]: invalid JSON must stop setup
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:112:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:78:5
+✖ opencode-setup.sh python3: config and auth files are private, including existing files (57.736607ms)
+  AssertionError [ERR_ASSERTION]: config.json
+
+  420 !== 384
+
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:87:18)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 420,
+    expected: 384,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:95:5
+✖ opencode-setup.sh python3: key remains literal when serialized (97.177917ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'xINJECTEDy'
+  - 'x" + "INJECTED" + "y'
+
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:102:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'xINJECTEDy',
+    expected: 'x" + "INJECTED" + "y',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:105:5
+✖ opencode-setup.sh python3: malformed config is preserved and reported (57.950667ms)
+  AssertionError [ERR_ASSERTION]: invalid JSON must stop setup
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:112:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../tmp/systematic-setup.test.mjs:119:1
+✖ Codex shell environment quotes key, URL and sourced path literally (2.591873ms)
+  AssertionError [ERR_ASSERTION]: shell quoting helper is required
+      at TestContext.<anonymous> (file:///tmp/systematic-setup.test.mjs:122:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
