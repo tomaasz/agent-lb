@@ -10,6 +10,9 @@
 
 set -eu
 
+# Configuration files and backups contain API keys.
+umask 077
+
 URL="${AGENT_LB_URL:-${AGENTLB_URL:-https://agentlb.gotova.pl}}"
 KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${OPENAI_API_KEY:-}}}"
 
@@ -48,18 +51,27 @@ AUTH_FILE="$AUTH_DIR/auth.json"
 TIMESTAMP=$(date +%s)
 if [ -f "$CONFIG_FILE" ]; then
   cp "$CONFIG_FILE" "$CONFIG_FILE.bak-$TIMESTAMP"
+  chmod 600 "$CONFIG_FILE.bak-$TIMESTAMP"
   echo "Utworzono kopię zapasową: $CONFIG_FILE.bak-$TIMESTAMP"
 fi
 
 # Aktualizacja pliku JSON przez Node.js lub Python
 if command -v node >/dev/null 2>&1; then
-  node - << EOF
+  AGENTLB_SETUP_CONFIG_FILE="$CONFIG_FILE" AGENTLB_SETUP_URL="$URL" AGENTLB_SETUP_KEY="$KEY" AGENTLB_SETUP_AUTH_FILE="$AUTH_FILE" node - << 'EOF'
 const fs = require('fs');
-const path = "$CONFIG_FILE";
+const path = process.env.AGENTLB_SETUP_CONFIG_FILE;
 let cfg = {};
 if (fs.existsSync(path)) {
-  try { cfg = JSON.parse(fs.readFileSync(path, 'utf8')); } catch (e) {}
+  cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
+  if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('Configuration must be a JSON object');
 }
+
+// Validate both documents before writing either one.
+const authPath = process.env.AGENTLB_SETUP_AUTH_FILE;
+let auth = {};
+if (fs.existsSync(authPath)) auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));
+if (!auth || typeof auth !== 'object' || Array.isArray(auth)) throw new Error('Auth must be a JSON object');
+auth.agentlb = { type: "api", key: process.env.AGENTLB_SETUP_KEY };
 
 const models = {
   "claude-fable-5-1": { name: "Claude Fable 5.1" },
@@ -101,8 +113,8 @@ cfg.provider.agentlb = {
   npm: "@ai-sdk/openai-compatible",
   name: "AgentLB (All Models)",
   options: {
-    baseURL: "$URL/v1",
-    apiKey: "$KEY"
+    baseURL: process.env.AGENTLB_SETUP_URL + "/v1",
+    apiKey: process.env.AGENTLB_SETUP_KEY
   },
   models: models
 };
@@ -114,38 +126,43 @@ cfg.providers.agentlb = {
   name: "AgentLB (All Models)",
   package: "@opencode/ai/providers/openai-compatible",
   settings: {
-    baseURL: "$URL/v1"
+    baseURL: process.env.AGENTLB_SETUP_URL + "/v1"
   },
   options: {
-    baseURL: "$URL/v1",
-    apiKey: "$KEY"
+    baseURL: process.env.AGENTLB_SETUP_URL + "/v1",
+    apiKey: process.env.AGENTLB_SETUP_KEY
   },
-  apiKey: "$KEY",
+  apiKey: process.env.AGENTLB_SETUP_KEY,
   models: models
 };
 
-fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n');
+if (fs.existsSync(path)) fs.chmodSync(path, 0o600);
+fs.writeFileSync(path, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
 
-// Update auth.json
-try {
-  let auth = {};
-  if (fs.existsSync("$AUTH_FILE")) {
-    auth = JSON.parse(fs.readFileSync("$AUTH_FILE", 'utf8'));
-  }
-  auth.agentlb = { type: "api", key: "$KEY" };
-  fs.writeFileSync("$AUTH_FILE", JSON.stringify(auth, null, 2) + '\n');
-} catch (e) {}
+// Update auth.json; failures must stop setup instead of reporting success.
+if (fs.existsSync(authPath)) fs.chmodSync(authPath, 0o600);
+fs.writeFileSync(authPath, JSON.stringify(auth, null, 2) + '\n', { mode: 0o600 });
 EOF
 elif command -v python3 >/dev/null 2>&1; then
-  python3 - << EOF
+  AGENTLB_SETUP_CONFIG_FILE="$CONFIG_FILE" AGENTLB_SETUP_URL="$URL" AGENTLB_SETUP_KEY="$KEY" AGENTLB_SETUP_AUTH_FILE="$AUTH_FILE" python3 - << 'EOF'
 import os, json
-path = "$CONFIG_FILE"
+path = os.environ["AGENTLB_SETUP_CONFIG_FILE"]
 cfg = {}
 if os.path.exists(path):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-    except: pass
+    with open(path, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+    if not isinstance(cfg, dict):
+        raise ValueError("Configuration must be a JSON object")
+
+# Validate both documents before writing either one.
+auth_path = os.environ["AGENTLB_SETUP_AUTH_FILE"]
+auth = {}
+if os.path.exists(auth_path):
+    with open(auth_path, "r", encoding="utf-8") as f:
+        auth = json.load(f)
+if not isinstance(auth, dict):
+    raise ValueError("Auth must be a JSON object")
+auth["agentlb"] = { "type": "api", "key": os.environ["AGENTLB_SETUP_KEY"] }
 
 models = {
     "claude-fable-5-1": { "name": "Claude Fable 5.1" },
@@ -187,8 +204,8 @@ cfg["provider"]["agentlb"] = {
     "npm": "@ai-sdk/openai-compatible",
     "name": "AgentLB (All Models)",
     "options": {
-        "baseURL": "$URL/v1",
-        "apiKey": "$KEY"
+        "baseURL": os.environ["AGENTLB_SETUP_URL"] + "/v1",
+        "apiKey": os.environ["AGENTLB_SETUP_KEY"]
     },
     "models": models
 }
@@ -200,31 +217,27 @@ cfg["providers"]["agentlb"] = {
     "name": "AgentLB (All Models)",
     "package": "@opencode/ai/providers/openai-compatible",
     "settings": {
-        "baseURL": "$URL/v1"
+        "baseURL": os.environ["AGENTLB_SETUP_URL"] + "/v1"
     },
     "options": {
-        "baseURL": "$URL/v1",
-        "apiKey": "$KEY"
+        "baseURL": os.environ["AGENTLB_SETUP_URL"] + "/v1",
+        "apiKey": os.environ["AGENTLB_SETUP_KEY"]
     },
-    "apiKey": "$KEY",
+    "apiKey": os.environ["AGENTLB_SETUP_KEY"],
     "models": models
 }
 
-with open(path, "w", encoding="utf-8") as f:
+if os.path.exists(path):
+    os.chmod(path, 0o600)
+with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
 
-auth_path = "$AUTH_FILE"
-try:
-    auth = {}
-    if os.path.exists(auth_path):
-        with open(auth_path, "r", encoding="utf-8") as f:
-            auth = json.load(f)
-    auth["agentlb"] = { "type": "api", "key": "$KEY" }
-    with open(auth_path, "w", encoding="utf-8") as f:
-        json.dump(auth, f, indent=2)
-        f.write("\n")
-except: pass
+if os.path.exists(auth_path):
+    os.chmod(auth_path, 0o600)
+with os.fdopen(os.open(auth_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+    json.dump(auth, f, indent=2)
+    f.write("\n")
 EOF
 fi
 
@@ -259,5 +272,5 @@ echo "1. Jeśli lista dostawców nie odświeżyła się automatycznie, w oknie '
 echo "   -> 'Niestandardowy dostawca zgodny z OpenAI' (sekcja Inne)"
 echo "   i podaj:"
 echo "     Base URL: $URL/v1"
-echo "     Klucz API: $KEY"
+echo "     Klucz API: zapisany w konfiguracji (wartość ukryta)"
 echo "2. W terminalu / CLI możesz sprawdzić: opencode models"

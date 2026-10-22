@@ -20,7 +20,7 @@ const os = require('os');
 const http = require('http');
 const https = require('https');
 const readline = require('readline');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 
 const isWin = process.platform === 'win32';
 
@@ -205,7 +205,7 @@ function checkConnectionNative(urlStr, key, insecure) {
             } catch {}
             resolve({ statusCode: 200, models });
           } else if (res.statusCode === 401 || res.statusCode === 403) {
-            reject(new Error(`Serwer odrzucił klucz API (kod HTTP ${res.statusCode}). Wygeneruj nowy w panelu ${urlStr} (zakładka /apis).`));
+            reject(Object.assign(new Error(`Serwer odrzucił klucz API (kod HTTP ${res.statusCode}). Wygeneruj nowy w panelu ${urlStr} (zakładka /apis).`), { statusCode: res.statusCode }));
           } else {
             resolve({ statusCode: res.statusCode, models });
           }
@@ -227,15 +227,21 @@ function checkConnectionNative(urlStr, key, insecure) {
 }
 
 async function checkConnection(urlStr, key, insecure) {
+  if (/[\r\n]/.test(key)) throw new Error('Klucz API nie może zawierać znaków nowej linii.');
   try {
     return await checkConnectionNative(urlStr, key, insecure);
   } catch (err) {
+    // Authentication failures are definitive; curl must not turn them into success.
+    if (err.statusCode === 401 || err.statusCode === 403) throw err;
     // Fallback: jeśli natywne żądanie Node zawiedzie (np. specyficzne proxy systemowe), spróbuj curl
     if (hasCommand('curl')) {
       try {
-        const insecureArg = insecure ? '-k ' : '';
-        const curlCmd = `curl -s -m 25 ${insecureArg}-H "Authorization: Bearer ${key}" "${urlStr}/backend-api/codex/models"`;
-        const body = execSync(curlCmd, { encoding: 'utf-8', timeout: 26000 });
+        const curlArgs = ['--silent', '--show-error', '--fail', '--max-time', '25'];
+        if (insecure) curlArgs.push('--insecure');
+        curlArgs.push('--header', '@-', '--url', `${urlStr}/backend-api/codex/models`);
+        const body = execFileSync('curl', curlArgs, {
+          input: `Authorization: Bearer ${key}\n`, encoding: 'utf-8', timeout: 26000,
+        });
         let models = [];
         try {
           const json = JSON.parse(body);
@@ -510,8 +516,9 @@ async function main() {
   if (isWin) {
     try {
       // Bezpieczne przekazanie wartości przez zmienną środowiskową procesu potomnego
-      execSync(`powershell.exe -NoProfile -Command "[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', '${targetUrl}/v1', 'User'); [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', '${targetUrl}/backend-api/codex', 'User')"`, {
-        env: { ...process.env, TMP_KEY: apiKey },
+      execFileSync('powershell.exe', ['-NoProfile', '-Command',
+        "[Environment]::SetEnvironmentVariable('CODEX_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('AGENT_LB_API_KEY', $env:TMP_KEY, 'User'); [Environment]::SetEnvironmentVariable('OPENAI_BASE_URL', ($env:TMP_URL + '/v1'), 'User'); [Environment]::SetEnvironmentVariable('CODEX_BASE_URL', ($env:TMP_URL + '/backend-api/codex'), 'User')"], {
+        env: { ...process.env, TMP_KEY: apiKey, TMP_URL: targetUrl },
       });
       console.log('[OK] Zapisano zmienne CODEX_LB_API_KEY, OPENAI_API_KEY i OPENAI_BASE_URL w profilu Windows.');
     } catch (err) {
@@ -522,18 +529,20 @@ async function main() {
     try {
       const configDir = path.dirname(envFile);
       if (!fs.existsSync(configDir)) fs.mkdirSync(configDir, { recursive: true });
+      const shellQuote = (value) => "'" + String(value).replaceAll("'", "'\\''") + "'";
       const envLines = [
         '# Agent LB / Codex environment configuration',
-        `export CODEX_LB_API_KEY="${apiKey}"`,
-        `export AGENT_LB_API_KEY="${apiKey}"`,
-        `export OPENAI_BASE_URL="${targetUrl}/v1"`,
-        `export OPENAI_API_KEY="${apiKey}"`,
-        `export CODEX_BASE_URL="${targetUrl}/backend-api/codex"`,
+        `export CODEX_LB_API_KEY=${shellQuote(apiKey)}`,
+        `export AGENT_LB_API_KEY=${shellQuote(apiKey)}`,
+        `export OPENAI_BASE_URL=${shellQuote(`${targetUrl}/v1`)}`,
+        `export OPENAI_API_KEY=${shellQuote(apiKey)}`,
+        `export CODEX_BASE_URL=${shellQuote(`${targetUrl}/backend-api/codex`)}`,
       ].join('\n') + '\n';
+      if (fs.existsSync(envFile)) fs.chmodSync(envFile, 0o600);
       fs.writeFileSync(envFile, envLines, { mode: 0o600 });
       console.log(`[OK] Klucz i zmienne środowiskowe zapisane w ${envFile} (chmod 600).`);
 
-      const srcLine = `. "${envFile}"  # codexlb`;
+      const srcLine = `. ${shellQuote(envFile)}  # codexlb`;
       for (const rcName of ['.bashrc', '.zshrc']) {
         const rcPath = path.join(os.homedir(), rcName);
         if (fs.existsSync(rcPath)) {
