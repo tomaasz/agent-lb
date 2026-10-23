@@ -6265,6 +6265,8 @@ ${SHARED_HELPERS}
   var agyData = { accounts: [], models: [] };
   var agyTests = {}; // account id -> { running, ok, text }
   var agySubscriptionBusy = {};
+  var agyCheckPending = null;
+  var agyCheckExpanded = {};
   var agyRenaming = null;
   function agyRenameAccount(a, row, card) {
     if (agyRenaming) return;
@@ -6335,6 +6337,29 @@ ${SHARED_HELPERS}
     return apiCall('/agent-lb/api/agy/' + path, 'POST', body).then(function (d) {
       if (d && d.ok) { if (okMsg) note('ok', okMsg); }
       else if (d) note('error', d.error || 'error');
+      return loadAgyAccounts();
+    });
+  }
+  function agyCheckAccounts(account) {
+    if (agyCheckPending) return Promise.resolve();
+    agyCheckPending = { id: account ? account.id : null };
+    if (account) agyCheckExpanded[account.id] = true;
+    else agyData.accounts.forEach(function (a) { agyCheckExpanded[a.id] = true; });
+    renderAgyAccounts(agyData.accounts);
+    return apiCall('/agent-lb/api/agy/accounts/check', 'POST', account ? { id: account.id } : {}).then(function (d) {
+      if (!d) return;
+      if (!d.ok) {
+        note('error', d.busy ? agyT('Inne sprawdzenie już trwa. Spróbuj ponownie po jego zakończeniu.', 'Another check is already running. Try again when it finishes.') : (d.error || agyT('Nie udało się sprawdzić konta.', 'Could not check the account.')));
+        return;
+      }
+      note(d.failed ? 'error' : 'ok', d.failed
+        ? agyT('Sprawdzenie zakończone z błędami. Zobacz szczegóły konta.', 'Check completed with errors. See account details.')
+        : agyT('Sprawdzenie zakończone. Wyniki są w szczegółach konta.', 'Check completed. Results are in the account details.'));
+    }).catch(function () {
+      note('error', agyT('Nie udało się połączyć z serwerem. Spróbuj ponownie.', 'Could not reach the server. Please try again.'));
+    }).finally(function () {
+      agyCheckPending = null;
+      renderAgyAccounts(agyData.accounts);
       return loadAgyAccounts();
     });
   }
@@ -6421,12 +6446,17 @@ ${SHARED_HELPERS}
     else if (status === 'error') titleGroup.appendChild(el('span', 'badge bad', agyT('Wymaga sprawdzenia', 'Needs review')));
     else if (status === 'modelQuota') titleGroup.appendChild(el('span', 'badge throttled', agyT('Limit modelu', 'Model quota')));
     else if (status === 'verified') titleGroup.appendChild(el('span', 'badge badge-healthy', agyT('Ostatnio działało', 'Recently successful')));
+    else if (a.diagnostics && a.diagnostics.status === 'available') titleGroup.appendChild(el('span', 'badge', agyT('Dostęp do katalogu', 'Catalog access')));
     else titleGroup.appendChild(el('span', 'badge', agyT('Niezweryfikowane', 'Unverified')));
     if (a.pinned) titleGroup.appendChild(el('span', 'badge current', t('agyPinnedBadge')));
     head.appendChild(titleGroup);
 
+    var checkingAccess = agyCheckPending && (!agyCheckPending.id || agyCheckPending.id === a.id);
+    if (checkingAccess) card.appendChild(el('div', 'agy-state-line', agyT('Sprawdzanie dostępu, planu i limitów…', 'Checking access, plan and quotas…')));
     if (a.diagnostics) {
       var diagnostic = el('details');
+      diagnostic.open = !!agyCheckExpanded[a.id];
+      diagnostic.addEventListener('toggle', function () { agyCheckExpanded[a.id] = diagnostic.open; });
       var labels = {
         available: agyT('Katalog modeli dostępny', 'Model catalog available'),
         forbidden: agyT('Odmowa dostępu', 'Access denied'),
@@ -6459,7 +6489,9 @@ ${SHARED_HELPERS}
       if (observedPlan) plan.textContent = (observedPlan.data.label === 'unknown' ? observedPlan.data.tierId || 'unknown' : observedPlan.data.label) + (observedPlan.stale ? ' (stale)' : '');
     }
     var acts = el('div', 'card-actions');
-    acts.appendChild(agyIconButton('🔎', agyT('Sprawdź dostęp, plan i limity', 'Check access, plan and quotas'), function () { agyAction('accounts/check', { id: a.id }); }));
+    var accessCheck = agyIconButton(checkingAccess ? '…' : '🔎', agyT('Sprawdź dostęp, plan i limity', 'Check access, plan and quotas'), function () { agyCheckAccounts(a); });
+    accessCheck.disabled = !!agyCheckPending;
+    acts.appendChild(accessCheck);
     var running = !!(agyTests[a.id] && agyTests[a.id].running);
     var btnTest = el('button', 'btn btn-xs', running ? t('agyTestRunning') : t('agyTest'));
     btnTest.type = 'button';
@@ -6550,7 +6582,9 @@ ${SHARED_HELPERS}
     var count = document.getElementById('countAgy');
     if (count) count.textContent = t('agyCount', { n: list.length });
     box.textContent = '';
-    box.appendChild(agyIconButton(agyT('Sprawdź pulę', 'Check pool'), '', function () { agyAction('accounts/check', {}); }));
+    var poolCheck = agyIconButton(agyCheckPending ? agyT('Sprawdzanie…', 'Checking…') : agyT('Sprawdź pulę', 'Check pool'), '', function () { agyCheckAccounts(null); });
+    poolCheck.disabled = !!agyCheckPending;
+    box.appendChild(poolCheck);
     var history = document.createElement('details');
     var historyTitle = document.createElement('summary');
     historyTitle.textContent = agyT('Historia sprawdzeń', 'Check history');

@@ -84,7 +84,7 @@ test('account cards render Google plan names as text and expose refresh in both 
     const controls = [];
     const context = vm.createContext({
       el, t: key => key, agyT: (pl, en) => lang === 'pl' ? pl : en,
-      agyData: {queue:[],events:[]}, agyTests: {}, agySubscriptionBusy: {}, attachCardDragListeners() {},
+      agyData: {queue:[],events:[]}, agyTests: {}, agySubscriptionBusy: {}, agyCheckPending: null, agyCheckExpanded: {}, attachCardDragListeners() {},
       agyIconButton: (label, title, action) => { const b = el('button', '', label); b.title = title; b.action = action; controls.push(b); return b; },
       agyUsageBlock: () => el('div'), fmtNum: String,
     });
