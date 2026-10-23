@@ -46,6 +46,7 @@ test('success, restricted states, errors and server waits have distinct persiste
   await f.scheduler.run();
   assert.equal(f.writes.at(-1).result.nextCheckAt, f.now() + 6 * HOUR);
   assert.equal((await f.scheduler.run()).checked, 0);
+  assert.equal(f.batches.length, 1, 'idle ticks preserve previous batch history');
   result = { status: 'subscription_required' };
   await f.scheduler.run({ force: true });
   assert.equal(f.writes.at(-1).result.nextCheckAt, f.now() + 24 * HOUR);

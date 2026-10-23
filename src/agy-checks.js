@@ -89,11 +89,15 @@ export class AgyCheckScheduler {
     let batch;
     const summary = { busy: false, checked: 0, discarded: 0, failed: 0 };
     try {
+      // Idle ticks must not evict useful history with empty batches. Re-read
+      // after taking the batch lock so another process's new schedule wins.
+      const eligible = a => (!id || a.id === id) && (a.enabled !== false || (id && force))
+        && (force || this._dueAt(a) <= this.now());
+      if (!(await this.store.list()).some(eligible)) return summary;
       batch = await this.store.beginBatch(source === 'scheduled' ? 'scheduled' : 'manual');
       if (!batch) return { ...summary, busy: true };
       const accounts = await this.store.list();
-      let selected = accounts.filter(a => (!id || a.id === id) && (a.enabled !== false || (id && force))
-        && (force || this._dueAt(a) <= this.now()));
+      let selected = accounts.filter(eligible);
       selected.sort((a, b) => this._dueAt(a) - this._dueAt(b));
       if (!force) selected = selected.slice(0, this.maxAccounts);
       for (const account of selected) {
