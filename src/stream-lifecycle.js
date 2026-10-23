@@ -88,7 +88,7 @@ export async function peekSseHead(body, { maxBytes = 16384, waitMs = 3000 } = {}
     const left = deadline - Date.now();
     if (left <= 0) break;
     let timer;
-    const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve('timeout'), left); timer.unref?.(); });
+    const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve('timeout'), left); });
     const settled = pending.then((r) => r, () => 'error');
     const outcome = await Promise.race([settled, timeout]).finally(() => clearTimeout(timer));
     if (outcome === 'timeout' || outcome === 'error') break;
