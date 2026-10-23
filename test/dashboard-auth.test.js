@@ -358,6 +358,8 @@ describe("Dashboard Authentication and Layout", () => {
       "contains #chkAutoHealthCheck",
     );
     assert.ok(html.includes('id="btnDrainToggle"'), "contains #btnDrainToggle");
+    assert.ok(html.includes('id="btnRestartServer"'), "contains #btnRestartServer");
+    assert.ok(html.includes("/agent-lb/api/restart"), "restart button calls the restart endpoint");
     assert.ok(
       html.includes('id="btnTogglePolicyHelp"'),
       "contains #btnTogglePolicyHelp",

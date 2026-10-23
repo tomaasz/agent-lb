@@ -1188,6 +1188,7 @@ const PAGE = `<!doctype html>
             <span id="drainStatusBadge" class="badge error" style="display:none; font-size:11px;"></span>
             <button id="btnSetDefaults" class="btn btn-sm" data-i18n="btnSetDefaults" data-i18n-title="btnSetDefaultsTitle" title="Przywróć optymalne ustawienia domyślne floty (Adaptive, Earliest-Reset, Fallback, Auto-Health)">✨ Ustaw domyślne</button>
             <button id="btnDrainToggle" class="btn btn-sm" data-i18n="btnDrainMode" data-i18n-title="btnDrainModeTitle" title="Przełącz tryb drain — dokończ aktywne żądania bez przyjmowania nowych">🛑 Drain Mode</button>
+            <button id="btnRestartServer" class="btn btn-sm" data-i18n="btnRestart" data-i18n-title="btnRestartTitle" title="Zrestartuj serwer AgentLB (przerywa trwające żądania)">🔄 Restart</button>
           </div>
         </div>
 
@@ -2146,6 +2147,10 @@ const PAGE = `<!doctype html>
       btnDrainMode: '🛑 Drain Mode',
       btnDrainModeTitle: 'Przełącz tryb drain — dokończ aktywne żądania bez przyjmowania nowych',
       btnDrainCancel: '▶️ Anuluj Drain',
+      btnRestart: '🔄 Restart',
+      btnRestartTitle: 'Zrestartuj serwer AgentLB (przerywa trwające żądania)',
+      restartConfirm: 'Zrestartować serwer AgentLB? Trwające żądania ({count}) zostaną przerwane. Zalecane: najpierw Drain Mode.',
+      restartWaiting: 'Restart w toku — czekam na powrót serwera...',
       drainActive: '🛑 Draining ({count} req in flight)',
       policyCardAffinityTitle: 'Affinity (Prompt Cache)',
       optAffinityAdaptive: 'Adaptive (Cache + Balancing)',
@@ -2449,6 +2454,10 @@ const PAGE = `<!doctype html>
       btnDrainMode: '🛑 Drain Mode',
       btnDrainModeTitle: 'Toggle drain mode — finish in-flight requests without taking new ones',
       btnDrainCancel: '▶️ Cancel Drain',
+      btnRestart: '🔄 Restart',
+      btnRestartTitle: 'Restart the AgentLB server (interrupts in-flight requests)',
+      restartConfirm: 'Restart the AgentLB server? In-flight requests ({count}) will be interrupted. Recommended: use Drain Mode first.',
+      restartWaiting: 'Restarting — waiting for the server to come back...',
       drainActive: '🛑 Draining ({count} req in flight)',
       policyCardAffinityTitle: 'Affinity (Prompt Cache)',
       optAffinityAdaptive: 'Adaptive (Cache + Balancing)',
@@ -3971,6 +3980,29 @@ ${SHARED_HELPERS}
         } else {
           note('error', (currentLang === 'pl' ? 'Błąd przełączania drain: ' : 'Error toggling drain: ') + (res && res.error ? res.error : (currentLang === 'pl' ? 'nieznany' : 'unknown')));
         }
+      })
+      .catch(function (e) {
+        note('error', 'Błąd: ' + e.message);
+      });
+  }
+
+  function restartServer() {
+    var inFlight = (lastStatus && lastStatus.activeRequests) || 0;
+    if (!window.confirm(t('restartConfirm', { count: inFlight }))) return;
+    apiCall('/agent-lb/api/restart', 'POST')
+      .then(function (res) {
+        if (!res || !res.ok) {
+          if (res) note('error', (currentLang === 'pl' ? 'Błąd restartu: ' : 'Restart error: ') + (res.error || 'unknown'));
+          return;
+        }
+        note('ok', t('restartWaiting'));
+        var tries = 0;
+        (function waitForServer() {
+          tries++;
+          fetch(window.location.pathname, { cache: 'no-store' })
+            .then(function (r) { if (r.ok) window.location.reload(); else throw new Error('down'); })
+            .catch(function () { if (tries < 40) setTimeout(waitForServer, 1500); });
+        })();
       })
       .catch(function (e) {
         note('error', 'Błąd: ' + e.message);
@@ -7567,6 +7599,8 @@ ${SHARED_HELPERS}
   }
   var btnDrain = document.getElementById('btnDrainToggle');
   if (btnDrain) btnDrain.addEventListener('click', toggleDrain);
+  var btnRestart = document.getElementById('btnRestartServer');
+  if (btnRestart) btnRestart.addEventListener('click', restartServer);
   var btnSetDefaults = document.getElementById('btnSetDefaults');
   if (btnSetDefaults) btnSetDefaults.addEventListener('click', resetFleetRoutingDefaults);
 
