@@ -295,3 +295,35 @@ Projekt posiada ponad 140 rygorystycznych testów sprawdzających routing, autor
 
 Projekt udostępniany na warunkach licencji [MIT](LICENSE).
 Możesz go swobodnie wdrażać, modyfikować i hostować we własnej infrastrukturze.
+
+### Diagnostyka kont AGY
+
+W panelu AGY przycisk 🔎 odczytuje dostęp, plan, modele i pozostałe limity bez
+wywoływania generacji. „Sprawdź pulę” wymusza odczyt wszystkich włączonych kont.
+Historia partii (20) i zmian stanu (100) przeżywa restart. Ostatnie poprawne
+pomiary pozostają widoczne jako nieaktualne po błędzie; nieznany plan nie jest
+klasyfikowany jako Free. Lista modeli nie potwierdza działania generacji.
+
+Automatyczne sprawdzanie działa co 6 godzin, dla kont z restrykcjami co najmniej
+co 24 godziny, po maksymalnie 5 kont na turę. Błędy mają narastającą przerwę
+15 min–6 h; odroczenie Google `Retry-After` jest respektowane. Wyłączenie:
+`agy.checksEnabled: false`. Ręczne sprawdzenie może objąć wyłączone konto.
+
+Do odświeżania OAuth skonfiguruj `AGY_GOOGLE_CLIENT_SECRET` oraz opcjonalnie
+`AGY_GOOGLE_CLIENT_ID` w prywatnym środowisku usługi, zgodnie z klientem OAuth
+użytym przez zainstalowany CLI. Bez sekretu można użyć wyłącznie niewygasłego
+access tokena. Diagnostyka nie zmienia tokena zapisanego dla stacji.
+
+Potwierdzone wymaganie weryfikacji/subskrypcji, naruszenie TOS, odmowa dostępu
+modeli lub nieważny refresh token wykluczają konto z przydziału. Sam błąd
+metadanych lub quota summary tego nie robi. Błąd sieci nie kasuje uprzednio
+potwierdzonej restrykcji; usuwa ją poprawne sprawdzenie albo ponowne logowanie.
+Istniejące blokady zgłoszone przez faktyczne żądania mają własny cykl życia.
+
+API administratora: `POST /api/agy/accounts/check` (`{id}` lub `{}`),
+`GET /api/agy/history`. Nakładająca się partia zwraca 409. Magazyn zachowuje
+szyfrowanie, zapis atomowy 0600, fsync i blokady między procesami. Blokada
+osierocona po martwym PID jest odzyskiwana. Nieczytelna blokada albo przerwany
+proces odzyskiwania (`.recovery`) wymagają ręcznego usunięcia blokad po
+zatrzymaniu wszystkich procesów używających magazynu; nie usuwać ich w trakcie
+aktywnego sprawdzania. Uszkodzony plik danych nigdy nie jest zastępowany pustym.

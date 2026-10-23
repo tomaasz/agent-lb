@@ -6365,10 +6365,15 @@ ${SHARED_HELPERS}
     return b;
   }
   function agyAvailable(a) {
-    return a.enabled && !a.quotaUntil;
+    return a.enabled && !a.quotaUntil && !(a.health && (a.health.requiresReview || a.health.until > Date.now())) && !agyDiagnosticRestricted(a);
+  }
+  function agyDiagnosticRestricted(a) {
+    var d = a.diagnostics;
+    return d && ['auth_invalid', 'forbidden', 'validation_required', 'subscription_required', 'tos_violation'].indexOf(d.routingStatus || d.status) >= 0;
   }
   function agyAccountStatus(a, events, test, now) {
     if (!a.enabled) return 'disabled';
+    if (a.diagnostics && ['auth_invalid', 'forbidden', 'validation_required', 'subscription_required', 'tos_violation'].indexOf(a.diagnostics.routingStatus || a.diagnostics.status) >= 0) return 'error';
     if (a.health && (a.health.requiresReview || a.health.until > now)) return 'error';
     if (a.quotaUntil > now) return 'quota';
     if (Object.keys(a.modelQuotas || {}).some(function (m) { return a.modelQuotas[m] > now; })) return 'modelQuota';
@@ -6422,8 +6427,33 @@ ${SHARED_HELPERS}
 
     if (a.diagnostics) {
       var diagnostic = el('details');
-      diagnostic.appendChild(el('summary', '', agyT('Diagnostyka: ', 'Diagnostics: ') + a.diagnostics.status));
-      diagnostic.appendChild(el('pre', '', JSON.stringify(a.diagnostics, null, 2)));
+      var labels = {
+        available: agyT('Katalog modeli dostępny', 'Model catalog available'),
+        forbidden: agyT('Odmowa dostępu', 'Access denied'),
+        validation_required: agyT('Wymagana weryfikacja Google', 'Google verification required'),
+        subscription_required: agyT('Wymagana subskrypcja', 'Subscription required'),
+        tos_violation: agyT('Blokada regulaminowa', 'Terms restriction'),
+        auth_invalid: agyT('Zaloguj konto ponownie', 'Log in again'),
+        configuration_error: agyT('Sprawdź konfigurację diagnostyki', 'Check diagnostics configuration'),
+        error: agyT('Sprawdzenie nie powiodło się', 'Check failed')
+      };
+      diagnostic.appendChild(el('summary', '', labels[a.diagnostics.status] || a.diagnostics.status));
+      diagnostic.appendChild(el('div', '', new Date(a.diagnostics.checkedAt).toLocaleString()));
+      if (a.diagnostics.status === 'available') diagnostic.appendChild(el('div', 'dim', agyT('Odczyt katalogu nie potwierdza działania generacji.', 'Catalog access does not confirm successful generation.')));
+      ['models', 'quotaSummary'].forEach(function (category) {
+        var measurement = a.diagnostics.telemetry && a.diagnostics.telemetry[category];
+        if (!measurement) return;
+        diagnostic.appendChild(el('div', 'dim', (category === 'models' ? agyT('Modele', 'Models') : agyT('Okna limitów', 'Quota windows')) + ' · ' + new Date(measurement.observedAt).toLocaleString() + (measurement.stale ? agyT(' · dane nieaktualne', ' · stale data') : '')));
+        (measurement.data || []).forEach(function (m) {
+          diagnostic.appendChild(el('div', '', (m.displayName || m.id) + ': ' + (typeof m.remainingFraction === 'number' ? Math.round(m.remainingFraction * 100) + '%' : agyT('brak danych', 'unknown')) + (m.resetAt ? ' · ' + new Date(m.resetAt).toLocaleString() : '')));
+        });
+      });
+      [a.diagnostics.validationUrl, a.diagnostics.appealUrl].forEach(function (url) {
+        if (!url) return;
+        var link = el('a', '', agyT('Otwórz stronę Google', 'Open Google page'));
+        link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+        diagnostic.appendChild(link);
+      });
       card.appendChild(diagnostic);
       var observedPlan = a.diagnostics.telemetry && a.diagnostics.telemetry.plan;
       if (observedPlan) plan.textContent = (observedPlan.data.label === 'unknown' ? observedPlan.data.tierId || 'unknown' : observedPlan.data.label) + (observedPlan.stale ? ' (stale)' : '');
@@ -6520,7 +6550,7 @@ ${SHARED_HELPERS}
     var count = document.getElementById('countAgy');
     if (count) count.textContent = t('agyCount', { n: list.length });
     box.textContent = '';
-    box.appendChild(agyButton(agyT('Sprawdź pulę', 'Check pool'), '', function () { agyAction('accounts/check', {}); }));
+    box.appendChild(agyIconButton(agyT('Sprawdź pulę', 'Check pool'), '', function () { agyAction('accounts/check', {}); }));
     var history = document.createElement('details');
     var historyTitle = document.createElement('summary');
     historyTitle.textContent = agyT('Historia sprawdzeń', 'Check history');
@@ -6529,9 +6559,12 @@ ${SHARED_HELPERS}
       if (!history.open) return;
       apiCall('/agent-lb/api/agy/history', 'GET').then(function (d) {
         if (!d || !d.ok) return;
-        var pre = history.querySelector('pre') || document.createElement('pre');
-        pre.style.whiteSpace = 'pre-wrap'; pre.textContent = JSON.stringify({ batches: d.batches, changes: d.changes }, null, 2);
-        history.appendChild(pre);
+        var entries = history.querySelector('div') || document.createElement('div');
+        entries.textContent = '';
+        (d.batches || []).slice().reverse().forEach(function (batch) {
+          entries.appendChild(el('div', '', new Date(batch.startedAt).toLocaleString() + ' · ' + batch.status + ' · ' + agyT('sprawdzono: ', 'checked: ') + (batch.checked || 0) + ' · ' + agyT('błędy: ', 'errors: ') + (batch.failed || 0)));
+        });
+        history.appendChild(entries);
       });
     });
     box.appendChild(history);

@@ -21,6 +21,7 @@ test('refresh reads the refreshed worker token, deduplicates requests and keeps 
   const store = new AgyAccountStore(join(dir, 'accounts.json'), () => 1234);
   // No production credentials or files are involved.
   store.data.accounts.push({ id: 'agy-123456789abc', email: 'a@example.com', token: { token: { refresh_token: 'never-public' }, id_token: `h.${Buffer.from(JSON.stringify({email:'a@example.com'})).toString('base64url')}.s` } });
+  store._save();
   const tokenFile = join(dir, ...TOKEN_PATH);
   let runs = 0, calls = 0, fail = false;
   const refresh = createAgySubscriptionRefresh({

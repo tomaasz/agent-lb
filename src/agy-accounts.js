@@ -15,7 +15,7 @@
 
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, openSync, closeSync, unlinkSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, unlinkSync, mkdirSync, linkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { getConfigPath } from './config.js';
@@ -97,10 +97,11 @@ export class AgyAccountStore {
     this.quotaGroups = Object.fromEntries(Object.entries(quotaGroups || {}).filter(([k, v]) => /^[a-zA-Z0-9._:-]{1,100}$/.test(k) && typeof v === 'string' && /^[a-zA-Z0-9._:-]{1,100}$/.test(v)));
     this.stations = new Map(); // client name -> { accountId, at }
     this.data = this._load();
+    this.pendingStats = new Map();
     this.lastStatsSaveAt = 0;
     this.statsSaveTimer = null;
     if (encryptionKeyPath) this._transaction(() => this._save());
-    for (const method of ['upsert', 'remove', 'setEnabled', 'setName', 'pin', 'reorder', 'clearQuota', 'markQuota', 'setUsage', 'setSubscription', 'recordEvent', 'markFailure', 'recordSuccess', 'clearHealth', 'recordRequest']) {
+    for (const method of ['upsert', 'remove', 'setEnabled', 'rename', 'markSeeded', 'pin', 'reorder', 'clearQuota', 'markQuota', 'setUsage', 'setSubscription', 'recordEvent', 'markFailure', 'recordSuccess', 'clearHealth']) {
       if (typeof this[method] !== 'function') continue;
       const original = this[method].bind(this);
       this[method] = (...args) => this._transaction(() => original(...args));
@@ -119,6 +120,11 @@ export class AgyAccountStore {
           until: Number.isFinite(a.health.until) ? a.health.until : null,
           requiresReview: ['auth_required', 'access_denied'].includes(a.health.reason) } : null;
       a.modelQuotas = Object.fromEntries(Object.entries(a.modelQuotas || {}).filter(([k, v]) => /^[a-zA-Z0-9._:-]{1,100}$/.test(k) && Number.isFinite(v) && v > this.now()).slice(-100));
+      const pending = this.pendingStats?.get(a.id);
+      if (pending) {
+        const old = a.stats || {};
+        a.stats = { requests: (old.requests || 0) + pending.requests, inputTokens: (old.inputTokens || 0) + pending.inputTokens, outputTokens: (old.outputTokens || 0) + pending.outputTokens, lastAt: pending.lastAt };
+      }
       ids.add(a.id);
     }
     return { pinned: data.pinned || null, accounts: data.accounts, events: this._safeEvents(data.events), batches: (Array.isArray(data.batches) ? data.batches : []).slice(-20), changes: (Array.isArray(data.changes) ? data.changes : []).slice(-100) };
@@ -126,6 +132,7 @@ export class AgyAccountStore {
 
   _save() {
     writeAgyStorage(this.path, this.data, this.encryptionKeyPath);
+    this.pendingStats?.clear();
   }
 
   _safeEvents(events) {
@@ -172,17 +179,26 @@ export class AgyAccountStore {
     return true;
   }
 
+  _claimLock(path) {
+    const temp = path + '.' + randomBytes(12).toString('hex') + '.owner';
+    try {
+      writeFileSync(temp, JSON.stringify({ pid: process.pid, at: this.now() }), { flag: 'wx', mode: 0o600 });
+      // Publish a fully written owner atomically, never an empty lock file.
+      linkSync(temp, path);
+    } finally { try { unlinkSync(temp); } catch { /* retain acquisition error */ } }
+  }
+
   _lock(suffix) {
     mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
     const path = this.path + suffix;
-    let fd;
-    try { fd = openSync(path, 'wx', 0o600); }
+    try { this._claimLock(path); }
     catch (err) {
       if (err.code === 'EEXIST') {
         // Recovery is itself exclusive. Never steal from a live/unknown owner.
         let guard;
         try {
-          guard = openSync(path + '.recovery', 'wx', 0o600);
+          this._claimLock(path + '.recovery');
+          guard = true;
           const owner = JSON.parse(readFileSync(path, 'utf8'));
           if (Number.isSafeInteger(owner.pid) && owner.pid > 0) {
             try { process.kill(owner.pid, 0); }
@@ -190,17 +206,14 @@ export class AgyAccountStore {
           }
         } catch { /* another recovery or unknown owner: refuse */ }
         finally {
-          if (guard !== undefined) { closeSync(guard); unlinkSync(path + '.recovery'); }
+          if (guard) unlinkSync(path + '.recovery');
         }
-        try { fd = openSync(path, 'wx', 0o600); }
+        try { this._claimLock(path); }
         catch { return null; }
       } else {
-      throw new Error('AGY storage lock unavailable');
+        throw new Error('AGY storage lock unavailable');
       }
     }
-    try { writeFileSync(fd, JSON.stringify({ pid: process.pid, at: this.now() })); }
-    catch (err) { closeSync(fd); unlinkSync(path); throw err; }
-    closeSync(fd);
     return () => unlinkSync(path);
   }
 
@@ -240,7 +253,10 @@ export class AgyAccountStore {
         if (fresh) telemetry[key] = { ...fresh, lastSuccessAt: fresh.observedAt, lastAttemptAt: result.checkedAt, stale: false };
         else if (old) telemetry[key] = { ...old, lastAttemptAt: result.checkedAt, stale: true };
       }
-      a.diagnostics = { ...result, telemetry };
+      const restrictions = ['auth_invalid', 'forbidden', 'validation_required', 'subscription_required', 'tos_violation'];
+      const routingStatus = result.status === 'available' || restrictions.includes(result.status)
+        ? result.status : previous?.routingStatus || previous?.status || result.status;
+      a.diagnostics = { ...result, routingStatus, telemetry };
       a.nextCheckAt = result.nextCheckAt || null;
       a.failures = result.failures || 0;
       if (previous?.status !== result.status) {
@@ -463,14 +479,14 @@ export class AgyAccountStore {
 
   _available(a, model = null) {
     const d = a.diagnostics;
-    const restricted = d?.status === 'auth_invalid' ||
-      (d?.checks?.models?.status !== 'available' && ['forbidden', 'validation_required', 'subscription_required', 'tos_violation'].includes(d?.status));
+    const restricted = ['auth_invalid', 'forbidden', 'validation_required', 'subscription_required', 'tos_violation'].includes(d?.routingStatus || d?.status);
     return !restricted && a.enabled !== false && !(a.quotaUntil && a.quotaUntil > this.now()) &&
       !(a.health?.requiresReview || a.health?.until > this.now()) &&
       !(model && a.modelQuotas?.[this.quotaKey(model)] > this.now());
   }
 
   retryAfter(model) {
+    this.data = this._load();
     const waits = this.data.accounts.filter(a => a.enabled !== false && !a.health?.requiresReview).map(a => Math.max(
       a.quotaUntil || 0, a.health?.until || 0, a.modelQuotas?.[this.quotaKey(model)] || 0));
     return Math.max(1, Math.ceil((Math.min(...waits, this.now() + 3600000) - this.now()) / 1000));
@@ -478,6 +494,7 @@ export class AgyAccountStore {
 
   /** Pick for proxy routing: pinned first, then the free account whose model resets soonest. */
   pick(exclude = new Set(), model = null, busy = () => 0) {
+    this.data = this._load();
     const pinned = this.data.pinned && this._find(this.data.pinned);
     if (pinned && this._available(pinned, model) && !exclude.has(pinned.id)) return pinned;
     return this.data.accounts
@@ -495,8 +512,26 @@ export class AgyAccountStore {
     stats.inputTokens += Number(inputTokens) || 0;
     stats.outputTokens += Number(outputTokens) || 0;
     stats.lastAt = this.now();
-    this._save();
-    this.lastStatsSaveAt = stats.lastAt;
+    const pending = this.pendingStats.get(id) || { requests: 0, inputTokens: 0, outputTokens: 0 };
+    pending.requests++;
+    pending.inputTokens += Number(inputTokens) || 0;
+    pending.outputTokens += Number(outputTokens) || 0;
+    pending.lastAt = stats.lastAt;
+    this.pendingStats.set(id, pending);
+    const save = () => {
+      this._transaction(() => this._save());
+      this.lastStatsSaveAt = this.now();
+    };
+    const elapsed = stats.lastAt - this.lastStatsSaveAt;
+    if (elapsed >= 10_000) save();
+    else if (!this.statsSaveTimer) {
+      this.statsSaveTimer = setTimeout(() => {
+        this.statsSaveTimer = null;
+        try { save(); }
+        catch (err) { console.warn('[AgentLB] AGY stats save failed:', err?.code || 'error'); }
+      }, 10_000 - elapsed);
+      this.statsSaveTimer.unref?.();
+    }
     return true;
   }
 
@@ -879,7 +914,7 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
           sendJson(res, 404, { ok: false, error: 'no such AGY account' }); return true;
         }
         const result = await checks.run({ id: body.id || null, force: true, source: 'manual' });
-        sendJson(res, result.busy ? 409 : 200, { ok: !result.busy, ...result });
+        sendJson(res, result.busy ? 409 : 200, { ok: !result.busy, ...result, ...(result.busy ? { error: 'AGY check already running' } : {}) });
         return true;
       }
       case 'login/start': {
