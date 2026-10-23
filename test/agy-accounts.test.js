@@ -443,6 +443,11 @@ describe('AGY account cards: stats, busy and the Test button', () => {
     const out = JSON.parse(text);
     assert.equal(out.ok, true);
     assert.equal(out.model, 'gemini-x-low');
+    const listed = await (await call('/api/agy/accounts', admin)).json();
+    assert.equal(listed.events.at(-1).accountId, idB);
+    assert.equal(listed.events.at(-1).outcome, 'success');
+    const reloaded = new AgyAccountStore(path.join(dir, 'agy.json'));
+    assert.equal(reloaded.data.events.at(-1).outcome, 'success');
     assert.equal(typeof out.ms, 'number');
     assert.ok(!text.includes('worker-secret'), 'worker token is not returned');
     assert.deepEqual(acquired, [idB]);
@@ -466,6 +471,10 @@ describe('AGY account cards: stats, busy and the Test button', () => {
       const out = await (await call('/api/agy/accounts/test', admin, { id: idA })).json();
       assert.equal(out.ok, false);
       assert.match(out.error, /overloaded/);
+      const listed = await (await call('/api/agy/accounts', admin)).json();
+      assert.equal(listed.events.at(-1).outcome, 'test_failed');
+      assert.equal(new AgyAccountStore(path.join(dir, 'agy.json')).data.events.at(-1).outcome, 'test_failed');
+      assert.ok(!JSON.stringify(listed.events).includes('worker-secret'));
       assert.deepEqual(acquired, [idA]);
       assert.deepEqual(released, [idA]);
     } finally {

@@ -783,6 +783,8 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
         if (!store.list().some(a => a.id === body.id)) { sendJson(res, 404, { ok: false, error: 'no such AGY account' }); return true; }
         if (!testAccount) { sendJson(res, 501, { ok: false, error: 'AGY test is not available' }); return true; }
         const result = await testAccount(body.id);
+        store.recordEvent({ accountId: body.id, client: 'dashboard-test', model: result.model,
+          outcome: result.ok ? 'success' : 'test_failed', durationMs: result.ms || 0 });
         sendJson(res, 200, result.ok ? { ok: true, ms: result.ms, model: result.model } : { ok: false, error: result.error, ...(result.ms != null ? { ms: result.ms } : {}) });
         return true;
       }
