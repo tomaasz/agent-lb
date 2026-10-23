@@ -1,3 +1,4 @@
+import { AgyCheckScheduler } from './agy-checks.js';
 import { observeTokenStream } from "./first-token.js";
 import { AgyModelCatalog, createAgyModelsRunner, isAgyModelName, listAgyModelsBounded, AGY_CONTEXT_WINDOW, AGY_MAX_TOKENS } from "./agy-models.js";
 import { AgyWorkerPool, resolveAgyHomesDir } from "./agy-workers.js";
@@ -334,10 +335,16 @@ export function createProxyServer(
     agySubscriptionRefresh ||= hooks.agySubscriptionRefresh || createAgySubscriptionRefresh({
       store: agyStore, pool: agyPool, run: createAgyModelsRunner(config),
     });
+    if (!agyChecks) {
+      agyChecks = new AgyCheckScheduler({ store: agyStore });
+      if (config.agy?.checksEnabled !== false) agyChecks.start();
+    }
     return { store: agyStore, pool: agyPool, catalog: agyModelCatalog };
   };
   const getAgyModelCatalog = () => ensureAgy().catalog;
   let agyLogins = null;
+  let agyChecks = null;
+
   clientUsage ||= new ClientUsageTracker();
   const upstream = config.upstream || "https://api.anthropic.com";
   const holdMs = (config.holdSeconds || 0) * 1000;
@@ -726,6 +733,7 @@ export function createProxyServer(
             catalog: agy.catalog,
             testAccount: (id) => testAgyAccount({ ...agy, id }),
             refreshSubscription: agySubscriptionRefresh,
+            checks: agyChecks,
           })
         )
           return;
@@ -5310,11 +5318,15 @@ export function createProxyServer(
   });
   const server = http.createServer(requestHandler);
   server.healthChecker = healthChecker;
+  server.once('listening', () => {
+    try { ensureAgy(); } catch { console.error('[AgentLB] AGY diagnostics initialization failed'); }
+  });
   // Read-only test/diagnostic view; the control endpoints expose the same count.
   server.__agentLbDrainState = drainState;
   server.on("close", () => {
     healthChecker.stop();
     agyPool?.stopAll();
+    agyChecks?.stop();
   });
 
   // What bounds a directory of one-shot dumps is deleting the expired ones, not

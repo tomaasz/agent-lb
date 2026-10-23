@@ -15,9 +15,9 @@
 
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, unlinkSync, mkdirSync, linkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { getConfigPath } from './config.js';
 import { readControlBody } from './control-body.js';
 import { relayPolicyAllowed } from './access-control.js';
@@ -97,14 +97,20 @@ export class AgyAccountStore {
     this.quotaGroups = Object.fromEntries(Object.entries(quotaGroups || {}).filter(([k, v]) => /^[a-zA-Z0-9._:-]{1,100}$/.test(k) && typeof v === 'string' && /^[a-zA-Z0-9._:-]{1,100}$/.test(v)));
     this.stations = new Map(); // client name -> { accountId, at }
     this.data = this._load();
+    this.pendingStats = new Map();
     this.lastStatsSaveAt = 0;
     this.statsSaveTimer = null;
-    if (encryptionKeyPath) this._save();
+    if (encryptionKeyPath) this._transaction(() => this._save());
+    for (const method of ['upsert', 'remove', 'setEnabled', 'rename', 'markSeeded', 'pin', 'reorder', 'clearQuota', 'markQuota', 'setUsage', 'setSubscription', 'recordEvent', 'markFailure', 'recordSuccess', 'clearHealth']) {
+      if (typeof this[method] !== 'function') continue;
+      const original = this[method].bind(this);
+      this[method] = (...args) => this._transaction(() => original(...args));
+    }
   }
 
   _load() {
     const data = readAgyStorage(this.path, this.encryptionKeyPath);
-    if (data === undefined) return { pinned: null, accounts: [], events: [] };
+    if (data === undefined) return { pinned: null, accounts: [], events: [], batches: [], changes: [] };
     if (!data || !Array.isArray(data.accounts) || data.accounts.length > 1000) throw new Error('Invalid AGY account storage');
     const ids = new Set();
     for (const a of data.accounts) {
@@ -114,13 +120,19 @@ export class AgyAccountStore {
           until: Number.isFinite(a.health.until) ? a.health.until : null,
           requiresReview: ['auth_required', 'access_denied'].includes(a.health.reason) } : null;
       a.modelQuotas = Object.fromEntries(Object.entries(a.modelQuotas || {}).filter(([k, v]) => /^[a-zA-Z0-9._:-]{1,100}$/.test(k) && Number.isFinite(v) && v > this.now()).slice(-100));
+      const pending = this.pendingStats?.get(a.id);
+      if (pending) {
+        const old = a.stats || {};
+        a.stats = { requests: (old.requests || 0) + pending.requests, inputTokens: (old.inputTokens || 0) + pending.inputTokens, outputTokens: (old.outputTokens || 0) + pending.outputTokens, lastAt: pending.lastAt };
+      }
       ids.add(a.id);
     }
-    return { pinned: data.pinned || null, accounts: data.accounts, events: this._safeEvents(data.events) };
+    return { pinned: data.pinned || null, accounts: data.accounts, events: this._safeEvents(data.events), batches: (Array.isArray(data.batches) ? data.batches : []).slice(-20), changes: (Array.isArray(data.changes) ? data.changes : []).slice(-100) };
   }
 
   _save() {
     writeAgyStorage(this.path, this.data, this.encryptionKeyPath);
+    this.pendingStats?.clear();
   }
 
   _safeEvents(events) {
@@ -167,12 +179,134 @@ export class AgyAccountStore {
     return true;
   }
 
+  _claimLock(path) {
+    const temp = path + '.' + randomBytes(12).toString('hex') + '.owner';
+    try {
+      writeFileSync(temp, JSON.stringify({ pid: process.pid, at: this.now() }), { flag: 'wx', mode: 0o600 });
+      // Publish a fully written owner atomically, never an empty lock file.
+      linkSync(temp, path);
+    } finally { try { unlinkSync(temp); } catch { /* retain acquisition error */ } }
+  }
+
+  _lock(suffix) {
+    mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
+    const path = this.path + suffix;
+    try { this._claimLock(path); }
+    catch (err) {
+      if (err.code === 'EEXIST') {
+        // Recovery is itself exclusive. Never steal from a live/unknown owner.
+        let guard;
+        try {
+          this._claimLock(path + '.recovery');
+          guard = true;
+          const owner = JSON.parse(readFileSync(path, 'utf8'));
+          if (Number.isSafeInteger(owner.pid) && owner.pid > 0) {
+            try { process.kill(owner.pid, 0); }
+            catch (e) { if (e.code === 'ESRCH') unlinkSync(path); }
+          }
+        } catch { /* another recovery or unknown owner: refuse */ }
+        finally {
+          if (guard) unlinkSync(path + '.recovery');
+        }
+        try { this._claimLock(path); }
+        catch { return null; }
+      } else {
+        throw new Error('AGY storage lock unavailable');
+      }
+    }
+    return () => unlinkSync(path);
+  }
+
+  _transaction(fn) {
+    const release = this._lock('.lock');
+    if (!release) throw new Error('AGY account storage busy; retry later');
+    try {
+      this.data = this._load();
+      this.inTransaction = true;
+      return fn();
+    } finally { this.inTransaction = false; release(); }
+  }
+
+  snapshot(id) {
+    this.data = this._load();
+    const a = this._find(id);
+    return a ? { id, token: structuredClone(a.token), version: this._version(a) } : null;
+  }
+
+  _version(a) {
+    return createHash('sha256').update(JSON.stringify([a.token, a.tokenRevision])).digest('hex');
+  }
+
+  applyDiagnostics(id, version, result) {
+    return this._transaction(() => {
+      const a = this._find(id);
+      if (!a || this._version(a) !== version) return false;
+      const previous = a.diagnostics;
+      const telemetry = {};
+      const oldPlan = previous?.telemetry?.plan?.data;
+      const newPlan = result.telemetry?.plan?.data;
+      const sameContext = (!newPlan && !result.telemetry?.models) ||
+        (oldPlan && newPlan && oldPlan.projectId === newPlan.projectId && oldPlan.tierId === newPlan.tierId);
+      for (const key of ['plan', 'models', 'quotaSummary']) {
+        const fresh = result.telemetry?.[key];
+        const old = sameContext || key === 'plan' ? previous?.telemetry?.[key] : null;
+        if (fresh) telemetry[key] = { ...fresh, lastSuccessAt: fresh.observedAt, lastAttemptAt: result.checkedAt, stale: false };
+        else if (old) telemetry[key] = { ...old, lastAttemptAt: result.checkedAt, stale: true };
+      }
+      const restrictions = ['auth_invalid', 'forbidden', 'validation_required', 'subscription_required', 'tos_violation'];
+      const routingStatus = result.status === 'available' || restrictions.includes(result.status)
+        ? result.status : previous?.routingStatus || previous?.status || result.status;
+      a.diagnostics = { ...result, routingStatus, telemetry };
+      a.nextCheckAt = result.nextCheckAt || null;
+      a.failures = result.failures || 0;
+      if (previous?.status !== result.status) {
+        this.data.changes.push({ accountId: id, at: result.checkedAt, from: previous?.status || null, to: result.status });
+        this.data.changes = this.data.changes.slice(-100);
+      }
+      this._save();
+      return true;
+    });
+  }
+
+  beginBatch(source) {
+    const release = this._lock('.checks.lock');
+    if (!release) return null;
+    try {
+      const batch = this._transaction(() => {
+        for (const b of this.data.batches) if (b.status === 'running') { b.status = 'interrupted'; b.finishedAt = this.now(); }
+        const b = { id: randomBytes(12).toString('hex'), source, startedAt: this.now(), status: 'running' };
+        this.data.batches.push(b);
+        this.data.batches = this.data.batches.slice(-20);
+        this._save();
+        return b;
+      });
+      this.batchRelease = release;
+      return batch;
+    } catch (err) { release(); throw err; }
+  }
+
+  finishBatch(batch, summary) {
+    try {
+      this._transaction(() => {
+        const b = this.data.batches.find(b => b.id === batch.id);
+        if (b) Object.assign(b, summary, { status: summary.error ? 'failed' : 'completed', finishedAt: this.now() });
+        this._save();
+      });
+    } finally { this.batchRelease?.(); this.batchRelease = null; }
+  }
+
+  history() {
+    this.data = this._load();
+    return structuredClone({ batches: this.data.batches, changes: this.data.changes });
+  }
+
   _find(id) {
     return this.data.accounts.find(a => a.id === id) || null;
   }
 
   /** Accounts without their tokens, in priority order, for the dashboard. */
   list() {
+    if (!this.inTransaction) this.data = this._load();
     const now = this.now();
     const usedBy = {};
     for (const [client, s] of this.stations) (usedBy[s.accountId] ||= []).push(client);
@@ -193,6 +327,9 @@ export class AgyAccountStore {
       subscription: a.subscription ? { ...normalizeAgySubscription(a.subscription), updatedAt: a.subscription.updatedAt || null } : null,
       stats: a.stats || { requests: 0, inputTokens: 0, outputTokens: 0, lastAt: null },
       usedBy: (usedBy[a.id] || []).sort(),
+      diagnostics: a.diagnostics || null,
+      nextCheckAt: a.nextCheckAt || null,
+      failures: a.failures || 0,
     }));
   }
 
@@ -214,6 +351,10 @@ export class AgyAccountStore {
       existing.health = null;
       existing.modelQuotas = {};
       existing.updatedAt = this.now();
+      existing.tokenRevision = randomBytes(12).toString('hex');
+      delete existing.diagnostics;
+      delete existing.nextCheckAt;
+      delete existing.failures;
     } else {
       this.data.accounts.push({ id, email, enabled: true, token: data, addedAt: this.now() });
     }
@@ -337,12 +478,15 @@ export class AgyAccountStore {
   }
 
   _available(a, model = null) {
-    return a.enabled !== false && !(a.quotaUntil && a.quotaUntil > this.now()) &&
+    const d = a.diagnostics;
+    const restricted = ['auth_invalid', 'forbidden', 'validation_required', 'subscription_required', 'tos_violation'].includes(d?.routingStatus || d?.status);
+    return !restricted && a.enabled !== false && !(a.quotaUntil && a.quotaUntil > this.now()) &&
       !(a.health?.requiresReview || a.health?.until > this.now()) &&
       !(model && a.modelQuotas?.[this.quotaKey(model)] > this.now());
   }
 
   retryAfter(model) {
+    this.data = this._load();
     const waits = this.data.accounts.filter(a => a.enabled !== false && !a.health?.requiresReview).map(a => Math.max(
       a.quotaUntil || 0, a.health?.until || 0, a.modelQuotas?.[this.quotaKey(model)] || 0));
     return Math.max(1, Math.ceil((Math.min(...waits, this.now() + 3600000) - this.now()) / 1000));
@@ -350,6 +494,7 @@ export class AgyAccountStore {
 
   /** Pick for proxy routing: pinned first, then the free account whose model resets soonest. */
   pick(exclude = new Set(), model = null, busy = () => 0) {
+    this.data = this._load();
     const pinned = this.data.pinned && this._find(this.data.pinned);
     if (pinned && this._available(pinned, model) && !exclude.has(pinned.id)) return pinned;
     return this.data.accounts
@@ -367,21 +512,23 @@ export class AgyAccountStore {
     stats.inputTokens += Number(inputTokens) || 0;
     stats.outputTokens += Number(outputTokens) || 0;
     stats.lastAt = this.now();
+    const pending = this.pendingStats.get(id) || { requests: 0, inputTokens: 0, outputTokens: 0 };
+    pending.requests++;
+    pending.inputTokens += Number(inputTokens) || 0;
+    pending.outputTokens += Number(outputTokens) || 0;
+    pending.lastAt = stats.lastAt;
+    this.pendingStats.set(id, pending);
+    const save = () => {
+      this._transaction(() => this._save());
+      this.lastStatsSaveAt = this.now();
+    };
     const elapsed = stats.lastAt - this.lastStatsSaveAt;
-    if (elapsed >= 10_000) {
-      this._save();
-      this.lastStatsSaveAt = stats.lastAt;
-    } else if (!this.statsSaveTimer) {
+    if (elapsed >= 10_000) save();
+    else if (!this.statsSaveTimer) {
       this.statsSaveTimer = setTimeout(() => {
         this.statsSaveTimer = null;
-        // A timer callback has no caller: a throw here (disk full, directory
-        // gone) would be an uncaught exception and take the whole proxy down.
-        try {
-          this._save();
-          this.lastStatsSaveAt = this.now();
-        } catch (err) {
-          console.warn('[AgentLB] AGY stats save failed:', err?.code || 'error');
-        }
+        try { save(); }
+        catch (err) { console.warn('[AgentLB] AGY stats save failed:', err?.code || 'error'); }
       }, 10_000 - elapsed);
       this.statsSaveTimer.unref?.();
     }
@@ -390,6 +537,7 @@ export class AgyAccountStore {
 
   /** The account a station should use: pinned, else its current one, else the first free. */
   select(current = null) {
+    this.data = this._load();
     const pinned = this.data.pinned && this._find(this.data.pinned);
     if (pinned && this._available(pinned)) return pinned;
     const mine = current && this._find(current);
@@ -708,7 +856,7 @@ async function catalogIds(catalog) {
   } finally { clearTimeout(timer); }
 }
 
-export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, clientUsage, store, logins, pool = null, catalog = null, testAccount = null, refreshSubscription = null }) {
+export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, clientUsage, store, logins, pool = null, catalog = null, testAccount = null, refreshSubscription = null, checks = null }) {
   if (normApiPath === '/agy/credential' || normApiPath === '/agy/quota' || normApiPath === '/agy/usage') {
     if (!clientKey || !auth?.ok || !relayPolicyAllowed(auth, clientUsage) || !(auth.primary || auth.entry?.allowCredentialRelay === true)) {
       sendJson(res, 403, { ok: false, error: 'an unrestricted station key is required for AGY accounts' });
@@ -746,6 +894,10 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
   if (!normApiPath.startsWith('/api/agy/')) return false;
   const action = normApiPath.slice('/api/agy/'.length);
 
+  if (action === 'history' && req.method === 'GET') {
+    sendJson(res, 200, { ok: true, ...store.history() });
+    return true;
+  }
   if (action === 'accounts' && req.method === 'GET') {
     const accounts = store.list().map(a => ({ ...a, busy: Number(pool?.busy?.(a.id)) || 0 }));
     sendJson(res, 200, { ok: true, pinned: store.data.pinned, accounts, models: await catalogIds(catalog), events: store.data.events || [], queue: pool?.snapshot?.() || [] });
@@ -757,6 +909,14 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
 
   try {
     switch (action) {
+      case 'accounts/check': {
+        if (body.id !== undefined && (typeof body.id !== 'string' || !store.snapshot(body.id))) {
+          sendJson(res, 404, { ok: false, error: 'no such AGY account' }); return true;
+        }
+        const result = await checks.run({ id: body.id || null, force: true, source: 'manual' });
+        sendJson(res, result.busy ? 409 : 200, { ok: !result.busy, ...result, ...(result.busy ? { error: 'AGY check already running' } : {}) });
+        return true;
+      }
       case 'login/start': {
         const started = await logins.start();
         sendJson(res, 200, { ok: true, ...started });

@@ -267,7 +267,7 @@ test('store pick honors available pinned then earliest reset and recordRequest t
   const s=new AgyAccountStore(file,()=>now);
   const add = email => s.upsert({ token: {refresh_token:'test'}, id_token:`h.${Buffer.from(JSON.stringify({email})).toString('base64url')}.s` }).id;
   const x=add('x@example.com'), p=add('p@example.com'), y=add('y@example.com'), off=add('off@example.com');
-  s._find(x).usage={models:[{resetAt:5000}]}; s._find(y).usage={models:[{resetAt:3000}]}; s.setEnabled(off,false); s.pin(p);
+  s.setUsage(x,[{label:"x",remaining:1,resetAt:5000}]); s.setUsage(y,[{label:"y",remaining:1,resetAt:3000}]); s.setEnabled(off,false); s.pin(p);
   assert.equal(s.pick(new Set()).id,p); assert.equal(s.pick(new Set([p])).id,y);
   s.recordRequest(y,{inputTokens:2,outputTokens:3}); s.recordRequest(y,{inputTokens:4,outputTokens:5}); assert.deepEqual(s._find(y).stats,{requests:2,inputTokens:6,outputTokens:8,lastAt:1000});
   fs.rmSync(dir,{recursive:true,force:true});
