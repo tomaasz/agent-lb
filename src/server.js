@@ -19,6 +19,7 @@ import {
   readWithIdleTimeout,
   idleBody,
   collectIdleBody,
+  peekSseHead,
 } from "./stream-lifecycle.js";
 export { readWithIdleTimeout, idleBody } from "./stream-lifecycle.js";
 import {
@@ -144,6 +145,7 @@ import {
   createCodexResponsesToOpenAITransformStream,
   translateCodexResponsesToOpenAIResponse,
   codexResponseFailure,
+  codexStreamLimit,
 } from "./provider-translator.js";
 import { FairShareController } from "./fair-share.js";
 import { ToolCallDedupeCache } from "./tool-call-dedupe.js";
@@ -3418,7 +3420,9 @@ export function createProxyServer(
           normApiPath === "/reboot" ||
           normApiPath === "/restart")
       ) {
-        console.log("[AgentLB] Server reboot requested by authorized client");
+        console.log(
+          `[AgentLB] Server reboot requested by authorized client (remote ${safeLine(req.socket?.remoteAddress || "?")}, ua "${safeLine(String(req.headers["user-agent"] || "-")).slice(0, 80)}", path ${safeLine(normApiPath)})`,
+        );
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
@@ -9218,6 +9222,60 @@ export async function forwardRequest(
         responseHeaders["content-type"] = isStreaming
           ? "text/event-stream; charset=utf-8"
           : "application/json; charset=utf-8";
+      }
+    }
+
+    // Codex can report a spent quota INSIDE a 200 stream (response.failed with
+    // usage_limit_reached) instead of answering 429. Once headers are written
+    // the request cannot move, so look at how the stream begins first: on a
+    // spent account hold it and retry elsewhere, exactly as the 429 path does;
+    // otherwise replay the stream untouched.
+    if (
+      isCodexAccount &&
+      upstreamRes.status === 200 &&
+      upstreamRes.body &&
+      (upstreamRes.headers.get("content-type") || "").includes("text/event-stream")
+    ) {
+      const peeked = await peekSseHead(upstreamRes.body).catch(() => null);
+      if (peeked) {
+        const streamLimit = codexStreamLimit(peeked.head);
+        if (streamLimit && retryCount < maxRetries) {
+          await peeked.body.cancel().catch(() => {});
+          const hold = Math.min(Math.max(streamLimit.resetSeconds || 3600, 1), 3600);
+          console.log(
+            `[AgentLB] Codex usage limit reached on "${account.name}" (in stream) — holding ${hold}s and switching account`,
+          );
+          accountManager.markRateLimited(account.index, hold);
+          account.lastError = {
+            reason: "usage-limit",
+            status: 429,
+            error: streamLimit.message,
+            timestamp: Date.now(),
+          };
+          ctx.tried.add(account.index);
+          if (clientGone(res)) {
+            ctx.abandoned = true;
+            return;
+          }
+          return forwardRequest(
+            req,
+            res,
+            body,
+            accountManager,
+            upstream,
+            retryCount + 1,
+            hooks,
+            reqId,
+            ctx,
+            logDir,
+            sx,
+            route,
+          );
+        }
+        upstreamRes = new Response(peeked.body, {
+          status: upstreamRes.status,
+          headers: upstreamRes.headers,
+        });
       }
     }
 

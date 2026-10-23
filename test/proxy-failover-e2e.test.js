@@ -213,6 +213,30 @@ test('codex: usage_limit_reached 429 rotates to the next account and takes the s
   assert.notEqual(am.unavailableReason(am.accounts[0], 'gpt-5.6-sol'), null);
 });
 
+test('codex: usage_limit_reached inside a 200 stream rotates to the next account before the client sees anything', async t => {
+  const up = await mockUpstream(t, (req, _body, res) => {
+    if (req.headers.authorization === 'Bearer tok-1') {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.end(codexSse([
+        { type: 'response.created', response: { id: 'resp_x', created_at: 1 } },
+        { type: 'response.failed', response: { id: 'resp_x', error: { code: 'usage_limit_reached', message: 'The usage limit has been reached', resets_in_seconds: 3000 } } },
+      ]));
+      return;
+    }
+    codexOk(res);
+  });
+  const { am, base } = await proxyFor(t, codexAccounts(up.base), up.base);
+  const first = await chatRequest(base);
+  assert.equal(first.status, 200);
+  assert.doesNotMatch(await first.text(), /usage limit/i, 'the client must get the answer from the next account, not the failure');
+  const second = await chatRequest(base);
+  assert.equal(second.status, 200);
+  await second.text();
+  assert.deepEqual(up.seen.map(s => s.auth), ['Bearer tok-1', 'Bearer tok-2', 'Bearer tok-2'],
+    'the spent account must be held, not retried by the very next request');
+  assert.notEqual(am.unavailableReason(am.accounts[0], 'gpt-5.6-sol'), null);
+});
+
 test('codex: x-codex-* quota headers on live traffic update the account quota', async t => {
   const up = await mockUpstream(t, (_req, _body, res) => codexOk(res, {
     'x-codex-primary-used-percent': '42',

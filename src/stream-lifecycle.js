@@ -56,3 +56,64 @@ export async function collectIdleBody(body) {
   return Buffer.concat(chunks);
 }
 
+
+// Events that say nothing about whether the response will succeed.
+const NEUTRAL_SSE_EVENTS = new Set(['response.created', 'response.in_progress']);
+
+function hasDecisiveEvent(text) {
+  const blocks = text.split('\n\n');
+  blocks.pop(); // the last block may be incomplete
+  return blocks.some((block) => {
+    const m = /^data:\s*(\{.*\})\s*$/m.exec(block);
+    if (!m) return false;
+    try { return !NEUTRAL_SSE_EVENTS.has(JSON.parse(m[1]).type); } catch { return false; }
+  });
+}
+
+/**
+ * Read the head of an SSE body until the first event that is not a neutral
+ * start-up one (or `maxBytes`, or `waitMs`), WITHOUT consuming it: the returned
+ * `body` replays what was read and then the rest. This lets the caller look at
+ * how a 200 stream begins before committing response headers to the client.
+ */
+export async function peekSseHead(body, { maxBytes = 16384, waitMs = 3000 } = {}) {
+  const reader = body.getReader();
+  const chunks = [];
+  let pending = null;
+  let finished = false;
+  let bytes = 0;
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    pending ??= reader.read();
+    const left = deadline - Date.now();
+    if (left <= 0) break;
+    let timer;
+    const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve('timeout'), left); timer.unref?.(); });
+    const settled = pending.then((r) => r, () => 'error');
+    const outcome = await Promise.race([settled, timeout]).finally(() => clearTimeout(timer));
+    if (outcome === 'timeout' || outcome === 'error') break;
+    pending = null;
+    if (outcome.done) { finished = true; break; }
+    chunks.push(Buffer.from(outcome.value));
+    bytes += outcome.value.length;
+    if (bytes >= maxBytes || hasDecisiveEvent(Buffer.concat(chunks).toString('utf8'))) break;
+  }
+  const head = Buffer.concat(chunks).toString('utf8');
+  let i = 0;
+  const replay = new ReadableStream({
+    async pull(controller) {
+      if (i < chunks.length) { controller.enqueue(chunks[i++]); return; }
+      if (finished) { controller.close(); return; }
+      const read = pending ?? reader.read();
+      pending = null;
+      try {
+        const r = await read;
+        if (r.done) controller.close(); else controller.enqueue(r.value);
+      } catch (err) {
+        controller.error(err);
+      }
+    },
+    cancel(reason) { return reader.cancel(reason); },
+  });
+  return { head, body: replay };
+}

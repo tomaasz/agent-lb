@@ -1192,3 +1192,30 @@ export function codexResponseFailure(buffer) {
   }
   return null;
 }
+
+/**
+ * A spent-quota failure at the head of a Codex SSE stream: `response.failed` or
+ * an `error` event whose code/type is `usage_limit_reached`. ChatGPT reports an
+ * exhausted account this way inside a 200 stream as well as with a 429, and
+ * only the 429 was acted on. Returns { message, resetSeconds } (resetSeconds is
+ * null when upstream gave none) or null for any other head.
+ */
+export function codexStreamLimit(headText) {
+  for (const line of String(headText || '').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) continue;
+    let payload;
+    try { payload = JSON.parse(trimmed.slice(5).trim()); } catch { continue; }
+    let err = null;
+    if (payload.type === 'response.failed') err = payload.response?.error;
+    else if (payload.type === 'error') err = payload.error || payload;
+    if (!err) continue;
+    if (!/usage_limit/i.test(String(err.code || '')) && !/usage_limit/i.test(String(err.type || ''))) continue;
+    const reset = Number(err.resets_in_seconds);
+    return {
+      message: String(err.message || 'Codex usage limit reached'),
+      resetSeconds: Number.isFinite(reset) && reset > 0 ? reset : null,
+    };
+  }
+  return null;
+}
