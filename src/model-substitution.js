@@ -30,3 +30,10 @@ export function substitutionAllowed(policy, sourceModel, targetProvider, finalMo
   if ((sourceModel === 'claude-haiku-4-5' || sourceModel === 'claude-haiku-4-5-20251001') && (finalModel === 'claude-haiku-4-5' || finalModel === 'claude-haiku-4-5-20251001')) return true;
   return !!policy.rules?.some(r => r.fromModel === sourceModel && r.toProvider === targetProvider && r.toModel === finalModel);
 }
+
+// One log line for every model the proxy changed on its way upstream, so a
+// substitution is never silent. Null when nothing changed.
+export function modelChangeNote(sourceModel, finalModel, accountName) {
+  if (!sourceModel || !finalModel || sourceModel === finalModel) return null;
+  return `[AgentLB] Model changed: "${sourceModel}" -> "${finalModel}" (account "${accountName}")`;
+}

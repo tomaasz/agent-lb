@@ -4,7 +4,7 @@ import { AgyModelCatalog, createAgyModelsRunner, isAgyModelName, listAgyModelsBo
 import { AgyWorkerPool, resolveAgyHomesDir } from "./agy-workers.js";
 import { createAgySubscriptionRefresh } from "./agy-subscription.js";
 import { handleAgyCompletion, testAgyAccount } from "./agy-gateway.js";
-import { substitutedModel, substitutionAllowed } from "./model-substitution.js";
+import { modelChangeNote, substitutedModel, substitutionAllowed } from "./model-substitution.js";
 import { handleClientKeys } from "./client-key-admin.js";
 import { readControlBody, readControlJson } from "./control-body.js";
 import {
@@ -8307,6 +8307,12 @@ export async function forwardRequest(
       });
       return;
     }
+    const changeNote = modelChangeNote(
+      ctx.requestedModel,
+      rewrittenModel,
+      account.name,
+    );
+    if (changeNote) console.log(changeNote);
     ctx.model = rewrittenModel;
     if (ctx.clientEntry && ctx.clientUsage) {
       const policy = ctx.clientUsage.checkQuota(
