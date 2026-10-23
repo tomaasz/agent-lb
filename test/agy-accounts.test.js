@@ -22,7 +22,7 @@ function agyToken(email, sub = email) {
 
 // Stand-in for `agy --print`: prints Google's consent URL, reads the code and
 // writes AGY's token file into $HOME/.gemini like the real CLI.
-function fakeAgy(dir, email) {
+function fakeAgy(dir, email, token = agyToken(email)) {
   const script = path.join(dir, 'fake-agy.mjs');
   fs.writeFileSync(script, `#!${process.execPath}
 import fs from 'node:fs';
@@ -37,7 +37,7 @@ rl.on('line', (code) => {
     process.exit(1);
   }
   fs.mkdirSync(process.env.HOME + '/.gemini/antigravity-cli', { recursive: true });
-  fs.writeFileSync(process.env.HOME + '/.gemini/antigravity-cli/antigravity-oauth-token', ${JSON.stringify(JSON.stringify(agyToken(email)))});
+  fs.writeFileSync(process.env.HOME + '/.gemini/antigravity-cli/antigravity-oauth-token', ${JSON.stringify(JSON.stringify(token))});
   setTimeout(() => process.exit(0), 5000); // AGY goes on to run the prompt
 });
 `, { mode: 0o755 });
@@ -178,6 +178,29 @@ describe('AGY login through AGY itself', () => {
       assert.equal(account.email, 'new@example.com');
       assert.equal(store.list().length, 1);
       await assert.rejects(logins.submit(started.loginId, 'good-code-1234567890'), /ended/);
+    });
+  }
+
+  for (const usePty of [true, false]) {
+    it(`accepts AGY 1.4.6 identity without a JWT (${usePty ? 'pty' : 'pipes'})`, async () => {
+      const dir = tmpDir();
+      const store = new AgyAccountStore(path.join(dir, 'agy.json'));
+      const original = store.upsert(agyToken('new@example.com'));
+      store.pin(original.id);
+      const token = { token: { refresh_token: 'fresh', access_token: 'access' }, id_token_email: 'New@Example.com', auth_method: 'consumer' };
+      const logins = new AgyLoginManager({ command: fakeAgy(dir, 'new@example.com', token), store, usePty });
+      const started = await logins.start();
+      const home = logins.logins.get(started.loginId).home;
+      const result = await logins.submit(started.loginId, 'good-code-1234567890');
+      assert.equal(result.email, 'new@example.com');
+      assert.equal(result.id, original.id);
+      assert.equal(store.list().length, 1);
+      assert.equal(store.data.pinned, original.id);
+      assert.ok(!fs.existsSync(home));
+      const reopened = new AgyAccountStore(store.path);
+      assert.equal(reopened.list()[0].id, original.id);
+      assert.deepEqual(reopened._find(original.id).token, token);
+      fs.rmSync(dir, { recursive: true, force: true });
     });
   }
 
@@ -631,5 +654,45 @@ describe('testAgyAccount acquire timeout', () => {
     assert.equal(out.ok, false);
     await new Promise((resolve) => setTimeout(resolve, 200));
     assert.equal(release, 1);
+  });
+});
+
+
+describe('AGY token identity compatibility', () => {
+  it('preserves identity across modern/legacy updates and refuses different subjects', () => {
+    const dir = tmpDir();
+    try {
+      const store = new AgyAccountStore(path.join(dir, 'agy.json'));
+      const modern = { token: { refresh_token: 'x' }, id_token_email: 'a@example.com' };
+      const first = store.upsert(modern);
+      store.rename(first.id, 'Profile');
+      store.pin(first.id);
+      const legacy = store.upsert(agyToken('a@example.com', 'subject-A'));
+      assert.equal(legacy.id, first.id);
+      const before = fs.readFileSync(store.path, 'utf8');
+      assert.throws(() => store.upsert(agyToken('a@example.com', 'subject-B')), /subject mismatch/);
+      assert.equal(fs.readFileSync(store.path, 'utf8'), before);
+      assert.equal(store.list().length, 1);
+      assert.equal(store.list()[0].name, 'Profile');
+      assert.equal(store.data.pinned, first.id);
+      assert.equal(new AgyAccountStore(store.path).list()[0].id, first.id);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('accepts legacy JWT and new remembered identity without mutating the token', () => {
+    const legacy = agyToken('a@example.com');
+    assert.equal(parseAgyToken(legacy).email, 'a@example.com');
+    const modern = { token: { refresh_token: 'x' }, id_token_email: ' A@Example.com ' };
+    assert.equal(parseAgyToken(modern).email, 'a@example.com');
+    assert.equal(parseAgyToken(modern).sub, null);
+    assert.equal(parseAgyToken(modern).data, modern);
+    assert.equal(parseAgyToken({ ...legacy, id_token_email: 'A@Example.com' }).email, 'a@example.com');
+  });
+  it('rejects conflicting, missing and malformed identities without echoing input', () => {
+    assert.throws(() => parseAgyToken({ ...agyToken('a@example.com'), id_token_email: 'b@example.com' }), /identity mismatch/);
+    for (const value of [undefined, '', 'bad', 'bad\n@example.com', {}, 12]) {
+      assert.throws(() => parseAgyToken({ token: { refresh_token: 'secret' }, id_token_email: value }), /e-mail/);
+    }
+    assert.throws(() => parseAgyToken({ token: { refresh_token: 'x' }, id_token: 'h.bnVsbA.s' }), /e-mail/);
   });
 });

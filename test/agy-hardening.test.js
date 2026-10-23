@@ -36,6 +36,17 @@ test('encrypted account migration, randomized writes and restart preserve accoun
   assert.equal(restored._find(account.id).token.token.refresh_token, 'secret-refresh-marker');
 });
 
+test('AGY remembered identity survives encrypted persistence without exposing credentials', t => {
+  const { file, key } = fixture(t);
+  const store = new AgyAccountStore(file, Date.now, { encryptionKeyPath: key });
+  const account = store.upsert({ token: { refresh_token: 'secret-refresh-marker' }, id_token_email: 'one@example.com' });
+  assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /secret-|one@example/);
+  const restored = new AgyAccountStore(file, Date.now, { encryptionKeyPath: key });
+  assert.equal(restored.list()[0].id, account.id);
+  assert.equal(restored.list()[0].email, 'one@example.com');
+  assert.equal(restored._find(account.id).token.token.refresh_token, 'secret-refresh-marker');
+});
+
 test('corruption, null, missing/wrong keys fail closed without overwriting accounts', t => {
   const { file, key } = fixture(t);
   for (const bad of ['null', '{}', '{broken', '{"accounts":[{"id":"bad"}]}']) {

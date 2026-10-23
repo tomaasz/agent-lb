@@ -63,9 +63,13 @@ export function parseAgyToken(raw) {
     throw new Error('AGY token has no refresh token');
   }
   const claims = jwtPayload(data.id_token);
-  const email = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
-  if (!email) throw new Error('AGY token has no e-mail in its id_token');
-  return { data, email, sub: typeof claims.sub === 'string' ? claims.sub : null };
+  const claimEmail = typeof claims?.email === 'string' ? claims.email.trim().toLowerCase() : '';
+  // AGY 1.4.6 remembers the identity separately and may omit the original JWT.
+  const rememberedEmail = typeof data.id_token_email === 'string' ? data.id_token_email.trim().toLowerCase() : '';
+  if (claimEmail && rememberedEmail && claimEmail !== rememberedEmail) throw new Error('AGY token identity mismatch');
+  const email = claimEmail || rememberedEmail;
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('AGY token has no valid e-mail in id_token or id_token_email');
+  return { data, email, sub: typeof claims?.sub === 'string' ? claims.sub : null };
 }
 
 export function accountIdFor(email, sub) {
@@ -196,8 +200,13 @@ export class AgyAccountStore {
   upsert(rawToken) {
     const { data, email, sub } = parseAgyToken(rawToken);
     const id = accountIdFor(email, sub);
-    const existing = this._find(id);
+    // New tokens may omit sub; preserve the established id and worker home.
+    const byEmail = this.data.accounts.filter(a => a.email === email);
+    const existing = this._find(id) || (byEmail.length === 1 ? byEmail[0] : null);
+    if (!existing && byEmail.length > 1) throw new Error('AGY account identity is ambiguous');
     if (existing) {
+      const previousSub = parseAgyToken(existing.token).sub;
+      if (sub && previousSub && sub !== previousSub) throw new Error('AGY account subject mismatch');
       existing.token = data;
       existing.email = email;
       existing.quotaUntil = null;
@@ -209,7 +218,7 @@ export class AgyAccountStore {
       this.data.accounts.push({ id, email, enabled: true, token: data, addedAt: this.now() });
     }
     this._save();
-    return this.list().find(a => a.id === id);
+    return this.list().find(a => a.id === (existing?.id || id));
   }
 
   remove(id) {
