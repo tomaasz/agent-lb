@@ -6420,7 +6420,16 @@ ${SHARED_HELPERS}
     if (a.pinned) titleGroup.appendChild(el('span', 'badge current', t('agyPinnedBadge')));
     head.appendChild(titleGroup);
 
+    if (a.diagnostics) {
+      var diagnostic = el('details');
+      diagnostic.appendChild(el('summary', '', agyT('Diagnostyka: ', 'Diagnostics: ') + a.diagnostics.status));
+      diagnostic.appendChild(el('pre', '', JSON.stringify(a.diagnostics, null, 2)));
+      card.appendChild(diagnostic);
+      var observedPlan = a.diagnostics.telemetry && a.diagnostics.telemetry.plan;
+      if (observedPlan) plan.textContent = (observedPlan.data.label === 'unknown' ? observedPlan.data.tierId || 'unknown' : observedPlan.data.label) + (observedPlan.stale ? ' (stale)' : '');
+    }
     var acts = el('div', 'card-actions');
+    acts.appendChild(agyIconButton('🔎', agyT('Sprawdź dostęp, plan i limity', 'Check access, plan and quotas'), function () { agyAction('accounts/check', { id: a.id }); }));
     var running = !!(agyTests[a.id] && agyTests[a.id].running);
     var btnTest = el('button', 'btn btn-xs', running ? t('agyTestRunning') : t('agyTest'));
     btnTest.type = 'button';
@@ -6511,6 +6520,21 @@ ${SHARED_HELPERS}
     var count = document.getElementById('countAgy');
     if (count) count.textContent = t('agyCount', { n: list.length });
     box.textContent = '';
+    box.appendChild(agyButton(agyT('Sprawdź pulę', 'Check pool'), '', function () { agyAction('accounts/check', {}); }));
+    var history = document.createElement('details');
+    var historyTitle = document.createElement('summary');
+    historyTitle.textContent = agyT('Historia sprawdzeń', 'Check history');
+    history.appendChild(historyTitle);
+    history.addEventListener('toggle', function () {
+      if (!history.open) return;
+      apiCall('/agent-lb/api/agy/history', 'GET').then(function (d) {
+        if (!d || !d.ok) return;
+        var pre = history.querySelector('pre') || document.createElement('pre');
+        pre.style.whiteSpace = 'pre-wrap'; pre.textContent = JSON.stringify({ batches: d.batches, changes: d.changes }, null, 2);
+        history.appendChild(pre);
+      });
+    });
+    box.appendChild(history);
     if (!list.length) {
       var empty = el('div', '', t('agyEmptyList'));
       empty.style.cssText = 'padding:16px; text-align:center; color:var(--dim); font-size:12px; border:1px dashed var(--line); border-radius:6px;';

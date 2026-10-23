@@ -1,6 +1,6 @@
 // Encrypted central account storage. Native CLI login files remain private 0600.
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { readFileSync, writeFileSync, chmodSync, lstatSync, realpathSync, mkdirSync, renameSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, chmodSync, lstatSync, realpathSync, mkdirSync, renameSync, unlinkSync, openSync, closeSync, fsyncSync } from 'node:fs';
 import { dirname, resolve, relative, isAbsolute, basename } from 'node:path';
 
 export function readAgyStorage(path, keyPath) {
@@ -71,6 +71,10 @@ export function writeAgyStorage(path, data, keyPath) {
   try {
     writeFileSync(tmp, JSON.stringify(output, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
     chmodSync(tmp, 0o600);
+    const fd = openSync(tmp, 'r');
+    try { fsyncSync(fd); } finally { closeSync(fd); }
     renameSync(tmp, path);
+    const dir = openSync(dirname(path), 'r');
+    try { fsyncSync(dir); } finally { closeSync(dir); }
   } finally { try { unlinkSync(tmp); } catch { /* preserve the original write error */ } }
 }
