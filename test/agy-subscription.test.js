@@ -74,7 +74,7 @@ test('a synchronous worker error does not leave refresh stuck in flight', async 
 
 test('account cards render Google plan names as text and expose refresh in both languages', () => {
   const html = renderDashboardHtml();
-  const code = html.slice(html.indexOf('function renderAgyCard('), html.indexOf('function renderAgyAccounts('));
+  const code = html.slice(html.indexOf('function agyAccountStatus('), html.indexOf('function renderAgyAccounts('));
   function el(tag, className, textContent) {
     return { tag, className, textContent, children: [], dataset: {}, style: {},
       appendChild(node) { this.children.push(node); }, addEventListener() {} };
@@ -92,7 +92,18 @@ test('account cards render Google plan names as text and expose refresh in both 
     const card = context.renderAgyCard(account, 0, ['agy-123456789abc']);
     const badges = card.children[0].children[0].children;
     assert.ok(badges.some(n => n.textContent === (lang === 'pl' ? 'Plan nieznany' : 'Unknown plan')));
+    assert.ok(badges.some(n => n.textContent === (lang === 'pl' ? 'Niezweryfikowane' : 'Unverified')));
     assert.ok(controls.some(n => n.title === (lang === 'pl' ? 'Odśwież subskrypcję Google' : 'Refresh Google subscription')));
+    account.modelQuotas = { gemini: Date.now() + 60000 };
+    context.agyLeft = () => '1m';
+    const limited = context.renderAgyCard(account, 0, [account.id]);
+    assert.ok(limited.children[0].children[0].children.some(n => n.textContent === (lang === 'pl' ? 'Limit modelu' : 'Model quota')));
+    assert.ok(limited.className.includes('card-quota-exhausted'));
+    account.modelQuotas = {};
+    account.health = { requiresReview: true, reason: 'auth_required' };
+    const blocked = context.renderAgyCard(account, 0, [account.id]);
+    assert.ok(blocked.children[0].children[0].children.some(n => n.textContent === (lang === 'pl' ? 'Wymaga sprawdzenia' : 'Needs review')));
+    account.health = null;
     account.subscription = { name: '<img src=x onerror=alert(1)>', id: 'future-tier' };
     const named = context.renderAgyCard(account, 0, ['agy-123456789abc']);
     const plan = named.children[0].children[0].children.find(n => n.textContent === account.subscription.name);

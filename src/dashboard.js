@@ -1252,13 +1252,13 @@ const PAGE = `<!doctype html>
               <span id="autoHealthBadge" class="badge" style="font-size:10px; padding:1px 6px; display:none;"></span>
             </div>
             <div class="policy-card-head">
-              <label class="policy-check-label" title="Inteligentne okresowe sprawdzanie dostępności (0 tokenów dla aktywnych, 1 token dla bezczynnych)">
+              <label class="policy-check-label" title="Okresowa kontrola Claude i Codex; nie obejmuje AGY">
                 <input type="checkbox" id="chkAutoHealthCheck" class="policy-checkbox">
                 <span class="policy-card-label" data-i18n="policyCardHealthTitle">Auto-Health</span>
               </label>
             </div>
             <p class="policy-card-desc" id="descHealth" data-i18n="policyCardHealthDesc">
-              Okresowe badanie stanu kont w tle (co 15 min). Bezpieczne dla limitów: 0 tokenów dla aktywnych kont, 1 mikro-token dla kont bezczynnych. Błyskawicznie wykrywa odblokowanie kont.
+              Okresowe badanie kont Claude i Codex w tle (co 15 min). AGY nie jest automatycznie testowane — status wynika ze znanych limitów, błędów i ostatnich zapytań. Przycisk Test próbuje wykonać zapytanie do Google.
             </p>
           </div>
         </div>
@@ -2157,7 +2157,7 @@ const PAGE = `<!doctype html>
       policyCardFallbackTitle: 'Cross-Provider Fallback',
       policyCardFallbackDesc: 'W przypadku wyczerpania limitów wszystkich kont Claude lub blokady upstreamu, automatycznie przekierowuje zapytania do OpenAI Codex (i odwrotnie), zapewniając zerowy przestój.',
       policyCardHealthTitle: 'Auto-Health',
-      policyCardHealthDesc: 'Okresowe badanie stanu kont w tle (co 15 min). Bezpieczne dla limitów: 0 tokenów dla aktywnych kont, 1 mikro-token dla kont bezczynnych. Błyskawicznie wykrywa odblokowanie kont.',
+      policyCardHealthDesc: 'Okresowe badanie kont Claude i Codex w tle (co 15 min). AGY nie jest automatycznie testowane — status wynika ze znanych limitów, błędów i ostatnich zapytań. Przycisk Test próbuje wykonać zapytanie do Google.',
       autoHealthActive: 'Aktywny',
       autoHealthDisabled: 'Wyłączony',
       tabAccountsTitle: 'Konta & Flota',
@@ -2460,7 +2460,7 @@ const PAGE = `<!doctype html>
       policyCardFallbackTitle: 'Cross-Provider Fallback',
       policyCardFallbackDesc: 'When all Claude accounts hit quota limits or upstream errors, requests seamlessly fail over to OpenAI Codex (and vice-versa), ensuring zero agent downtime.',
       policyCardHealthTitle: 'Auto-Health',
-      policyCardHealthDesc: 'Silent background diagnostics every 15 minutes. Consumes 0 tokens for active accounts and only 1 micro-token for idle accounts, auto-recovering cleared accounts.',
+      policyCardHealthDesc: 'Background diagnostics for Claude and Codex every 15 minutes. AGY is not automatically tested: its status reflects known limits, errors and recent requests. Test attempts a request to Google.',
       autoHealthActive: 'Active',
       autoHealthDisabled: 'Disabled',
       tabAccountsTitle: 'Accounts & Fleet',
@@ -6347,12 +6347,12 @@ ${SHARED_HELPERS}
     renderAgyAccounts(agyData.accounts);
     apiCall('/agent-lb/api/agy/accounts/test', 'POST', { id: a.id }).then(function (d) {
       if (d && d.ok) {
-        agyTests[a.id] = { ok: true, text: t('agyTestOk', { ms: d.ms, model: d.model }) };
+        agyTests[a.id] = { ok: true, at: Date.now(), text: t('agyTestOk', { ms: d.ms, model: d.model }) };
       } else {
-        agyTests[a.id] = { ok: false, text: t('agyTestFail', { error: (d && d.error) || 'error' }) };
+        agyTests[a.id] = { ok: false, at: Date.now(), text: t('agyTestFail', { error: (d && d.error) || 'error' }) };
       }
     }).catch(function (e) {
-      agyTests[a.id] = { ok: false, text: t('agyTestFail', { error: e && e.message ? e.message : 'error' }) };
+      agyTests[a.id] = { ok: false, at: Date.now(), text: t('agyTestFail', { error: e && e.message ? e.message : 'error' }) };
     }).then(function () {
       renderAgyAccounts(agyData.accounts);
     });
@@ -6367,9 +6367,27 @@ ${SHARED_HELPERS}
   function agyAvailable(a) {
     return a.enabled && !a.quotaUntil;
   }
+  function agyAccountStatus(a, events, test, now) {
+    if (!a.enabled) return 'disabled';
+    if (a.health && (a.health.requiresReview || a.health.until > now)) return 'error';
+    if (a.quotaUntil > now) return 'quota';
+    if (Object.keys(a.modelQuotas || {}).some(function (m) { return a.modelQuotas[m] > now; })) return 'modelQuota';
+    if ((a.usage && a.usage.models || []).some(function (m) {
+      return m.remaining === 0 && (m.resetAt > now || (!m.resetAt && a.usage.updatedAt > now - 900000));
+    })) return 'modelQuota';
+    var latest = (events || []).filter(function (e) { return e.accountId === a.id; }).slice(-1)[0];
+    if (test && !test.running && (!latest || test.at >= latest.at)) {
+      if (!test.ok) return 'error';
+      if (test.at > now - 900000) return 'verified';
+      return 'unknown';
+    }
+    if (latest && latest.at > now - 900000) return latest.outcome === 'success' ? 'verified' : 'error';
+    return 'unknown';
+  }
   function renderAgyCard(a, i, ids) {
-    var spent = !!a.quotaUntil;
-    var card = el('div', 'card draggable agy-card' + (a.enabled ? '' : ' account-disabled') + (spent && a.enabled ? ' card-quota-exhausted' : ''));
+    var status = agyAccountStatus(a, agyData.events, agyTests[a.id], Date.now());
+    var spent = a.quotaUntil > Date.now();
+    var card = el('div', 'card draggable agy-card' + (a.enabled ? '' : ' account-disabled') + (['quota', 'modelQuota', 'error'].indexOf(status) >= 0 && a.enabled ? ' card-quota-exhausted' : ''));
     card.draggable = true;
     card.dataset.accountName = a.id;
     card.dataset.provider = 'agy';
@@ -6395,7 +6413,10 @@ ${SHARED_HELPERS}
     titleGroup.appendChild(plan);
     if (!a.enabled) titleGroup.appendChild(el('span', 'badge bad', t('agyDisabledBadge')));
     else if (spent) titleGroup.appendChild(el('span', 'badge throttled', '⚠️ ' + t('agyLimitSpent')));
-    else titleGroup.appendChild(el('span', 'badge badge-healthy', t('agyHealthy')));
+    else if (status === 'error') titleGroup.appendChild(el('span', 'badge bad', agyT('Wymaga sprawdzenia', 'Needs review')));
+    else if (status === 'modelQuota') titleGroup.appendChild(el('span', 'badge throttled', agyT('Limit modelu', 'Model quota')));
+    else if (status === 'verified') titleGroup.appendChild(el('span', 'badge badge-healthy', agyT('Ostatnio działało', 'Recently successful')));
+    else titleGroup.appendChild(el('span', 'badge', agyT('Niezweryfikowane', 'Unverified')));
     if (a.pinned) titleGroup.appendChild(el('span', 'badge current', t('agyPinnedBadge')));
     head.appendChild(titleGroup);
 
