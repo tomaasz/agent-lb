@@ -78,12 +78,13 @@ test('account cards render Google plan names as text and expose refresh in both 
   const code = html.slice(html.indexOf('function agyAccountStatus('), html.indexOf('function renderAgyAccounts('));
   function el(tag, className, textContent) {
     return { tag, className, textContent, children: [], dataset: {}, style: {},
-      appendChild(node) { this.children.push(node); }, addEventListener() {} };
+      appendChild(node) { this.children.push(node); }, addEventListener() {}, setAttribute() {} };
   }
   for (const lang of ['pl', 'en']) {
     const controls = [];
     const context = vm.createContext({
-      el, t: key => key, agyT: (pl, en) => lang === 'pl' ? pl : en,
+      el, currentLang: lang, accountDetails: { open() {} }, bindAccountDetailsCard() {},
+      t: key => key, agyT: (pl, en) => lang === 'pl' ? pl : en,
       agyData: {queue:[],events:[]}, agyTests: {}, agySubscriptionBusy: {}, agyCheckPending: null, agyCheckExpanded: {}, attachCardDragListeners() {},
       agyIconButton: (label, title, action) => { const b = el('button', '', label); b.title = title; b.action = action; controls.push(b); return b; },
       agyUsageBlock: () => el('div'), fmtNum: String,
