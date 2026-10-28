@@ -1,3 +1,4 @@
+import { modelCatalogFixture } from './support/model-catalog-fixture.js';
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -736,7 +737,7 @@ test("Claude models endpoint exposes accurate parameters matching documentation"
     upstream: "http://127.0.0.1:9",
     proxy: { apiKey: "test-key", trustLoopback: false, trustTailnet: false },
     agy: { accountsPath: path.join(agyDir, "agy.json") },
-  });
+  }, { providerModels: modelCatalogFixture });
   await new Promise((resolve) => proxyServer.listen(0, "127.0.0.1", resolve));
 
   try {
@@ -932,7 +933,7 @@ test("OpenAI and Codex models endpoint exposes accurate parameters matching docu
     upstream: "http://127.0.0.1:9",
     proxy: { apiKey: "test-key", trustLoopback: false, trustTailnet: false },
     agy: { accountsPath: path.join(agyDir, "agy.json") },
-  });
+  }, { providerModels: modelCatalogFixture });
   await new Promise((resolve) => proxyServer.listen(0, "127.0.0.1", resolve));
 
   try {

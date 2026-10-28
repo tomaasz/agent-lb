@@ -1,3 +1,4 @@
+import { modelCatalogFixture } from './support/model-catalog-fixture.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -611,6 +612,7 @@ describe('Test Chat & Playground Support', () => {
     const server = createProxyServer(am, { proxy: { apiKey: 'tc-test-admin' } }, {
       // /backend-api/codex/models shares the aggregate model handler. Keep this
       // unrelated Codex test independent of the AGY CLI and its account store.
+      providerModels: modelCatalogFixture,
       agyModels: { list: async () => [], resolveAlias: () => null },
     }, null, null, null);
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

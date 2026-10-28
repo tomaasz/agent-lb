@@ -157,8 +157,7 @@ describe('GET /v1/models with agy catalog', () => {
       const body = await res.json();
       assert.equal(res.status, 200);
       assert.ok(Date.now() - started < 2500, `response took ${Date.now() - started}ms`);
-      assert.ok(body.data.some(m => m.id === 'claude-sonnet-5-5'));
-      assert.ok(body.data.some(m => m.id === 'gpt-5.6-sol'));
+      assert.deepEqual(body.data, [], 'no provider models are fabricated without configured accounts');
     } finally {
       await new Promise(r => slowServer.close(r));
       fs.rmSync(dir, { recursive: true, force: true });
