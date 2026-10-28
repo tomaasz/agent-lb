@@ -203,6 +203,12 @@ The proxy does not set a Claude token or context-window value. It forwards `max_
 
 ---
 
+### Live model discovery
+
+Model discovery (`/v1/models`, `/models`, and the Codex model endpoints) reads Claude and OpenAI catalogs from enabled accounts and combines their available model IDs. It refreshes on demand every 5 minutes; successful refreshes replace retired models. Discovery waits at most 2 seconds while refreshes continue in the background (upstream timeout: 10 seconds). During transient failures the last successful result is retained for at most 15 minutes; HTTP 401/403 clears that account's cached models. The response's `catalog` field indicates stale or unavailable sources. No Claude/OpenAI accounts means no advertised Claude/OpenAI models. The dashboard's Test Chat uses this same catalog.
+
+For Codex subscription accounts, model discovery forwards `client_version` (or the version from the Codex user agent). Other clients use `config.models.codexClientVersion`, defaulting to `0.165.0`; update this setting when a newer Codex client protocol is required. OpenAI API-key accounts use `/v1/models` instead. A listed model does not guarantee that every account supports it or that quota is currently available.
+
 ### AGY (Antigravity CLI) via agybridge
 
 AGY (Gemini models) now works through the proxy, for any client, with the same key as Claude/Codex. The agent-lb server needs [agybridge](https://github.com/tomaasz/agybridge) installed (default command name `agybridge`; override with `config.agy.bridgeCommand`; optionally `config.agy.homesDir` and `config.agy.accountsPath`). Add Google accounts in the dashboard (Accounts → AGY → *Log in a Google account*); the pool picks the account and switches to the next one when quota runs out before the first answer token. Models are listed live from `agy models` (Gemini only), each effort level is its own model in `/v1/models`; the `agy` and `agy-fast` aliases are still accepted but hidden from the list. `hermes-setup.sh` adds these `gemini-*` models to the `agentlb` provider.

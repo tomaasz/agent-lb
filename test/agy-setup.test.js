@@ -46,7 +46,7 @@ describe('agybridge setup (real AGY runs locally, not through the proxy)', () =>
       const ids = (await res.json()).data.map(m => m.id);
       for (const id of AGY_MODELS) assert.ok(ids.includes(id), `${id} listed`);
       assert.ok(!ids.includes('agy') && !ids.includes('agy-fast'), 'legacy aliases stay hidden');
-      assert.ok(ids.includes('claude-opus-5'), 'regular models still listed');
+      assert.ok(!ids.some(id => id.startsWith('claude-')), 'no Claude models advertised without a Claude account');
     });
   });
 
