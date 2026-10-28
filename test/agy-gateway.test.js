@@ -272,3 +272,99 @@ test('store pick honors available pinned then earliest reset and recordRequest t
   s.recordRequest(y,{inputTokens:2,outputTokens:3}); s.recordRequest(y,{inputTokens:4,outputTokens:5}); assert.deepEqual(s._find(y).stats,{requests:2,inputTokens:6,outputTokens:8,lastAt:1000});
   fs.rmSync(dir,{recursive:true,force:true});
 });
+
+test('Argon routing skips incompatible pinned/priority Pro accounts without consuming the retry budget', async () => {
+  const { AgyAccountModelCatalog } = await import('../src/agy-models.js');
+  const accounts = [{ id: 'pro1' }, { id: 'pro2' }, { id: 'ultra1' }, { id: 'ultra2' }];
+  const store = fakeStore(accounts);
+  const catalog = new AgyAccountModelCatalog({ accounts: () => accounts,
+    homeFor: id => id, run: async id => (id.startsWith('ultra') ? 'gemini-argon-low\tArgon\n' : '') + 'gemini-flash-low\tFlash\n' });
+  const worker = await listen((req, res) => {
+    if (req.headers.authorization === 'Bearer ultra1') {
+      res.writeHead(429); res.end('{"error":{"message":"AGY quota exhausted"}}');
+    } else { res.writeHead(200); res.end('ok'); }
+  });
+  const acquired = [];
+  const pool = { async acquire(id) { acquired.push(id); return { port: worker.port, token: id, release() {} }; } };
+  const req = new EventEmitter(); req.destroyed = false;
+  const res = responseCapture();
+  try {
+    await handleAgyCompletion(req, res, { body: Buffer.from('{"model":"gemini-argon-low","stream":false}'),
+      model: 'gemini-argon-low', store, pool, catalog });
+    assert.deepEqual(acquired, ['ultra1', 'ultra2']);
+    assert.equal(res.statusCode, 200);
+    assert.equal(Buffer.concat(res.chunks).toString(), 'ok');
+    assert.equal(store.failures.some(f => f.id.startsWith('pro')), false);
+  } finally { await new Promise(resolve => worker.server.close(resolve)); }
+});
+
+test('the Test button discovers models in the tested account instead of borrowing the pooled Ultra catalog', async () => {
+  const { AgyAccountModelCatalog } = await import('../src/agy-models.js');
+  const { testAgyAccount } = await import('../src/agy-gateway.js');
+  const accounts = [{ id: 'ultra', enabled: true }, { id: 'pro', enabled: true }];
+  const catalog = new AgyAccountModelCatalog({ accounts: () => accounts, homeFor: id => id,
+    run: async id => (id === 'ultra' ? 'gemini-argon-low\tArgon\n' : '') + 'gemini-flash-low\tFlash\n' });
+  let sentModel;
+  const worker = await listen((req, res) => {
+    let body = ''; req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      sentModel = JSON.parse(body).model;
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.end('data: {"choices":[{"delta":{"content":"OK"}}]}\n\ndata: [DONE]\n\n');
+    });
+  });
+  try {
+    const result = await testAgyAccount({ store: { list: () => accounts },
+      pool: { acquire: async () => ({ port: worker.port, token: 'synthetic', release() {} }) }, catalog, id: 'pro' });
+    assert.equal(result.ok, true);
+    assert.equal(result.model, 'gemini-flash-low');
+    assert.equal(sentModel, 'gemini-flash-low');
+  } finally { await new Promise(resolve => worker.server.close(resolve)); }
+});
+
+test('the management API exposes model IDs separately for each Google account', async () => {
+  const { AgyAccountModelCatalog } = await import('../src/agy-models.js');
+  const accounts = [{ id: 'ultra', enabled: true }, { id: 'pro', enabled: true }];
+  const catalog = new AgyAccountModelCatalog({ accounts: () => accounts, homeFor: id => id,
+    run: async id => (id === 'ultra' ? 'gemini-argon-low\tArgon\n' : '') + 'gemini-flash-low\tFlash\n' });
+  const store = { list: () => accounts, data: { pinned: 'pro' } };
+  const server = createProxyServer(new AccountManager([]), { proxy: { apiKey: 'synthetic' }, agy: { checksEnabled: false } },
+    { agyModels: catalog, agyStore: store, agyPool: { busy: () => 0, stopAll() {} } });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/agent-lb/api/agy/accounts`, { headers: { 'x-api-key': 'synthetic' } });
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.deepEqual(data.models, ['gemini-argon-low', 'gemini-flash-low']);
+    assert.deepEqual(data.accounts.find(a => a.id === 'pro').modelCatalog.models, ['gemini-flash-low']);
+    assert.deepEqual(data.accounts.find(a => a.id === 'ultra').modelCatalog.models, ['gemini-argon-low', 'gemini-flash-low']);
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+for (const mode of ['routing', 'test']) test(`${mode} rechecks entitlements after a queued lease and never sends after account disable`, async () => {
+  const { AgyAccountModelCatalog } = await import('../src/agy-models.js');
+  const { testAgyAccount } = await import('../src/agy-gateway.js');
+  const accounts = [{ id: 'ultra', enabled: true }];
+  const catalog = new AgyAccountModelCatalog({ accounts: () => accounts, homeFor: id => id,
+    run: async () => 'gemini-argon-low\tArgon\n' });
+  let hits = 0; let releases = 0; let finish; let acquired;
+  const started = new Promise(resolve => { acquired = resolve; });
+  const worker = await listen((_req, res) => { hits++; res.end('wrong'); });
+  const pool = { acquire: () => { acquired(); return new Promise(resolve => { finish = resolve; }); } };
+  const store = { ...fakeStore(accounts), list: () => accounts };
+  const req = new EventEmitter(); req.destroyed = false;
+  const res = responseCapture();
+  try {
+    const pending = mode === 'test' ? testAgyAccount({ store, pool, catalog, id: 'ultra' })
+      : handleAgyCompletion(req, res, { body: Buffer.from('{"model":"gemini-argon-low","stream":false}'),
+        model: 'gemini-argon-low', store, pool, catalog });
+    await started;
+    accounts[0].enabled = false;
+    finish({ port: worker.port, token: 'synthetic', release() { releases++; } });
+    const result = await pending;
+    assert.equal(hits, 0);
+    assert.equal(releases, 1);
+    if (mode === 'test') assert.equal(result.ok, false);
+    else assert.equal(res.statusCode, 429);
+  } finally { await new Promise(resolve => worker.server.close(resolve)); }
+});

@@ -2,7 +2,7 @@ import { ProviderModelCatalog, codexModelClientVersion } from "./provider-models
 import { MODEL_METADATA } from "./model-metadata.js";
 import { AgyCheckScheduler } from './agy-checks.js';
 import { observeTokenStream } from "./first-token.js";
-import { AgyModelCatalog, createAgyModelsRunner, isAgyModelName, listAgyModelsBounded, AGY_CONTEXT_WINDOW, AGY_MAX_TOKENS } from "./agy-models.js";
+import { AgyAccountModelCatalog, createAgyModelsRunner, isAgyModelName, listAgyModelsBounded, AGY_CONTEXT_WINDOW, AGY_MAX_TOKENS } from "./agy-models.js";
 import { AgyWorkerPool, resolveAgyHomesDir } from "./agy-workers.js";
 import { createAgySubscriptionRefresh } from "./agy-subscription.js";
 import { handleAgyCompletion, testAgyAccount } from "./agy-gateway.js";
@@ -332,12 +332,10 @@ export function createProxyServer(
       maxQueued: config.agy?.maxQueued ?? 64,
       maxQueuedPerClient: config.agy?.maxQueuedPerClient ?? 8,
     });
-    agyModelCatalog ||= new AgyModelCatalog({
+    agyModelCatalog ||= new AgyAccountModelCatalog({
       run: createAgyModelsRunner(config),
-      homeFor: () => {
-        const account = agyStore.pick(new Set());
-        return account ? agyPool.ensureHome(account.id) : null;
-      },
+      accounts: () => agyStore.catalogAccounts(),
+      homeFor: id => agyPool.ensureHome(id),
     });
     agySubscriptionRefresh ||= hooks.agySubscriptionRefresh || createAgySubscriptionRefresh({
       store: agyStore, pool: agyPool, run: createAgyModelsRunner(config),

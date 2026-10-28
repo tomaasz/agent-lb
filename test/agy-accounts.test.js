@@ -696,3 +696,19 @@ describe('AGY token identity compatibility', () => {
     assert.throws(() => parseAgyToken({ token: { refresh_token: 'x' }, id_token: 'h.bnVsbA.s' }), /e-mail/);
   });
 });
+
+describe('AGY catalog invalidation metadata', () => {
+  it('returns credential versions without tokens and updates them after re-login', () => {
+    const store = new AgyAccountStore(path.join(tmpDir(), 'catalog.json'));
+    const account = store.upsert(JSON.stringify(agyToken('catalog@example.com', 'catalog-sub')));
+    const before = store.catalogAccounts()[0];
+    assert.deepEqual(Object.keys(before).sort(), ['credentialVersion', 'enabled', 'id', 'subscription']);
+    assert.equal(before.credentialVersion, store.snapshot(account.id).version);
+    assert.doesNotMatch(JSON.stringify(before), /ya29|refresh|id_token|access_token|catalog@example/);
+    const changed = agyToken('catalog@example.com', 'catalog-sub'); changed.token.access_token = 'rotated-synthetic';
+    store.upsert(JSON.stringify(changed));
+    assert.notEqual(store.catalogAccounts()[0].credentialVersion, before.credentialVersion);
+    store.setEnabled(account.id, false);
+    assert.equal(store.catalogAccounts()[0].enabled, false);
+  });
+});

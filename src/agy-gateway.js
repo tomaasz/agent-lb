@@ -160,8 +160,18 @@ export async function handleAgyCompletion(req, res, {
     const outgoing = Buffer.from(JSON.stringify(parsed));
     const excluded = new Set();
     let lastFailure;
+    let attempts = 0;
     for (;;) {
-      const account = excluded.size < 3 && store.pick(excluded, resolved, id => pool.busy?.(id) || 0);
+      let account;
+      while (attempts < 3) {
+        const candidate = store.pick(excluded, resolved, id => pool.busy?.(id) || 0);
+        if (!candidate) break;
+        excluded.add(candidate.id);
+        if (catalog.supportsAccount && !catalog.supportsAccount(candidate.id, resolved)) continue;
+        account = candidate;
+        attempts++;
+        break;
+      }
       if (!account) {
         const status = lastFailure?.status || 429;
         const retry = lastFailure?.retrySeconds || store.retryAfter?.(resolved) || 60;
@@ -179,6 +189,12 @@ export async function handleAgyCompletion(req, res, {
         if (remaining <= 0) throw Object.assign(new Error(), { code: 'AGY_ATTEMPT_TIMEOUT' });
         lease = await pool.acquire(account.id, { client, signal: controller.signal, timeoutMs: Math.min(30_000, remaining) });
         if (controller.signal.aborted) return;
+        // The lease may have waited in a queue while this account was disabled
+        // or lost its model entitlement. Never send using the obsolete choice.
+        if (catalog.supportsAccount && !catalog.supportsAccount(account.id, resolved)) {
+          attempts--;
+          continue;
+        }
         const result = await attempt(req, res, lease, outgoing, parsed.stream !== false, usage => {
           finalUsage = usage;
           usageRecorder?.onUsage?.(usage.inputTokens, usage.outputTokens);
@@ -256,13 +272,16 @@ export async function testAgyAccount({ store, pool, catalog, id, timeoutMs = TES
   if (!account.enabled) return { ok: false, error: 'konto wyłączone (disabled)' };
   if (account.quotaUntil) return { ok: false, error: `limit wyczerpany (quota spent)${account.quotaMessage ? `: ${cleanError(account.quotaMessage)}` : ''}` };
   let model;
-  try { model = pickAgyTestModel(await catalog.list()); } catch (err) { return { ok: false, error: cleanError(`model list failed: ${err.message}`) }; }
+  try { model = pickAgyTestModel(await (catalog.listForAccount ? catalog.listForAccount(id) : catalog.list())); } catch (err) { return { ok: false, error: cleanError(`model list failed: ${err.message}`) }; }
   if (!model) return { ok: false, error: 'brak modeli Gemini w katalogu (no models)' };
 
   const started = Date.now();
   let lease;
   try {
     lease = await acquireWithin(pool, id, timeoutMs);
+    if (catalog.supportsAccount && !catalog.supportsAccount(id, model)) {
+      return { ok: false, error: 'Katalog modeli konta zmienił się podczas oczekiwania; ponów test' };
+    }
     const body = Buffer.from(JSON.stringify({ model, stream: true, messages: [{ role: 'user', content: TEST_PROMPT }] }));
     const result = await new Promise((resolve, reject) => {
       const req = http.request({
