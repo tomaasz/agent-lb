@@ -304,6 +304,13 @@ export class AgyAccountStore {
     return this.data.accounts.find(a => a.id === id) || null;
   }
 
+  /** One storage read for catalog invalidation, without cloning/exposing tokens. */
+  catalogAccounts() {
+    this.data = this._load();
+    return this.data.accounts.map(a => ({ id: a.id, enabled: a.enabled !== false,
+      subscription: normalizeAgySubscription(a.subscription), credentialVersion: this._version(a) }));
+  }
+
   /** Accounts without their tokens, in priority order, for the dashboard. */
   list() {
     if (!this.inTransaction) this.data = this._load();
@@ -899,8 +906,12 @@ export async function handleAgyRoute(req, res, { normApiPath, auth, clientKey, c
     return true;
   }
   if (action === 'accounts' && req.method === 'GET') {
-    const accounts = store.list().map(a => ({ ...a, busy: Number(pool?.busy?.(a.id)) || 0 }));
-    sendJson(res, 200, { ok: true, pinned: store.data.pinned, accounts, models: await catalogIds(catalog), events: store.data.events || [], queue: pool?.snapshot?.() || [] });
+    const models = await catalogIds(catalog);
+    const accountCatalogs = catalog?.accountCatalogs?.();
+    const accounts = store.list().map(a => ({ ...a, busy: Number(pool?.busy?.(a.id)) || 0,
+      ...(accountCatalogs ? { modelCatalog: accountCatalogs.get(a.id) || null } : {}),
+    }));
+    sendJson(res, 200, { ok: true, pinned: store.data.pinned, accounts, models, events: store.data.events || [], queue: pool?.snapshot?.() || [] });
     return true;
   }
   if (req.method !== 'POST') { sendJson(res, 405, { ok: false, error: 'method not allowed' }); return true; }

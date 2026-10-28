@@ -6565,6 +6565,16 @@ ${SHARED_HELPERS}
     card.appendChild(nameRow);
     if (a.name) card.appendChild(el('div', 'agy-state-line', a.email));
 
+    if (a.modelCatalog) {
+      var modelDetails = el('details', 'dim');
+      var modelIds = a.modelCatalog.models || [];
+      var modelSummary = el('summary', '', agyT('Modele tego konta', 'Models for this account') + ' (' + modelIds.length + ')' +
+        (a.modelCatalog.stale ? agyT(' · ostatnia znana lista', ' · last known list') : ''));
+      modelDetails.appendChild(modelSummary);
+      modelDetails.appendChild(el('div', '', modelIds.length ? modelIds.join(', ') : agyT('Lista jeszcze niedostępna', 'Model list not available yet')));
+      card.appendChild(modelDetails);
+    }
+
     var body = el('div', 'card-body');
     if (spent) {
       var line = el('div', 'agy-state-line spent', t('agyResetsIn', { time: agyLeft(a.quotaUntil - Date.now()) }));

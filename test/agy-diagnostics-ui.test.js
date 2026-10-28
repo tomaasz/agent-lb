@@ -91,8 +91,11 @@ test('account card keeps progress visible through re-render and distinguishes ca
  let clicked;
  const ctx=vm.createContext({el,t:k=>k,agyT:pl=>pl,agyData:{events:[],queue:[]},agyTests:{},agySubscriptionBusy:{},agyCheckPending:{id:'a'},agyCheckExpanded:{a:true},attachCardDragListeners(){},agyIconButton:(label,title,action)=>{const b=el('button','',label);b.title=title;b.action=action;controls.push(b);return b;},agyCheckAccounts:a=>{clicked=a.id;},agyUsageBlock:()=>el('div'),fmtNum:String});
  vm.runInContext(source,ctx);
- const account={id:'a',email:'a@example.com',enabled:true,diagnostics:{status:'available',checkedAt:100,telemetry:{}}};
+ const account={id:'a',email:'a@example.com',enabled:true,modelCatalog:{models:['gemini-flash-low'],stale:false},diagnostics:{status:'available',checkedAt:100,telemetry:{}}};
  const card=ctx.renderAgyCard(account,0,['a']);
+ const modelDetails=card.children.find(n=>n.tag==='details'&&n.className==='dim');
+ assert.equal(modelDetails.children[0].textContent,'Modele tego konta (1)');
+ assert.equal(modelDetails.children[1].textContent,'gemini-flash-low');
  assert.ok(card.children.some(n=>n.textContent==='Sprawdzanie dostępu, planu i limitów…'));
  assert.equal(card.children.find(n=>n.tag==='details').open,true);
  const check=controls.find(n=>n.title==='Sprawdź dostęp, plan i limity');
