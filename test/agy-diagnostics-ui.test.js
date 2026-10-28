@@ -87,9 +87,9 @@ test('account card keeps progress visible through re-render and distinguishes ca
  const html=renderDashboardHtml();
  const source=html.slice(html.indexOf('function agyAccountStatus('),html.indexOf('function renderAgyAccounts('));
  const controls=[];
- const el=(tag,className,textContent)=>({tag,className,textContent,children:[],dataset:{},style:{},appendChild(n){this.children.push(n);},addEventListener(){}});
+ const el=(tag,className,textContent)=>({tag,className,textContent,children:[],dataset:{},style:{},setAttribute(){},appendChild(n){this.children.push(n);},addEventListener(){}});
  let clicked;
- const ctx=vm.createContext({el,t:k=>k,agyT:pl=>pl,agyData:{events:[],queue:[]},agyTests:{},agySubscriptionBusy:{},agyCheckPending:{id:'a'},agyCheckExpanded:{a:true},attachCardDragListeners(){},agyIconButton:(label,title,action)=>{const b=el('button','',label);b.title=title;b.action=action;controls.push(b);return b;},agyCheckAccounts:a=>{clicked=a.id;},agyUsageBlock:()=>el('div'),fmtNum:String});
+ const ctx=vm.createContext({el,currentLang:'pl',accountDetails:{open(){}},bindAccountDetailsCard(){},t:k=>k,agyT:pl=>pl,agyData:{events:[],queue:[]},agyTests:{},agySubscriptionBusy:{},agyCheckPending:{id:'a'},agyCheckExpanded:{a:true},attachCardDragListeners(){},agyIconButton:(label,title,action)=>{const b=el('button','',label);b.title=title;b.action=action;controls.push(b);return b;},agyCheckAccounts:a=>{clicked=a.id;},agyUsageBlock:()=>el('div'),fmtNum:String});
  vm.runInContext(source,ctx);
  const account={id:'a',email:'a@example.com',enabled:true,modelCatalog:{models:['gemini-flash-low'],stale:false},diagnostics:{status:'available',checkedAt:100,telemetry:{}}};
  const card=ctx.renderAgyCard(account,0,['a']);

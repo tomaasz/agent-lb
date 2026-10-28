@@ -13,6 +13,7 @@
 // rendering uses textContent — status fields (account names, client names) are
 // operator/OAuth-derived, but they still never reach innerHTML.
 
+import { ACCOUNT_DETAILS_CSS, ACCOUNT_DETAILS_HTML, installAccountDetails } from "./dashboard-account-details.js";
 import { createHash } from "node:crypto";
 import { UNAVAILABLE_TEXT } from "./status-renderer.js";
 
@@ -1011,6 +1012,8 @@ const PAGE = `<!doctype html>
   }
 
   /* Modal Overlay & Tabs */
+  ${ACCOUNT_DETAILS_CSS}
+
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.78); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 14px; }
   .modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; width: 100%; max-width: 580px; max-height: 90vh; overflow-y: auto; padding: 16px 18px; box-shadow: 0 16px 40px rgba(0,0,0,0.6); }
   .tabs-bar { display: flex; gap: 4px; border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 12px; flex-wrap: wrap; }
@@ -1390,6 +1393,8 @@ const PAGE = `<!doctype html>
     </div>
     <footer id="foot"></footer>
   </div>
+
+  ${ACCOUNT_DETAILS_HTML}
 
   <!-- MODAL: ACCOUNT USAGE DETAILS (KTO I NA CO ZUŻYŁ LIMITY) -->
   <div id="modalAccountUsage" class="modal-backdrop" style="display:none;">
@@ -3332,8 +3337,14 @@ ${SHARED_HELPERS}
     // Account name row (dedicated row with inline edit capability)
     var nameRow = el('div', 'card-name-row');
     var nameDisplay = el('div', 'card-name-display');
-    var nameText = el('span', 'card-name-text', a.name || (currentLang === 'pl' ? '(bez nazwy)' : '(unnamed)'));
-    nameText.title = t('renameAccountDblClick');
+    var nameText = el('button', 'card-name-text account-details-trigger', a.name || (currentLang === 'pl' ? '(bez nazwy)' : '(unnamed)'));
+    nameText.type = 'button';
+    nameText.title = currentLang === 'pl' ? 'Otwórz szczegóły konta' : 'Open account details';
+    nameText.setAttribute('aria-haspopup', 'dialog');
+    nameText.addEventListener('click', function (e) {
+      e.stopPropagation();
+      accountDetails.open(prov, a.id || a.name, nameText);
+    });
     nameDisplay.appendChild(nameText);
 
     if (a.name) {
@@ -3357,13 +3368,12 @@ ${SHARED_HELPERS}
       });
       nameDisplay.appendChild(btnRename);
 
-      nameText.addEventListener('dblclick', function (e) {
-        e.stopPropagation();
-        startInlineRename(a.name, nameRow, nameDisplay, card);
-      });
+
     }
     nameRow.appendChild(nameDisplay);
     card.appendChild(nameRow);
+
+    bindAccountDetailsCard(card, nameText, prov, a.id || a.name);
 
     // Body: quota rows
     var qBody = el('div', 'card-body');
@@ -3843,6 +3853,7 @@ ${SHARED_HELPERS}
   function render(s) {
     if (draggedCard) return; // Prevent DOM replacement during drag
     lastStatus = s;
+    if (accountDetails) accountDetails.refresh();
     if (typeof routeRetryPending === 'function') routeRetryPending();
     var sess = s.sessions || {};
     var up = s.server && s.server.uptimeSeconds != null ? 'up ' + fmtIn(s.server.uptimeSeconds) : '';
@@ -5842,6 +5853,7 @@ ${SHARED_HELPERS}
   }
 
   function showKeybox(errMsg, infoMsg) {
+    if (accountDetails) accountDetails.close();
     errMsg = keyboxErrorText(errMsg, currentLang);
     if (timer) { clearInterval(timer); timer = null; }
     document.getElementById('app').style.display = 'none';
@@ -6361,6 +6373,7 @@ ${SHARED_HELPERS}
         if (d && d.ok) {
           agyData = { accounts: d.accounts || [], models: d.models || [], events: d.events || [], queue: d.queue || [] };
           renderAgyAccounts(agyData.accounts);
+          if (accountDetails) accountDetails.refresh();
           if (lastStatus) renderRoutes(lastStatus);
         }
       })
@@ -6551,18 +6564,25 @@ ${SHARED_HELPERS}
 
     var nameRow = el('div', 'card-name-row');
     var nameDisplay = el('div', 'card-name-display');
-    var nameText = el('span', 'card-name-text', a.name || a.email);
-    nameText.title = t('renameAccountDblClick');
+    var nameText = el('button', 'card-name-text account-details-trigger', a.name || a.email);
+    nameText.type = 'button';
+    nameText.title = currentLang === 'pl' ? 'Otwórz szczegóły konta' : 'Open account details';
+    nameText.setAttribute('aria-haspopup', 'dialog');
+    nameText.addEventListener('click', function (e) {
+      e.stopPropagation();
+      accountDetails.open('agy', a.id, nameText);
+    });
     nameDisplay.appendChild(nameText);
     var rename = el('button', 'btn-rename', '✏️');
     rename.type = 'button';
     rename.title = t('renameAccount');
     function startRename(e) { e.stopPropagation(); agyRenameAccount(a, nameRow, card); }
     rename.addEventListener('click', startRename);
-    nameText.addEventListener('dblclick', startRename);
+
     nameDisplay.appendChild(rename);
     nameRow.appendChild(nameDisplay);
     card.appendChild(nameRow);
+    bindAccountDetailsCard(card, nameText, 'agy', a.id);
     if (a.name) card.appendChild(el('div', 'agy-state-line', a.email));
 
     if (a.modelCatalog) {
@@ -8281,6 +8301,33 @@ ${SHARED_HELPERS}
     applyRoute(initial);
     routeTo(initial, true);
   })();
+
+  function bindAccountDetailsCard(card, trigger, provider, key) {
+    trigger.dataset.detailsProvider = provider;
+    trigger.dataset.detailsKey = String(key);
+    var dragged = false;
+    card.addEventListener('dragstart', function () { dragged = true; });
+    card.addEventListener('dragend', function () { setTimeout(function () { dragged = false; }, 0); });
+    card.addEventListener('click', function (e) {
+      if (dragged || draggedCard || activeRenameAccount || (provider === 'agy' && agyRenaming)) return;
+      if (e.target.closest('button, a, input, select, textarea, details, summary, form, .drag-handle, .prio-badge, [role="button"]')) return;
+      if (window.getSelection && window.getSelection().toString()) return;
+      accountDetails.open(provider, key, trigger);
+    });
+  }
+
+  var accountDetails = (${installAccountDetails.toString()})({
+    document: document,
+    getAccounts: function (provider) {
+      return provider === 'agy' ? agyData.accounts : ((lastStatus && lastStatus.accounts) || []).filter(function (a) { return (a.provider || 'anthropic') === provider; });
+    },
+    getLanguage: function () { return currentLang; },
+    getAgyEvents: function () { return agyData.events || []; },
+    formatNumber: fmtNum, formatAgo: fmtAgo, accountTokens: accountTokens,
+    scopedWeeklyRows: scopedWeeklyRows,
+    accountError: function (a) { return a.lastError && a.lastError.error ? a.lastError : a.lastTest && !a.lastTest.ok ? a.lastTest : null; },
+    openHistory: openAccountUsageModal,
+  });
 
   checkAuthAndStart();
 })();

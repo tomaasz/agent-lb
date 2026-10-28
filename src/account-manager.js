@@ -4197,6 +4197,7 @@ export class AccountManager {
       // own and an older client simply sees nothing extra.
       adaptive: this._adaptiveStatsCached(),
       accounts: this.accounts.map(a => ({
+        id: a.id,
         name: a.name,
         type: a.type,
         provider: a.provider || 'anthropic',
