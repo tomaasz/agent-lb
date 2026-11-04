@@ -1446,6 +1446,7 @@ const PAGE = `<!doctype html>
         <h3 style="margin:0 0 8px; color:var(--accent);" data-i18n="setupAgylbTitle">agylb — wspólna pula kont Google</h3>
         <p style="margin:0 0 8px; font-size:12px;" data-i18n="setupAgylbDesc">Modele AGY na Twoich hostach. Po wyczerpaniu limitu agylb wybiera inne konto i pyta o nową rozmowę.</p>
         <div id="setupAgylbStatus" style="margin-bottom:8px; font-size:12px; color:var(--dim);" role="status"></div>
+        <button class="btn btn-sm" id="btnEnableSetupAgylb" type="button" style="display:none; margin-bottom:10px;" data-i18n="setupAgylbEnable">Włącz dostęp do agylb dla tej stacji</button>
         <p style="font-size:12px; margin:0 0 8px;" data-i18n="setupAgylbPlatform">Linux / macOS: uruchom w terminalu. Windows: otwórz terminal WSL. Wymagane: agy i Python 3.8+.</p>
         <code class="mono" id="cmdSetupAgylb" style="display:block; word-break:break-all; padding:10px; background:var(--bg); border-radius:6px; font-size:12px;"></code>
         <button class="btn btn-sm btn-accent" id="btnCopySetupAgylb" style="margin-top:8px;" data-i18n="setupAgylbCopy">📋 Kopiuj instalację agylb</button>
@@ -2217,6 +2218,9 @@ const PAGE = `<!doctype html>
       setupAgylbDesc: 'Modele AGY na Twoich hostach. Po wyczerpaniu limitu agylb wybiera inne konto i pyta o nową rozmowę.',
       setupAgylbPlatform: 'Linux / macOS: uruchom w terminalu. Windows: otwórz terminal WSL. Wymagane: agy i Python 3.8+.',
       setupAgylbCopy: '📋 Kopiuj instalację agylb',
+      setupAgylbEnable: 'Włącz dostęp do agylb dla tej stacji',
+      setupAgylbNoAccess: 'Ta stacja nie ma jeszcze dostępu do kont Google. Kliknij przycisk poniżej i potwierdź zgodę, aby odblokować wybór agylb.',
+      setupAgylbRestricted: 'agylb wymaga aktywnej stacji bez ograniczeń modeli, dostawców i tokenów. Wybierz taką stację z listy.',
       setupAgylbInclude: 'Dodaj też agylb do instalatora Claude Code i Codex dla Linux / macOS / WSL poniżej',
       setupNoStations: 'Najpierw dodaj stację w zakładce Stacje robocze',
       accountsHeading: 'Konta Claude & Codex',
@@ -2530,6 +2534,9 @@ const PAGE = `<!doctype html>
       setupAgylbDesc: 'AGY models across your hosts. When quota runs out, agylb selects another account and asks to start a new conversation.',
       setupAgylbPlatform: 'Linux / macOS: run in a terminal. Windows: open a WSL terminal. Requires agy and Python 3.8+.',
       setupAgylbCopy: '📋 Copy agylb installation',
+      setupAgylbEnable: 'Enable agylb access for this workstation',
+      setupAgylbNoAccess: 'This workstation does not have Google account access yet. Use the button below and confirm to unlock agylb.',
+      setupAgylbRestricted: 'agylb requires an active workstation without model, provider or token restrictions. Select one from the list.',
       setupAgylbInclude: 'Also add agylb to the Claude Code and Codex installer for Linux / macOS / WSL below',
       setupNoStations: 'First add a workstation in the Workstations tab',
       accountsHeading: 'Claude & Codex Accounts',
@@ -5031,6 +5038,8 @@ ${SHARED_HELPERS}
 
     var station = setupStationPolicies.find(function (entry) { return entry.name === name; });
     var agylbAllowed = stationCanUseAgylb(station);
+    var canEnableAgylb = !!station && !station.allowCredentialRelay && stationCanUseAgylb({ ...station, allowCredentialRelay: true });
+    document.getElementById('btnEnableSetupAgylb').style.display = canEnableAgylb ? '' : 'none';
     var agylbCheckbox = document.getElementById('chkSetupAgylb');
     if (agylbCheckbox) {
       agylbCheckbox.disabled = !agylbAllowed;
@@ -5042,7 +5051,7 @@ ${SHARED_HELPERS}
     var agylbStatus = document.getElementById('setupAgylbStatus');
     if (agylbStatus) agylbStatus.textContent = agylbAllowed
       ? 'Pula Google dostępna. Po instalacji: agylb doctor, agylb models, agylb --continue.'
-      : 'AGY niedostępne dla tej stacji. Wymagany dostęp do kont Google bez ograniczeń modeli i tokenów. Wybierz odpowiednią stację; uprawnień nie zmieniamy automatycznie.';
+      : t(canEnableAgylb ? 'setupAgylbNoAccess' : 'setupAgylbRestricted');
     var included = document.getElementById('setupAgylbIncluded');
     if (included) included.style.display = includeAgylb ? '' : 'none';
 
@@ -5485,6 +5494,22 @@ ${SHARED_HELPERS}
     }
   }
 
+  function setStationRelayPermission(station, allowed, button) {
+    if (allowed && !confirm(agyT('Zezwolić stacji „' + station.name + '” na pobieranie poświadczeń Google i używanie tuneli proxy?', 'Allow workstation “' + station.name + '” to retrieve Google credentials and use proxy tunnels?'))) return;
+    button.disabled = true;
+    return apiCall('/agent-lb/api/keys/permissions', 'POST', { name: station.name, allowCredentialRelay: allowed }).then(function (result) {
+      if (result && result.ok) {
+        // Apply only the acknowledged permission; keep every other restriction.
+        setupStationPolicies = setupStationPolicies.map(function (entry) {
+          return entry.name === station.name ? { ...entry, allowCredentialRelay: allowed } : entry;
+        });
+        var selected = document.getElementById('selModalStation').value;
+        updateModalCommands(selected, selected === '__primary__' ? primaryAdminKey : cachedClientKeys[selected]);
+        poll();
+      } else note('error', (result && result.error) || 'Permission update failed');
+    }).catch(function (error) { note('error', error.message); }).finally(function () { button.disabled = false; });
+  }
+
   function renderClientKeys(keys, clients) {
     var list = keys || [];
     setupStationPolicies = list;
@@ -5652,12 +5677,7 @@ ${SHARED_HELPERS}
       var relayBtn = el('button', 'btn btn-xs', k.allowCredentialRelay ? agyT('Poświadczenia: dostęp', 'Credentials: allowed') : agyT('Tylko API', 'API only'));
       relayBtn.title = agyT('Dostęp do tokenów Google i niekontrolowanych tuneli proxy', 'Access to Google tokens and unmetered proxy tunnels');
       relayBtn.addEventListener('click', function () {
-        if (!k.allowCredentialRelay && !confirm(agyT('Zezwolić tej stacji na pobieranie poświadczeń Google i używanie tuneli proxy?', 'Allow this station to retrieve Google credentials and use proxy tunnels?'))) return;
-        relayBtn.disabled = true;
-        apiCall('/agent-lb/api/keys/permissions', 'POST', { name: k.name, allowCredentialRelay: !k.allowCredentialRelay }).then(function (d) {
-          if (d && d.ok) poll();
-          else note('error', (d && d.error) || 'Permission update failed');
-        }).catch(function (e) { note('error', e.message); }).finally(function () { relayBtn.disabled = false; });
+        setStationRelayPermission(k, !k.allowCredentialRelay, relayBtn);
       });
       nameWrap.appendChild(relayBtn);
 
@@ -7493,6 +7513,12 @@ ${SHARED_HELPERS}
   });
   document.getElementById('chkSetupAgylb').addEventListener('change', function () {
     updateModalCommands(document.getElementById('selModalStation').value, modalStationKey);
+  });
+  document.getElementById('btnEnableSetupAgylb').addEventListener('click', function () {
+    var name = document.getElementById('selModalStation').value;
+    var station = setupStationPolicies.find(function (entry) { return entry.name === name; });
+    if (!station || station.allowCredentialRelay || !stationCanUseAgylb({ ...station, allowCredentialRelay: true })) return;
+    setStationRelayPermission(station, true, this);
   });
   bindCopy('btnCopySetupBashMain', 'cmdSetupBashMain', 'Polecenie instalatora (Linux)');
   bindCopy('btnCopySetupAgylb', 'cmdSetupAgylb', 'Instalacja agylb (Linux / macOS / WSL)');
