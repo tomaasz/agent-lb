@@ -29,7 +29,7 @@ def main():
             # Check dependencies before touching remote files. The installer
             # never runs if this machine has no AGY backend yet.
             try:
-                probe = subprocess.run(ssh + ["python3 -c 'import sys; sys.exit(sys.version_info < (3,8))' && command -v agy >/dev/null"],
+                probe = subprocess.run(ssh + ["export PATH=\"$HOME/.local/bin:$PATH\"; python3 -c 'import sys; sys.exit(sys.version_info < (3,8))' && command -v agy >/dev/null"],
                                        capture_output=True, timeout=10)
                 if probe.returncode:
                     print(host + ': waiting for SSH and AGY', flush=True)
@@ -39,7 +39,7 @@ def main():
                 if installed.returncode:
                     print(host + ': install pending', flush=True)
                     continue
-                verified = subprocess.run(ssh + ['"$HOME/.local/bin/agylb" doctor'], capture_output=True, timeout=20)
+                verified = subprocess.run(ssh + ['PATH="$HOME/.local/bin:$PATH" "$HOME/.local/bin/agylb" doctor'], capture_output=True, timeout=20)
                 if verified.returncode:
                     print(host + ': installed; station access pending', flush=True)
                     continue
