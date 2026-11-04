@@ -14,7 +14,7 @@ describe('dashboard views have their own addresses', () => {
   after(async () => { await new Promise(resolve => server.close(resolve)); });
 
   it('serves the dashboard page for every view address', async () => {
-    for (const path of ['/dashboard', '/dashboard/accounts', '/dashboard/accounts/agy', '/dashboard/workstations', '/dashboard/workstations/new', '/dashboard/usage', '/dashboard/chat', '/agent-lb/dashboard/workstations', '/dashboard/workstations/']) {
+    for (const path of ['/dashboard', '/dashboard/accounts', '/dashboard/accounts/agy', '/dashboard/workstations', '/dashboard/workstations/new', '/dashboard/setup', '/agent-lb/dashboard/setup', '/dashboard/usage', '/dashboard/chat', '/agent-lb/dashboard/workstations', '/dashboard/workstations/']) {
       const res = await fetch(base + path);
       assert.equal(res.status, 200, path);
       assert.match(res.headers.get('content-type'), /text\/html/, path);
@@ -31,10 +31,21 @@ describe('dashboard views have their own addresses', () => {
 
   it('knows every view in the page script', () => {
     const html = renderDashboardHtml();
-    for (const view of ['accounts', 'accounts/agy', 'accounts/add', 'workstations', 'workstations/new', 'usage', 'chat']) {
+    for (const view of ['accounts', 'accounts/agy', 'accounts/add', 'workstations', 'workstations/new', 'setup', 'usage', 'chat']) {
       assert.ok(html.includes(`'${view}': {`), view);
     }
     assert.ok(html.includes("window.addEventListener('popstate'"));
+  });
+
+  it('keeps workstation setup in the app as a third tab, outside modal handlers', () => {
+    const html = renderDashboardHtml();
+    assert.match(html, /id="tabBtnSetup" data-tab="tabSetup"/);
+    const setup = html.indexOf('<div id="tabSetup" class="tab-pane"');
+    assert.ok(setup > html.indexOf('<div id="tabWorkstations"'));
+    assert.ok(setup < html.indexOf('<footer id="foot"'));
+    assert.ok(!html.includes('id="modalKeyCreated"'));
+    assert.ok(!html.includes("closeModal('tabSetup')"));
+    assert.equal((html.match(/\btabSetupTitle:/g) || []).length, 2);
   });
 });
 

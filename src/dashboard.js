@@ -694,6 +694,7 @@ const PAGE = `<!doctype html>
   /* Main navigation tab bar */
   .main-nav-tabs {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     border-bottom: 1px solid var(--line);
@@ -1191,6 +1192,10 @@ const PAGE = `<!doctype html>
         <span data-i18n="tabWorkstationsTitle">Stacje robocze & Narzędzia</span>
         <span class="main-nav-badge" id="tabBadgeWorkstations">0</span>
       </button>
+      <button class="main-nav-tab" id="tabBtnSetup" data-tab="tabSetup" type="button">
+        <span class="main-nav-tab-icon">⚙️</span>
+        <span data-i18n="tabSetupTitle">Konfiguracja stacji</span>
+      </button>
     </nav>
 
     <!-- TAB 1: KONTA & FLOTA -->
@@ -1412,6 +1417,181 @@ const PAGE = `<!doctype html>
         </div>
       </div>
     </div>
+    <!-- TAB 3: KONFIGURACJA STACJI -->
+  <div id="tabSetup" class="tab-pane" style="display:none;">
+    <div class="card" style="max-width:1000px; margin:0 auto; padding:16px 18px;">
+      <div class="row" style="justify-content:space-between; margin-bottom:12px;">
+        <span style="font-weight:600; color:var(--ok); font-size:16px;" data-i18n="modalKeyCreatedTitle">💻 Konfiguracja stacji roboczej</span>
+      </div>
+
+      <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px;">
+        <div class="row" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div style="flex:1; min-width:260px;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+              <span style="color:var(--dim); font-size:12px; font-weight:600;" data-i18n="lblStationWorkstation">Stacja robocza:</span>
+              <select id="selModalStation" style="font-size:12.5px; font-weight:600; padding:3px 8px; background:var(--input-bg); border:1px solid var(--line); color:var(--heading); border-radius:5px; cursor:pointer;" title="Wybierz stację roboczą"></select>
+              <b id="createdClientName" style="display:none;"></b>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span style="color:var(--dim); font-size:11px;" data-i18n="lblStationKey">Klucz stacji:</span>
+              <code class="mono" id="createdClientKey" style="font-size:12.5px; word-break:break-all; color:var(--accent); font-weight:600;"></code>
+            </div>
+          </div>
+          <button class="btn btn-sm" id="btnToggleCreatedKey" type="button">Pokaż klucz</button>
+          <button class="btn btn-sm btn-accent" id="btnCopyCreatedKey" data-i18n="btnCopyCreatedKey">📋 Kopiuj klucz</button>
+        </div>
+      </div>
+
+      <div style="margin-bottom:10px;">
+        <div class="tabs-bar" style="margin-bottom:12px;">
+          <button class="tab-btn active" id="tabSetupBash" type="button" data-i18n="tabSetupBash">🐧 Linux / macOS / WSL</button>
+          <button class="tab-btn" id="tabSetupPowershell" type="button" data-i18n="tabSetupPowershell">🪟 Windows (PowerShell)</button>
+        </div>
+
+        <!-- TAB 1: LINUX / MACOS / WSL -->
+        <div id="contentSetupBash">
+          <div style="margin-bottom:12px; font-size:12px;">
+            <label><input id="chkSetupAgylb" type="checkbox"> Dodaj AGY przez agylb (wymaga agy i Python 3.8+)</label>
+            <div id="setupAgylbStatus" style="margin-top:5px; color:var(--dim);" role="status"></div>
+          </div>
+          <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupBashAllInOneTitle">🚀 Skonfiguruj Claude Code i Codex:</span>
+              <button class="btn btn-sm btn-accent" id="btnCopySetupBashMain" data-i18n="btnCopyCmd">📋 Kopiuj polecenie</button>
+            </div>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+              <code class="mono" id="cmdSetupBashMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
+            </div>
+            <p style="font-size:12px; color:var(--dim); margin:0 0 10px;">Skopiuj klucz stacji. Polecenie poprosi o jego wklejenie i nie zapisze go w historii.</p>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
+              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
+              <div style="color:var(--dim);">OpenCode, Hermes, Aider, Claw i Orca: osobne instalatory w opcjach poniżej.</div>
+              <div id="setupAgylbIncluded" style="display:none; color:var(--ok);">✔ agylb — pula Google, zapis rozmów i pytanie po wyczerpaniu limitu</div>
+            </div>
+          </div>
+
+          <details style="background:rgba(63,185,80,0.07); border:1px solid rgba(63,185,80,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+            <summary style="cursor:pointer; color:var(--ok); font-weight:600;">Konfiguracja przez agenta AI lub sam jcode</summary>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
+              <span style="font-size:13px; font-weight:700; color:var(--ok);">🤖 Konfiguracja przez agenta AI (Claude Code / Codex + jcode w piaskownicy)</span>
+              <button class="btn btn-sm btn-accent" id="btnCopyAgentPrompt">📋 Kopiuj prompt</button>
+            </div>
+            <div style="font-size:11.5px; color:var(--dim); margin-bottom:8px;">
+              1. W terminalu na hoście wpisz klucz stacji (nie trafi do historii):
+              <code class="mono">read -rsp 'Klucz stacji: ' AGENT_LB_API_KEY &amp;&amp; export AGENT_LB_API_KEY</code><br>
+              2. Z tego samego terminala uruchom agenta (np. <code class="mono">claude</code>) i wklej mu prompt poniżej.
+              Pełna procedura: <a id="lnkAgentPrompt" href="/agent-prompt.md" target="_blank" rel="noopener" style="color:var(--accent);">agent-prompt.md ↗</a>
+            </div>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
+              <pre class="mono" id="cmdAgentPrompt" style="margin:0; font-size:11.5px; color:#e6edf3; white-space:pre-wrap;"></pre>
+            </div>
+            <div style="font-size:11.5px; color:var(--dim); margin-bottom:4px;">Albo sam jcode, bez agenta (Linux / WSL):</div>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+              <code class="mono" id="cmdJcodeSetupBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+            </div>
+            <button class="btn btn-xs btn-accent" id="btnCopyJcodeSetupBash">📋 Kopiuj polecenie jcode</button>
+          </details>
+
+          <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
+            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;" data-i18n="setupAdvancedSummary">
+              ⚙️ Zaawansowane: rozdzielne polecenia, zmienne ENV oraz konfiguracja ręczna
+            </summary>
+            <div style="margin-top:10px; display:flex; flex-direction:column; gap:12px;">
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashClaudeOnly">1. Tylko Claude Code CLI &amp; VS Code:</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <code class="mono" id="cmdSetupBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupBash" data-i18n="btnCopySetupBash">📋 Kopiuj polecenie Claude</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashCodexOnly">2. Tylko OpenAI Codex CLI &amp; VS Code:</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <code class="mono" id="cmdSetupCodexBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexBash" data-i18n="btnCopySetupCodexBash">📋 Kopiuj polecenie Codex</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashAgentOnly">3. Zmienne powłoki (export ENV dla OpenCode / Hermes):</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <pre class="mono" id="cmdSetupAgentBash" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentBash" data-i18n="btnCopySetupAgentBash">📋 Kopiuj zmienne powłoki</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashManualOnly">4. Ręczna konfiguracja JSON / env:</div>
+                <div class="row" style="gap:8px; margin-bottom:6px;">
+                  <button class="btn btn-xs" id="btnCopyShellEnv" data-i18n="btnCopyShellEnv">📋 Kopiuj export ENV</button>
+                  <button class="btn btn-xs" id="btnCopyVSCode" data-i18n="btnCopyVSCode">📋 Kopiuj VS Code JSON</button>
+                </div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px;">
+                  <pre class="mono" id="boxManualConfig" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto;"></pre>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- TAB 2: WINDOWS (POWERSHELL) -->
+        <div id="contentSetupPowershell" style="display:none;">
+          <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupPowershellAllInOneTitle">🚀 Skonfiguruj Claude Code i Codex w Windows:</span>
+              <button class="btn btn-sm btn-accent" id="btnCopySetupPowershellMain" data-i18n="btnCopyCmd">📋 Kopiuj polecenie</button>
+            </div>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+              <code class="mono" id="cmdSetupPowershellMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
+              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
+              <div style="color:var(--dim);">Pozostałe narzędzia konfiguruj osobnymi instalatorami.</div>
+              <div style="color:var(--dim);">AGY przez agylb: wybierz kartę Linux / macOS / WSL i uruchom polecenie w WSL.</div>
+            </div>
+          </div>
+
+          <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
+            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;" data-i18n="setupAdvancedPSSummary">
+              ⚙️ Zaawansowane: rozdzielne polecenia Windows i zmienne sesyjne
+            </summary>
+            <div style="margin-top:10px; display:flex; flex-direction:column; gap:12px;">
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSClaudeOnly">1. Tylko Claude Code na Windows (PowerShell):</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <code class="mono" id="cmdSetupPowershell" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupPowershell" data-i18n="btnCopySetupPowershell">📋 Kopiuj polecenie Claude (PS)</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSCodexOnly">2. Tylko OpenAI Codex na Windows (PowerShell):</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <code class="mono" id="cmdSetupCodexPowershell" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexPowershell" data-i18n="btnCopySetupCodexPowershell">📋 Kopiuj polecenie Codex (PS)</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSAgentOnly">3. Zmienne sesyjne PowerShell:</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <pre class="mono" id="cmdSetupAgentPowershell" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentPowershell" data-i18n="btnCopySetupAgentPowershell">📋 Kopiuj polecenie PowerShell</button>
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <div class="row" style="justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--line); padding-top:12px;">
+        <span style="font-size:12px; color:var(--dim);"><span data-i18n="lblRepoLink">Repozytorium:</span> <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/agent-lb ↗</a></span>
+      </div>
+    </div>
+  </div>
     <footer id="foot"></footer>
   </div>
 
@@ -1933,183 +2113,7 @@ const PAGE = `<!doctype html>
     </div>
   </div>
 
-  <!-- MODAL: CLIENT KEY SETUP & CONNECT -->
-  <div id="modalKeyCreated" class="modal-backdrop" style="display:none;">
-    <div class="modal-box" style="max-width:700px;">
-      <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:600; color:var(--ok); font-size:16px;" data-i18n="modalKeyCreatedTitle">💻 Konfiguracja stacji roboczej</span>
-        <button class="btn btn-sm" id="btnCloseKeyModal" data-i18n="btnClose">✕ Zamknij</button>
-      </div>
 
-      <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-          <div style="flex:1; min-width:260px;">
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
-              <span style="color:var(--dim); font-size:12px; font-weight:600;" data-i18n="lblStationWorkstation">Stacja robocza:</span>
-              <select id="selModalStation" style="font-size:12.5px; font-weight:600; padding:3px 8px; background:var(--input-bg); border:1px solid var(--line); color:var(--heading); border-radius:5px; cursor:pointer;" title="Wybierz stację roboczą"></select>
-              <b id="createdClientName" style="display:none;"></b>
-            </div>
-            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <span style="color:var(--dim); font-size:11px;" data-i18n="lblStationKey">Klucz stacji:</span>
-              <code class="mono" id="createdClientKey" style="font-size:12.5px; word-break:break-all; color:var(--accent); font-weight:600;"></code>
-            </div>
-          </div>
-          <button class="btn btn-sm" id="btnToggleCreatedKey" type="button">Pokaż klucz</button>
-          <button class="btn btn-sm btn-accent" id="btnCopyCreatedKey" data-i18n="btnCopyCreatedKey">📋 Kopiuj klucz</button>
-        </div>
-      </div>
-
-      <div style="margin-bottom:10px;">
-        <div class="tabs-bar" style="margin-bottom:12px;">
-          <button class="tab-btn active" id="tabSetupBash" type="button" data-i18n="tabSetupBash">🐧 Linux / macOS / WSL</button>
-          <button class="tab-btn" id="tabSetupPowershell" type="button" data-i18n="tabSetupPowershell">🪟 Windows (PowerShell)</button>
-        </div>
-
-        <!-- TAB 1: LINUX / MACOS / WSL -->
-        <div id="contentSetupBash">
-          <div style="margin-bottom:12px; font-size:12px;">
-            <label><input id="chkSetupAgylb" type="checkbox"> Dodaj AGY przez agylb (wymaga agy i Python 3.8+)</label>
-            <div id="setupAgylbStatus" style="margin-top:5px; color:var(--dim);" role="status"></div>
-          </div>
-          <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupBashAllInOneTitle">🚀 Skonfiguruj Claude Code i Codex:</span>
-              <button class="btn btn-sm btn-accent" id="btnCopySetupBashMain" data-i18n="btnCopyCmd">📋 Kopiuj polecenie</button>
-            </div>
-            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
-              <code class="mono" id="cmdSetupBashMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
-            </div>
-            <p style="font-size:12px; color:var(--dim); margin:0 0 10px;">Skopiuj klucz stacji. Polecenie poprosi o jego wklejenie i nie zapisze go w historii.</p>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
-              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
-              <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
-              <div style="color:var(--dim);">OpenCode, Hermes, Aider, Claw i Orca: osobne instalatory w opcjach poniżej.</div>
-              <div id="setupAgylbIncluded" style="display:none; color:var(--ok);">✔ agylb — pula Google, zapis rozmów i pytanie po wyczerpaniu limitu</div>
-            </div>
-          </div>
-
-          <details style="background:rgba(63,185,80,0.07); border:1px solid rgba(63,185,80,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
-            <summary style="cursor:pointer; color:var(--ok); font-weight:600;">Konfiguracja przez agenta AI lub sam jcode</summary>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
-              <span style="font-size:13px; font-weight:700; color:var(--ok);">🤖 Konfiguracja przez agenta AI (Claude Code / Codex + jcode w piaskownicy)</span>
-              <button class="btn btn-sm btn-accent" id="btnCopyAgentPrompt">📋 Kopiuj prompt</button>
-            </div>
-            <div style="font-size:11.5px; color:var(--dim); margin-bottom:8px;">
-              1. W terminalu na hoście wpisz klucz stacji (nie trafi do historii):
-              <code class="mono">read -rsp 'Klucz stacji: ' AGENT_LB_API_KEY &amp;&amp; export AGENT_LB_API_KEY</code><br>
-              2. Z tego samego terminala uruchom agenta (np. <code class="mono">claude</code>) i wklej mu prompt poniżej.
-              Pełna procedura: <a id="lnkAgentPrompt" href="/agent-prompt.md" target="_blank" rel="noopener" style="color:var(--accent);">agent-prompt.md ↗</a>
-            </div>
-            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-              <pre class="mono" id="cmdAgentPrompt" style="margin:0; font-size:11.5px; color:#e6edf3; white-space:pre-wrap;"></pre>
-            </div>
-            <div style="font-size:11.5px; color:var(--dim); margin-bottom:4px;">Albo sam jcode, bez agenta (Linux / WSL):</div>
-            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-              <code class="mono" id="cmdJcodeSetupBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
-            </div>
-            <button class="btn btn-xs btn-accent" id="btnCopyJcodeSetupBash">📋 Kopiuj polecenie jcode</button>
-          </details>
-
-          <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
-            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;" data-i18n="setupAdvancedSummary">
-              ⚙️ Zaawansowane: rozdzielne polecenia, zmienne ENV oraz konfiguracja ręczna
-            </summary>
-            <div style="margin-top:10px; display:flex; flex-direction:column; gap:12px;">
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashClaudeOnly">1. Tylko Claude Code CLI &amp; VS Code:</div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-                  <code class="mono" id="cmdSetupBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
-                </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupBash" data-i18n="btnCopySetupBash">📋 Kopiuj polecenie Claude</button>
-              </div>
-
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashCodexOnly">2. Tylko OpenAI Codex CLI &amp; VS Code:</div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-                  <code class="mono" id="cmdSetupCodexBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
-                </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexBash" data-i18n="btnCopySetupCodexBash">📋 Kopiuj polecenie Codex</button>
-              </div>
-
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashAgentOnly">3. Zmienne powłoki (export ENV dla OpenCode / Hermes):</div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-                  <pre class="mono" id="cmdSetupAgentBash" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
-                </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentBash" data-i18n="btnCopySetupAgentBash">📋 Kopiuj zmienne powłoki</button>
-              </div>
-
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashManualOnly">4. Ręczna konfiguracja JSON / env:</div>
-                <div class="row" style="gap:8px; margin-bottom:6px;">
-                  <button class="btn btn-xs" id="btnCopyShellEnv" data-i18n="btnCopyShellEnv">📋 Kopiuj export ENV</button>
-                  <button class="btn btn-xs" id="btnCopyVSCode" data-i18n="btnCopyVSCode">📋 Kopiuj VS Code JSON</button>
-                </div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px;">
-                  <pre class="mono" id="boxManualConfig" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto;"></pre>
-                </div>
-              </div>
-            </div>
-          </details>
-        </div>
-
-        <!-- TAB 2: WINDOWS (POWERSHELL) -->
-        <div id="contentSetupPowershell" style="display:none;">
-          <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupPowershellAllInOneTitle">🚀 Skonfiguruj Claude Code i Codex w Windows:</span>
-              <button class="btn btn-sm btn-accent" id="btnCopySetupPowershellMain" data-i18n="btnCopyCmd">📋 Kopiuj polecenie</button>
-            </div>
-            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
-              <code class="mono" id="cmdSetupPowershellMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
-            </div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
-              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
-              <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
-              <div style="color:var(--dim);">Pozostałe narzędzia konfiguruj osobnymi instalatorami.</div>
-              <div style="color:var(--dim);">AGY przez agylb: wybierz kartę Linux / macOS / WSL i uruchom polecenie w WSL.</div>
-            </div>
-          </div>
-
-          <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
-            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;" data-i18n="setupAdvancedPSSummary">
-              ⚙️ Zaawansowane: rozdzielne polecenia Windows i zmienne sesyjne
-            </summary>
-            <div style="margin-top:10px; display:flex; flex-direction:column; gap:12px;">
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSClaudeOnly">1. Tylko Claude Code na Windows (PowerShell):</div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-                  <code class="mono" id="cmdSetupPowershell" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
-                </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupPowershell" data-i18n="btnCopySetupPowershell">📋 Kopiuj polecenie Claude (PS)</button>
-              </div>
-
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSCodexOnly">2. Tylko OpenAI Codex na Windows (PowerShell):</div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-                  <code class="mono" id="cmdSetupCodexPowershell" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
-                </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexPowershell" data-i18n="btnCopySetupCodexPowershell">📋 Kopiuj polecenie Codex (PS)</button>
-              </div>
-
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSAgentOnly">3. Zmienne sesyjne PowerShell:</div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-                  <pre class="mono" id="cmdSetupAgentPowershell" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
-                </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentPowershell" data-i18n="btnCopySetupAgentPowershell">📋 Kopiuj polecenie PowerShell</button>
-              </div>
-            </div>
-          </details>
-        </div>
-      </div>
-
-      <div class="row" style="justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--line); padding-top:12px;">
-        <span style="font-size:12px; color:var(--dim);"><span data-i18n="lblRepoLink">Repozytorium:</span> <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/agent-lb ↗</a></span>
-        <button class="btn" id="btnDoneKeyModal" data-i18n="btnDoneKeyModal">Zamknij</button>
-      </div>
-    </div>
-  </div>
 </main>
 <script>
 (function () {
@@ -2200,6 +2204,8 @@ const PAGE = `<!doctype html>
       autoHealthDisabled: 'Wyłączony',
       tabAccountsTitle: 'Konta & Flota',
       tabWorkstationsTitle: 'Stacje robocze & Narzędzia',
+      tabSetupTitle: 'Konfiguracja stacji',
+      setupNoStations: 'Najpierw dodaj stację w zakładce Stacje robocze',
       accountsHeading: 'Konta Claude & Codex',
       accountsHint: '💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet',
       clientsHeading: 'Stacje robocze & Narzędzia',
@@ -2379,7 +2385,6 @@ const PAGE = `<!doctype html>
       btnCopySetupPowershell: '📋 Kopiuj polecenie Claude (PS)',
       btnCopySetupCodexPowershell: '📋 Kopiuj polecenie Codex (PS)',
       btnCopySetupAgentPowershell: '📋 Kopiuj polecenie PowerShell',
-      btnDoneKeyModal: 'Zamknij',
       lblRepoLink: 'Repozytorium:',
       modalAccountUsageTitle: '📊 Szczegóły zużycia konta:',
       lblTotalTokens: 'Łącznie tokenów',
@@ -2507,6 +2512,8 @@ const PAGE = `<!doctype html>
       autoHealthDisabled: 'Disabled',
       tabAccountsTitle: 'Accounts & Fleet',
       tabWorkstationsTitle: 'Workstations & Tools',
+      tabSetupTitle: 'Workstation Setup',
+      setupNoStations: 'First add a workstation in the Workstations tab',
       accountsHeading: 'Claude & Codex Accounts',
       accountsHint: '💡 Drag card ⠿ in column to adjust queue priority',
       clientsHeading: 'Workstations & Tools',
@@ -2686,7 +2693,6 @@ const PAGE = `<!doctype html>
       btnCopySetupPowershell: '📋 Copy Claude command (PS)',
       btnCopySetupCodexPowershell: '📋 Copy Codex command (PS)',
       btnCopySetupAgentPowershell: '📋 Copy PowerShell command',
-      btnDoneKeyModal: 'Close',
       lblRepoLink: 'Repository:',
       modalAccountUsageTitle: '📊 Account Usage Details:',
       lblTotalTokens: 'Total Tokens',
@@ -5143,42 +5149,36 @@ ${SHARED_HELPERS}
     if (elAider) elAider.textContent = cmdAider;
   }
 
-  function showKeyModal(name, key) {
+  function populateSetupStations(name) {
+    var list = setupStationPolicies;
+    var select = document.getElementById('selModalStation');
+    select.textContent = '';
+    list.forEach(function (station) {
+      var option = el('option', '', station.name);
+      option.value = station.name;
+      select.appendChild(option);
+    });
+    if (primaryAdminKey) {
+      var admin = el('option', '', '👑 Admin (Master)');
+      admin.value = '__primary__';
+      select.appendChild(admin);
+    }
+    if (!select.options.length) {
+      var empty = el('option', '', t('setupNoStations'));
+      empty.value = '';
+      select.appendChild(empty);
+    }
+    if (Array.from(select.options).some(function (option) { return option.value === name; })) select.value = name;
+    return select.value;
+  }
+
+  function openWorkstationSetup(name, key) {
     modalKeyVisible = false;
     var toggleKey = document.getElementById('btnToggleCreatedKey');
     if (toggleKey) toggleKey.textContent = 'Pokaż klucz';
-    var list = (lastStatus && lastStatus.clientKeys) || [];
+    var chosenName = populateSetupStations(name);
     var selModal = document.getElementById('selModalStation');
-    if (selModal) {
-      selModal.textContent = '';
-      if (list.length) {
-        list.forEach(function (k) {
-          var opt = el('option', '', k.name);
-          opt.value = k.name;
-          selModal.appendChild(opt);
-        });
-      }
-      if (primaryAdminKey) {
-        var optAdmin = el('option', '', '👑 Admin (Master)');
-        optAdmin.value = '__primary__';
-        selModal.appendChild(optAdmin);
-      }
-      if (!list.length && !primaryAdminKey) {
-        var optNone = el('option', '', 'Stacja');
-        optNone.value = '';
-        selModal.appendChild(optNone);
-      }
-    }
-
-    var chosenName = name || (selModal ? selModal.value : '');
-    if (!chosenName && selModal && selModal.options.length) {
-      chosenName = selModal.options[0].value;
-    }
-    if (selModal && chosenName) {
-      selModal.value = chosenName;
-    }
-
-    var realKey = (key && !key.includes('...')) ? key : (cachedClientKeys[chosenName] || '');
+    var realKey = (name === chosenName && key && !key.includes('...')) ? key : (cachedClientKeys[chosenName] || '');
     if (chosenName === '__primary__' && primaryAdminKey) {
       realKey = primaryAdminKey;
     }
@@ -5216,7 +5216,7 @@ ${SHARED_HELPERS}
       selModal.addEventListener('change', function () {
         var st = this.value;
         var k = (st === '__primary__') ? primaryAdminKey : (cachedClientKeys[st] || '');
-        showKeyModal(st, k);
+        openWorkstationSetup(st, k);
         var selQuick = document.getElementById('selQuickStation');
         if (selQuick && Array.from(selQuick.options).some(function (o) { return o.value === st; })) {
           selQuick.value = st;
@@ -5226,7 +5226,7 @@ ${SHARED_HELPERS}
     }
 
     selectSetupTab('Bash');
-    openModal('modalKeyCreated');
+    switchMainTab('tabSetup');
   }
 
   function selectSetupTab(tab) {
@@ -5280,14 +5280,16 @@ ${SHARED_HELPERS}
         if (res.ok) {
           note('ok', currentLang === 'pl' ? ('Utworzono klucz klienta dla "' + res.name + '"') : ('Created workstation key for "' + res.name + '"'));
           if (res.key) cachedClientKeys[res.name] = res.key;
-          closeModal('modalAddClientKey');
+          // Navigate straight to setup without scheduling a history.back().
+          document.getElementById('modalAddClientKey').style.display = 'none';
+          setupStationPolicies = setupStationPolicies.concat([{ ...payload, name: res.name, allowCredentialRelay: false }]);
           document.getElementById('inClientName').value = '';
           document.getElementById('inClientCustomKey').value = '';
           if (document.getElementById('inClientDailyTokens')) document.getElementById('inClientDailyTokens').value = '';
           if (document.getElementById('inClientMonthlyTokens')) document.getElementById('inClientMonthlyTokens').value = '';
           if (document.getElementById('inClientExpiresAt')) document.getElementById('inClientExpiresAt').value = '';
           if (document.getElementById('inClientAllowedModels')) document.getElementById('inClientAllowedModels').value = '';
-          showKeyModal(res.name, res.key);
+          openWorkstationSetup(res.name, res.key);
           poll();
         } else {
           note('error', (currentLang === 'pl' ? 'Błąd tworzenia klucza: ' : 'Error creating key: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
@@ -5466,10 +5468,12 @@ ${SHARED_HELPERS}
   function renderClientKeys(keys, clients) {
     var list = keys || [];
     setupStationPolicies = list;
-    var setupModal = document.getElementById('modalKeyCreated');
-    if (setupModal && setupModal.style.display !== 'none') {
-      var setupName = document.getElementById('selModalStation').value;
-      updateModalCommands(setupName, setupName === '__primary__' ? primaryAdminKey : cachedClientKeys[setupName]);
+    var setupPane = document.getElementById('tabSetup');
+    if (setupPane && setupPane.style.display !== 'none') {
+      var previousName = document.getElementById('selModalStation').value;
+      var setupName = populateSetupStations(previousName);
+      if (setupName !== previousName) openWorkstationSetup(setupName, cachedClientKeys[setupName]);
+      else updateModalCommands(setupName, setupName === '__primary__' ? primaryAdminKey : cachedClientKeys[setupName]);
     }
     list.forEach(function (k) {
       var unmasked = cachedClientKeys[k.name] || '';
@@ -5518,7 +5522,7 @@ ${SHARED_HELPERS}
       btnPSetup.addEventListener('click', function () {
         currentQuickKey = primaryAdminKey;
         updateQuickCmd();
-        showKeyModal(currentLang === 'pl' ? 'Główny klucz (proxy.apiKey)' : 'Master key (proxy.apiKey)', primaryAdminKey);
+        openWorkstationSetup('__primary__', primaryAdminKey);
       });
       pTopActs.appendChild(btnPSetup);
       pTop.appendChild(pTopActs);
@@ -5644,7 +5648,7 @@ ${SHARED_HELPERS}
       btnSetup.title = currentLang === 'pl' ? 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tej stacji' : 'Show installer commands (Linux, Windows, VS Code) for this workstation';
       btnSetup.addEventListener('click', function () {
         var kVal = cachedClientKeys[k.name] || raw || '';
-        showKeyModal(k.name, kVal);
+        openWorkstationSetup(k.name, kVal);
       });
       acts.appendChild(btnSetup);
 
@@ -6836,13 +6840,6 @@ ${SHARED_HELPERS}
     closeModal('modalAddClientKey');
   });
 
-  document.getElementById('btnCloseKeyModal').addEventListener('click', function () {
-    closeModal('modalKeyCreated');
-  });
-  document.getElementById('btnDoneKeyModal').addEventListener('click', function () {
-    closeModal('modalKeyCreated');
-  });
-
   // Account & Fleet Usage Modals (Kto i na co zużył limity)
   var currentUsageAccount = null;
 
@@ -7367,7 +7364,7 @@ ${SHARED_HELPERS}
       var list = (lastStatus && lastStatus.clientKeys) || [];
       var chosen = (sel && sel.value) ? sel.value : (list.length ? list[0].name : (primaryAdminKey ? '__primary__' : ''));
       var chosenKey = (chosen === '__primary__') ? primaryAdminKey : (cachedClientKeys[chosen] || '');
-      showKeyModal(chosen, chosenKey);
+      openWorkstationSetup(chosen, chosenKey);
     });
   }
 
@@ -7607,13 +7604,12 @@ ${SHARED_HELPERS}
     if (e.key === 'Escape') {
       closeModal('modalAddAccount');
       closeModal('modalAddClientKey');
-      closeModal('modalKeyCreated');
       closeModal('modalRelogin');
       closeModal('modalTestChat');
     }
   });
 
-  ['modalAddAccount', 'modalAddClientKey', 'modalKeyCreated', 'modalRelogin', 'modalTestChat'].forEach(function (id) {
+  ['modalAddAccount', 'modalAddClientKey', 'modalRelogin', 'modalTestChat'].forEach(function (id) {
     var m = document.getElementById(id);
     if (m) {
       m.addEventListener('click', function (e) {
@@ -8160,26 +8156,20 @@ ${SHARED_HELPERS}
   setTheme(currentTheme);
   updateI18nDOM();
 
-  // Main navigation tabs (Konta & Flota vs Stacje robocze & Narzędzia)
+  // Main navigation tabs.
   function switchMainTab(tabId) {
-    var tabAccounts = document.getElementById('tabAccounts');
-    var tabWorkstations = document.getElementById('tabWorkstations');
-    var btnAccounts = document.getElementById('tabBtnAccounts');
-    var btnWorkstations = document.getElementById('tabBtnWorkstations');
-
-    if (tabId === 'tabWorkstations') {
-      if (tabAccounts) tabAccounts.style.display = 'none';
-      if (tabWorkstations) tabWorkstations.style.display = 'block';
-      if (btnAccounts) btnAccounts.classList.remove('active');
-      if (btnWorkstations) btnWorkstations.classList.add('active');
-    } else {
-      if (tabAccounts) tabAccounts.style.display = 'block';
-      if (tabWorkstations) tabWorkstations.style.display = 'none';
-      if (btnAccounts) btnAccounts.classList.add('active');
-      if (btnWorkstations) btnWorkstations.classList.remove('active');
+    ['Accounts', 'Workstations', 'Setup'].forEach(function (name) {
+      var active = tabId === 'tab' + name;
+      document.getElementById('tab' + name).style.display = active ? 'block' : 'none';
+      document.getElementById('tabBtn' + name).classList.toggle('active', active);
+    });
+    if (tabId !== 'tabSetup') {
+      modalKeyVisible = false;
+      document.getElementById('createdClientKey').textContent = '••••••••••••';
+      document.getElementById('btnToggleCreatedKey').textContent = 'Pokaż klucz';
     }
     try { localStorage.setItem('agentlb-active-tab', tabId); } catch (e) {}
-    routeTo(tabId === 'tabWorkstations' ? 'workstations' : 'accounts');
+    routeTo(tabId === 'tabSetup' ? 'setup' : tabId === 'tabWorkstations' ? 'workstations' : 'accounts');
   }
 
   var btnTabAccounts = document.getElementById('tabBtnAccounts');
@@ -8195,6 +8185,11 @@ ${SHARED_HELPERS}
     });
   }
 
+  document.getElementById('tabBtnSetup').addEventListener('click', function () {
+    var name = document.getElementById('selModalStation').value;
+    openWorkstationSetup(name, name === '__primary__' ? primaryAdminKey : cachedClientKeys[name]);
+  });
+
   // --- Addresses for every view ----------------------------------------------
   // /dashboard/<view> opens that view directly; the address follows the tab or
   // dialog on screen, so a view can be bookmarked, shared and reached with
@@ -8205,6 +8200,7 @@ ${SHARED_HELPERS}
     'accounts/add': { tab: 'tabAccounts', modal: 'modalAddAccount', open: 'btnAddClaudeCol', title: ['Dodaj konto', 'Add account'] },
     'workstations': { tab: 'tabWorkstations', title: ['Stacje robocze', 'Workstations'] },
     'workstations/new': { tab: 'tabWorkstations', modal: 'modalAddClientKey', open: 'btnShowAddClientKey', title: ['Podłącz stację', 'Connect workstation'] },
+    'setup': { tab: 'tabSetup', title: ['Konfiguracja stacji', 'Workstation Setup'] },
     'usage': { tab: 'tabAccounts', modal: 'modalFleetUsage', open: 'btnOpenFleetUsage', title: ['Kto i na co?', 'Fleet usage'] },
     'chat': { tab: 'tabAccounts', modal: 'modalTestChat', open: 'btnOpenTestChat', title: ['Test Chat', 'Test Chat'] }
   };
@@ -8237,6 +8233,7 @@ ${SHARED_HELPERS}
     } catch (e) {}
   }
   function tabRouteName() {
+    if (document.getElementById('tabSetup').style.display === 'block') return 'setup';
     var ws = document.getElementById('tabWorkstations');
     return ws && ws.style.display === 'block' ? 'workstations' : 'accounts';
   }
@@ -8282,6 +8279,10 @@ ${SHARED_HELPERS}
         }
       }
       switchMainTab(r.tab);
+      if (r.tab === 'tabSetup') {
+        var selected = document.getElementById('selModalStation').value;
+        openWorkstationSetup(selected, selected === '__primary__' ? primaryAdminKey : cachedClientKeys[selected]);
+      }
       routeModalPushed = false;
       if (r.modal) {
         var dlg = document.getElementById(r.modal);
@@ -8310,7 +8311,7 @@ ${SHARED_HELPERS}
       // Bare /dashboard (or an unknown view): the last tab, then its address.
       var saved = null;
       try { saved = localStorage.getItem('agentlb-active-tab'); } catch (e) {}
-      initial = saved === 'tabWorkstations' ? 'workstations' : 'accounts';
+      initial = saved === 'tabSetup' ? 'setup' : saved === 'tabWorkstations' ? 'workstations' : 'accounts';
     }
     applyRoute(initial);
     routeTo(initial, true);
