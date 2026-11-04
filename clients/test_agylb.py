@@ -8,6 +8,7 @@ from pathlib import Path
 import pty
 import select
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -94,6 +95,12 @@ token = home / '.gemini/antigravity-cli/antigravity-oauth-token'
 secret = json.loads(token.read_text())['token']['refresh_token']
 log = Path(sys.argv[sys.argv.index('--log-file') + 1])
 mode = os.environ.get('STUB_MODE', 'ok')
+if '--hub' in sys.argv:
+    assert os.environ.get('AGY_ENABLE_HUB') == '1'
+    assert os.environ.get('ANTIGRAVITY_VSCODE_HOST') == '1'
+    if sys.platform.startswith('linux'):
+        assert os.environ['DBUS_SESSION_BUS_ADDRESS'] == 'unix:path=' + str(home / '.runtime/no-keyring')
+        assert os.environ['XDG_RUNTIME_DIR'] == str(home / '.runtime')
 if os.environ.get('TRACE_FILE'):
     with open(os.environ['TRACE_FILE'], 'a') as trace:
         trace.write(json.dumps(sys.argv[1:]) + '\\n')
@@ -162,6 +169,76 @@ else:
         resumed = self.run_cli('--continue')
         self.assertEqual(resumed.returncode, 0, resumed.stderr)
         self.assertIn('refreshed-account-a', resumed.stdout)
+
+    def test_vscode_workspace_uses_private_hub_profile_and_keeps_normal_login(self):
+        local = self.home / agylb.TOKEN_REL
+        local.parent.mkdir(parents=True)
+        local.write_text('original login')
+        result = self.run_cli('vscode')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        profile = next((self.root / 'state/vscode').iterdir())
+        workspace = json.loads((profile / 'agylb.code-workspace').read_text())
+        self.assertEqual(workspace['folders'], [{'path': str(self.work)}])
+        self.assertRegex(workspace['settings']['antigravity.serverUrl'], r'^http://127\.0\.0\.1:\d+$')
+        self.assertEqual(stat.S_IMODE((profile / 'agylb.code-workspace').stat().st_mode), 0o600)
+        account_home = next((profile / 'accounts').iterdir()) / 'home'
+        hub_token = account_home / '.gemini/jetski-standalone-oauth-token'
+        self.assertEqual(json.loads(hub_token.read_text())['token']['refresh_token'], 'secret-account-a')
+        self.assertEqual(stat.S_IMODE(hub_token.stat().st_mode), 0o600)
+        self.assertEqual(local.read_text(), 'original login')
+        first_url = workspace['settings']['antigravity.serverUrl']
+        hub_token.write_text(json.dumps({'token': {'refresh_token': 'hub-refreshed'}}))
+        self.assertEqual(self.run_cli('vscode').returncode, 0)
+        self.assertEqual(json.loads((profile / 'agylb.code-workspace').read_text())['settings']['antigravity.serverUrl'], first_url)
+        self.assertEqual(json.loads(hub_token.read_text())['token']['refresh_token'], 'hub-refreshed')
+
+    def test_vscode_refuses_occupied_saved_port(self):
+        self.assertEqual(self.run_cli('vscode').returncode, 0)
+        profile = next((self.root / 'state/vscode').iterdir())
+        port = json.loads((profile / 'vscode.json').read_text())['port']
+        with socket.socket() as listener:
+            listener.bind(('127.0.0.1', port))
+            listener.listen()
+            result = self.run_cli('vscode')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('zajęty', result.stderr)
+
+    def test_vscode_quota_stops_without_replay_and_next_run_changes_account(self):
+        trace = self.root / 'trace'
+        self.env['TRACE_FILE'] = str(trace)
+        result = self.run_cli('vscode', mode='quota')
+        self.assertEqual(result.returncode, 75, result.stderr)
+        args = json.loads(trace.read_text().splitlines()[0])
+        self.assertIn('--hub', args)
+        self.assertIn('--app_data_dir=antigravity-cli', args)
+        self.assertTrue(any(arg.startswith('--csrf_token=') for arg in args))
+        self.assertEqual(len(trace.read_text().splitlines()), 1)
+        self.assertNotIn('secret-', result.stdout + result.stderr)
+        profile = next((self.root / 'state/vscode').iterdir())
+        self.assertTrue(json.loads((profile / 'state.json').read_text())['rotationRequired'])
+        next_run = self.run_cli('vscode')
+        self.assertEqual(next_run.returncode, 0, next_run.stderr)
+        self.assertIn('OK:account-b', next_run.stdout)
+        self.assertEqual(len(list((profile / 'accounts').iterdir())), 2)
+
+    def test_vscode_rejects_extra_arguments(self):
+        result = self.run_cli('vscode', '--print', 'never replay')
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.pool.requests, [])
+
+    def test_vscode_rejects_unverified_macos_keychain_before_accessing_pool(self):
+        with patch.object(sys, 'platform', 'darwin'):
+            with self.assertRaises(agylb.LauncherError):
+                agylb.main(['vscode'])
+        self.assertEqual(self.pool.requests, [])
+
+    def test_child_environment_isolates_xdg_and_station_key(self):
+        with patch.dict(os.environ, {'AGENT_LB_API_KEY': 'private', 'XDG_CONFIG_HOME': '/original', 'USERPROFILE': '/original'}):
+            env = agylb.child_environment(Path('/private/profile'))
+        self.assertEqual(env['HOME'], '/private/profile')
+        self.assertEqual(env['USERPROFILE'], '/private/profile')
+        self.assertEqual(env['XDG_CONFIG_HOME'], '/private/profile/.config')
+        self.assertNotIn('AGENT_LB_API_KEY', env)
 
     def test_quota_reports_reset_and_never_replays_prompt(self):
         self.assertEqual(self.run_cli().returncode, 0)

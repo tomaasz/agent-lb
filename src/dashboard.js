@@ -1450,6 +1450,7 @@ const PAGE = `<!doctype html>
         <p style="font-size:12px; margin:0 0 8px;" data-i18n="setupAgylbPlatform">Linux / macOS: uruchom w terminalu. Windows: otwórz terminal WSL. Wymagane: agy i Python 3.8+.</p>
         <code class="mono" id="cmdSetupAgylb" style="display:block; word-break:break-all; padding:10px; background:var(--bg); border-radius:6px; font-size:12px;"></code>
         <button class="btn btn-sm btn-accent" id="btnCopySetupAgylb" style="margin-top:8px;" data-i18n="setupAgylbCopy">📋 Kopiuj instalację agylb</button>
+        <p style="font-size:12px; margin:10px 0 0;" data-i18n="setupAgylbVscode">VS Code + rozszerzenie Google Antigravity (Linux / WSL): po instalacji uruchom agylb vscode w katalogu projektu. Zostaw terminal otwarty i otwórz wypisany plik agylb.code-workspace w tym samym VS Code (Remote SSH / WSL dla zdalnego hosta).</p>
         <div style="margin-top:12px; font-size:12px;">
           <label><input id="chkSetupAgylb" type="checkbox"> <span data-i18n="setupAgylbInclude">Dodaj też agylb do instalatora Claude Code i Codex dla Linux / macOS / WSL poniżej</span></label>
         </div>
@@ -2219,6 +2220,7 @@ const PAGE = `<!doctype html>
       setupAgylbPlatform: 'Linux / macOS: uruchom w terminalu. Windows: otwórz terminal WSL. Wymagane: agy i Python 3.8+.',
       setupAgylbCopy: '📋 Kopiuj instalację agylb',
       setupAgylbEnable: 'Włącz dostęp do agylb dla tej stacji',
+      setupAgylbVscode: 'VS Code + rozszerzenie Google Antigravity (Linux / WSL): po instalacji uruchom agylb vscode w katalogu projektu. Zostaw terminal otwarty i otwórz wypisany plik agylb.code-workspace w tym samym VS Code (Remote SSH / WSL dla zdalnego hosta).',
       setupAgylbNoAccess: 'Ta stacja nie ma jeszcze dostępu do kont Google. Kliknij przycisk poniżej i potwierdź zgodę, aby odblokować wybór agylb.',
       setupAgylbRestricted: 'agylb wymaga aktywnej stacji bez ograniczeń modeli, dostawców i tokenów. Wybierz taką stację z listy.',
       setupAgylbInclude: 'Dodaj też agylb do instalatora Claude Code i Codex dla Linux / macOS / WSL poniżej',
@@ -2535,6 +2537,7 @@ const PAGE = `<!doctype html>
       setupAgylbPlatform: 'Linux / macOS: run in a terminal. Windows: open a WSL terminal. Requires agy and Python 3.8+.',
       setupAgylbCopy: '📋 Copy agylb installation',
       setupAgylbEnable: 'Enable agylb access for this workstation',
+      setupAgylbVscode: 'VS Code + Google Antigravity extension (Linux / WSL): after installation, run agylb vscode in your project folder. Keep the terminal open and open the printed agylb.code-workspace file in the same VS Code (Remote SSH / WSL for a remote host).',
       setupAgylbNoAccess: 'This workstation does not have Google account access yet. Use the button below and confirm to unlock agylb.',
       setupAgylbRestricted: 'agylb requires an active workstation without model, provider or token restrictions. Select one from the list.',
       setupAgylbInclude: 'Also add agylb to the Claude Code and Codex installer for Linux / macOS / WSL below',

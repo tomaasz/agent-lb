@@ -9,7 +9,24 @@ agylb models
 agylb
 agylb --continue
 agylb --model gemini-3.8-flash-low
+agylb vscode
 ```
+
+Rozszerzenie **Google Antigravity w VS Code** (Linux / WSL): w terminalu na hoście projektu
+uruchom `agylb vscode`. Zostaw terminal otwarty. W tym samym VS Code
+(Remote SSH lub WSL, jeśli projekt jest zdalny) wybierz **Plik → Otwórz obszar
+roboczy z pliku** i otwórz wypisany plik `agylb.code-workspace`.
+Rozszerzenie łączy się z lokalnym serwerem z kontem ze wspólnej puli.
+Nie zmienia to globalnych ustawień VS Code ani zwykłego logowania AGY.
+Wymagane jest rozszerzenie `google.google-antigravity`; sprawdzono wersję 1.9.0.
+
+Tryb VS Code ma własne trwałe profile i port na projekt. Serwer działa na
+loopback, z losowym tokenem ochronnym. Nie udostępniaj jego portu publicznie.
+Po wyczerpaniu kwoty serwer zatrzymuje się, zgłasza limit i zachowuje historię.
+Uruchom ponownie `agylb vscode`, aby pobrać następne konto; w rozszerzeniu
+wybierz **Nowa rozmowa**. Nie przenosi ani nie ponawia poprzedniej rozmowy.
+Jeśli masz globalne `ANTIGRAVITY_SERVER_URL`, usuń je ze środowiska VS Code,
+ponieważ ma pierwszeństwo przed ustawieniem obszaru roboczego.
 
 Każdy katalog pracy i każde konto mają osobny, **trwały** profil w
 `~/.local/share/agylb/workspaces/`. Pracuj zawsze z tego samego katalogu,

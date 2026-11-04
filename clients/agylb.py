@@ -14,6 +14,7 @@ import re
 import select
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import termios
@@ -24,7 +25,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 QUOTA = re.compile(r"RESOURCE_EXHAUSTED \(code 429\):\s*([^()\r\n]*quota[^()\r\n]*)", re.I)
 TOKEN_REL = Path(".gemini/antigravity-cli/antigravity-oauth-token")
 
@@ -149,13 +150,27 @@ class LogWatcher:
 def child_environment(profile_home: Path) -> dict:
     env = {key: value for key, value in os.environ.items() if not key.startswith(("AGENT_LB_", "AGENTLB_", "CODEX_LB_", "AGYLB_", "HERMES_AGY_"))}
     env["HOME"] = str(profile_home)
+    env["USERPROFILE"] = str(profile_home)
+    env["XDG_CONFIG_HOME"] = str(profile_home / '.config')
+    env["XDG_CACHE_HOME"] = str(profile_home / '.cache')
+    env["XDG_DATA_HOME"] = str(profile_home / '.local/share')
     # Keep AGY updates under the normal installation process.
     env["AGY_CLI_DISABLE_AUTO_UPDATE"] = "1"
     return env
 
 
-def run_agy(command: str, args: list[str], profile_home: Path, log: Path, lock_fd: int) -> tuple[int, str | None]:
+def run_agy(command: str, args: list[str], profile_home: Path, log: Path, lock_fd: int, vscode: bool = False) -> tuple[int, str | None]:
     env = child_environment(profile_home)
+    if vscode:
+        env.update(AGY_ENABLE_HUB='1', ANTIGRAVITY_VSCODE_HOST='1', ANTIGRAVITY_AUTH_SUCCESS_APP='vscode')
+        # A desktop Secret Service is shared across HOME directories. Force
+        # file storage in this account's private profile, never its keyring.
+        if sys.platform.startswith('linux'):
+            runtime = profile_home / '.runtime'
+            private_dir(runtime)
+            env['DBUS_SESSION_BUS_ADDRESS'] = 'unix:path=' + str(runtime / 'no-keyring')
+            env['XDG_RUNTIME_DIR'] = str(runtime)
+            env.pop('GNOME_KEYRING_CONTROL', None)
     interactive = sys.stdin.isatty() and sys.stdout.isatty()
     master = None
     old_terminal = termios.tcgetattr(0) if interactive else None
@@ -278,6 +293,7 @@ HELP = """agylb — AGY ze wspólną pulą kont AgentLB
   agylb --continue         ostatnia rozmowa w tym katalogu
   agylb models             dostępne modele
   agylb doctor             sprawdzenie programu i dostępu do puli
+  agylb vscode             serwer dla rozszerzenia Antigravity w VS Code (Linux/WSL)
   agylb --version          wersja nakładki
 
 Pozostałe argumenty są przekazywane do agy. Rozmowy są zapisywane na stałe
@@ -296,8 +312,43 @@ def seed_profile(profile_home: Path, account: dict) -> None:
         save_json(token_path, account["token"])
 
 
+def prepare_vscode(profile: Path, profile_home: Path, account: dict) -> tuple[list[str], Path, int]:
+    # The hub uses standalone OAuth storage, even with app_data_dir=antigravity-cli.
+    token_path = profile_home / '.gemini/jetski-standalone-oauth-token'
+    if not token_path.exists():
+        save_json(token_path, account['token'])
+    settings = load_json(profile / 'vscode.json')
+    port = settings.get('port')
+    if not isinstance(port, int) or isinstance(port, bool) or not 1024 <= port <= 65535:
+        with socket.socket() as listener:
+            listener.bind(('127.0.0.1', 0))
+            port = listener.getsockname()[1]
+        save_json(profile / 'vscode.json', {'port': port})
+    # Never attach to an unrelated process already using our saved port.
+    with socket.socket() as listener:
+        try:
+            listener.bind(('127.0.0.1', port))
+        except OSError:
+            raise LauncherError('Port serwera VS Code jest zajęty. Zakończ poprzedni serwer agylb.') from None
+    workspace = profile / 'agylb.code-workspace'
+    save_json(workspace, {
+        'folders': [{'path': str(Path.cwd().resolve())}],
+        'settings': {'antigravity.serverUrl': f'http://127.0.0.1:{port}', 'remote.autoForwardPorts': False},
+        'extensions': {'recommendations': ['google.google-antigravity']},
+    })
+    return ['--hub', f'--hub-port={port}', '--app_data_dir=antigravity-cli',
+            f'--csrf_token={uuid.uuid4()}', f'--add-dir={Path.cwd().resolve()}'], workspace, port
+
+
 def main(args: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if args is None else args)
+    vscode = bool(args and args[0] == 'vscode')
+    if vscode:
+        if not sys.platform.startswith('linux'):
+            raise LauncherError('agylb vscode obsługuje obecnie Linux i WSL. Izolacja macOS Keychain wymaga osobnej weryfikacji.')
+        if len(args) != 1:
+            raise LauncherError('Użyj agylb vscode bez dodatkowych argumentów, w katalogu projektu.')
+        args = []
     if args in (["--help"], ["-h"]):
         print(HELP)
         return 0
@@ -319,7 +370,7 @@ def main(args: list[str] | None = None) -> int:
     root = Path(os.environ.get("AGYLB_HOME", real_home / ".local/share/agylb")).expanduser().resolve()
     private_dir(root)
     workspace_id = hashlib.sha256(str(Path.cwd().resolve()).encode()).hexdigest()[:24]
-    profile = root / "workspaces" / workspace_id
+    profile = root / ("vscode" if vscode else "workspaces") / workspace_id
     private_dir(profile)
     lock_fd = os.open(profile / "run.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     with os.fdopen(lock_fd, "w") as lock:
@@ -343,6 +394,11 @@ def main(args: list[str] | None = None) -> int:
         profile_home = profile / "accounts" / account_hash / "home"
         private_dir(profile_home)
         seed_profile(profile_home, account)
+        if vscode:
+            args, workspace, port = prepare_vscode(profile, profile_home, account)
+            print(f'VS Code: Plik → Otwórz obszar roboczy z pliku: {workspace}', flush=True)
+            print(f'Serwer agylb: http://127.0.0.1:{port}. Zostaw ten terminal otwarty. Ctrl+C kończy serwer.', flush=True)
+            print('Remote SSH / WSL: otwórz plik na tym samym hoście. Po zmianie konta wybierz Nowa rozmowa.', flush=True)
         conversational = not args or args[0].startswith("-")
         state["accountId"] = account_id
         state["workspace"] = str(Path.cwd())
@@ -358,13 +414,16 @@ def main(args: list[str] | None = None) -> int:
         for stale in sorted(logs.glob("run-*.log"), reverse=True)[50:]:
             stale.unlink(missing_ok=True)
         print("agylb: konto z puli AgentLB; rozmowy są zapisywane.", file=sys.stderr)
-        status, message = run_agy(command, args, profile_home, log, lock.fileno())
+        status, message = run_agy(command, args, profile_home, log, lock.fileno(), vscode=vscode)
         if not message:
             return status
         state["rotationRequired"] = True
         save_json(state_path, state)
         print(f"\nagylb: limit konta wyczerpany. Rozmowa pozostaje w {profile_home}.", file=sys.stderr)
         pool_request(url, key, "/agy/quota", {"accountId": account["account"]["id"], "resetSeconds": reset_seconds(message), "message": "AGY quota exhausted"})
+        if vscode:
+            print('VS Code: limit wyczerpany. Aby zmienić konto, uruchom ponownie agylb vscode i wybierz Nowa rozmowa w rozszerzeniu.', file=sys.stderr)
+            return 75
         if sys.stdin.isatty() and sys.stdout.isatty():
             answer = input("Uruchomić nową rozmowę na kolejnym koncie? [t/N] ").strip().lower()
             if answer in ("t", "tak"):
