@@ -12,6 +12,8 @@
   "files": [
     "src/",
     "setup/",
+    "clients/*.py",
+    "clients/README.md",
     "docker/",
     "LICENSE",
     "README.md"

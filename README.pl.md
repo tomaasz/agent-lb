@@ -202,6 +202,10 @@ curl -fsSL http://twoj-serwer:3456/setup.sh | bash -s -- --key tc-KLUCZ_STACJI
 
 ### AGY (Antigravity CLI) przez agybridge
 
+Do bezpośredniej pracy w interaktywnym AGY ze wspólną pulą kont służy
+[`agylb`](clients/README.md). Zachowuje rozmowy w trwałych profilach; po
+wyczerpaniu limitu pyta przed rozpoczęciem nowej rozmowy na kolejnym koncie.
+
 AGY (modele Gemini) działa teraz przez proxy, dla każdego klienta i z tym samym kluczem co Claude/Codex. Serwer agent-lb potrzebuje zainstalowanego [agybridge](https://github.com/tomaasz/agybridge) (domyślna komenda `agybridge`; inną ścieżkę ustawia `config.agy.bridgeCommand`; opcjonalnie `config.agy.homesDir` i `config.agy.accountsPath`). Konta Google dodajesz w panelu (Konta → AGY → *Zaloguj konto Google*); pula wybiera konto i przełącza się na następne, gdy limit się wyczerpie przed pierwszym tokenem odpowiedzi. Modele są listowane na żywo z `agy models` (tylko Gemini), każdy poziom wysiłku to osobny model w `/v1/models`; aliasy `agy` i `agy-fast` są nadal przyjmowane, ale ukryte na liście. `hermes-setup.sh` dopisuje te modele `gemini-*` do providera `agentlb`.
 
 Uczciwie o kosztach: każde żądanie uruchamia jeden proces `agy` (ok. 10 s, ok. 13 tys. tokenów promptu), na jedno konto przypadają maks. 2 żądania naraz, a pierwsza odpowiedź przychodzi jako jeden kawałek po komentarzach keep-alive.
