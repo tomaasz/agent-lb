@@ -1442,6 +1442,18 @@ const PAGE = `<!doctype html>
         </div>
       </div>
 
+      <section id="setupAgylbPanel" style="border:1px solid var(--accent); border-radius:8px; padding:12px 14px; margin-bottom:16px;">
+        <h3 style="margin:0 0 8px; color:var(--accent);" data-i18n="setupAgylbTitle">agylb — wspólna pula kont Google</h3>
+        <p style="margin:0 0 8px; font-size:12px;" data-i18n="setupAgylbDesc">Modele AGY na Twoich hostach. Po wyczerpaniu limitu agylb wybiera inne konto i pyta o nową rozmowę.</p>
+        <div id="setupAgylbStatus" style="margin-bottom:8px; font-size:12px; color:var(--dim);" role="status"></div>
+        <p style="font-size:12px; margin:0 0 8px;" data-i18n="setupAgylbPlatform">Linux / macOS: uruchom w terminalu. Windows: otwórz terminal WSL. Wymagane: agy i Python 3.8+.</p>
+        <code class="mono" id="cmdSetupAgylb" style="display:block; word-break:break-all; padding:10px; background:var(--bg); border-radius:6px; font-size:12px;"></code>
+        <button class="btn btn-sm btn-accent" id="btnCopySetupAgylb" style="margin-top:8px;" data-i18n="setupAgylbCopy">📋 Kopiuj instalację agylb</button>
+        <div style="margin-top:12px; font-size:12px;">
+          <label><input id="chkSetupAgylb" type="checkbox"> <span data-i18n="setupAgylbInclude">Dodaj też agylb do instalatora Claude Code i Codex dla Linux / macOS / WSL poniżej</span></label>
+        </div>
+      </section>
+
       <div style="margin-bottom:10px;">
         <div class="tabs-bar" style="margin-bottom:12px;">
           <button class="tab-btn active" id="tabSetupBash" type="button" data-i18n="tabSetupBash">🐧 Linux / macOS / WSL</button>
@@ -1450,10 +1462,6 @@ const PAGE = `<!doctype html>
 
         <!-- TAB 1: LINUX / MACOS / WSL -->
         <div id="contentSetupBash">
-          <div style="margin-bottom:12px; font-size:12px;">
-            <label><input id="chkSetupAgylb" type="checkbox"> Dodaj AGY przez agylb (wymaga agy i Python 3.8+)</label>
-            <div id="setupAgylbStatus" style="margin-top:5px; color:var(--dim);" role="status"></div>
-          </div>
           <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
               <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupBashAllInOneTitle">🚀 Skonfiguruj Claude Code i Codex:</span>
@@ -2205,6 +2213,11 @@ const PAGE = `<!doctype html>
       tabAccountsTitle: 'Konta & Flota',
       tabWorkstationsTitle: 'Stacje robocze & Narzędzia',
       tabSetupTitle: 'Konfiguracja stacji',
+      setupAgylbTitle: 'agylb — wspólna pula kont Google',
+      setupAgylbDesc: 'Modele AGY na Twoich hostach. Po wyczerpaniu limitu agylb wybiera inne konto i pyta o nową rozmowę.',
+      setupAgylbPlatform: 'Linux / macOS: uruchom w terminalu. Windows: otwórz terminal WSL. Wymagane: agy i Python 3.8+.',
+      setupAgylbCopy: '📋 Kopiuj instalację agylb',
+      setupAgylbInclude: 'Dodaj też agylb do instalatora Claude Code i Codex dla Linux / macOS / WSL poniżej',
       setupNoStations: 'Najpierw dodaj stację w zakładce Stacje robocze',
       accountsHeading: 'Konta Claude & Codex',
       accountsHint: '💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet',
@@ -2513,6 +2526,11 @@ const PAGE = `<!doctype html>
       tabAccountsTitle: 'Accounts & Fleet',
       tabWorkstationsTitle: 'Workstations & Tools',
       tabSetupTitle: 'Workstation Setup',
+      setupAgylbTitle: 'agylb — shared Google account pool',
+      setupAgylbDesc: 'AGY models across your hosts. When quota runs out, agylb selects another account and asks to start a new conversation.',
+      setupAgylbPlatform: 'Linux / macOS: run in a terminal. Windows: open a WSL terminal. Requires agy and Python 3.8+.',
+      setupAgylbCopy: '📋 Copy agylb installation',
+      setupAgylbInclude: 'Also add agylb to the Claude Code and Codex installer for Linux / macOS / WSL below',
       setupNoStations: 'First add a workstation in the Workstations tab',
       accountsHeading: 'Claude & Codex Accounts',
       accountsHint: '💡 Drag card ⠿ in column to adjust queue priority',
@@ -5019,6 +5037,8 @@ ${SHARED_HELPERS}
       if (!agylbAllowed) agylbCheckbox.checked = false;
     }
     var includeAgylb = agylbAllowed && agylbCheckbox && agylbCheckbox.checked;
+    document.getElementById('cmdSetupAgylb').textContent = agylbAllowed ? workstationSetupCommand(hostUrl, '/agylb-setup.sh') : '';
+    document.getElementById('btnCopySetupAgylb').disabled = !agylbAllowed;
     var agylbStatus = document.getElementById('setupAgylbStatus');
     if (agylbStatus) agylbStatus.textContent = agylbAllowed
       ? 'Pula Google dostępna. Po instalacji: agylb doctor, agylb models, agylb --continue.'
@@ -7475,6 +7495,7 @@ ${SHARED_HELPERS}
     updateModalCommands(document.getElementById('selModalStation').value, modalStationKey);
   });
   bindCopy('btnCopySetupBashMain', 'cmdSetupBashMain', 'Polecenie instalatora (Linux)');
+  bindCopy('btnCopySetupAgylb', 'cmdSetupAgylb', 'Instalacja agylb (Linux / macOS / WSL)');
   bindCopy('btnCopyAgentPrompt', 'cmdAgentPrompt', 'Prompt dla agenta');
   bindCopy('btnCopyJcodeSetupBash', 'cmdJcodeSetupBash', 'Polecenie jcode (Linux/WSL)');
   bindCopy('btnCopySetupPowershellMain', 'cmdSetupPowershellMain', 'Polecenie instalatora (Windows)');
