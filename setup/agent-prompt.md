@@ -1,4 +1,4 @@
-# Konfiguracja stacji roboczej pod AgentLB (Claude Code, Codex, jcode, VS Code)
+# Konfiguracja stacji roboczej pod AgentLB (Claude Code, Codex, jcode, VS Code, opcjonalnie agylb)
 
 Jesteś agentem AI uruchomionym na stacji roboczej użytkownika. Twoje zadanie: skonfigurować TEN host
 tak, by agenci kodujący (Claude Code, OpenAI Codex, jcode) korzystali z proxy **AgentLB**
@@ -19,7 +19,7 @@ Pracuj krok po kroku, każdy krok zweryfikuj, na końcu zdaj raport prostym jęz
 3. Nie zabijaj procesów użytkownika hurtem (`pkill -f jcode` zabiło mu kiedyś otwarte okno TUI i zostawiło
    terminal w trybie śledzenia myszy). Zatrzymuj tylko konkretne PID-y, które sprawdziłeś.
 4. Pytaj przed operacjami nieodwracalnymi (usuwanie danych, rotacja kluczy, zmiany w innych agentach).
-5. Skrypty z AgentLB (`/setup.sh`, `/jcode-setup.sh`) są zaufane; każdy inny skrypt z internetu najpierw
+5. Skrypty z AgentLB (`/setup.sh`, `/jcode-setup.sh`, `/agylb-setup.sh`, `/agylb.py`, `/agylb-install.py`) są zaufane; każdy inny skrypt z internetu najpierw
    pobierz do pliku i przejrzyj.
 
 ## Krok 0 — rozpoznanie hosta (tylko odczyt)
@@ -39,7 +39,7 @@ Ustal i zanotuj:
 
 ```bash
 [ -n "$AGENT_LB_API_KEY" ] && echo "klucz: ${#AGENT_LB_API_KEY} znaków"
-curl -s -o /dev/null -w '%{http_code}\n' -H "x-api-key: $AGENT_LB_API_KEY" https://agentlb.gotova.pl/v1/models   # oczekiwane 200
+printf 'header = "x-api-key: %s"\n' "$AGENT_LB_API_KEY" | curl -s -K - -o /dev/null -w '%{http_code}\n' https://agentlb.gotova.pl/v1/models   # oczekiwane 200
 ```
 
 ## Krok 2 — Claude Code i Codex
@@ -128,7 +128,28 @@ ma przekazywać pracę do piaskownicy w WSL:
 5. Test z `cmd` w folderze projektu na C:: `jcode --version`, a w `%USERPROFILE%` — odmowa.
    Projekty z C: działają w WSL wolniej (`/mnt/c`); lepiej trzymać je w systemie plików WSL.
 
-## Krok 6 — raport dla użytkownika
+## Krok 6 — AGY przez agylb (tylko jeśli użytkownik wybrał tę opcję)
+
+Nie instaluj agylb, jeśli prompt z panelu mówi, że nie jest wybrane. Nie zmieniaj
+automatycznie uprawnień stacji. Wymagane są `agy`, Python 3.8+ oraz zgoda stacji
+na pobieranie kont Google bez ograniczeń modeli i tokenów. Windows: uruchom w WSL.
+Jeśli brakuje `agy` lub uprawnienia, zgłoś konkretny brak zamiast deklarować sukces.
+
+```bash
+curl -fsSL https://agentlb.gotova.pl/agylb-setup.sh -o /tmp/agylb-setup.sh
+bash /tmp/agylb-setup.sh              # klucz z AGENT_LB_API_KEY, nie z argumentu
+~/.local/bin/agylb doctor
+~/.local/bin/agylb models
+```
+
+Instalator zapisuje osobną konfigurację agylb; nie zmienia logowania zwykłego `agy`
+ani Hermesa. Rozmowy są trwałe, osobne dla katalogu pracy i konta na danym hoście.
+Po wyczerpaniu limitu agylb zgłasza konto do wspólnej puli i pyta o **nową** rozmowę
+na kolejnym koncie. Enter oznacza odmowę. Nie obiecuj przenoszenia rozmowy pomiędzy
+kontami ani hostami. Nie zmieniaj już skonfigurowanego agylb na klucz ogólny bez
+wyraźnego polecenia użytkownika.
+
+## Krok 7 — raport dla użytkownika
 
 Krótko, prostym językiem (bez nazw plików tam, gdzie nie są potrzebne): co zainstalowano i skonfigurowano,
 co zweryfikowano (i jak), co się nie udało i dlaczego, co użytkownik musi zrobić sam

@@ -427,7 +427,28 @@ export function problems(status) {
   return out;
 }
 
+export function stationCanUseAgylb(station, now = Date.now()) {
+  return !!station && station.allowCredentialRelay === true &&
+    !station.allowedModels?.length && !station.allowedProviders?.length &&
+    !station.maxDailyTokens && !station.maxMonthlyTokens &&
+    (!station.expiresAt || Date.parse(station.expiresAt) > now);
+}
+
+// Commands contain no credential; the shell reads it directly from the user.
+export function workstationSetupCommand(origin, script, platform = 'bash', withAgylb = false) {
+  function quote(value) { return "'" + value.replace(/'/g, "'\\''") + "'"; }
+  if (platform === 'ps') {
+    function psQuote(value) { return "'" + value.replace(/'/g, "''") + "'"; }
+    return '& { $previousKey = $env:AGENT_LB_API_KEY; try { $secret = Read-Host "Klucz stacji" -AsSecureString; $env:AGENT_LB_API_KEY = [System.Net.NetworkCredential]::new("", $secret).Password; & ([scriptblock]::Create((irm ' + psQuote(origin + script) + '))) -Url ' + psQuote(origin) + ' } finally { $env:AGENT_LB_API_KEY = $previousKey } }';
+  }
+  var runner = platform === 'node' ? 'node -' : 'bash -s --';
+  var inner = 'set -o pipefail; read -rsp "Klucz stacji: " AGENT_LB_API_KEY < /dev/tty || exit 1; printf "\\n"; export AGENT_LB_API_KEY; curl -fsSL ' + quote(origin + script) + ' | ' + runner + ' --url ' + quote(origin) + (withAgylb ? ' --with-agylb' : '');
+  return 'bash -c ' + quote(inner);
+}
+
 const SHARED_HELPERS = [
+  stationCanUseAgylb,
+  workstationSetupCommand,
   scopedWeeklyRows,
   accountTokens,
   sessionRows,
@@ -1349,9 +1370,9 @@ const PAGE = `<!doctype html>
           <div style="display:flex; align-items:center; justify-content:space-between; margin-top:6px; font-size:11px; color:var(--dim); flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:12px;">
               <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; color:var(--text);" title="Odznacz, jeśli chcesz uruchomić czystą komendę — instalator sam zapyta o wklejenie klucza">
-                <input type="checkbox" id="chkIncludeKeyInCmd" checked style="margin:0; cursor:pointer;"> <span data-i18n="includeKey">Dołącz klucz stacji</span>
+                <input type="checkbox" id="chkIncludeKeyInCmd" style="margin:0; cursor:pointer;"> <span data-i18n="includeKey">Dołącz klucz stacji</span>
               </label>
-              <span style="color:var(--dim); font-size:11px;">⚡ <b>All-in-One:</b> Claude Code + Codex + OpenCode / Hermes / Aider</span>
+              <span style="color:var(--dim); font-size:11px;">Claude Code + Codex; pozostałe narzędzia konfiguruj osobno.</span>
             </div>
             <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-size:11px;" data-i18n="githubGuide">instrukcja GitHub ↗</a>
           </div>
@@ -1365,7 +1386,7 @@ const PAGE = `<!doctype html>
               <button class="btn btn-xs" id="btnQuickToolOpenCode" type="button" style="padding:2px 8px; font-size:11px;" title="OpenCode">OpenCode</button>
               <button class="btn btn-xs" id="btnQuickToolClaw" type="button" style="padding:2px 8px; font-size:11px;" title="Claw / OpenClaw">Claw</button>
               <button class="btn btn-xs" id="btnQuickToolOrca" type="button" style="padding:2px 8px; font-size:11px;" title="Orca ADE">Orca</button>
-              <button class="btn btn-xs" id="btnQuickToolAgy" type="button" style="padding:2px 8px; font-size:11px;" title="AGY / Antigravity lokalnie przez agybridge (Hermes, OpenCode, OpenClaw, Claude MCP) — Linux / macOS / WSL">AGY</button>
+              <button class="btn btn-xs" id="btnQuickToolAgy" type="button" style="padding:2px 8px; font-size:11px;" title="Interaktywne AGY ze wspólną pulą Google — Linux / macOS / WSL">agylb</button>
               <button class="btn btn-xs" id="btnQuickToolAgent" type="button" style="padding:2px 8px; font-size:11px;" title="Zmienne środowiskowe OpenAI / Anthropic">ENV</button>
             </div>
           </details>
@@ -1933,6 +1954,7 @@ const PAGE = `<!doctype html>
               <code class="mono" id="createdClientKey" style="font-size:12.5px; word-break:break-all; color:var(--accent); font-weight:600;"></code>
             </div>
           </div>
+          <button class="btn btn-sm" id="btnToggleCreatedKey" type="button">Pokaż klucz</button>
           <button class="btn btn-sm btn-accent" id="btnCopyCreatedKey" data-i18n="btnCopyCreatedKey">📋 Kopiuj klucz</button>
         </div>
       </div>
@@ -1945,23 +1967,29 @@ const PAGE = `<!doctype html>
 
         <!-- TAB 1: LINUX / MACOS / WSL -->
         <div id="contentSetupBash">
+          <div style="margin-bottom:12px; font-size:12px;">
+            <label><input id="chkSetupAgylb" type="checkbox"> Dodaj AGY przez agylb (wymaga agy i Python 3.8+)</label>
+            <div id="setupAgylbStatus" style="margin-top:5px; color:var(--dim);" role="status"></div>
+          </div>
           <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupBashAllInOneTitle">🚀 Jedno polecenie konfiguruje całe środowisko (All-in-One):</span>
+              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupBashAllInOneTitle">🚀 Skonfiguruj Claude Code i Codex:</span>
               <button class="btn btn-sm btn-accent" id="btnCopySetupBashMain" data-i18n="btnCopyCmd">📋 Kopiuj polecenie</button>
             </div>
             <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
               <code class="mono" id="cmdSetupBashMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
             </div>
+            <p style="font-size:12px; color:var(--dim); margin:0 0 10px;">Skopiuj klucz stacji. Polecenie poprosi o jego wklejenie i nie zapisze go w historii.</p>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
               <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
               <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
-              <div><span style="color:var(--ok); font-weight:600;">✔ OpenCode &amp; Hermes</span> (~/.config/agent-lb.env)</div>
-              <div><span style="color:var(--ok); font-weight:600;">✔ Aider, Claw, Orca</span> (.bashrc / .zshrc)</div>
+              <div style="color:var(--dim);">OpenCode, Hermes, Aider, Claw i Orca: osobne instalatory w opcjach poniżej.</div>
+              <div id="setupAgylbIncluded" style="display:none; color:var(--ok);">✔ agylb — pula Google, zapis rozmów i pytanie po wyczerpaniu limitu</div>
             </div>
           </div>
 
-          <div style="background:rgba(63,185,80,0.07); border:1px solid rgba(63,185,80,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+          <details style="background:rgba(63,185,80,0.07); border:1px solid rgba(63,185,80,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+            <summary style="cursor:pointer; color:var(--ok); font-weight:600;">Konfiguracja przez agenta AI lub sam jcode</summary>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
               <span style="font-size:13px; font-weight:700; color:var(--ok);">🤖 Konfiguracja przez agenta AI (Claude Code / Codex + jcode w piaskownicy)</span>
               <button class="btn btn-sm btn-accent" id="btnCopyAgentPrompt">📋 Kopiuj prompt</button>
@@ -1980,7 +2008,7 @@ const PAGE = `<!doctype html>
               <code class="mono" id="cmdJcodeSetupBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
             </div>
             <button class="btn btn-xs btn-accent" id="btnCopyJcodeSetupBash">📋 Kopiuj polecenie jcode</button>
-          </div>
+          </details>
 
           <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
             <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;" data-i18n="setupAdvancedSummary">
@@ -2029,7 +2057,7 @@ const PAGE = `<!doctype html>
         <div id="contentSetupPowershell" style="display:none;">
           <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupPowershellAllInOneTitle">🚀 Jedno polecenie konfiguruje całe środowisko Windows (All-in-One):</span>
+              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupPowershellAllInOneTitle">🚀 Skonfiguruj Claude Code i Codex w Windows:</span>
               <button class="btn btn-sm btn-accent" id="btnCopySetupPowershellMain" data-i18n="btnCopyCmd">📋 Kopiuj polecenie</button>
             </div>
             <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
@@ -2038,8 +2066,8 @@ const PAGE = `<!doctype html>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
               <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
               <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
-              <div><span style="color:var(--ok); font-weight:600;">✔ Zmienne Windows User</span> (OpenCode, Hermes, Aider)</div>
-              <div><span style="color:var(--ok); font-weight:600;">✔ Trwałe w rejestrze</span> (nie znika po restarcie)</div>
+              <div style="color:var(--dim);">Pozostałe narzędzia konfiguruj osobnymi instalatorami.</div>
+              <div style="color:var(--dim);">AGY przez agylb: wybierz kartę Linux / macOS / WSL i uruchom polecenie w WSL.</div>
             </div>
           </div>
 
@@ -2219,7 +2247,7 @@ const PAGE = `<!doctype html>
       btnUpdateTitle: 'Pobierz najnowsze skrypty instalatora z GitHub (git pull)',
       quickConnectTitle: '⚡ Szybkie podłączenie:',
       copyCmd: '📋 Kopiuj',
-      includeKey: 'Dołącz klucz stacji',
+      includeKey: 'Dołącz klucz (tylko ENV)',
       githubGuide: 'instrukcja GitHub ↗',
       countAccounts: '{n} kont',
       countAccountsSingle: '1 konto',
@@ -2261,7 +2289,7 @@ const PAGE = `<!doctype html>
       quickStationSelectTitle: 'Wybierz stację roboczą dla tego polecenia',
       quickCmdClickCopy: 'Kliknij, aby skopiować pełną komendę',
       quickToolOptional: 'Pojedyncze narzędzie lub eksport ENV (opcjonalnie)',
-      quickToolAll: '⚡ Wszystko (All-in-One)',
+      quickToolAll: '⚡ Claude Code + Codex',
       quickTabBash: 'Linux / macOS / WSL',
       quickTabPS: 'Windows',
       modalAddAccountTitle: '➕ Dodaj konto',
@@ -2331,8 +2359,8 @@ const PAGE = `<!doctype html>
       btnCopyCreatedKey: '📋 Kopiuj klucz',
       tabSetupBash: '🐧 Linux / macOS / WSL',
       tabSetupPowershell: '🪟 Windows (PowerShell)',
-      setupBashAllInOneTitle: '🚀 Jedno polecenie konfiguruje całe środowisko (All-in-One):',
-      setupPowershellAllInOneTitle: '🚀 Jedno polecenie konfiguruje całe środowisko Windows (All-in-One):',
+      setupBashAllInOneTitle: '🚀 Skonfiguruj Claude Code i Codex:',
+      setupPowershellAllInOneTitle: '🚀 Skonfiguruj Claude Code i Codex w Windows:',
       btnCopyCmd: '📋 Kopiuj polecenie',
       setupAdvancedSummary: '⚙️ Zaawansowane: rozdzielne polecenia, zmienne ENV oraz konfiguracja ręczna',
       setupAdvancedPSSummary: '⚙️ Zaawansowane: rozdzielne polecenia Windows i zmienne sesyjne',
@@ -2526,7 +2554,7 @@ const PAGE = `<!doctype html>
       btnUpdateTitle: 'Pull latest installer scripts from GitHub (git pull)',
       quickConnectTitle: '⚡ Quick Connect:',
       copyCmd: '📋 Copy',
-      includeKey: 'Include workstation key',
+      includeKey: 'Include key (ENV only)',
       githubGuide: 'GitHub guide ↗',
       countAccounts: '{n} accounts',
       countAccountsSingle: '1 account',
@@ -2568,7 +2596,7 @@ const PAGE = `<!doctype html>
       quickStationSelectTitle: 'Select workstation for this command',
       quickCmdClickCopy: 'Click to copy full command',
       quickToolOptional: 'Single tool or ENV export (optional)',
-      quickToolAll: '⚡ Everything (All-in-One)',
+      quickToolAll: '⚡ Claude Code + Codex',
       quickTabBash: 'Linux / macOS / WSL',
       quickTabPS: 'Windows',
       modalAddAccountTitle: '➕ Add New Account',
@@ -2638,8 +2666,8 @@ const PAGE = `<!doctype html>
       btnCopyCreatedKey: '📋 Copy key',
       tabSetupBash: '🐧 Linux / macOS / WSL',
       tabSetupPowershell: '🪟 Windows (PowerShell)',
-      setupBashAllInOneTitle: '🚀 One command configures entire environment (All-in-One):',
-      setupPowershellAllInOneTitle: '🚀 One command configures entire Windows environment (All-in-One):',
+      setupBashAllInOneTitle: '🚀 Set up Claude Code and Codex:',
+      setupPowershellAllInOneTitle: '🚀 Set up Claude Code and Codex on Windows:',
       btnCopyCmd: '📋 Copy command',
       setupAdvancedSummary: '⚙️ Advanced: separate commands, ENV variables & manual setup',
       setupAdvancedPSSummary: '⚙️ Advanced: separate Windows commands & session variables',
@@ -4029,6 +4057,9 @@ ${SHARED_HELPERS}
 
   var revealedKeys = Object.create(null);
   var cachedClientKeys = Object.create(null);
+  var setupStationPolicies = [];
+  var modalStationKey = '';
+  var modalKeyVisible = false;
   // Purge credentials persisted by older versions; revealed keys stay in memory.
   function saveCachedKeys() {
     try { localStorage.removeItem('agentlb_cached_keys'); } catch (e) {}
@@ -4969,20 +5000,36 @@ ${SHARED_HELPERS}
     var realKey = (key && !key.includes('...')) ? key : (cachedClientKeys[name] || key || '');
     if (name === '__primary__' && primaryAdminKey) realKey = primaryAdminKey;
     var hostUrl = window.location.origin;
-    var cmdKey = realKey || '<KLUCZ_STACJI>';
-    // Klucz w zmiennej dla instalatora, nie w argumencie (--key widać w 'ps' innym użytkownikom);
-    // spacja na początku: przy HISTCONTROL=ignorespace (domyślnie w Ubuntu) polecenie nie trafia do historii.
+    var cmdKey = '$AGENT_LB_API_KEY';
     function keyedPipe(script, runner) {
-      return ' curl -fsSL ' + hostUrl + script + ' | AGENT_LB_API_KEY="' + cmdKey + '" ' + runner;
+      return workstationSetupCommand(hostUrl, script, runner === 'node -' ? 'node' : 'bash');
     }
+
+    var station = setupStationPolicies.find(function (entry) { return entry.name === name; });
+    var agylbAllowed = stationCanUseAgylb(station);
+    var agylbCheckbox = document.getElementById('chkSetupAgylb');
+    if (agylbCheckbox) {
+      agylbCheckbox.disabled = !agylbAllowed;
+      if (!agylbAllowed) agylbCheckbox.checked = false;
+    }
+    var includeAgylb = agylbAllowed && agylbCheckbox && agylbCheckbox.checked;
+    var agylbStatus = document.getElementById('setupAgylbStatus');
+    if (agylbStatus) agylbStatus.textContent = agylbAllowed
+      ? 'Pula Google dostępna. Po instalacji: agylb doctor, agylb models, agylb --continue.'
+      : 'AGY niedostępne dla tej stacji. Wymagany dostęp do kont Google bez ograniczeń modeli i tokenów. Wybierz odpowiednią stację; uprawnień nie zmieniamy automatycznie.';
+    var included = document.getElementById('setupAgylbIncluded');
+    if (included) included.style.display = includeAgylb ? '' : 'none';
 
     var elName = document.getElementById('createdClientName');
     if (elName) elName.textContent = name || 'stacja';
     var elKey = document.getElementById('createdClientKey');
-    if (elKey) elKey.textContent = realKey || (name ? 'Wczytywanie klucza...' : '<KLUCZ_STACJI>');
+    modalStationKey = realKey && !realKey.includes('...') ? realKey : '';
+    if (elKey) elKey.textContent = modalKeyVisible && modalStationKey ? modalStationKey : '••••••••••••';
+    var copyKey = document.getElementById('btnCopyCreatedKey');
+    if (copyKey) copyKey.disabled = !modalStationKey;
 
-    var cmdBashMain = keyedPipe('/setup.sh', 'bash');
-    var cmdPsMain = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + cmdKey + '"';
+    var cmdBashMain = workstationSetupCommand(hostUrl, '/setup.sh', 'bash', includeAgylb);
+    var cmdPsMain = workstationSetupCommand(hostUrl, '/setup.ps1', 'ps');
 
     var elBashMain = document.getElementById('cmdSetupBashMain');
     if (elBashMain) elBashMain.textContent = cmdBashMain;
@@ -4991,10 +5038,11 @@ ${SHARED_HELPERS}
     var elAgentPrompt = document.getElementById('cmdAgentPrompt');
     if (elAgentPrompt) {
       elAgentPrompt.textContent = [
-        'Skonfiguruj ten host pod AgentLB (Claude Code, Codex, jcode w piaskownicy, VS Code) dokładnie według instrukcji z ' + hostUrl + '/agent-prompt.md',
+        'Skonfiguruj ten host pod AgentLB (Claude Code, Codex, jcode w piaskownicy, VS Code' + (includeAgylb ? ', AGY przez agylb' : '') + ') dokładnie według instrukcji z ' + hostUrl + '/agent-prompt.md',
         '(pobierz ją: curl -fsSL ' + hostUrl + '/agent-prompt.md) i wykonaj wszystkie kroki z weryfikacją.',
         'Nazwa stacji w AgentLB: ' + (name && name !== '__primary__' ? name : '<nazwa stacji>') + '.',
         'Klucz stacji jest w zmiennej środowiskowej AGENT_LB_API_KEY — nigdy nie wypisuj jego wartości.',
+        includeAgylb ? 'Użytkownik wybrał agylb: zainstaluj je i sprawdź dostęp do puli Google.' : 'agylb nie jest wybrane: nie instaluj go i nie zmieniaj uprawnień stacji.',
         'Na końcu zdaj mi raport prostym językiem po polsku.'
       ].join('\\n');
     }
@@ -5016,21 +5064,14 @@ ${SHARED_HELPERS}
       'export AGENT_LB_API_KEY="' + cmdKey + '"'
     ].join('\\n');
 
-    var cmdPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/claude-setup.ps1))) -Key "' + cmdKey + '"';
-    var cmdCodexPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/codex-setup.ps1))) -Key "' + cmdKey + '"';
-    var cmdAgentPs = [
-      '[Environment]::SetEnvironmentVariable("OPENAI_BASE_URL", "' + hostUrl + '/v1", "User")',
-      '[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "' + cmdKey + '" , "User")',
-      '[Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "' + hostUrl + '", "User")',
-      '[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "' + cmdKey + '", "User")',
-      '$env:OPENAI_BASE_URL = "' + hostUrl + '/v1"',
-      '$env:OPENAI_API_KEY = "' + cmdKey + '"'
-    ].join('\\n');
+    var cmdPs = workstationSetupCommand(hostUrl, '/claude-setup.ps1', 'ps');
+    var cmdCodexPs = workstationSetupCommand(hostUrl, '/codex-setup.ps1', 'ps');
+    var cmdAgentPs = workstationSetupCommand(hostUrl, '/agent-setup.ps1', 'ps');
 
     var cmdNode = keyedPipe('/claude-setup.js', 'node -');
     var cmdCodexNode = keyedPipe('/codex-setup.js', 'node -');
-    var cmdGit = ' git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && AGENT_LB_API_KEY="' + cmdKey + '" ./setup/claude-setup.sh';
-    var cmdCodexGit = ' git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && AGENT_LB_API_KEY="' + cmdKey + '" ./setup/codex-setup.sh';
+    var cmdGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/claude-setup.sh';
+    var cmdCodexGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/codex-setup.sh';
     var manualText = [
       '# --- 1. Claude Code CLI (OAuth / subscription — zalecane) ---',
       'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
@@ -5103,6 +5144,9 @@ ${SHARED_HELPERS}
   }
 
   function showKeyModal(name, key) {
+    modalKeyVisible = false;
+    var toggleKey = document.getElementById('btnToggleCreatedKey');
+    if (toggleKey) toggleKey.textContent = 'Pokaż klucz';
     var list = (lastStatus && lastStatus.clientKeys) || [];
     var selModal = document.getElementById('selModalStation');
     if (selModal) {
@@ -5340,73 +5384,27 @@ ${SHARED_HELPERS}
     if (!key) key = '<KLUCZ_STACJI>';
 
     var chk = document.getElementById('chkIncludeKeyInCmd');
-    var withKey = chk ? chk.checked : true;
-
+    var withKey = chk ? chk.checked : false;
+    if (chk) chk.disabled = currentQuickTool !== 'agent';
     var cmd = '';
-    if (currentQuickTool === 'all' || !currentQuickTool) {
-      if (currentQuickTab === 'ps') {
-        cmd = withKey
-          ? '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"'
-          : 'irm ' + hostUrl + '/setup.ps1 | iex';
-      } else {
-        cmd = withKey
-          ? ' curl -fsSL ' + hostUrl + '/setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-          : 'curl -fsSL ' + hostUrl + '/setup.sh | bash';
-      }
-    } else if (currentQuickTool === 'hermes') {
-      cmd = withKey
-        ? ' curl -fsSL ' + hostUrl + '/hermes-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-        : 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash';
-    } else if (currentQuickTool === 'opencode') {
-      cmd = withKey
-        ? ' curl -fsSL ' + hostUrl + '/opencode-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-        : 'curl -fsSL ' + hostUrl + '/opencode-setup.sh | bash';
-    } else if (currentQuickTool === 'claw') {
-      cmd = withKey
-        ? ' curl -fsSL ' + hostUrl + '/claw-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-        : 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash';
-    } else if (currentQuickTool === 'orca') {
-      cmd = withKey
-        ? ' curl -fsSL ' + hostUrl + '/orca-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-        : 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash';
-    } else if (currentQuickTool === 'agy') {
-      // The station key lets agybridge take its Google account from the AGY
-      // pool in this dashboard. On Windows it runs inside WSL (Linux/macOS only).
-      // Key goes in the environment, not in argv (visible in ps); station keys
-      // are [A-Za-z0-9_-] so they need no quoting inside wsl's "...".
-      var agyEnv = withKey ? 'AGENT_LB_API_KEY=' + key + ' ' : '';
+    if (currentQuickTool === 'agent') {
       cmd = currentQuickTab === 'ps'
-        ? 'wsl bash -lc "curl -fsSL ' + hostUrl + '/agy-setup.sh | ' + agyEnv + 'bash"'
-        : ' curl -fsSL ' + hostUrl + '/agy-setup.sh | ' + agyEnv + 'bash';
-    } else if (currentQuickTool === 'agent') {
-      if (currentQuickTab === 'ps') {
-        cmd = '$env:OPENAI_BASE_URL="' + hostUrl + '/v1"; $env:OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"; $env:ANTHROPIC_BASE_URL="' + hostUrl + '"; $env:ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
-      } else {
-        cmd = 'export OPENAI_BASE_URL="' + hostUrl + '/v1" OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '" ANTHROPIC_BASE_URL="' + hostUrl + '" ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
-      }
-    } else if (currentQuickTool === 'codex') {
-      if (currentQuickTab === 'ps') {
-        cmd = withKey
-          ? '& ([scriptblock]::Create((irm ' + hostUrl + '/codex-setup.ps1))) -Key "' + key + '"'
-          : 'irm ' + hostUrl + '/codex-setup.ps1 | iex';
-      } else {
-        cmd = withKey
-          ? ' curl -fsSL ' + hostUrl + '/codex-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-          : 'curl -fsSL ' + hostUrl + '/codex-setup.sh | bash';
-      }
-    } else {
-      if (currentQuickTab === 'ps') {
-        cmd = withKey
-          ? '& ([scriptblock]::Create((irm ' + hostUrl + '/claude-setup.ps1))) -Key "' + key + '"'
-          : 'irm ' + hostUrl + '/claude-setup.ps1 | iex';
-      } else {
-        cmd = withKey
-          ? ' curl -fsSL ' + hostUrl + '/claude-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-          : 'curl -fsSL ' + hostUrl + '/claude-setup.sh | bash';
-      }
+        ? '$env:OPENAI_BASE_URL="' + hostUrl + '/v1"; $env:OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"; $env:ANTHROPIC_BASE_URL="' + hostUrl + '"; $env:ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"'
+        : 'export OPENAI_BASE_URL="' + hostUrl + '/v1" OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '" ANTHROPIC_BASE_URL="' + hostUrl + '" ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
     }
 
     var codeEl = document.getElementById('quickCmdText');
+    var quickScripts = { all: '/setup', claude: '/claude-setup', codex: '/codex-setup', hermes: '/hermes-setup', opencode: '/opencode-setup', claw: '/claw-setup', orca: '/orca-setup', agy: '/agylb-setup' };
+    var selectedScript = quickScripts[currentQuickTool || 'all'];
+    var agyDenied = currentQuickTool === 'agy' && !stationCanUseAgylb(setupStationPolicies.find(function (entry) { return entry.name === selectedStationName; }));
+    var unsupportedPs = currentQuickTab === 'ps' && ['hermes', 'opencode', 'claw', 'orca', 'agy'].includes(currentQuickTool);
+    if (selectedScript && !unsupportedPs) {
+      cmd = workstationSetupCommand(hostUrl, selectedScript + (currentQuickTab === 'ps' && currentQuickTool !== 'agy' ? '.ps1' : '.sh'), currentQuickTab === 'ps' && currentQuickTool !== 'agy' ? 'ps' : 'bash');
+    }
+    if (unsupportedPs) cmd = '# To narzędzie: wybierz Linux / macOS / WSL i uruchom instalator w WSL.';
+    if (agyDenied) cmd = '# agylb: ta stacja nie ma dostępu do puli Google.';
+    var quickCopy = document.getElementById('btnQuickCopyCmd');
+    if (quickCopy) quickCopy.disabled = agyDenied || unsupportedPs;
     if (codeEl) {
       codeEl.textContent = cmd;
       codeEl.dataset.fullCmd = cmd;
@@ -5467,6 +5465,12 @@ ${SHARED_HELPERS}
 
   function renderClientKeys(keys, clients) {
     var list = keys || [];
+    setupStationPolicies = list;
+    var setupModal = document.getElementById('modalKeyCreated');
+    if (setupModal && setupModal.style.display !== 'none') {
+      var setupName = document.getElementById('selModalStation').value;
+      updateModalCommands(setupName, setupName === '__primary__' ? primaryAdminKey : cachedClientKeys[setupName]);
+    }
     list.forEach(function (k) {
       var unmasked = cachedClientKeys[k.name] || '';
       if (unmasked) {
@@ -7462,7 +7466,17 @@ ${SHARED_HELPERS}
     }
   };
 
-  bindCopy('btnCopyCreatedKey', 'createdClientKey', 'Klucz klienta');
+  document.getElementById('btnCopyCreatedKey').addEventListener('click', function () {
+    if (modalStationKey) copyToClipboard(modalStationKey, 'Klucz stacji');
+  });
+  document.getElementById('btnToggleCreatedKey').addEventListener('click', function () {
+    modalKeyVisible = !modalKeyVisible;
+    document.getElementById('createdClientKey').textContent = modalKeyVisible && modalStationKey ? modalStationKey : '••••••••••••';
+    this.textContent = modalKeyVisible ? 'Ukryj klucz' : 'Pokaż klucz';
+  });
+  document.getElementById('chkSetupAgylb').addEventListener('change', function () {
+    updateModalCommands(document.getElementById('selModalStation').value, modalStationKey);
+  });
   bindCopy('btnCopySetupBashMain', 'cmdSetupBashMain', 'Polecenie instalatora (Linux)');
   bindCopy('btnCopyAgentPrompt', 'cmdAgentPrompt', 'Prompt dla agenta');
   bindCopy('btnCopyJcodeSetupBash', 'cmdJcodeSetupBash', 'Polecenie jcode (Linux/WSL)');

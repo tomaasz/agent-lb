@@ -214,6 +214,18 @@ else:
         self.assertIn('dostępna', result.stdout)
         self.assertFalse((self.profile() / 'home').exists())
 
+    def test_doctor_finds_local_agy_even_when_user_bin_is_not_on_path(self):
+        backend = self.home / '.local/bin/agy'
+        backend.parent.mkdir(parents=True)
+        backend.write_text(self.stub.read_text())
+        backend.chmod(0o700)
+        env = {**self.env, 'PATH': '/usr/bin:/bin'}
+        env.pop('AGYLB_COMMAND')
+        result = subprocess.run([sys.executable, str(SCRIPT), 'doctor'], cwd=self.work,
+                                env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(str(backend), result.stdout)
+
     def test_other_workspace_has_independent_profile(self):
         self.assertEqual(self.run_cli().returncode, 0)
         self.work = self.root / 'other-project'

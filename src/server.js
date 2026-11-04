@@ -443,9 +443,22 @@ export function createProxyServer(
         return;
       }
 
+      // Public code only: never serve workstation configuration or credentials.
+      const agylbAsset = normPath.match(/^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(agylb\.py|agylb-install\.py)$/);
+      if ((req.method === 'GET' || req.method === 'HEAD') && agylbAsset) {
+        const filename = agylbAsset[1] === 'agylb.py' ? 'agylb.py' : 'install_agylb.py';
+        const asset = join(__dirname, '..', 'clients', filename);
+        if (!existsSync(asset)) {
+          res.writeHead(404); res.end('agylb asset not found'); return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+        res.end(req.method === 'HEAD' ? undefined : readFileSync(asset, 'utf8'));
+        return;
+      }
+
       // Serve client setup scripts without auth (Claude Code, OpenAI Codex, OpenCode, Hermes, Claw, Orca)
       const setupScriptMatch = normPath.match(
-        /^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|claude-setup|setup-claude|codexlb-setup|codex-setup|setup-codex|agent-setup|opencode-setup|hermes-setup|claw-setup|openclaw-setup|orca-setup|aider-setup|agy-setup|agybridge-setup|jcode-setup|agent-prompt)(?:\.(sh|ps1|js|md))?$/,
+        /^\/(?:agent-lb\/|agentlb\/|claude-lb\/)?(setup|claude-setup|setup-claude|codexlb-setup|codex-setup|setup-codex|agent-setup|opencode-setup|hermes-setup|claw-setup|openclaw-setup|orca-setup|aider-setup|agylb-setup|agy-setup|agybridge-setup|jcode-setup|agent-prompt)(?:\.(sh|ps1|js|md))?$/,
       );
       if ((req.method === "GET" || req.method === "HEAD") && setupScriptMatch) {
         const scriptBase = setupScriptMatch[1];
@@ -461,6 +474,8 @@ export function createProxyServer(
           possibleNames = ["agent-prompt.md"];
         } else if (ext === "md") {
           possibleNames = [];
+        } else if (scriptBase === 'agylb-setup') {
+          possibleNames = [`agylb-setup.${ext}`];
         } else if (scriptBase.startsWith("agy")) {
           // No generic fallback: serving setup.sh here would configure the wrong tool.
           possibleNames = [`agy-setup.${ext}`];

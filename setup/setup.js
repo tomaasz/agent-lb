@@ -60,6 +60,7 @@ let setupCodex = true;
 let skipInstall = false;
 let uninstall = false;
 let withAgy = false;
+let withAgylb = false;
 let lang = (
   process.env.AGENT_LB_LANG ||
   process.env.LC_ALL ||
@@ -97,6 +98,8 @@ for (let i = 0; i < args.length; i++) {
     uninstall = true;
   } else if (arg === "--with-agy" || arg === "--agy") {
     withAgy = true;
+  } else if (arg === "--with-agylb") {
+    withAgylb = true;
   } else if (arg === "-h" || arg === "--help") {
     if (lang === "pl") {
       console.log(`
@@ -115,6 +118,7 @@ Opcje:
   --skip-vscode    Pomiń konfigurację rozszerzeń VS Code
   --skip-env       Pomiń konfigurację zmiennych powłoki / systemu
   --with-agy       Zainstaluj też agybridge (AGY lokalnie: Hermes, OpenCode, OpenClaw, Claude MCP)
+  --with-agylb     Skonfiguruj interaktywne AGY ze wspólną pulą kont (wymaga agy i Python 3.8+)
   --uninstall      Usuń ustawienia Agent-LB z profilu klienta
   -h, --help       Pokaż ten ekran pomocy
 `);
@@ -135,6 +139,7 @@ Options:
   --skip-vscode    Skip configuration of VS Code extensions
   --skip-env       Skip shell / registry environment variables
   --with-agy       Also install agybridge (local AGY: Hermes, OpenCode, OpenClaw, Claude MCP)
+  --with-agylb     Set up interactive AGY with the shared account pool (requires agy and Python 3.8+)
   --uninstall      Remove Agent-LB configurations and restore backups
       `);
     }
@@ -764,6 +769,14 @@ function installAgyBridge() {
   }
 }
 
+function installAgylb() {
+  if (isWin) throw new Error('agylb wymaga Linux, macOS lub WSL. Uruchom instalator w WSL.');
+  const local = path.join(__dirname, 'agylb-setup.sh');
+  const env = { ...process.env, AGENT_LB_URL: targetUrl, AGENT_LB_API_KEY: apiKey };
+  if (fs.existsSync(local)) execFileSync('bash', [local], { env, stdio: 'inherit' });
+  else execFileSync('bash', ['-o', 'pipefail', '-c', 'curl -fsSL "$AGENT_LB_URL/agylb-setup.sh" | bash'], { env, stdio: 'inherit' });
+}
+
 async function main() {
   console.log(
     "=== Konfigurator klienta Agent-LB dla Claude Code, Codex i IDE ===\n",
@@ -1172,6 +1185,7 @@ async function main() {
 
   // 8. Opcjonalnie: prawdziwy AGY lokalnie przez agybridge
   if (withAgy) installAgyBridge();
+  if (withAgylb) installAgylb();
 
   console.log("\n=== Konfiguracja zakończona sukcesem! ===");
   console.log(

@@ -307,7 +307,12 @@ def main(args: list[str] | None = None) -> int:
     if any(arg == "--log-file" or arg.startswith("--log-file=") for arg in args):
         raise LauncherError("agylb zarządza logiem; usuń --log-file.")
     real_home = Path.home()
-    command = shutil.which(os.environ.get("AGYLB_COMMAND", "agy"))
+    command_name = os.environ.get("AGYLB_COMMAND", "agy")
+    command = shutil.which(command_name)
+    if not command and command_name == 'agy':
+        local_agy = real_home / '.local/bin/agy'
+        if local_agy.is_file() and os.access(local_agy, os.X_OK):
+            command = str(local_agy)
     if not command:
         raise LauncherError("Nie znaleziono programu agy.")
     url, key = configuration(real_home)

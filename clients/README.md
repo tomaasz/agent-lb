@@ -53,6 +53,13 @@ konfiguracji agybridge lub agent-lb. Osobny plik `agylb/config.json` ma
 pierwszeństwo; następnie sprawdzane są `AGENT_LB_URL` i `AGENT_LB_API_KEY`
 w środowisku, a na końcu konfiguracje pozostałych programów.
 
+Instalacja z panelu: wybierz stację z dostępem do puli Google i zaznacz
+`agylb` w oknie konfiguracji. Skopiowane polecenie poprosi o klucz bez
+zapisywania go w historii terminala. Windows: uruchom je w WSL.
+Główny instalator obsługuje opcję `--with-agylb`; samą nakładkę instaluje
+`/agylb-setup.sh`. Klucz przekazuj przez `AGENT_LB_API_KEY`.
+Instalator sprawdza dostęp do puli przed zapisaniem konfiguracji.
+
 Instalacja po pobraniu repozytorium:
 
 ```bash

@@ -31,6 +31,7 @@ RUN_TEST=0
 SETUP_CODEX=0
 UNINSTALL=0
 WITH_AGY=0
+WITH_AGYLB=0
 NO_INSTALL=0
 INSTALL_NODE=0
 KEY="${AGENT_LB_API_KEY:-${AGENTLB_API_KEY:-${CLAUDE_LB_API_KEY:-${CODEX_LB_API_KEY:-${ANTHROPIC_API_KEY:-}}}}}"
@@ -42,13 +43,14 @@ while [ $# -gt 0 ]; do
 		--codex) SETUP_CODEX=1 ;;
 		--uninstall) UNINSTALL=1 ;;
 		--with-agy|--agy) WITH_AGY=1 ;;
+		--with-agylb) WITH_AGYLB=1 ;;
 		--no-install|--skip-install) NO_INSTALL=1 ;;
 		--install-node) INSTALL_NODE=1 ;;
 		--url) URL="${2%/}"; shift ;;
 		--key) KEY="$2"; shift ;;
 		--lang) LANG_VAL="$2"; shift ;;
 		-h|--help)
-			echo "Usage / Użycie: ./setup.sh [--url URL] [--key KEY] [--lang pl|en] [--codex] [--with-agy] [--test] [--no-install] [--install-node] [--uninstall]"
+			echo "Usage / Użycie: ./setup.sh [--url URL] [--key KEY] [--lang pl|en] [--codex] [--with-agy] [--with-agylb] [--test] [--no-install] [--install-node] [--uninstall]"
 			echo "  Klucz najlepiej podać w zmiennej AGENT_LB_API_KEY (argument --key widać w 'ps' i w historii powłoki)."
 			echo "  --install-node  zainstaluj Node.js/npm przez apt (sudo), jeśli ich brak"
 			exit 0
@@ -550,6 +552,16 @@ if [ "$RUN_TEST" -eq 1 ] && command -v claude >/dev/null 2>&1; then
 		env -u ANTHROPIC_API_KEY ANTHROPIC_BASE_URL="$URL" ANTHROPIC_CUSTOM_HEADERS="x-api-key: $KEY" claude --version || true
 	else
 		env -u ANTHROPIC_CUSTOM_HEADERS ANTHROPIC_BASE_URL="$URL" ANTHROPIC_API_KEY="$KEY" claude --version || true
+	fi
+fi
+
+if [ "$WITH_AGYLB" -eq 1 ]; then
+	AGYLB_SETUP=''
+	if [ -f "${BASH_SOURCE[0]:-}" ]; then AGYLB_SETUP="$(dirname "${BASH_SOURCE[0]}")/agylb-setup.sh"; fi
+	if [ -n "$AGYLB_SETUP" ] && [ -f "$AGYLB_SETUP" ]; then
+		AGENT_LB_URL="$URL" AGENT_LB_API_KEY="$KEY" bash "$AGYLB_SETUP"
+	else
+		(set -o pipefail; curl -fsSL "$URL/agylb-setup.sh" | AGENT_LB_URL="$URL" AGENT_LB_API_KEY="$KEY" bash)
 	fi
 fi
 
