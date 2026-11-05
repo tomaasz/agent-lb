@@ -25,7 +25,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 QUOTA = re.compile(r"RESOURCE_EXHAUSTED \(code 429\):\s*([^()\r\n]*quota[^()\r\n]*)", re.I)
 TOKEN_REL = Path(".gemini/antigravity-cli/antigravity-oauth-token")
 
@@ -141,6 +141,8 @@ class LogWatcher:
         lines = (self.pending + chunk).split(b"\n")
         self.pending = lines.pop()[-65536:]
         for line in lines:
+            if b"Tool call to " in line:
+                continue
             match = QUOTA.search(line.decode("utf8", errors="replace"))
             if match:
                 return match[1].strip(), bool(chunk)
@@ -159,6 +161,110 @@ def child_environment(profile_home: Path) -> dict:
     return env
 
 
+def run_foreground_agy(command: str, args: list[str], env: dict, log: Path, lock_fd: int) -> tuple[int, str | None]:
+    """Give AGY the existing terminal; multiplexers see the real foreground job."""
+    terminal = os.open('/dev/tty', os.O_RDWR)
+    previous_group = os.tcgetpgrp(terminal)
+    original = termios.tcgetattr(terminal)
+    previous_handlers = {}
+    pid = None
+    gate_read, gate_write = os.pipe()
+
+    def foreground(group):
+        previous = signal.signal(signal.SIGTTOU, signal.SIG_IGN)
+        try:
+            os.tcsetpgrp(terminal, group)
+        finally:
+            signal.signal(signal.SIGTTOU, previous)
+
+    def send(sig):
+        if pid:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(pid, sig)
+
+    cancelled = None
+    stop_at = None
+
+    def interrupted(sig, frame):
+        nonlocal cancelled, stop_at
+        cancelled = sig
+        send(sig)
+        stop_at = time.monotonic() + 3
+
+    try:
+        pid = os.fork()
+        if pid == 0:
+            try:
+                os.close(gate_write)
+                os.setpgid(0, 0)
+                os.set_inheritable(lock_fd, True)
+                os.read(gate_read, 1)  # Parent assigns the foreground before exec.
+                os.close(gate_read)
+                os.close(terminal)
+                os.execve(command, [command, '--log-file', str(log), *args], env)
+            except OSError:
+                os._exit(127)
+        os.close(gate_read)
+        gate_read = None
+        os.setpgid(pid, pid)
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            previous_handlers[sig] = signal.signal(sig, interrupted)
+        foreground(pid)
+        os.write(gate_write, b'1')
+        os.close(gate_write)
+        gate_write = None
+        watcher = LogWatcher(log)
+        quota = None
+        while True:
+            found = watcher.check()
+            if found and not quota and not cancelled:
+                quota = found
+                send(signal.SIGTERM)
+                stop_at = time.monotonic() + 3
+            if stop_at and time.monotonic() >= stop_at:
+                send(signal.SIGKILL)
+            waited, status = os.waitpid(pid, os.WNOHANG | os.WUNTRACED)
+            if waited:
+                if os.WIFSTOPPED(status):
+                    # Preserve normal shell job control for Ctrl+Z / fg.
+                    foreground(previous_group)
+                    os.kill(os.getpid(), signal.SIGSTOP)
+                    foreground(pid)
+                    send(signal.SIGCONT)
+                else:
+                    quota = quota or (None if cancelled else watcher.check(drain=True))
+                    code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else 128 + os.WTERMSIG(status)
+                    return (128 + cancelled if cancelled else code), quota
+            time.sleep(0.1)
+    finally:
+        send(signal.SIGTERM)
+        send(signal.SIGCONT)
+        if pid:
+            deadline = time.monotonic() + 3
+            while True:
+                try:
+                    waited, _ = os.waitpid(pid, os.WNOHANG)
+                except ChildProcessError:
+                    break
+                if waited:
+                    break
+                if time.monotonic() >= deadline:
+                    send(signal.SIGKILL)
+                    with contextlib.suppress(ChildProcessError):
+                        os.waitpid(pid, 0)
+                    break
+                time.sleep(0.05)
+        with contextlib.suppress(OSError):
+            foreground(previous_group)
+            termios.tcsetattr(terminal, termios.TCSADRAIN, original)
+        for sig, handler in previous_handlers.items():
+            signal.signal(sig, handler)
+        for fd in (gate_read, gate_write, terminal):
+            if fd is not None:
+                with contextlib.suppress(OSError):
+                    os.close(fd)
+
+
 def run_agy(command: str, args: list[str], profile_home: Path, log: Path, lock_fd: int, vscode: bool = False) -> tuple[int, str | None]:
     env = child_environment(profile_home)
     if vscode:
@@ -172,6 +278,14 @@ def run_agy(command: str, args: list[str], profile_home: Path, log: Path, lock_f
             env['XDG_RUNTIME_DIR'] = str(runtime)
             env.pop('GNOME_KEYRING_CONTROL', None)
     interactive = sys.stdin.isatty() and sys.stdout.isatty()
+    if interactive and not vscode:
+        try:
+            with open('/dev/tty', 'rb') as terminal:
+                owns_terminal = os.tcgetpgrp(terminal.fileno()) == os.getpgrp()
+        except OSError:
+            owns_terminal = False
+        if owns_terminal:
+            return run_foreground_agy(command, args, env, log, lock_fd)
     master = None
     old_terminal = termios.tcgetattr(0) if interactive else None
     proc = None
@@ -303,13 +417,20 @@ i decyzji użytkownika. Ostatnie polecenie nie jest automatycznie ponawiane.
 """
 
 
-def seed_profile(profile_home: Path, account: dict) -> None:
+def seed_profile(profile_home: Path, account: dict, real_home: Path | None = None) -> None:
     token_path = profile_home / TOKEN_REL
     if not token_path.exists():
         # Each account has its own permanent home; never overwrite tokens
         # refreshed by AGY, and never associate another account with this home.
         private_dir(token_path.parent.parent)
         save_json(token_path, account["token"])
+    if real_home:
+        user_hooks = real_home / ".gemini/config/hooks.json"
+        profile_hooks = profile_home / ".gemini/config/hooks.json"
+        if user_hooks.is_file() and not profile_hooks.exists():
+            private_dir(profile_hooks.parent)
+            with contextlib.suppress(OSError):
+                profile_hooks.symlink_to(user_hooks)
 
 
 def prepare_vscode(profile: Path, profile_home: Path, account: dict) -> tuple[list[str], Path, int]:
@@ -393,7 +514,7 @@ def main(args: list[str] | None = None) -> int:
         account_hash = hashlib.sha256(account_id.encode()).hexdigest()[:24]
         profile_home = profile / "accounts" / account_hash / "home"
         private_dir(profile_home)
-        seed_profile(profile_home, account)
+        seed_profile(profile_home, account, real_home=real_home)
         if vscode:
             args, workspace, port = prepare_vscode(profile, profile_home, account)
             print(f'VS Code: Plik → Otwórz obszar roboczy z pliku: {workspace}', flush=True)

@@ -34,6 +34,12 @@ jeśli chcesz kontynuować ostatnią rozmowę. Profil jest przypisany do hosta;
 historia rozmów nie jest automatycznie przesyłana pomiędzy hostami.
 Jednocześnie może działać jedna sesja agylb na katalog pracy.
 
+W zwykłym terminalu, także w Herdr, `agylb` oddaje istniejący terminal
+bezpośrednio procesowi `agy`. Dzięki temu system widzi Antigravity jako
+aktywny proces; nakładka nadal obserwuje limity i obsługuje zmianę konta.
+Uruchom `agylb` w panelu na właściwym hoście. Typ agenta w Herdr to `agy`.
+Już uruchomioną sesję trzeba zakończyć i uruchomić ponownie po aktualizacji.
+
 Program uruchamia AGY z osobnym `HOME`. Dzięki temu nie zmienia logowania,
 historii ani uprawnień zwykłego `agy` i agybridge. Nowy profil ma własne
 ustawienia AGY; ustawienia powłoki i narzędzi odczytywane z `HOME` też

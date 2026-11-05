@@ -1,6 +1,7 @@
 """Behaviour tests: private fake homes/accounts, never the operator's login."""
 
 import importlib.util
+import contextlib
 import hashlib
 import json
 import os
@@ -115,7 +116,18 @@ elif mode == 'rate':
 elif mode == 'hang':
     Path(os.environ['PID_FILE']).write_text(str(os.getpid()))
     time.sleep(30)
+elif mode == 'orphan':
+    child = os.fork()
+    if child == 0:
+        time.sleep(30)
+        os._exit(0)
+    Path(os.environ['PID_FILE']).write_text(str(child))
+    print('ORPHAN_READY', flush=True)
+    time.sleep(.2)
 elif mode == 'tty':
+    if os.environ.get('TERMINAL_TRACE'):
+        assert os.ttyname(0) == os.environ['EXPECTED_TERMINAL']
+        Path(os.environ['TERMINAL_TRACE']).write_text(json.dumps({{'tty': os.ttyname(0), 'pid': os.getpid(), 'pgrp': os.getpgrp(), 'foreground': os.tcgetpgrp(0)}}))
     print('TTY_READY', flush=True)
     print('ANSWER:' + input(), flush=True)
 else:
@@ -393,6 +405,79 @@ else:
         code, output = self.run_terminal('tty', b'TTY_READY', b'hello\n')
         self.assertEqual(code, 0, output)
         self.assertIn('ANSWER:hello', output)
+
+    def run_controlling_terminal(self, mode, until, answer):
+        trace = self.root / 'terminal-trace.json'
+        pid, master = pty.fork()
+        if pid == 0:
+            os.chdir(self.work)
+            os.execve(sys.executable, [sys.executable, str(SCRIPT)],
+                      {**self.env, 'STUB_MODE': mode, 'TERMINAL_TRACE': str(trace), 'EXPECTED_TERMINAL': os.ttyname(0)})
+        output = b''
+        status = None
+        sent = False
+        try:
+            deadline = time.monotonic() + 12
+            while time.monotonic() < deadline:
+                if select.select([master], [], [], .1)[0]:
+                    try:
+                        output += os.read(master, 65536)
+                    except OSError:
+                        pass
+                if until in output and not sent:
+                    if trace.exists():
+                        observed = json.loads(trace.read_text())
+                        self.assertEqual(observed['foreground'], observed['pgrp'])
+                        self.assertEqual(os.tcgetpgrp(master), observed['pid'])
+                    os.write(master, answer)
+                    sent = True
+                waited, current = os.waitpid(pid, os.WNOHANG)
+                if waited:
+                    status = current
+                    break
+            self.assertIsNotNone(status, output.decode(errors='replace'))
+            self.assertTrue(sent, output.decode(errors='replace'))
+            return os.waitstatus_to_exitcode(status), output.decode(errors='replace')
+        finally:
+            if status is None:
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(pid, signal.SIGTERM)
+                os.waitpid(pid, 0)
+            os.close(master)
+
+    def test_controlling_terminal_exposes_agy_as_foreground_process(self):
+        code, output = self.run_controlling_terminal('tty', b'TTY_READY', b'hello\n')
+        self.assertEqual(code, 0, output)
+        self.assertIn('ANSWER:hello', output)
+
+    def test_controlling_terminal_ctrl_c_exits_without_quota_rotation(self):
+        code, output = self.run_controlling_terminal('tty', b'TTY_READY', b'\x03')
+        self.assertEqual(code, 130, output)
+        self.assertFalse(self.pool.spent)
+
+    def test_controlling_terminal_quota_restores_prompt_and_rotates_only_after_consent(self):
+        code, output = self.run_controlling_terminal('quota', b'[t/N]', b't\n')
+        self.assertEqual(code, 0, output)
+        self.assertIn('OK:account-b', output)
+
+    def test_controlling_terminal_cleans_children_that_outlive_agy(self):
+        pid_file = self.root / 'orphan.pid'
+        self.env['PID_FILE'] = str(pid_file)
+        try:
+            code, output = self.run_controlling_terminal('orphan', b'ORPHAN_READY', b'')
+            self.assertEqual(code, 0, output)
+            # A surviving child keeps the inherited profile lock and fails this run.
+            deadline = time.monotonic() + 3
+            while True:
+                result = self.run_cli()
+                if result.returncode == 0 or time.monotonic() >= deadline:
+                    break
+                time.sleep(.05)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        finally:
+            if pid_file.exists():
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(int(pid_file.read_text()), signal.SIGKILL)
 
     def test_interactive_rotation_asks_then_starts_a_fresh_conversation(self):
         code, output = self.run_terminal('quota', b'[t/N]', b't\n')
