@@ -730,3 +730,30 @@ describe('AGY catalog invalidation metadata', () => {
     assert.equal(store.catalogAccounts()[0].enabled, false);
   });
 });
+
+describe('Google ban handling', () => {
+  it('classifies a Terms of Service ban as access_denied so routing rotates and skips the account', async () => {
+    const { classifyAgyFailure } = await import('../src/agy-failures.js');
+    const msg = 'AGY exited with status 3: This service has been disabled in this account for violation of Terms of Service. {"short_error":"PERMISSION_DENIED"}';
+    const out = classifyAgyFailure(500, JSON.stringify({ error: { message: msg } }));
+    assert.equal(out.reason, 'access_denied');
+    assert.equal(classifyAgyFailure(429, JSON.stringify({ error: { message: 'AGY quota exhausted' } })).reason, 'quota');
+  });
+
+  it('the Test button marks a banned account for review but leaves ordinary failures alone', async () => {
+    const { testAgyAccount } = await import('../src/agy-gateway.js');
+    const answer = text => http.createServer((_q, r) => { r.writeHead(200); r.end(`data: ${JSON.stringify({ error: { message: text } })}\n\n`); });
+    const run = async text => {
+      const server = answer(text);
+      await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+      const marked = [];
+      const store = { list: () => [{ id: 'a', enabled: true, quotaUntil: null }], markFailure: (id, reason) => marked.push([id, reason]) };
+      const pool = { acquire: async () => ({ port: server.address().port, token: 't', release() {} }) };
+      try { await testAgyAccount({ store, pool, catalog: { list: async () => [{ id: 'gemini-x-low' }] }, id: 'a', timeoutMs: 2000 }); }
+      finally { await new Promise(resolve => server.close(resolve)); }
+      return marked;
+    };
+    assert.equal(JSON.stringify(await run('disabled for violation of Terms of Service (PERMISSION_DENIED)')), '[["a","access_denied"]]');
+    assert.equal((await run('something else broke')).length, 0);
+  });
+});

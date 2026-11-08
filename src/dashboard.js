@@ -6770,10 +6770,12 @@ ${SHARED_HELPERS}
   // Mirrors AgyAccounts.pick(): pinned first, else the available account whose quota resets soonest, then list order.
   // shortcut: ignores per-model quota and live busy counts the server uses, upgrade if the hint misleads.
   function agyNextAccount(list) {
-    var pinned = list.find(function (a) { return a.pinned && agyAvailable(a); });
+    var pinned = list.find(function (a) { return a.pinned && agyAvailable(a) && !agyBlocks(a).length; });
     if (pinned) return pinned.id;
     var best = null, bestReset = Infinity;
-    list.forEach(function (a) {
+    // Prefer accounts with no active per-model block; use blocked ones only when nothing else is left.
+    var clean = list.filter(function (a) { return agyAvailable(a) && !agyBlocks(a).length; });
+    (clean.length ? clean : list).forEach(function (a) {
       if (!agyAvailable(a)) return;
       var reset = Math.min.apply(null, (a.usage && a.usage.models || []).map(function (m) { return Number(m.resetAt); }).filter(isFinite).concat([Infinity]));
       if (!best || reset < bestReset) { best = a; bestReset = reset; }
@@ -6784,15 +6786,27 @@ ${SHARED_HELPERS}
   function agyPoolSummary(list) {
     var stats = {};
     list.forEach(function (a) {
-      if (!a.enabled) return;
+      if (!agyAvailable(a)) return; // banned, unverified, logged out or spent accounts have no usable quota
       agyQuotaItems(a).forEach(function (m) {
-        var st = stats[m.label] || (stats[m.label] = { label: m.label, total: 0, free: 0, reset: Infinity });
+        var st = stats[m.label] || (stats[m.label] = { label: m.label, total: 0, free: 0, reset: Infinity, seen: {}, blocked: false });
         st.total++;
+        st.seen[a.id] = true;
+        if (m.src === 'block') st.blocked = true;
         if (m.remaining > 0) st.free++;
         else {
           var r = parseTs(m.resetAt);
           if (!isNaN(r) && r > Date.now() && r < st.reset) st.reset = r;
         }
+      });
+    });
+    // A block names one model; accounts that list it in their catalog and are not blocked still have quota.
+    Object.keys(stats).forEach(function (k) {
+      var st = stats[k];
+      if (!st.blocked) return;
+      list.forEach(function (a) {
+        if (!agyAvailable(a) || st.seen[a.id] || !(a.modelCatalog && (a.modelCatalog.models || []).indexOf(k) >= 0)) return;
+        st.total++;
+        st.free++;
       });
     });
     var rows = Object.keys(stats).map(function (k) { return stats[k]; })
@@ -6836,6 +6850,9 @@ ${SHARED_HELPERS}
   }
   // Remaining quota per model: station reports (a.usage) merged with the
   // account check (diagnostics quotaSummary); the newer reading wins per label.
+  function agyBlocks(a) {
+    return Object.keys(a.modelQuotas || {}).filter(function (k) { return a.modelQuotas[k] > Date.now(); });
+  }
   function agyQuotaItems(a) {
     var byLabel = {};
     function put(label, remaining, resetAt, at, src) {
@@ -6847,6 +6864,9 @@ ${SHARED_HELPERS}
     if (u && u.models) u.models.forEach(function (m) { put(m.label, m.remaining, m.resetAt, u.updatedAt || 0, 'station'); });
     var q = a.diagnostics && a.diagnostics.telemetry && a.diagnostics.telemetry.quotaSummary;
     if (q && q.data) q.data.forEach(function (m) { put(m.displayName || m.id, m.remainingFraction, m.resetAt, q.observedAt || 0, 'check'); });
+    // Per-model blocks (Google rejected the model) are 0% left until they expire, even when
+    // the account-wide windows above still show room. Added last so they always win.
+    agyBlocks(a).forEach(function (k) { byLabel[k] = { label: k, remaining: 0, resetAt: a.modelQuotas[k], at: 0, src: 'block' }; });
     return Object.keys(byLabel).map(function (k) { return byLabel[k]; })
       .sort(function (x, y) { return x.remaining - y.remaining || x.label.localeCompare(y.label); });
   }
@@ -6864,6 +6884,11 @@ ${SHARED_HELPERS}
   function agyUsageBlock(a) {
     var wrap = document.createElement('div');
     wrap.className = 'agy-usage';
+    if (a.enabled && (agyDiagnosticRestricted(a) || (a.health && a.health.requiresReview))) {
+      // Old readings would show a healthy 100% for an account Google has blocked.
+      wrap.appendChild(el('div', 'agy-state-line spent', agyT('Konto zablokowane lub wymaga działania w Google — limity nie mają znaczenia.', 'Account blocked or needs action at Google — quota does not matter.')));
+      return wrap;
+    }
     var items = agyQuotaItems(a);
     var note = document.createElement('div');
     note.className = 'agy-usage-note';
@@ -6872,11 +6897,13 @@ ${SHARED_HELPERS}
       wrap.appendChild(note);
       return wrap;
     }
-    var newest = Math.max.apply(null, items.map(function (m) { return m.at; }));
-    var age = Date.now() - newest;
-    note.textContent = agyT('Limity sprzed ', 'Quota from ') + agyLeft(age) + agyT('', ' ago') + (age > 30 * 60000 ? agyT(' (mogą być nieaktualne)', ' (may be stale)') : '');
-    wrap.appendChild(note);
-    if (age > 30 * 60000) wrap.style.opacity = '0.55'; // stale readings look stale
+    var reported = items.filter(function (m) { return m.src !== 'block'; });
+    var age = reported.length ? Date.now() - Math.max.apply(null, reported.map(function (m) { return m.at; })) : 0;
+    if (reported.length) {
+      note.textContent = agyT('Limity sprzed ', 'Quota from ') + agyLeft(age) + agyT('', ' ago') + (age > 30 * 60000 ? agyT(' (mogą być nieaktualne)', ' (may be stale)') : '');
+      wrap.appendChild(note);
+    }
+    if (reported.length && age > 30 * 60000) wrap.style.opacity = '0.55'; // stale readings look stale
     items.slice(0, 3).forEach(function (m) { wrap.appendChild(agyQuotaRow(m)); });
     if (items.length > 3) {
       var more = el('details', 'agy-state-line');

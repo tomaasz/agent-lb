@@ -116,12 +116,25 @@ test('AGY next-account hint follows pin, then soonest reset; sort puts unusable 
  const html=renderDashboardHtml();
  const a=html.indexOf('var agyQuotaSort');
  const code=html.slice(a,html.indexOf('function agyPoolSummary(',a));
- const ctx={agyAvailable:x=>!!x.enabled&&!x.bad,agyQuotaItems:x=>x.items||[]};
+ const ctx={agyAvailable:x=>!!x.enabled&&!x.bad,agyQuotaItems:x=>x.items||[],agyBlocks:x=>x.blocks||[]};
  vm.runInNewContext(code,ctx);
  const acc=[{id:'a',enabled:true,usage:{models:[{resetAt:300}]}},{id:'b',enabled:true,usage:{models:[{resetAt:100}]}},{id:'c',enabled:true,bad:true}];
  assert.equal(ctx.agyNextAccount(acc),'b');
  assert.equal(ctx.agyNextAccount([{...acc[0],pinned:true},acc[1]]),'a');
  assert.equal(ctx.agyNextAccount([acc[2]]),null);
+ assert.equal(ctx.agyNextAccount([{...acc[1],blocks:['m']},acc[0]]),'a'); // model-blocked account is skipped
+ assert.equal(ctx.agyNextAccount([{...acc[1],blocks:['m']}]),'b'); // ...unless nothing else is left
  assert.equal(ctx.agyAvgRemaining(acc[2]),-2);
  assert.equal(ctx.agyAvgRemaining({enabled:true,items:[{remaining:1},{remaining:0.5}]}),0.75);
+});
+
+test('per-model blocks show as 0% left and are listed first', () => {
+ const html=renderDashboardHtml();
+ const a=html.indexOf('function agyBlocks('), b=html.indexOf('function agyQuotaRow(',a);
+ const ctx={agyT:pl=>pl,Date};
+ vm.runInNewContext(html.slice(a,b),ctx);
+ const until=Date.now()+3600_000;
+ const items=ctx.agyQuotaItems({usage:{updatedAt:5,models:[{label:'Weekly',remaining:1,resetAt:null}]},modelQuotas:{'gemini-3.8-flash-high':until,old:1}});
+ assert.equal(JSON.stringify(items.map(i=>[i.label,i.remaining,i.src])),JSON.stringify([['gemini-3.8-flash-high',0,'block'],['Weekly',1,'station']]));
+ assert.equal(items[0].resetAt,until);
 });
