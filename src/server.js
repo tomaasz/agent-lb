@@ -341,7 +341,9 @@ export function createProxyServer(
       store: agyStore, pool: agyPool, run: createAgyModelsRunner(config),
     });
     if (!agyChecks) {
-      agyChecks = new AgyCheckScheduler({ store: agyStore });
+      // Quota bars on the dashboard go stale after ~30 min, so re-check every 15 min by default.
+      const checkEvery = Number(config.agy?.checkIntervalMs);
+      agyChecks = new AgyCheckScheduler({ store: agyStore, ...(checkEvery > 0 ? { intervalMs: checkEvery } : { intervalMs: 15 * 60_000 }) });
       if (config.agy?.checksEnabled !== false) agyChecks.start();
     }
     return { store: agyStore, pool: agyPool, catalog: agyModelCatalog };

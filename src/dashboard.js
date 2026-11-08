@@ -6867,6 +6867,7 @@ ${SHARED_HELPERS}
     var age = Date.now() - newest;
     note.textContent = agyT('Limity sprzed ', 'Quota from ') + agyLeft(age) + agyT('', ' ago') + (age > 30 * 60000 ? agyT(' (mogą być nieaktualne)', ' (may be stale)') : '');
     wrap.appendChild(note);
+    if (age > 30 * 60000) wrap.style.opacity = '0.55'; // stale readings look stale
     items.slice(0, 3).forEach(function (m) { wrap.appendChild(agyQuotaRow(m)); });
     if (items.length > 3) {
       var more = el('details', 'agy-state-line');
