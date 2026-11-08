@@ -257,6 +257,15 @@ export class AgyAccountStore {
       const routingStatus = result.status === 'available' || restrictions.includes(result.status)
         ? result.status : previous?.routingStatus || previous?.status || result.status;
       a.diagnostics = { ...result, routingStatus, telemetry };
+      // A station blocks the whole account from one error; a later check showing every
+      // window with quota left proves the block is stale. Any empty window keeps it.
+      const summary = result.telemetry?.quotaSummary;
+      if (a.quotaUntil > this.now() && Array.isArray(summary?.data) && summary.data.length
+        && summary.data.every(m => m.remainingFraction > 0) && summary.observedAt > (a.quotaSetAt || 0)) {
+        a.quotaUntil = null;
+        a.quotaSetAt = null;
+        a.quotaMessage = null;
+      }
       a.nextCheckAt = result.nextCheckAt || null;
       a.failures = result.failures || 0;
       if (previous?.status !== result.status) {
@@ -353,7 +362,7 @@ export class AgyAccountStore {
       if (sub && previousSub && sub !== previousSub) throw new Error('AGY account subject mismatch');
       existing.token = data;
       existing.email = email;
-      existing.quotaUntil = null;
+      existing.quotaUntil = null; existing.quotaSetAt = null;
       existing.quotaMessage = null;
       existing.health = null;
       existing.modelQuotas = {};
@@ -422,6 +431,7 @@ export class AgyAccountStore {
     const a = this._find(id);
     if (!a) return false;
     a.quotaUntil = null;
+    a.quotaSetAt = null;
     a.quotaMessage = null;
     a.modelQuotas = {};
     this._save();
@@ -440,6 +450,7 @@ export class AgyAccountStore {
       return true;
     }
     a.quotaUntil = until;
+    a.quotaSetAt = this.now();
     a.quotaMessage = typeof message === 'string' ? message.slice(0, 300) : null;
     this._save();
     return true;

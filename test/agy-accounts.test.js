@@ -63,6 +63,24 @@ describe('AGY account store', () => {
     assert.throws(() => parseAgyToken({ token: { refresh_token: 'x' }, id_token: 'bad' }), /e-mail/);
   });
 
+  it('a check showing quota in every window lifts a stale account-wide station block', () => {
+    const store = new AgyAccountStore(path.join(tmpDir(), 'agy.json'));
+    const { id } = store.upsert(JSON.stringify(agyToken('s@example.com', 'sub-s')));
+    const apply = (at, fractions) => store.applyDiagnostics(id, store.snapshot(id).version, {
+      status: 'available', checkedAt: at,
+      telemetry: { quotaSummary: { observedAt: at, data: fractions.map((f, i) => ({ id: `w${i}`, remainingFraction: f, resetAt: null })) } },
+    });
+    const blocked = () => store.list().find(a => a.id === id).quotaUntil;
+    store.markQuota(id, 3600, 'AGY quota exhausted');
+    assert.ok(blocked());
+    apply(Date.now() - 3600_000, [1, 1]); // older than the block: ignored
+    assert.ok(blocked());
+    apply(Date.now() + 1000, [1, 0]); // one window empty: block stays
+    assert.ok(blocked());
+    apply(Date.now() + 2000, [1, 0.4]);
+    assert.equal(blocked(), null);
+  });
+
   it('stores per-model usage reported by a station, keeping the most spent duplicate', () => {
     const store = new AgyAccountStore(path.join(tmpDir(), 'agy.json'));
     store.upsert(agyToken('a@example.com'));
