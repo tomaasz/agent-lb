@@ -131,3 +131,17 @@ test('safe links accept only exact Google HTTPS hosts without credentials, ports
   assert.equal(safeAgyLink('https://support.google.com/appeal', true), 'https://support.google.com/appeal');
   for (const link of ['https://support.google.com/appeal', 'https://accounts.google.com.evil.test/', 'https://evil.test/', 'http://accounts.google.com/', 'https://user@accounts.google.com/', 'https://accounts.google.com:444/', 'https://accounts.google.com/\n', 'https://accounts.google.com\\@evil.test/']) assert.equal(safeAgyLink(link), null);
 });
+
+test('a missing remainingFraction with a future reset time means 0%, not unknown', async () => {
+  const data = { models: {
+    'gemini-spent': { displayName: 'Gemini', quotaInfo: { resetTime: '2026-10-23T13:00:00Z' } },
+    'gemini-past': { displayName: 'Gemini', quotaInfo: { resetTime: '2026-10-23T11:00:00Z' } },
+    'gemini-none': { displayName: 'Gemini', quotaInfo: {} },
+    'gemini-bad': { displayName: 'Gemini', quotaInfo: { remainingFraction: 'x', resetTime: '2026-10-23T13:00:00Z' } },
+  } };
+  const { probe } = harness([{ data: {} }, { data }, { data: { groups: [{ buckets: [{ bucketId: 'weekly', resetTime: '2026-10-23T13:00:00Z' }] }] } }]);
+  const result = await probe();
+  const byId = Object.fromEntries(result.telemetry.models.data.map(m => [m.id, m.remainingFraction]));
+  assert.deepEqual(byId, { 'gemini-spent': 0, 'gemini-past': null, 'gemini-none': null, 'gemini-bad': null });
+  assert.equal(result.telemetry.quotaSummary.data[0].remainingFraction, 0);
+});

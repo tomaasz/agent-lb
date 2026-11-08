@@ -47,19 +47,27 @@ function planOf(data) {
   return { paidTierId, currentTierId, tierId, label: ({ 'free-tier': 'free', 'g1-pro-tier': 'pro', 'g1-ultra-tier': 'ultra' })[tierId] || 'unknown', projectId, usesGcpTos, credits };
 }
 
-const quotaItem = (id, data) => ({ id, displayName: displayName(data.displayName), remainingFraction: fraction(data.remainingFraction), resetAt: timestamp(data.resetTime) });
-function modelsOf(data) {
-  return Object.entries(data.models).filter(([id, model]) => identifier(id) && /gemini|claude/i.test(id) && object(model)).slice(0, 100)
-    .map(([id, model]) => quotaItem(id, { ...(object(model.quotaInfo) ? model.quotaInfo : {}), displayName: model.displayName }));
+// Google leaves remainingFraction out when it is 0 (proto3 JSON drops default values), so a
+// missing fraction next to a future reset time means "nothing left". Invalid values stay unknown.
+function remaining(data, now) {
+  const value = fraction(data.remainingFraction);
+  if (value !== null || data.remainingFraction !== undefined) return value;
+  const resetAt = timestamp(data.resetTime);
+  return resetAt !== null && resetAt > now ? 0 : null;
 }
-function summaryOf(data) {
+const quotaItem = (id, data, now) => ({ id, displayName: displayName(data.displayName), remainingFraction: remaining(data, now), resetAt: timestamp(data.resetTime) });
+function modelsOf(data, now) {
+  return Object.entries(data.models).filter(([id, model]) => identifier(id) && /gemini|claude/i.test(id) && object(model)).slice(0, 100)
+    .map(([id, model]) => quotaItem(id, { ...(object(model.quotaInfo) ? model.quotaInfo : {}), displayName: model.displayName }, now));
+}
+function summaryOf(data, now) {
   if (!Array.isArray(data.groups) || data.groups.length > 100) return null;
   const normalized = [];
   for (const group of data.groups) {
     if (!object(group) || !Array.isArray(group.buckets)) return null;
     for (const bucket of group.buckets) {
-      if (!object(bucket) || !identifier(bucket.bucketId) || fraction(bucket.remainingFraction) === null || normalized.length >= 100) return null;
-      normalized.push(quotaItem(bucket.bucketId, bucket));
+      if (!object(bucket) || !identifier(bucket.bucketId) || remaining(bucket, now) === null || normalized.length >= 100) return null;
+      normalized.push(quotaItem(bucket.bucketId, bucket, now));
     }
   }
   return normalized;
@@ -195,12 +203,12 @@ export async function probeAgyAccount(rawToken, {
     }
     const modelsStatus = response.status;
     record(stage, { status: 'available', reason: 'access_available' }, modelsStatus);
-    observe('models', modelsOf(response.data));
+    observe('models', modelsOf(response.data, now()));
     stage = 'quotaSummary';
     try {
       response = await post(api + 'retrieveUserQuotaSummary', payload, accessToken);
       if (response.status >= 200 && response.status < 300) {
-        const summary = summaryOf(response.data);
+        const summary = summaryOf(response.data, now());
         if (summary === null) record(stage, { status: 'error', reason: 'invalid_quota_summary_response' }, response.status);
         else { record(stage, { status: 'available', reason: 'quota_summary_available' }, response.status); observe(stage, summary); }
       } else {
