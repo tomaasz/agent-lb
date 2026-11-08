@@ -427,7 +427,28 @@ export function problems(status) {
   return out;
 }
 
+export function stationCanUseAgylb(station, now = Date.now()) {
+  return !!station && station.allowCredentialRelay === true &&
+    !station.allowedModels?.length && !station.allowedProviders?.length &&
+    !station.maxDailyTokens && !station.maxMonthlyTokens &&
+    (!station.expiresAt || Date.parse(station.expiresAt) > now);
+}
+
+// Commands contain no credential; the shell reads it directly from the user.
+export function workstationSetupCommand(origin, script, platform = 'bash', withAgylb = false) {
+  function quote(value) { return "'" + value.replace(/'/g, "'\\''") + "'"; }
+  if (platform === 'ps') {
+    function psQuote(value) { return "'" + value.replace(/'/g, "''") + "'"; }
+    return '& { $previousKey = $env:AGENT_LB_API_KEY; try { $secret = Read-Host "Klucz stacji" -AsSecureString; $env:AGENT_LB_API_KEY = [System.Net.NetworkCredential]::new("", $secret).Password; & ([scriptblock]::Create((irm ' + psQuote(origin + script) + '))) -Url ' + psQuote(origin) + ' } finally { $env:AGENT_LB_API_KEY = $previousKey } }';
+  }
+  var runner = platform === 'node' ? 'node -' : 'bash -s --';
+  var inner = 'set -o pipefail; read -rsp "Klucz stacji: " AGENT_LB_API_KEY < /dev/tty || exit 1; printf "\\n"; export AGENT_LB_API_KEY; curl -fsSL ' + quote(origin + script) + ' | ' + runner + ' --url ' + quote(origin) + (withAgylb ? ' --with-agylb' : '');
+  return 'bash -c ' + quote(inner);
+}
+
 const SHARED_HELPERS = [
+  stationCanUseAgylb,
+  workstationSetupCommand,
   scopedWeeklyRows,
   accountTokens,
   sessionRows,
@@ -673,6 +694,7 @@ const PAGE = `<!doctype html>
   /* Main navigation tab bar */
   .main-nav-tabs {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     border-bottom: 1px solid var(--line);
@@ -1170,6 +1192,10 @@ const PAGE = `<!doctype html>
         <span data-i18n="tabWorkstationsTitle">Stacje robocze & Narzędzia</span>
         <span class="main-nav-badge" id="tabBadgeWorkstations">0</span>
       </button>
+      <button class="main-nav-tab" id="tabBtnSetup" data-tab="tabSetup" type="button">
+        <span class="main-nav-tab-icon">⚙️</span>
+        <span data-i18n="tabSetupTitle">Konfiguracja stacji</span>
+      </button>
     </nav>
 
     <!-- TAB 1: KONTA & FLOTA -->
@@ -1349,9 +1375,9 @@ const PAGE = `<!doctype html>
           <div style="display:flex; align-items:center; justify-content:space-between; margin-top:6px; font-size:11px; color:var(--dim); flex-wrap:wrap; gap:6px;">
             <div style="display:flex; align-items:center; gap:12px;">
               <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; color:var(--text);" title="Odznacz, jeśli chcesz uruchomić czystą komendę — instalator sam zapyta o wklejenie klucza">
-                <input type="checkbox" id="chkIncludeKeyInCmd" checked style="margin:0; cursor:pointer;"> <span data-i18n="includeKey">Dołącz klucz stacji</span>
+                <input type="checkbox" id="chkIncludeKeyInCmd" style="margin:0; cursor:pointer;"> <span data-i18n="includeKey">Dołącz klucz stacji</span>
               </label>
-              <span style="color:var(--dim); font-size:11px;">⚡ <b>All-in-One:</b> Claude Code + Codex + OpenCode / Hermes / Aider</span>
+              <span style="color:var(--dim); font-size:11px;">Claude Code + Codex; pozostałe narzędzia konfiguruj osobno.</span>
             </div>
             <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent); text-decoration:none; font-size:11px;" data-i18n="githubGuide">instrukcja GitHub ↗</a>
           </div>
@@ -1365,7 +1391,7 @@ const PAGE = `<!doctype html>
               <button class="btn btn-xs" id="btnQuickToolOpenCode" type="button" style="padding:2px 8px; font-size:11px;" title="OpenCode">OpenCode</button>
               <button class="btn btn-xs" id="btnQuickToolClaw" type="button" style="padding:2px 8px; font-size:11px;" title="Claw / OpenClaw">Claw</button>
               <button class="btn btn-xs" id="btnQuickToolOrca" type="button" style="padding:2px 8px; font-size:11px;" title="Orca ADE">Orca</button>
-              <button class="btn btn-xs" id="btnQuickToolAgy" type="button" style="padding:2px 8px; font-size:11px;" title="AGY / Antigravity lokalnie przez agybridge (Hermes, OpenCode, OpenClaw, Claude MCP) — Linux / macOS / WSL">AGY</button>
+              <button class="btn btn-xs" id="btnQuickToolAgy" type="button" style="padding:2px 8px; font-size:11px;" title="Interaktywne AGY ze wspólną pulą Google — Linux / macOS / WSL">agylb</button>
               <button class="btn btn-xs" id="btnQuickToolAgent" type="button" style="padding:2px 8px; font-size:11px;" title="Zmienne środowiskowe OpenAI / Anthropic">ENV</button>
             </div>
           </details>
@@ -1391,6 +1417,191 @@ const PAGE = `<!doctype html>
         </div>
       </div>
     </div>
+    <!-- TAB 3: KONFIGURACJA STACJI -->
+  <div id="tabSetup" class="tab-pane" style="display:none;">
+    <div class="card" style="max-width:1000px; margin:0 auto; padding:16px 18px;">
+      <div class="row" style="justify-content:space-between; margin-bottom:12px;">
+        <span style="font-weight:600; color:var(--ok); font-size:16px;" data-i18n="modalKeyCreatedTitle">💻 Konfiguracja stacji roboczej</span>
+      </div>
+
+      <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px;">
+        <div class="row" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div style="flex:1; min-width:260px;">
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+              <span style="color:var(--dim); font-size:12px; font-weight:600;" data-i18n="lblStationWorkstation">Stacja robocza:</span>
+              <select id="selModalStation" style="font-size:12.5px; font-weight:600; padding:3px 8px; background:var(--input-bg); border:1px solid var(--line); color:var(--heading); border-radius:5px; cursor:pointer;" title="Wybierz stację roboczą"></select>
+              <b id="createdClientName" style="display:none;"></b>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span style="color:var(--dim); font-size:11px;" data-i18n="lblStationKey">Klucz stacji:</span>
+              <code class="mono" id="createdClientKey" style="font-size:12.5px; word-break:break-all; color:var(--accent); font-weight:600;"></code>
+            </div>
+          </div>
+          <button class="btn btn-sm" id="btnToggleCreatedKey" type="button">Pokaż klucz</button>
+          <button class="btn btn-sm btn-accent" id="btnCopyCreatedKey" data-i18n="btnCopyCreatedKey">📋 Kopiuj klucz</button>
+        </div>
+      </div>
+
+      <section id="setupAgylbPanel" style="border:1px solid var(--accent); border-radius:8px; padding:12px 14px; margin-bottom:16px;">
+        <h3 style="margin:0 0 8px; color:var(--accent);" data-i18n="setupAgylbTitle">agylb — wspólna pula kont Google</h3>
+        <p style="margin:0 0 8px; font-size:12px;" data-i18n="setupAgylbDesc">Modele AGY na Twoich hostach. Po wyczerpaniu limitu agylb wybiera inne konto i pyta o nową rozmowę.</p>
+        <div id="setupAgylbStatus" style="margin-bottom:8px; font-size:12px; color:var(--dim);" role="status"></div>
+        <button class="btn btn-sm" id="btnEnableSetupAgylb" type="button" style="display:none; margin-bottom:10px;" data-i18n="setupAgylbEnable">Włącz dostęp do agylb dla tej stacji</button>
+        <p style="font-size:12px; margin:0 0 8px;" data-i18n="setupAgylbPlatform">Linux / macOS: uruchom w terminalu. Windows: otwórz terminal WSL. Wymagane: agy i Python 3.8+.</p>
+        <code class="mono" id="cmdSetupAgylb" style="display:block; word-break:break-all; padding:10px; background:var(--bg); border-radius:6px; font-size:12px;"></code>
+        <button class="btn btn-sm btn-accent" id="btnCopySetupAgylb" style="margin-top:8px;" data-i18n="setupAgylbCopy">📋 Kopiuj instalację agylb</button>
+        <p style="font-size:12px; margin:10px 0 0;" data-i18n="setupAgylbVscode">VS Code + rozszerzenie Google Antigravity (Linux / WSL): po instalacji uruchom agylb vscode w katalogu projektu. Zostaw terminal otwarty i otwórz wypisany plik agylb.code-workspace w tym samym VS Code (Remote SSH / WSL dla zdalnego hosta).</p>
+        <div style="margin-top:12px; font-size:12px;">
+          <label><input id="chkSetupAgylb" type="checkbox"> <span data-i18n="setupAgylbInclude">Dodaj też agylb do instalatora Claude Code i Codex dla Linux / macOS / WSL poniżej</span></label>
+        </div>
+      </section>
+
+      <div style="margin-bottom:10px;">
+        <div class="tabs-bar" style="margin-bottom:12px;">
+          <button class="tab-btn active" id="tabSetupBash" type="button" data-i18n="tabSetupBash">🐧 Linux / macOS / WSL</button>
+          <button class="tab-btn" id="tabSetupPowershell" type="button" data-i18n="tabSetupPowershell">🪟 Windows (PowerShell)</button>
+        </div>
+
+        <!-- TAB 1: LINUX / MACOS / WSL -->
+        <div id="contentSetupBash">
+          <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupBashAllInOneTitle">🚀 Skonfiguruj Claude Code i Codex:</span>
+              <button class="btn btn-sm btn-accent" id="btnCopySetupBashMain" data-i18n="btnCopyCmd">📋 Kopiuj polecenie</button>
+            </div>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+              <code class="mono" id="cmdSetupBashMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
+            </div>
+            <p style="font-size:12px; color:var(--dim); margin:0 0 10px;">Skopiuj klucz stacji. Polecenie poprosi o jego wklejenie i nie zapisze go w historii.</p>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
+              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
+              <div style="color:var(--dim);">OpenCode, Hermes, Aider, Claw i Orca: osobne instalatory w opcjach poniżej.</div>
+              <div id="setupAgylbIncluded" style="display:none; color:var(--ok);">✔ agylb — pula Google, zapis rozmów i pytanie po wyczerpaniu limitu</div>
+            </div>
+          </div>
+
+          <details style="background:rgba(63,185,80,0.07); border:1px solid rgba(63,185,80,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+            <summary style="cursor:pointer; color:var(--ok); font-weight:600;">Konfiguracja przez agenta AI lub sam jcode</summary>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
+              <span style="font-size:13px; font-weight:700; color:var(--ok);">🤖 Konfiguracja przez agenta AI (Claude Code / Codex + jcode w piaskownicy)</span>
+              <button class="btn btn-sm btn-accent" id="btnCopyAgentPrompt">📋 Kopiuj prompt</button>
+            </div>
+            <div style="font-size:11.5px; color:var(--dim); margin-bottom:8px;">
+              1. W terminalu na hoście wpisz klucz stacji (nie trafi do historii):
+              <code class="mono">read -rsp 'Klucz stacji: ' AGENT_LB_API_KEY &amp;&amp; export AGENT_LB_API_KEY</code><br>
+              2. Z tego samego terminala uruchom agenta (np. <code class="mono">claude</code>) i wklej mu prompt poniżej.
+              Pełna procedura: <a id="lnkAgentPrompt" href="/agent-prompt.md" target="_blank" rel="noopener" style="color:var(--accent);">agent-prompt.md ↗</a>
+            </div>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
+              <pre class="mono" id="cmdAgentPrompt" style="margin:0; font-size:11.5px; color:#e6edf3; white-space:pre-wrap;"></pre>
+            </div>
+            <div style="font-size:11.5px; color:var(--dim); margin-bottom:4px;">Albo sam jcode, bez agenta (Linux / WSL):</div>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+              <code class="mono" id="cmdJcodeSetupBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+            </div>
+            <button class="btn btn-xs btn-accent" id="btnCopyJcodeSetupBash">📋 Kopiuj polecenie jcode</button>
+          </details>
+
+          <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
+            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;" data-i18n="setupAdvancedSummary">
+              ⚙️ Zaawansowane: rozdzielne polecenia, zmienne ENV oraz konfiguracja ręczna
+            </summary>
+            <div style="margin-top:10px; display:flex; flex-direction:column; gap:12px;">
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashClaudeOnly">1. Tylko Claude Code CLI &amp; VS Code:</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <code class="mono" id="cmdSetupBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupBash" data-i18n="btnCopySetupBash">📋 Kopiuj polecenie Claude</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashCodexOnly">2. Tylko OpenAI Codex CLI &amp; VS Code:</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <code class="mono" id="cmdSetupCodexBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexBash" data-i18n="btnCopySetupCodexBash">📋 Kopiuj polecenie Codex</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashAgentOnly">3. Zmienne powłoki (export ENV dla OpenCode / Hermes):</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <pre class="mono" id="cmdSetupAgentBash" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentBash" data-i18n="btnCopySetupAgentBash">📋 Kopiuj zmienne powłoki</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashManualOnly">4. Ręczna konfiguracja JSON / env:</div>
+                <div class="row" style="gap:8px; margin-bottom:6px;">
+                  <button class="btn btn-xs" id="btnCopyShellEnv" data-i18n="btnCopyShellEnv">📋 Kopiuj export ENV</button>
+                  <button class="btn btn-xs" id="btnCopyVSCode" data-i18n="btnCopyVSCode">📋 Kopiuj VS Code JSON</button>
+                </div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px;">
+                  <pre class="mono" id="boxManualConfig" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto;"></pre>
+                </div>
+              </div>
+            </div>
+          </details>
+        </div>
+
+        <!-- TAB 2: WINDOWS (POWERSHELL) -->
+        <div id="contentSetupPowershell" style="display:none;">
+          <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupPowershellAllInOneTitle">🚀 Skonfiguruj Claude Code i Codex w Windows:</span>
+              <button class="btn btn-sm btn-accent" id="btnCopySetupPowershellMain" data-i18n="btnCopyCmd">📋 Kopiuj polecenie</button>
+            </div>
+            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
+              <code class="mono" id="cmdSetupPowershellMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
+              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
+              <div style="color:var(--dim);">Pozostałe narzędzia konfiguruj osobnymi instalatorami.</div>
+              <div style="color:var(--dim);">AGY przez agylb: wybierz kartę Linux / macOS / WSL i uruchom polecenie w WSL.</div>
+            </div>
+          </div>
+
+          <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
+            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;" data-i18n="setupAdvancedPSSummary">
+              ⚙️ Zaawansowane: rozdzielne polecenia Windows i zmienne sesyjne
+            </summary>
+            <div style="margin-top:10px; display:flex; flex-direction:column; gap:12px;">
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSClaudeOnly">1. Tylko Claude Code na Windows (PowerShell):</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <code class="mono" id="cmdSetupPowershell" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupPowershell" data-i18n="btnCopySetupPowershell">📋 Kopiuj polecenie Claude (PS)</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSCodexOnly">2. Tylko OpenAI Codex na Windows (PowerShell):</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <code class="mono" id="cmdSetupCodexPowershell" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexPowershell" data-i18n="btnCopySetupCodexPowershell">📋 Kopiuj polecenie Codex (PS)</button>
+              </div>
+
+              <div>
+                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSAgentOnly">3. Zmienne sesyjne PowerShell:</div>
+                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
+                  <pre class="mono" id="cmdSetupAgentPowershell" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
+                </div>
+                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentPowershell" data-i18n="btnCopySetupAgentPowershell">📋 Kopiuj polecenie PowerShell</button>
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <div class="row" style="justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--line); padding-top:12px;">
+        <span style="font-size:12px; color:var(--dim);"><span data-i18n="lblRepoLink">Repozytorium:</span> <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/agent-lb ↗</a></span>
+      </div>
+    </div>
+  </div>
     <footer id="foot"></footer>
   </div>
 
@@ -1912,176 +2123,7 @@ const PAGE = `<!doctype html>
     </div>
   </div>
 
-  <!-- MODAL: CLIENT KEY SETUP & CONNECT -->
-  <div id="modalKeyCreated" class="modal-backdrop" style="display:none;">
-    <div class="modal-box" style="max-width:700px;">
-      <div class="row" style="justify-content:space-between; margin-bottom:12px;">
-        <span style="font-weight:600; color:var(--ok); font-size:16px;" data-i18n="modalKeyCreatedTitle">💻 Konfiguracja stacji roboczej</span>
-        <button class="btn btn-sm" id="btnCloseKeyModal" data-i18n="btnClose">✕ Zamknij</button>
-      </div>
 
-      <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:14px;">
-        <div class="row" style="justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-          <div style="flex:1; min-width:260px;">
-            <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
-              <span style="color:var(--dim); font-size:12px; font-weight:600;" data-i18n="lblStationWorkstation">Stacja robocza:</span>
-              <select id="selModalStation" style="font-size:12.5px; font-weight:600; padding:3px 8px; background:var(--input-bg); border:1px solid var(--line); color:var(--heading); border-radius:5px; cursor:pointer;" title="Wybierz stację roboczą"></select>
-              <b id="createdClientName" style="display:none;"></b>
-            </div>
-            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <span style="color:var(--dim); font-size:11px;" data-i18n="lblStationKey">Klucz stacji:</span>
-              <code class="mono" id="createdClientKey" style="font-size:12.5px; word-break:break-all; color:var(--accent); font-weight:600;"></code>
-            </div>
-          </div>
-          <button class="btn btn-sm btn-accent" id="btnCopyCreatedKey" data-i18n="btnCopyCreatedKey">📋 Kopiuj klucz</button>
-        </div>
-      </div>
-
-      <div style="margin-bottom:10px;">
-        <div class="tabs-bar" style="margin-bottom:12px;">
-          <button class="tab-btn active" id="tabSetupBash" type="button" data-i18n="tabSetupBash">🐧 Linux / macOS / WSL</button>
-          <button class="tab-btn" id="tabSetupPowershell" type="button" data-i18n="tabSetupPowershell">🪟 Windows (PowerShell)</button>
-        </div>
-
-        <!-- TAB 1: LINUX / MACOS / WSL -->
-        <div id="contentSetupBash">
-          <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupBashAllInOneTitle">🚀 Jedno polecenie konfiguruje całe środowisko (All-in-One):</span>
-              <button class="btn btn-sm btn-accent" id="btnCopySetupBashMain" data-i18n="btnCopyCmd">📋 Kopiuj polecenie</button>
-            </div>
-            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
-              <code class="mono" id="cmdSetupBashMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
-            </div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
-              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
-              <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
-              <div><span style="color:var(--ok); font-weight:600;">✔ OpenCode &amp; Hermes</span> (~/.config/agent-lb.env)</div>
-              <div><span style="color:var(--ok); font-weight:600;">✔ Aider, Claw, Orca</span> (.bashrc / .zshrc)</div>
-            </div>
-          </div>
-
-          <div style="background:rgba(63,185,80,0.07); border:1px solid rgba(63,185,80,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">
-              <span style="font-size:13px; font-weight:700; color:var(--ok);">🤖 Konfiguracja przez agenta AI (Claude Code / Codex + jcode w piaskownicy)</span>
-              <button class="btn btn-sm btn-accent" id="btnCopyAgentPrompt">📋 Kopiuj prompt</button>
-            </div>
-            <div style="font-size:11.5px; color:var(--dim); margin-bottom:8px;">
-              1. W terminalu na hoście wpisz klucz stacji (nie trafi do historii):
-              <code class="mono">read -rsp 'Klucz stacji: ' AGENT_LB_API_KEY &amp;&amp; export AGENT_LB_API_KEY</code><br>
-              2. Z tego samego terminala uruchom agenta (np. <code class="mono">claude</code>) i wklej mu prompt poniżej.
-              Pełna procedura: <a id="lnkAgentPrompt" href="/agent-prompt.md" target="_blank" rel="noopener" style="color:var(--accent);">agent-prompt.md ↗</a>
-            </div>
-            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-              <pre class="mono" id="cmdAgentPrompt" style="margin:0; font-size:11.5px; color:#e6edf3; white-space:pre-wrap;"></pre>
-            </div>
-            <div style="font-size:11.5px; color:var(--dim); margin-bottom:4px;">Albo sam jcode, bez agenta (Linux / WSL):</div>
-            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-              <code class="mono" id="cmdJcodeSetupBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
-            </div>
-            <button class="btn btn-xs btn-accent" id="btnCopyJcodeSetupBash">📋 Kopiuj polecenie jcode</button>
-          </div>
-
-          <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
-            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;" data-i18n="setupAdvancedSummary">
-              ⚙️ Zaawansowane: rozdzielne polecenia, zmienne ENV oraz konfiguracja ręczna
-            </summary>
-            <div style="margin-top:10px; display:flex; flex-direction:column; gap:12px;">
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashClaudeOnly">1. Tylko Claude Code CLI &amp; VS Code:</div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-                  <code class="mono" id="cmdSetupBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
-                </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupBash" data-i18n="btnCopySetupBash">📋 Kopiuj polecenie Claude</button>
-              </div>
-
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashCodexOnly">2. Tylko OpenAI Codex CLI &amp; VS Code:</div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-                  <code class="mono" id="cmdSetupCodexBash" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
-                </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexBash" data-i18n="btnCopySetupCodexBash">📋 Kopiuj polecenie Codex</button>
-              </div>
-
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashAgentOnly">3. Zmienne powłoki (export ENV dla OpenCode / Hermes):</div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-                  <pre class="mono" id="cmdSetupAgentBash" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
-                </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentBash" data-i18n="btnCopySetupAgentBash">📋 Kopiuj zmienne powłoki</button>
-              </div>
-
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblBashManualOnly">4. Ręczna konfiguracja JSON / env:</div>
-                <div class="row" style="gap:8px; margin-bottom:6px;">
-                  <button class="btn btn-xs" id="btnCopyShellEnv" data-i18n="btnCopyShellEnv">📋 Kopiuj export ENV</button>
-                  <button class="btn btn-xs" id="btnCopyVSCode" data-i18n="btnCopyVSCode">📋 Kopiuj VS Code JSON</button>
-                </div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px;">
-                  <pre class="mono" id="boxManualConfig" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto;"></pre>
-                </div>
-              </div>
-            </div>
-          </details>
-        </div>
-
-        <!-- TAB 2: WINDOWS (POWERSHELL) -->
-        <div id="contentSetupPowershell" style="display:none;">
-          <div style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.3); border-radius:8px; padding:12px 14px; margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-              <span style="font-size:13px; font-weight:700; color:#58a6ff;" data-i18n="setupPowershellAllInOneTitle">🚀 Jedno polecenie konfiguruje całe środowisko Windows (All-in-One):</span>
-              <button class="btn btn-sm btn-accent" id="btnCopySetupPowershellMain" data-i18n="btnCopyCmd">📋 Kopiuj polecenie</button>
-            </div>
-            <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:10px;">
-              <code class="mono" id="cmdSetupPowershellMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
-            </div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
-              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
-              <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
-              <div><span style="color:var(--ok); font-weight:600;">✔ Zmienne Windows User</span> (OpenCode, Hermes, Aider)</div>
-              <div><span style="color:var(--ok); font-weight:600;">✔ Trwałe w rejestrze</span> (nie znika po restarcie)</div>
-            </div>
-          </div>
-
-          <details style="border:1px solid var(--line); border-radius:6px; padding:8px 12px; background:rgba(255,255,255,0.01); margin-bottom:6px;">
-            <summary style="cursor:pointer; font-size:12px; font-weight:600; color:var(--dim); user-select:none;" data-i18n="setupAdvancedPSSummary">
-              ⚙️ Zaawansowane: rozdzielne polecenia Windows i zmienne sesyjne
-            </summary>
-            <div style="margin-top:10px; display:flex; flex-direction:column; gap:12px;">
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSClaudeOnly">1. Tylko Claude Code na Windows (PowerShell):</div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-                  <code class="mono" id="cmdSetupPowershell" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
-                </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupPowershell" data-i18n="btnCopySetupPowershell">📋 Kopiuj polecenie Claude (PS)</button>
-              </div>
-
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSCodexOnly">2. Tylko OpenAI Codex na Windows (PowerShell):</div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-                  <code class="mono" id="cmdSetupCodexPowershell" style="display:block; word-break:break-all; font-size:12px; color:#e6edf3;"></code>
-                </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupCodexPowershell" data-i18n="btnCopySetupCodexPowershell">📋 Kopiuj polecenie Codex (PS)</button>
-              </div>
-
-              <div>
-                <div style="font-size:12px; font-weight:600; color:var(--heading); margin-bottom:4px;" data-i18n="lblPSAgentOnly">3. Zmienne sesyjne PowerShell:</div>
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:6px;">
-                  <pre class="mono" id="cmdSetupAgentPowershell" style="margin:0; font-size:11.5px; color:#e6edf3; overflow-x:auto; white-space:pre-wrap;"></pre>
-                </div>
-                <button class="btn btn-xs btn-accent" id="btnCopySetupAgentPowershell" data-i18n="btnCopySetupAgentPowershell">📋 Kopiuj polecenie PowerShell</button>
-              </div>
-            </div>
-          </details>
-        </div>
-      </div>
-
-      <div class="row" style="justify-content:space-between; align-items:center; margin-top:16px; border-top:1px solid var(--line); padding-top:12px;">
-        <span style="font-size:12px; color:var(--dim);"><span data-i18n="lblRepoLink">Repozytorium:</span> <a href="https://github.com/tomaasz/agent-lb" target="_blank" rel="noopener" style="color:var(--accent);">tomaasz/agent-lb ↗</a></span>
-        <button class="btn" id="btnDoneKeyModal" data-i18n="btnDoneKeyModal">Zamknij</button>
-      </div>
-    </div>
-  </div>
 </main>
 <script>
 (function () {
@@ -2172,6 +2214,17 @@ const PAGE = `<!doctype html>
       autoHealthDisabled: 'Wyłączony',
       tabAccountsTitle: 'Konta & Flota',
       tabWorkstationsTitle: 'Stacje robocze & Narzędzia',
+      tabSetupTitle: 'Konfiguracja stacji',
+      setupAgylbTitle: 'agylb — wspólna pula kont Google',
+      setupAgylbDesc: 'Modele AGY na Twoich hostach. Po wyczerpaniu limitu agylb wybiera inne konto i pyta o nową rozmowę.',
+      setupAgylbPlatform: 'Linux / macOS: uruchom w terminalu. Windows: otwórz terminal WSL. Wymagane: agy i Python 3.8+.',
+      setupAgylbCopy: '📋 Kopiuj instalację agylb',
+      setupAgylbEnable: 'Włącz dostęp do agylb dla tej stacji',
+      setupAgylbVscode: 'VS Code + rozszerzenie Google Antigravity (Linux / WSL): po instalacji uruchom agylb vscode w katalogu projektu. Zostaw terminal otwarty i otwórz wypisany plik agylb.code-workspace w tym samym VS Code (Remote SSH / WSL dla zdalnego hosta).',
+      setupAgylbNoAccess: 'Ta stacja nie ma jeszcze dostępu do kont Google. Kliknij przycisk poniżej i potwierdź zgodę, aby odblokować wybór agylb.',
+      setupAgylbRestricted: 'agylb wymaga aktywnej stacji bez ograniczeń modeli, dostawców i tokenów. Wybierz taką stację z listy.',
+      setupAgylbInclude: 'Dodaj też agylb do instalatora Claude Code i Codex dla Linux / macOS / WSL poniżej',
+      setupNoStations: 'Najpierw dodaj stację w zakładce Stacje robocze',
       accountsHeading: 'Konta Claude & Codex',
       accountsHint: '💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet',
       clientsHeading: 'Stacje robocze & Narzędzia',
@@ -2219,7 +2272,7 @@ const PAGE = `<!doctype html>
       btnUpdateTitle: 'Pobierz najnowsze skrypty instalatora z GitHub (git pull)',
       quickConnectTitle: '⚡ Szybkie podłączenie:',
       copyCmd: '📋 Kopiuj',
-      includeKey: 'Dołącz klucz stacji',
+      includeKey: 'Dołącz klucz (tylko ENV)',
       githubGuide: 'instrukcja GitHub ↗',
       countAccounts: '{n} kont',
       countAccountsSingle: '1 konto',
@@ -2261,7 +2314,7 @@ const PAGE = `<!doctype html>
       quickStationSelectTitle: 'Wybierz stację roboczą dla tego polecenia',
       quickCmdClickCopy: 'Kliknij, aby skopiować pełną komendę',
       quickToolOptional: 'Pojedyncze narzędzie lub eksport ENV (opcjonalnie)',
-      quickToolAll: '⚡ Wszystko (All-in-One)',
+      quickToolAll: '⚡ Claude Code + Codex',
       quickTabBash: 'Linux / macOS / WSL',
       quickTabPS: 'Windows',
       modalAddAccountTitle: '➕ Dodaj konto',
@@ -2331,8 +2384,8 @@ const PAGE = `<!doctype html>
       btnCopyCreatedKey: '📋 Kopiuj klucz',
       tabSetupBash: '🐧 Linux / macOS / WSL',
       tabSetupPowershell: '🪟 Windows (PowerShell)',
-      setupBashAllInOneTitle: '🚀 Jedno polecenie konfiguruje całe środowisko (All-in-One):',
-      setupPowershellAllInOneTitle: '🚀 Jedno polecenie konfiguruje całe środowisko Windows (All-in-One):',
+      setupBashAllInOneTitle: '🚀 Skonfiguruj Claude Code i Codex:',
+      setupPowershellAllInOneTitle: '🚀 Skonfiguruj Claude Code i Codex w Windows:',
       btnCopyCmd: '📋 Kopiuj polecenie',
       setupAdvancedSummary: '⚙️ Zaawansowane: rozdzielne polecenia, zmienne ENV oraz konfiguracja ręczna',
       setupAdvancedPSSummary: '⚙️ Zaawansowane: rozdzielne polecenia Windows i zmienne sesyjne',
@@ -2351,7 +2404,6 @@ const PAGE = `<!doctype html>
       btnCopySetupPowershell: '📋 Kopiuj polecenie Claude (PS)',
       btnCopySetupCodexPowershell: '📋 Kopiuj polecenie Codex (PS)',
       btnCopySetupAgentPowershell: '📋 Kopiuj polecenie PowerShell',
-      btnDoneKeyModal: 'Zamknij',
       lblRepoLink: 'Repozytorium:',
       modalAccountUsageTitle: '📊 Szczegóły zużycia konta:',
       lblTotalTokens: 'Łącznie tokenów',
@@ -2479,6 +2531,17 @@ const PAGE = `<!doctype html>
       autoHealthDisabled: 'Disabled',
       tabAccountsTitle: 'Accounts & Fleet',
       tabWorkstationsTitle: 'Workstations & Tools',
+      tabSetupTitle: 'Workstation Setup',
+      setupAgylbTitle: 'agylb — shared Google account pool',
+      setupAgylbDesc: 'AGY models across your hosts. When quota runs out, agylb selects another account and asks to start a new conversation.',
+      setupAgylbPlatform: 'Linux / macOS: run in a terminal. Windows: open a WSL terminal. Requires agy and Python 3.8+.',
+      setupAgylbCopy: '📋 Copy agylb installation',
+      setupAgylbEnable: 'Enable agylb access for this workstation',
+      setupAgylbVscode: 'VS Code + Google Antigravity extension (Linux / WSL): after installation, run agylb vscode in your project folder. Keep the terminal open and open the printed agylb.code-workspace file in the same VS Code (Remote SSH / WSL for a remote host).',
+      setupAgylbNoAccess: 'This workstation does not have Google account access yet. Use the button below and confirm to unlock agylb.',
+      setupAgylbRestricted: 'agylb requires an active workstation without model, provider or token restrictions. Select one from the list.',
+      setupAgylbInclude: 'Also add agylb to the Claude Code and Codex installer for Linux / macOS / WSL below',
+      setupNoStations: 'First add a workstation in the Workstations tab',
       accountsHeading: 'Claude & Codex Accounts',
       accountsHint: '💡 Drag card ⠿ in column to adjust queue priority',
       clientsHeading: 'Workstations & Tools',
@@ -2526,7 +2589,7 @@ const PAGE = `<!doctype html>
       btnUpdateTitle: 'Pull latest installer scripts from GitHub (git pull)',
       quickConnectTitle: '⚡ Quick Connect:',
       copyCmd: '📋 Copy',
-      includeKey: 'Include workstation key',
+      includeKey: 'Include key (ENV only)',
       githubGuide: 'GitHub guide ↗',
       countAccounts: '{n} accounts',
       countAccountsSingle: '1 account',
@@ -2568,7 +2631,7 @@ const PAGE = `<!doctype html>
       quickStationSelectTitle: 'Select workstation for this command',
       quickCmdClickCopy: 'Click to copy full command',
       quickToolOptional: 'Single tool or ENV export (optional)',
-      quickToolAll: '⚡ Everything (All-in-One)',
+      quickToolAll: '⚡ Claude Code + Codex',
       quickTabBash: 'Linux / macOS / WSL',
       quickTabPS: 'Windows',
       modalAddAccountTitle: '➕ Add New Account',
@@ -2638,8 +2701,8 @@ const PAGE = `<!doctype html>
       btnCopyCreatedKey: '📋 Copy key',
       tabSetupBash: '🐧 Linux / macOS / WSL',
       tabSetupPowershell: '🪟 Windows (PowerShell)',
-      setupBashAllInOneTitle: '🚀 One command configures entire environment (All-in-One):',
-      setupPowershellAllInOneTitle: '🚀 One command configures entire Windows environment (All-in-One):',
+      setupBashAllInOneTitle: '🚀 Set up Claude Code and Codex:',
+      setupPowershellAllInOneTitle: '🚀 Set up Claude Code and Codex on Windows:',
       btnCopyCmd: '📋 Copy command',
       setupAdvancedSummary: '⚙️ Advanced: separate commands, ENV variables & manual setup',
       setupAdvancedPSSummary: '⚙️ Advanced: separate Windows commands & session variables',
@@ -2658,7 +2721,6 @@ const PAGE = `<!doctype html>
       btnCopySetupPowershell: '📋 Copy Claude command (PS)',
       btnCopySetupCodexPowershell: '📋 Copy Codex command (PS)',
       btnCopySetupAgentPowershell: '📋 Copy PowerShell command',
-      btnDoneKeyModal: 'Close',
       lblRepoLink: 'Repository:',
       modalAccountUsageTitle: '📊 Account Usage Details:',
       lblTotalTokens: 'Total Tokens',
@@ -2843,8 +2905,8 @@ ${SHARED_HELPERS}
     if (sec == null) return '';
     var s = Math.max(0, Math.round(sec));
     if (s < 3600) return Math.round(s / 60) + 'm';
-    if (s < 86400) return (s / 3600).toFixed(1) + 'h';
-    return (s / 86400).toFixed(1) + 'd';
+    if (s < 86400) return Math.floor(s / 3600) + ':' + String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+    return Math.floor(s / 86400) + 'd ' + Math.floor((s % 86400) / 3600) + ':' + String(Math.floor((s % 3600) / 60)).padStart(2, '0');
   }
 
   // Absolute wall-clock of a future timestamp: "17:30" today, "Wed 09:00"
@@ -4029,6 +4091,9 @@ ${SHARED_HELPERS}
 
   var revealedKeys = Object.create(null);
   var cachedClientKeys = Object.create(null);
+  var setupStationPolicies = [];
+  var modalStationKey = '';
+  var modalKeyVisible = false;
   // Purge credentials persisted by older versions; revealed keys stay in memory.
   function saveCachedKeys() {
     try { localStorage.removeItem('agentlb_cached_keys'); } catch (e) {}
@@ -4969,20 +5034,40 @@ ${SHARED_HELPERS}
     var realKey = (key && !key.includes('...')) ? key : (cachedClientKeys[name] || key || '');
     if (name === '__primary__' && primaryAdminKey) realKey = primaryAdminKey;
     var hostUrl = window.location.origin;
-    var cmdKey = realKey || '<KLUCZ_STACJI>';
-    // Klucz w zmiennej dla instalatora, nie w argumencie (--key widać w 'ps' innym użytkownikom);
-    // spacja na początku: przy HISTCONTROL=ignorespace (domyślnie w Ubuntu) polecenie nie trafia do historii.
+    var cmdKey = '$AGENT_LB_API_KEY';
     function keyedPipe(script, runner) {
-      return ' curl -fsSL ' + hostUrl + script + ' | AGENT_LB_API_KEY="' + cmdKey + '" ' + runner;
+      return workstationSetupCommand(hostUrl, script, runner === 'node -' ? 'node' : 'bash');
     }
+
+    var station = setupStationPolicies.find(function (entry) { return entry.name === name; });
+    var agylbAllowed = stationCanUseAgylb(station);
+    var canEnableAgylb = !!station && !station.allowCredentialRelay && stationCanUseAgylb({ ...station, allowCredentialRelay: true });
+    document.getElementById('btnEnableSetupAgylb').style.display = canEnableAgylb ? '' : 'none';
+    var agylbCheckbox = document.getElementById('chkSetupAgylb');
+    if (agylbCheckbox) {
+      agylbCheckbox.disabled = !agylbAllowed;
+      if (!agylbAllowed) agylbCheckbox.checked = false;
+    }
+    var includeAgylb = agylbAllowed && agylbCheckbox && agylbCheckbox.checked;
+    document.getElementById('cmdSetupAgylb').textContent = agylbAllowed ? workstationSetupCommand(hostUrl, '/agylb-setup.sh') : '';
+    document.getElementById('btnCopySetupAgylb').disabled = !agylbAllowed;
+    var agylbStatus = document.getElementById('setupAgylbStatus');
+    if (agylbStatus) agylbStatus.textContent = agylbAllowed
+      ? 'Pula Google dostępna. Po instalacji: agylb doctor, agylb models, agylb --continue.'
+      : t(canEnableAgylb ? 'setupAgylbNoAccess' : 'setupAgylbRestricted');
+    var included = document.getElementById('setupAgylbIncluded');
+    if (included) included.style.display = includeAgylb ? '' : 'none';
 
     var elName = document.getElementById('createdClientName');
     if (elName) elName.textContent = name || 'stacja';
     var elKey = document.getElementById('createdClientKey');
-    if (elKey) elKey.textContent = realKey || (name ? 'Wczytywanie klucza...' : '<KLUCZ_STACJI>');
+    modalStationKey = realKey && !realKey.includes('...') ? realKey : '';
+    if (elKey) elKey.textContent = modalKeyVisible && modalStationKey ? modalStationKey : '••••••••••••';
+    var copyKey = document.getElementById('btnCopyCreatedKey');
+    if (copyKey) copyKey.disabled = !modalStationKey;
 
-    var cmdBashMain = keyedPipe('/setup.sh', 'bash');
-    var cmdPsMain = '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + cmdKey + '"';
+    var cmdBashMain = workstationSetupCommand(hostUrl, '/setup.sh', 'bash', includeAgylb);
+    var cmdPsMain = workstationSetupCommand(hostUrl, '/setup.ps1', 'ps');
 
     var elBashMain = document.getElementById('cmdSetupBashMain');
     if (elBashMain) elBashMain.textContent = cmdBashMain;
@@ -4991,10 +5076,11 @@ ${SHARED_HELPERS}
     var elAgentPrompt = document.getElementById('cmdAgentPrompt');
     if (elAgentPrompt) {
       elAgentPrompt.textContent = [
-        'Skonfiguruj ten host pod AgentLB (Claude Code, Codex, jcode w piaskownicy, VS Code) dokładnie według instrukcji z ' + hostUrl + '/agent-prompt.md',
+        'Skonfiguruj ten host pod AgentLB (Claude Code, Codex, jcode w piaskownicy, VS Code' + (includeAgylb ? ', AGY przez agylb' : '') + ') dokładnie według instrukcji z ' + hostUrl + '/agent-prompt.md',
         '(pobierz ją: curl -fsSL ' + hostUrl + '/agent-prompt.md) i wykonaj wszystkie kroki z weryfikacją.',
         'Nazwa stacji w AgentLB: ' + (name && name !== '__primary__' ? name : '<nazwa stacji>') + '.',
         'Klucz stacji jest w zmiennej środowiskowej AGENT_LB_API_KEY — nigdy nie wypisuj jego wartości.',
+        includeAgylb ? 'Użytkownik wybrał agylb: zainstaluj je i sprawdź dostęp do puli Google.' : 'agylb nie jest wybrane: nie instaluj go i nie zmieniaj uprawnień stacji.',
         'Na końcu zdaj mi raport prostym językiem po polsku.'
       ].join('\\n');
     }
@@ -5016,21 +5102,14 @@ ${SHARED_HELPERS}
       'export AGENT_LB_API_KEY="' + cmdKey + '"'
     ].join('\\n');
 
-    var cmdPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/claude-setup.ps1))) -Key "' + cmdKey + '"';
-    var cmdCodexPs = '& ([scriptblock]::Create((irm ' + hostUrl + '/codex-setup.ps1))) -Key "' + cmdKey + '"';
-    var cmdAgentPs = [
-      '[Environment]::SetEnvironmentVariable("OPENAI_BASE_URL", "' + hostUrl + '/v1", "User")',
-      '[Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "' + cmdKey + '" , "User")',
-      '[Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "' + hostUrl + '", "User")',
-      '[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "' + cmdKey + '", "User")',
-      '$env:OPENAI_BASE_URL = "' + hostUrl + '/v1"',
-      '$env:OPENAI_API_KEY = "' + cmdKey + '"'
-    ].join('\\n');
+    var cmdPs = workstationSetupCommand(hostUrl, '/claude-setup.ps1', 'ps');
+    var cmdCodexPs = workstationSetupCommand(hostUrl, '/codex-setup.ps1', 'ps');
+    var cmdAgentPs = workstationSetupCommand(hostUrl, '/agent-setup.ps1', 'ps');
 
     var cmdNode = keyedPipe('/claude-setup.js', 'node -');
     var cmdCodexNode = keyedPipe('/codex-setup.js', 'node -');
-    var cmdGit = ' git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && AGENT_LB_API_KEY="' + cmdKey + '" ./setup/claude-setup.sh';
-    var cmdCodexGit = ' git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && AGENT_LB_API_KEY="' + cmdKey + '" ./setup/codex-setup.sh';
+    var cmdGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/claude-setup.sh';
+    var cmdCodexGit = 'git clone https://github.com/tomaasz/agent-lb.git && cd agent-lb && ./setup/codex-setup.sh';
     var manualText = [
       '# --- 1. Claude Code CLI (OAuth / subscription — zalecane) ---',
       'export ANTHROPIC_BASE_URL="' + hostUrl + '"',
@@ -5102,39 +5181,36 @@ ${SHARED_HELPERS}
     if (elAider) elAider.textContent = cmdAider;
   }
 
-  function showKeyModal(name, key) {
-    var list = (lastStatus && lastStatus.clientKeys) || [];
+  function populateSetupStations(name) {
+    var list = setupStationPolicies;
+    var select = document.getElementById('selModalStation');
+    select.textContent = '';
+    list.forEach(function (station) {
+      var option = el('option', '', station.name);
+      option.value = station.name;
+      select.appendChild(option);
+    });
+    if (primaryAdminKey) {
+      var admin = el('option', '', '👑 Admin (Master)');
+      admin.value = '__primary__';
+      select.appendChild(admin);
+    }
+    if (!select.options.length) {
+      var empty = el('option', '', t('setupNoStations'));
+      empty.value = '';
+      select.appendChild(empty);
+    }
+    if (Array.from(select.options).some(function (option) { return option.value === name; })) select.value = name;
+    return select.value;
+  }
+
+  function openWorkstationSetup(name, key) {
+    modalKeyVisible = false;
+    var toggleKey = document.getElementById('btnToggleCreatedKey');
+    if (toggleKey) toggleKey.textContent = 'Pokaż klucz';
+    var chosenName = populateSetupStations(name);
     var selModal = document.getElementById('selModalStation');
-    if (selModal) {
-      selModal.textContent = '';
-      if (list.length) {
-        list.forEach(function (k) {
-          var opt = el('option', '', k.name);
-          opt.value = k.name;
-          selModal.appendChild(opt);
-        });
-      }
-      if (primaryAdminKey) {
-        var optAdmin = el('option', '', '👑 Admin (Master)');
-        optAdmin.value = '__primary__';
-        selModal.appendChild(optAdmin);
-      }
-      if (!list.length && !primaryAdminKey) {
-        var optNone = el('option', '', 'Stacja');
-        optNone.value = '';
-        selModal.appendChild(optNone);
-      }
-    }
-
-    var chosenName = name || (selModal ? selModal.value : '');
-    if (!chosenName && selModal && selModal.options.length) {
-      chosenName = selModal.options[0].value;
-    }
-    if (selModal && chosenName) {
-      selModal.value = chosenName;
-    }
-
-    var realKey = (key && !key.includes('...')) ? key : (cachedClientKeys[chosenName] || '');
+    var realKey = (name === chosenName && key && !key.includes('...')) ? key : (cachedClientKeys[chosenName] || '');
     if (chosenName === '__primary__' && primaryAdminKey) {
       realKey = primaryAdminKey;
     }
@@ -5172,7 +5248,7 @@ ${SHARED_HELPERS}
       selModal.addEventListener('change', function () {
         var st = this.value;
         var k = (st === '__primary__') ? primaryAdminKey : (cachedClientKeys[st] || '');
-        showKeyModal(st, k);
+        openWorkstationSetup(st, k);
         var selQuick = document.getElementById('selQuickStation');
         if (selQuick && Array.from(selQuick.options).some(function (o) { return o.value === st; })) {
           selQuick.value = st;
@@ -5182,7 +5258,7 @@ ${SHARED_HELPERS}
     }
 
     selectSetupTab('Bash');
-    openModal('modalKeyCreated');
+    switchMainTab('tabSetup');
   }
 
   function selectSetupTab(tab) {
@@ -5236,14 +5312,16 @@ ${SHARED_HELPERS}
         if (res.ok) {
           note('ok', currentLang === 'pl' ? ('Utworzono klucz klienta dla "' + res.name + '"') : ('Created workstation key for "' + res.name + '"'));
           if (res.key) cachedClientKeys[res.name] = res.key;
-          closeModal('modalAddClientKey');
+          // Navigate straight to setup without scheduling a history.back().
+          document.getElementById('modalAddClientKey').style.display = 'none';
+          setupStationPolicies = setupStationPolicies.concat([{ ...payload, name: res.name, allowCredentialRelay: false }]);
           document.getElementById('inClientName').value = '';
           document.getElementById('inClientCustomKey').value = '';
           if (document.getElementById('inClientDailyTokens')) document.getElementById('inClientDailyTokens').value = '';
           if (document.getElementById('inClientMonthlyTokens')) document.getElementById('inClientMonthlyTokens').value = '';
           if (document.getElementById('inClientExpiresAt')) document.getElementById('inClientExpiresAt').value = '';
           if (document.getElementById('inClientAllowedModels')) document.getElementById('inClientAllowedModels').value = '';
-          showKeyModal(res.name, res.key);
+          openWorkstationSetup(res.name, res.key);
           poll();
         } else {
           note('error', (currentLang === 'pl' ? 'Błąd tworzenia klucza: ' : 'Error creating key: ') + (res.error || (currentLang === 'pl' ? 'nieznany błąd' : 'unknown error')));
@@ -5340,73 +5418,27 @@ ${SHARED_HELPERS}
     if (!key) key = '<KLUCZ_STACJI>';
 
     var chk = document.getElementById('chkIncludeKeyInCmd');
-    var withKey = chk ? chk.checked : true;
-
+    var withKey = chk ? chk.checked : false;
+    if (chk) chk.disabled = currentQuickTool !== 'agent';
     var cmd = '';
-    if (currentQuickTool === 'all' || !currentQuickTool) {
-      if (currentQuickTab === 'ps') {
-        cmd = withKey
-          ? '& ([scriptblock]::Create((irm ' + hostUrl + '/setup.ps1))) -Key "' + key + '"'
-          : 'irm ' + hostUrl + '/setup.ps1 | iex';
-      } else {
-        cmd = withKey
-          ? ' curl -fsSL ' + hostUrl + '/setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-          : 'curl -fsSL ' + hostUrl + '/setup.sh | bash';
-      }
-    } else if (currentQuickTool === 'hermes') {
-      cmd = withKey
-        ? ' curl -fsSL ' + hostUrl + '/hermes-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-        : 'curl -fsSL ' + hostUrl + '/hermes-setup.sh | bash';
-    } else if (currentQuickTool === 'opencode') {
-      cmd = withKey
-        ? ' curl -fsSL ' + hostUrl + '/opencode-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-        : 'curl -fsSL ' + hostUrl + '/opencode-setup.sh | bash';
-    } else if (currentQuickTool === 'claw') {
-      cmd = withKey
-        ? ' curl -fsSL ' + hostUrl + '/claw-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-        : 'curl -fsSL ' + hostUrl + '/claw-setup.sh | bash';
-    } else if (currentQuickTool === 'orca') {
-      cmd = withKey
-        ? ' curl -fsSL ' + hostUrl + '/orca-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-        : 'curl -fsSL ' + hostUrl + '/orca-setup.sh | bash';
-    } else if (currentQuickTool === 'agy') {
-      // The station key lets agybridge take its Google account from the AGY
-      // pool in this dashboard. On Windows it runs inside WSL (Linux/macOS only).
-      // Key goes in the environment, not in argv (visible in ps); station keys
-      // are [A-Za-z0-9_-] so they need no quoting inside wsl's "...".
-      var agyEnv = withKey ? 'AGENT_LB_API_KEY=' + key + ' ' : '';
+    if (currentQuickTool === 'agent') {
       cmd = currentQuickTab === 'ps'
-        ? 'wsl bash -lc "curl -fsSL ' + hostUrl + '/agy-setup.sh | ' + agyEnv + 'bash"'
-        : ' curl -fsSL ' + hostUrl + '/agy-setup.sh | ' + agyEnv + 'bash';
-    } else if (currentQuickTool === 'agent') {
-      if (currentQuickTab === 'ps') {
-        cmd = '$env:OPENAI_BASE_URL="' + hostUrl + '/v1"; $env:OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"; $env:ANTHROPIC_BASE_URL="' + hostUrl + '"; $env:ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
-      } else {
-        cmd = 'export OPENAI_BASE_URL="' + hostUrl + '/v1" OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '" ANTHROPIC_BASE_URL="' + hostUrl + '" ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
-      }
-    } else if (currentQuickTool === 'codex') {
-      if (currentQuickTab === 'ps') {
-        cmd = withKey
-          ? '& ([scriptblock]::Create((irm ' + hostUrl + '/codex-setup.ps1))) -Key "' + key + '"'
-          : 'irm ' + hostUrl + '/codex-setup.ps1 | iex';
-      } else {
-        cmd = withKey
-          ? ' curl -fsSL ' + hostUrl + '/codex-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-          : 'curl -fsSL ' + hostUrl + '/codex-setup.sh | bash';
-      }
-    } else {
-      if (currentQuickTab === 'ps') {
-        cmd = withKey
-          ? '& ([scriptblock]::Create((irm ' + hostUrl + '/claude-setup.ps1))) -Key "' + key + '"'
-          : 'irm ' + hostUrl + '/claude-setup.ps1 | iex';
-      } else {
-        cmd = withKey
-          ? ' curl -fsSL ' + hostUrl + '/claude-setup.sh | AGENT_LB_API_KEY="' + key + '" bash'
-          : 'curl -fsSL ' + hostUrl + '/claude-setup.sh | bash';
-      }
+        ? '$env:OPENAI_BASE_URL="' + hostUrl + '/v1"; $env:OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"; $env:ANTHROPIC_BASE_URL="' + hostUrl + '"; $env:ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"'
+        : 'export OPENAI_BASE_URL="' + hostUrl + '/v1" OPENAI_API_KEY="' + (withKey ? key : '<KLUCZ>') + '" ANTHROPIC_BASE_URL="' + hostUrl + '" ANTHROPIC_API_KEY="' + (withKey ? key : '<KLUCZ>') + '"';
     }
 
     var codeEl = document.getElementById('quickCmdText');
+    var quickScripts = { all: '/setup', claude: '/claude-setup', codex: '/codex-setup', hermes: '/hermes-setup', opencode: '/opencode-setup', claw: '/claw-setup', orca: '/orca-setup', agy: '/agylb-setup' };
+    var selectedScript = quickScripts[currentQuickTool || 'all'];
+    var agyDenied = currentQuickTool === 'agy' && !stationCanUseAgylb(setupStationPolicies.find(function (entry) { return entry.name === selectedStationName; }));
+    var unsupportedPs = currentQuickTab === 'ps' && ['hermes', 'opencode', 'claw', 'orca', 'agy'].includes(currentQuickTool);
+    if (selectedScript && !unsupportedPs) {
+      cmd = workstationSetupCommand(hostUrl, selectedScript + (currentQuickTab === 'ps' && currentQuickTool !== 'agy' ? '.ps1' : '.sh'), currentQuickTab === 'ps' && currentQuickTool !== 'agy' ? 'ps' : 'bash');
+    }
+    if (unsupportedPs) cmd = '# To narzędzie: wybierz Linux / macOS / WSL i uruchom instalator w WSL.';
+    if (agyDenied) cmd = '# agylb: ta stacja nie ma dostępu do puli Google.';
+    var quickCopy = document.getElementById('btnQuickCopyCmd');
+    if (quickCopy) quickCopy.disabled = agyDenied || unsupportedPs;
     if (codeEl) {
       codeEl.textContent = cmd;
       codeEl.dataset.fullCmd = cmd;
@@ -5465,8 +5497,32 @@ ${SHARED_HELPERS}
     }
   }
 
+  function setStationRelayPermission(station, allowed, button) {
+    if (allowed && !confirm(agyT('Zezwolić stacji „' + station.name + '” na pobieranie poświadczeń Google i używanie tuneli proxy?', 'Allow workstation “' + station.name + '” to retrieve Google credentials and use proxy tunnels?'))) return;
+    button.disabled = true;
+    return apiCall('/agent-lb/api/keys/permissions', 'POST', { name: station.name, allowCredentialRelay: allowed }).then(function (result) {
+      if (result && result.ok) {
+        // Apply only the acknowledged permission; keep every other restriction.
+        setupStationPolicies = setupStationPolicies.map(function (entry) {
+          return entry.name === station.name ? { ...entry, allowCredentialRelay: allowed } : entry;
+        });
+        var selected = document.getElementById('selModalStation').value;
+        updateModalCommands(selected, selected === '__primary__' ? primaryAdminKey : cachedClientKeys[selected]);
+        poll();
+      } else note('error', (result && result.error) || 'Permission update failed');
+    }).catch(function (error) { note('error', error.message); }).finally(function () { button.disabled = false; });
+  }
+
   function renderClientKeys(keys, clients) {
     var list = keys || [];
+    setupStationPolicies = list;
+    var setupPane = document.getElementById('tabSetup');
+    if (setupPane && setupPane.style.display !== 'none') {
+      var previousName = document.getElementById('selModalStation').value;
+      var setupName = populateSetupStations(previousName);
+      if (setupName !== previousName) openWorkstationSetup(setupName, cachedClientKeys[setupName]);
+      else updateModalCommands(setupName, setupName === '__primary__' ? primaryAdminKey : cachedClientKeys[setupName]);
+    }
     list.forEach(function (k) {
       var unmasked = cachedClientKeys[k.name] || '';
       if (unmasked) {
@@ -5514,7 +5570,7 @@ ${SHARED_HELPERS}
       btnPSetup.addEventListener('click', function () {
         currentQuickKey = primaryAdminKey;
         updateQuickCmd();
-        showKeyModal(currentLang === 'pl' ? 'Główny klucz (proxy.apiKey)' : 'Master key (proxy.apiKey)', primaryAdminKey);
+        openWorkstationSetup('__primary__', primaryAdminKey);
       });
       pTopActs.appendChild(btnPSetup);
       pTop.appendChild(pTopActs);
@@ -5624,12 +5680,7 @@ ${SHARED_HELPERS}
       var relayBtn = el('button', 'btn btn-xs', k.allowCredentialRelay ? agyT('Poświadczenia: dostęp', 'Credentials: allowed') : agyT('Tylko API', 'API only'));
       relayBtn.title = agyT('Dostęp do tokenów Google i niekontrolowanych tuneli proxy', 'Access to Google tokens and unmetered proxy tunnels');
       relayBtn.addEventListener('click', function () {
-        if (!k.allowCredentialRelay && !confirm(agyT('Zezwolić tej stacji na pobieranie poświadczeń Google i używanie tuneli proxy?', 'Allow this station to retrieve Google credentials and use proxy tunnels?'))) return;
-        relayBtn.disabled = true;
-        apiCall('/agent-lb/api/keys/permissions', 'POST', { name: k.name, allowCredentialRelay: !k.allowCredentialRelay }).then(function (d) {
-          if (d && d.ok) poll();
-          else note('error', (d && d.error) || 'Permission update failed');
-        }).catch(function (e) { note('error', e.message); }).finally(function () { relayBtn.disabled = false; });
+        setStationRelayPermission(k, !k.allowCredentialRelay, relayBtn);
       });
       nameWrap.appendChild(relayBtn);
 
@@ -5640,7 +5691,7 @@ ${SHARED_HELPERS}
       btnSetup.title = currentLang === 'pl' ? 'Pokaż gotowe komendy instalatora (Linux, Windows, VS Code) dla tej stacji' : 'Show installer commands (Linux, Windows, VS Code) for this workstation';
       btnSetup.addEventListener('click', function () {
         var kVal = cachedClientKeys[k.name] || raw || '';
-        showKeyModal(k.name, kVal);
+        openWorkstationSetup(k.name, kVal);
       });
       acts.appendChild(btnSetup);
 
@@ -6460,6 +6511,7 @@ ${SHARED_HELPERS}
     if (latest && latest.at > now - 900000) return latest.outcome === 'success' ? 'verified' : 'error';
     return 'unknown';
   }
+  var agyNextId = null;
   function renderAgyCard(a, i, ids) {
     var status = agyAccountStatus(a, agyData.events, agyTests[a.id], Date.now());
     var spent = a.quotaUntil > Date.now();
@@ -6495,14 +6547,23 @@ ${SHARED_HELPERS}
     else if (a.diagnostics && a.diagnostics.status === 'available') titleGroup.appendChild(el('span', 'badge', agyT('Dostęp do katalogu', 'Catalog access')));
     else titleGroup.appendChild(el('span', 'badge', agyT('Niezweryfikowane', 'Unverified')));
     if (a.pinned) titleGroup.appendChild(el('span', 'badge current', t('agyPinnedBadge')));
+    if (agyNextId === a.id) {
+      var nextBadge = el('span', 'badge badge-healthy', '➜ ' + agyT('następne', 'next'));
+      nextBadge.title = agyT('Konto, które routing wybierze jako następne (szacunek z danych na dashboardzie)', 'Account routing will pick next (estimated from dashboard data)');
+      titleGroup.appendChild(nextBadge);
+    }
     head.appendChild(titleGroup);
 
     var checkingAccess = agyCheckPending && (!agyCheckPending.id || agyCheckPending.id === a.id);
     if (checkingAccess) card.appendChild(el('div', 'agy-state-line', agyT('Sprawdzanie dostępu, planu i limitów…', 'Checking access, plan and quotas…')));
+    // One collapsed "Details" block per card; problems stay visible on top.
+    var more = el('details', 'agy-details');
+    more.open = !!agyCheckExpanded[a.id];
+    more.addEventListener('toggle', function () { agyCheckExpanded[a.id] = more.open; });
+    more.appendChild(el('summary', '', agyT('Szczegóły', 'Details')));
+    var diagAlert = null;
     if (a.diagnostics) {
-      var diagnostic = el('details');
-      diagnostic.open = !!agyCheckExpanded[a.id];
-      diagnostic.addEventListener('toggle', function () { agyCheckExpanded[a.id] = diagnostic.open; });
+      var diagnostic = el('div', 'agy-diag');
       var labels = {
         available: agyT('Katalog modeli dostępny', 'Model catalog available'),
         forbidden: agyT('Odmowa dostępu', 'Access denied'),
@@ -6513,8 +6574,8 @@ ${SHARED_HELPERS}
         configuration_error: agyT('Sprawdź konfigurację diagnostyki', 'Check diagnostics configuration'),
         error: agyT('Sprawdzenie nie powiodło się', 'Check failed')
       };
-      diagnostic.appendChild(el('summary', '', labels[a.diagnostics.status] || a.diagnostics.status));
-      diagnostic.appendChild(el('div', '', new Date(a.diagnostics.checkedAt).toLocaleString()));
+      if (a.diagnostics.status !== 'available') diagAlert = el('div', 'agy-state-line spent', labels[a.diagnostics.status] || a.diagnostics.status);
+      diagnostic.appendChild(el('div', '', (labels[a.diagnostics.status] || a.diagnostics.status) + ' · ' + new Date(a.diagnostics.checkedAt).toLocaleString()));
       if (a.diagnostics.status === 'available') diagnostic.appendChild(el('div', 'dim', agyT('Odczyt katalogu nie potwierdza działania generacji.', 'Catalog access does not confirm successful generation.')));
       ['models', 'quotaSummary'].forEach(function (category) {
         var measurement = a.diagnostics.telemetry && a.diagnostics.telemetry[category];
@@ -6528,9 +6589,9 @@ ${SHARED_HELPERS}
         if (!url) return;
         var link = el('a', '', agyT('Otwórz stronę Google', 'Open Google page'));
         link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
-        diagnostic.appendChild(link);
+        (diagAlert || diagnostic).appendChild(link);
       });
-      card.appendChild(diagnostic);
+      more.appendChild(diagnostic);
       var observedPlan = a.diagnostics.telemetry && a.diagnostics.telemetry.plan;
       if (observedPlan) plan.textContent = (observedPlan.data.label === 'unknown' ? observedPlan.data.tierId || 'unknown' : observedPlan.data.label) + (observedPlan.stale ? ' (stale)' : '');
     }
@@ -6586,14 +6647,14 @@ ${SHARED_HELPERS}
     if (a.name) card.appendChild(el('div', 'agy-state-line', a.email));
 
     if (a.modelCatalog) {
-      var modelDetails = el('details', 'dim');
+      var modelBox = el('div', 'dim');
       var modelIds = a.modelCatalog.models || [];
-      var modelSummary = el('summary', '', agyT('Modele tego konta', 'Models for this account') + ' (' + modelIds.length + ')' +
-        (a.modelCatalog.stale ? agyT(' · ostatnia znana lista', ' · last known list') : ''));
-      modelDetails.appendChild(modelSummary);
-      modelDetails.appendChild(el('div', '', modelIds.length ? modelIds.join(', ') : agyT('Lista jeszcze niedostępna', 'Model list not available yet')));
-      card.appendChild(modelDetails);
+      modelBox.appendChild(el('div', '', agyT('Modele tego konta', 'Models for this account') + ' (' + modelIds.length + ')' +
+        (a.modelCatalog.stale ? agyT(' · ostatnia znana lista', ' · last known list') : '')));
+      modelBox.appendChild(el('div', '', modelIds.length ? modelIds.join(', ') : agyT('Lista jeszcze niedostępna', 'Model list not available yet')));
+      more.appendChild(modelBox);
     }
+    if (diagAlert) card.appendChild(diagAlert);
 
     var body = el('div', 'card-body');
     if (spent) {
@@ -6615,17 +6676,18 @@ ${SHARED_HELPERS}
     if (queue && queue.queued) body.appendChild(el('div', 'agy-state-line', agyT('W kolejce: ', 'Queued: ') + queue.queued));
     var events = (agyData.events || []).filter(function (e) { return e.accountId === a.id; }).slice(-5).reverse();
     if (events.length) {
-      var history = el('details', 'agy-state-line');
-      history.appendChild(el('summary', '', agyT('Ostatnie zdarzenia', 'Recent events')));
+      var history = el('div', 'agy-state-line');
+      history.appendChild(el('div', '', agyT('Ostatnie zdarzenia', 'Recent events')));
       events.forEach(function (e) {
         history.appendChild(el('div', '', new Date(e.at).toLocaleTimeString() + ' · ' + (e.client || '—') + ' · ' + (e.model || '—') + ' · ' + e.outcome + ' · ' + Math.round(e.durationMs / 1000) + 's'));
       });
-      body.appendChild(history);
+      more.appendChild(history);
     }
-    body.appendChild(agyUsageBlock(a.usage));
+    body.appendChild(agyUsageBlock(a));
     var test = agyTests[a.id];
     if (test && !test.running) body.appendChild(el('div', 'agy-test-line ' + (test.ok ? 'ok' : 'bad'), test.text));
     card.appendChild(body);
+    if (more.children.length > 1) card.appendChild(more);
 
     var meta = el('div', 'card-meta');
     var st = a.stats || {};
@@ -6639,6 +6701,7 @@ ${SHARED_HELPERS}
   }
   function renderAgyAccounts(list) {
     if (agyRenaming) return; // Polling must not replace an active editor.
+    agyLastList = list;
     var box = document.getElementById('listAgy');
     if (!box) return;
     attachListDropTarget(box);
@@ -6671,8 +6734,80 @@ ${SHARED_HELPERS}
       box.appendChild(empty);
       return;
     }
+    var summary = agyPoolSummary(list);
+    if (summary) box.appendChild(summary);
     var ids = list.map(function (a) { return a.id; });
-    list.forEach(function (a, i) { box.appendChild(renderAgyCard(a, i, ids)); });
+    agyNextId = agyNextAccount(list);
+    var order = list.map(function (a, i) { return { a: a, i: i }; });
+    if (agyQuotaSort) order.sort(function (x, y) { return agyAvgRemaining(y.a) - agyAvgRemaining(x.a) || x.i - y.i; });
+    order.forEach(function (o) {
+      var a = o.a;
+      if (agyQuotaFilter && !agyQuotaItems(a).some(function (m) { return m.label === agyQuotaFilter && m.remaining > 0; })) return;
+      var card = renderAgyCard(a, o.i, ids);
+      if (agyQuotaSort) card.draggable = false; // reordering only makes sense in routing order
+      box.appendChild(card);
+    });
+  }
+  // Pool overview: per model, how many enabled accounts still have quota.
+  var agyQuotaFilter = null;
+  var agyQuotaSort = false;
+  // Mean remaining share over known models; accounts that cannot serve (or have no data) sort last.
+  function agyAvgRemaining(a) {
+    if (!agyAvailable(a)) return -2;
+    var items = agyQuotaItems(a);
+    if (!items.length) return -1;
+    return items.reduce(function (sum, m) { return sum + m.remaining; }, 0) / items.length;
+  }
+  // Mirrors AgyAccounts.pick(): pinned first, else the available account whose quota resets soonest, then list order.
+  // shortcut: ignores per-model quota and live busy counts the server uses, upgrade if the hint misleads.
+  function agyNextAccount(list) {
+    var pinned = list.find(function (a) { return a.pinned && agyAvailable(a); });
+    if (pinned) return pinned.id;
+    var best = null, bestReset = Infinity;
+    list.forEach(function (a) {
+      if (!agyAvailable(a)) return;
+      var reset = Math.min.apply(null, (a.usage && a.usage.models || []).map(function (m) { return Number(m.resetAt); }).filter(isFinite).concat([Infinity]));
+      if (!best || reset < bestReset) { best = a; bestReset = reset; }
+    });
+    return best ? best.id : null;
+  }
+  var agyLastList = [];
+  function agyPoolSummary(list) {
+    var stats = {};
+    list.forEach(function (a) {
+      if (!a.enabled) return;
+      agyQuotaItems(a).forEach(function (m) {
+        var st = stats[m.label] || (stats[m.label] = { label: m.label, total: 0, free: 0, reset: Infinity });
+        st.total++;
+        if (m.remaining > 0) st.free++;
+        else {
+          var r = parseTs(m.resetAt);
+          if (!isNaN(r) && r > Date.now() && r < st.reset) st.reset = r;
+        }
+      });
+    });
+    var rows = Object.keys(stats).map(function (k) { return stats[k]; })
+      .sort(function (x, y) { return x.free - y.free || x.label.localeCompare(y.label); });
+    if (!rows.length) return null;
+    var wrap = el('div', 'agy-pool-summary');
+    var sortBtn = el('button', 'btn btn-xs' + (agyQuotaSort ? ' active' : ''), agyT('Sortuj: ', 'Sort: ') + (agyQuotaSort ? agyT('najwięcej zapasu', 'most quota') : agyT('kolejność routingu', 'routing order')));
+    sortBtn.type = 'button';
+    sortBtn.setAttribute('aria-pressed', agyQuotaSort ? 'true' : 'false');
+    sortBtn.addEventListener('click', function () { agyQuotaSort = !agyQuotaSort; renderAgyAccounts(agyLastList); });
+    wrap.appendChild(sortBtn);
+    rows.forEach(function (st) {
+      var on = agyQuotaFilter === st.label;
+      var text = st.label + ': ' + st.free + '/' + st.total + ' ' + agyT('kont ma zapas', 'accounts have quota') +
+        (st.reset < Infinity ? ' · ' + agyT('najbliższy reset za ', 'next reset in ') + fmtIn((st.reset - Date.now()) / 1000) : '');
+      var b = el('button', 'btn btn-xs' + (on ? ' active' : ''), text);
+      b.type = 'button';
+      b.style.cssText = 'display:block;width:100%;text-align:left;margin:2px 0;' + (st.free === 0 ? 'color:var(--err, #f85149);' : '');
+      b.title = agyT('Pokaż tylko konta z zapasem tego modelu', 'Show only accounts with quota for this model');
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.addEventListener('click', function () { agyQuotaFilter = on ? null : st.label; renderAgyAccounts(agyLastList); });
+      wrap.appendChild(b);
+    });
+    return wrap;
   }
   // The routing table's Gemini row: catalog ids and how many AGY accounts can serve them.
   function agyRouteRow() {
@@ -6690,31 +6825,56 @@ ${SHARED_HELPERS}
     tr.appendChild(can);
     return tr;
   }
-  // Per-model quota reported by the stations (remaining share + time to reset).
-  function agyUsageBlock(usage) {
+  // Remaining quota per model: station reports (a.usage) merged with the
+  // account check (diagnostics quotaSummary); the newer reading wins per label.
+  function agyQuotaItems(a) {
+    var byLabel = {};
+    function put(label, remaining, resetAt, at, src) {
+      if (!label || typeof remaining !== 'number' || !isFinite(remaining)) return;
+      var cur = byLabel[label];
+      if (!cur || at > cur.at) byLabel[label] = { label: label, remaining: remaining, resetAt: resetAt, at: at, src: src };
+    }
+    var u = a.usage;
+    if (u && u.models) u.models.forEach(function (m) { put(m.label, m.remaining, m.resetAt, u.updatedAt || 0, 'station'); });
+    var q = a.diagnostics && a.diagnostics.telemetry && a.diagnostics.telemetry.quotaSummary;
+    if (q && q.data) q.data.forEach(function (m) { put(m.displayName || m.id, m.remainingFraction, m.resetAt, q.observedAt || 0, 'check'); });
+    return Object.keys(byLabel).map(function (k) { return byLabel[k]; })
+      .sort(function (x, y) { return x.remaining - y.remaining || x.label.localeCompare(y.label); });
+  }
+  function agyQuotaRow(m) {
+    // quotaRow shows used share (red when high); AGY reports what is left.
+    var r = quotaRow(m.label, 1 - m.remaining, m.resetAt);
+    r.firstChild.title = m.label;
+    r.firstChild.style.overflow = 'hidden';
+    r.firstChild.style.textOverflow = 'ellipsis';
+    r.firstChild.style.whiteSpace = 'nowrap';
+    var val = r.lastChild;
+    val.textContent = Math.round(m.remaining * 100) + '% ' + agyT('zostało', 'left') + val.textContent.slice(val.textContent.indexOf('%') + 1);
+    return r;
+  }
+  function agyUsageBlock(a) {
     var wrap = document.createElement('div');
     wrap.className = 'agy-usage';
+    var items = agyQuotaItems(a);
     var note = document.createElement('div');
     note.className = 'agy-usage-note';
-    if (!usage || !usage.models || !usage.models.length) {
-      note.textContent = agyT('Limity: brak danych — stacja jeszcze nie zgłosiła zużycia.', 'Quota: no data yet — no station has reported usage.');
+    if (!items.length) {
+      note.textContent = agyT('Limity: brak danych — kliknij 🔎, aby sprawdzić.', 'Quota: no data yet — click 🔎 to check.');
       wrap.appendChild(note);
       return wrap;
     }
-    var age = Date.now() - usage.updatedAt;
-    note.textContent = agyT('Limity zgłoszone ', 'Quota reported ') + agyLeft(age) + agyT(' temu', ' ago') + (age > 30 * 60000 ? agyT(' (dane mogą być nieaktualne)', ' (may be stale)') : '');
+    var newest = Math.max.apply(null, items.map(function (m) { return m.at; }));
+    var age = Date.now() - newest;
+    note.textContent = agyT('Limity sprzed ', 'Quota from ') + agyLeft(age) + agyT('', ' ago') + (age > 30 * 60000 ? agyT(' (mogą być nieaktualne)', ' (may be stale)') : '');
     wrap.appendChild(note);
-    usage.models.slice().sort(function (x, y) { return x.remaining - y.remaining || x.label.localeCompare(y.label); }).forEach(function (m) {
-      // quotaRow shows used share; AGY reports what is left.
-      var r = quotaRow(m.label, 1 - m.remaining, m.resetAt);
-      r.firstChild.title = m.label;
-      r.firstChild.style.overflow = 'hidden';
-      r.firstChild.style.textOverflow = 'ellipsis';
-      r.firstChild.style.whiteSpace = 'nowrap';
-      var val = r.lastChild;
-      val.textContent = agyT('zostało ', 'left ') + Math.round(m.remaining * 100) + '%' + val.textContent.slice(val.textContent.indexOf('%') + 1);
-      wrap.appendChild(r);
-    });
+    if (age > 30 * 60000) wrap.style.opacity = '0.55'; // stale readings look stale
+    items.slice(0, 3).forEach(function (m) { wrap.appendChild(agyQuotaRow(m)); });
+    if (items.length > 3) {
+      var more = el('details', 'agy-state-line');
+      more.appendChild(el('summary', '', agyT('Pozostałe modele', 'Other models') + ' (' + (items.length - 3) + ')'));
+      items.slice(3).forEach(function (m) { more.appendChild(agyQuotaRow(m)); });
+      wrap.appendChild(more);
+    }
     return wrap;
   }
   function agyEl(id) { return document.getElementById(id); }
@@ -6830,13 +6990,6 @@ ${SHARED_HELPERS}
   });
   document.getElementById('btnCloseAddClientKey').addEventListener('click', function () {
     closeModal('modalAddClientKey');
-  });
-
-  document.getElementById('btnCloseKeyModal').addEventListener('click', function () {
-    closeModal('modalKeyCreated');
-  });
-  document.getElementById('btnDoneKeyModal').addEventListener('click', function () {
-    closeModal('modalKeyCreated');
   });
 
   // Account & Fleet Usage Modals (Kto i na co zużył limity)
@@ -7363,7 +7516,7 @@ ${SHARED_HELPERS}
       var list = (lastStatus && lastStatus.clientKeys) || [];
       var chosen = (sel && sel.value) ? sel.value : (list.length ? list[0].name : (primaryAdminKey ? '__primary__' : ''));
       var chosenKey = (chosen === '__primary__') ? primaryAdminKey : (cachedClientKeys[chosen] || '');
-      showKeyModal(chosen, chosenKey);
+      openWorkstationSetup(chosen, chosenKey);
     });
   }
 
@@ -7462,8 +7615,25 @@ ${SHARED_HELPERS}
     }
   };
 
-  bindCopy('btnCopyCreatedKey', 'createdClientKey', 'Klucz klienta');
+  document.getElementById('btnCopyCreatedKey').addEventListener('click', function () {
+    if (modalStationKey) copyToClipboard(modalStationKey, 'Klucz stacji');
+  });
+  document.getElementById('btnToggleCreatedKey').addEventListener('click', function () {
+    modalKeyVisible = !modalKeyVisible;
+    document.getElementById('createdClientKey').textContent = modalKeyVisible && modalStationKey ? modalStationKey : '••••••••••••';
+    this.textContent = modalKeyVisible ? 'Ukryj klucz' : 'Pokaż klucz';
+  });
+  document.getElementById('chkSetupAgylb').addEventListener('change', function () {
+    updateModalCommands(document.getElementById('selModalStation').value, modalStationKey);
+  });
+  document.getElementById('btnEnableSetupAgylb').addEventListener('click', function () {
+    var name = document.getElementById('selModalStation').value;
+    var station = setupStationPolicies.find(function (entry) { return entry.name === name; });
+    if (!station || station.allowCredentialRelay || !stationCanUseAgylb({ ...station, allowCredentialRelay: true })) return;
+    setStationRelayPermission(station, true, this);
+  });
   bindCopy('btnCopySetupBashMain', 'cmdSetupBashMain', 'Polecenie instalatora (Linux)');
+  bindCopy('btnCopySetupAgylb', 'cmdSetupAgylb', 'Instalacja agylb (Linux / macOS / WSL)');
   bindCopy('btnCopyAgentPrompt', 'cmdAgentPrompt', 'Prompt dla agenta');
   bindCopy('btnCopyJcodeSetupBash', 'cmdJcodeSetupBash', 'Polecenie jcode (Linux/WSL)');
   bindCopy('btnCopySetupPowershellMain', 'cmdSetupPowershellMain', 'Polecenie instalatora (Windows)');
@@ -7593,13 +7763,12 @@ ${SHARED_HELPERS}
     if (e.key === 'Escape') {
       closeModal('modalAddAccount');
       closeModal('modalAddClientKey');
-      closeModal('modalKeyCreated');
       closeModal('modalRelogin');
       closeModal('modalTestChat');
     }
   });
 
-  ['modalAddAccount', 'modalAddClientKey', 'modalKeyCreated', 'modalRelogin', 'modalTestChat'].forEach(function (id) {
+  ['modalAddAccount', 'modalAddClientKey', 'modalRelogin', 'modalTestChat'].forEach(function (id) {
     var m = document.getElementById(id);
     if (m) {
       m.addEventListener('click', function (e) {
@@ -8146,26 +8315,20 @@ ${SHARED_HELPERS}
   setTheme(currentTheme);
   updateI18nDOM();
 
-  // Main navigation tabs (Konta & Flota vs Stacje robocze & Narzędzia)
+  // Main navigation tabs.
   function switchMainTab(tabId) {
-    var tabAccounts = document.getElementById('tabAccounts');
-    var tabWorkstations = document.getElementById('tabWorkstations');
-    var btnAccounts = document.getElementById('tabBtnAccounts');
-    var btnWorkstations = document.getElementById('tabBtnWorkstations');
-
-    if (tabId === 'tabWorkstations') {
-      if (tabAccounts) tabAccounts.style.display = 'none';
-      if (tabWorkstations) tabWorkstations.style.display = 'block';
-      if (btnAccounts) btnAccounts.classList.remove('active');
-      if (btnWorkstations) btnWorkstations.classList.add('active');
-    } else {
-      if (tabAccounts) tabAccounts.style.display = 'block';
-      if (tabWorkstations) tabWorkstations.style.display = 'none';
-      if (btnAccounts) btnAccounts.classList.add('active');
-      if (btnWorkstations) btnWorkstations.classList.remove('active');
+    ['Accounts', 'Workstations', 'Setup'].forEach(function (name) {
+      var active = tabId === 'tab' + name;
+      document.getElementById('tab' + name).style.display = active ? 'block' : 'none';
+      document.getElementById('tabBtn' + name).classList.toggle('active', active);
+    });
+    if (tabId !== 'tabSetup') {
+      modalKeyVisible = false;
+      document.getElementById('createdClientKey').textContent = '••••••••••••';
+      document.getElementById('btnToggleCreatedKey').textContent = 'Pokaż klucz';
     }
     try { localStorage.setItem('agentlb-active-tab', tabId); } catch (e) {}
-    routeTo(tabId === 'tabWorkstations' ? 'workstations' : 'accounts');
+    routeTo(tabId === 'tabSetup' ? 'setup' : tabId === 'tabWorkstations' ? 'workstations' : 'accounts');
   }
 
   var btnTabAccounts = document.getElementById('tabBtnAccounts');
@@ -8181,6 +8344,11 @@ ${SHARED_HELPERS}
     });
   }
 
+  document.getElementById('tabBtnSetup').addEventListener('click', function () {
+    var name = document.getElementById('selModalStation').value;
+    openWorkstationSetup(name, name === '__primary__' ? primaryAdminKey : cachedClientKeys[name]);
+  });
+
   // --- Addresses for every view ----------------------------------------------
   // /dashboard/<view> opens that view directly; the address follows the tab or
   // dialog on screen, so a view can be bookmarked, shared and reached with
@@ -8191,6 +8359,7 @@ ${SHARED_HELPERS}
     'accounts/add': { tab: 'tabAccounts', modal: 'modalAddAccount', open: 'btnAddClaudeCol', title: ['Dodaj konto', 'Add account'] },
     'workstations': { tab: 'tabWorkstations', title: ['Stacje robocze', 'Workstations'] },
     'workstations/new': { tab: 'tabWorkstations', modal: 'modalAddClientKey', open: 'btnShowAddClientKey', title: ['Podłącz stację', 'Connect workstation'] },
+    'setup': { tab: 'tabSetup', title: ['Konfiguracja stacji', 'Workstation Setup'] },
     'usage': { tab: 'tabAccounts', modal: 'modalFleetUsage', open: 'btnOpenFleetUsage', title: ['Kto i na co?', 'Fleet usage'] },
     'chat': { tab: 'tabAccounts', modal: 'modalTestChat', open: 'btnOpenTestChat', title: ['Test Chat', 'Test Chat'] }
   };
@@ -8223,6 +8392,7 @@ ${SHARED_HELPERS}
     } catch (e) {}
   }
   function tabRouteName() {
+    if (document.getElementById('tabSetup').style.display === 'block') return 'setup';
     var ws = document.getElementById('tabWorkstations');
     return ws && ws.style.display === 'block' ? 'workstations' : 'accounts';
   }
@@ -8268,6 +8438,10 @@ ${SHARED_HELPERS}
         }
       }
       switchMainTab(r.tab);
+      if (r.tab === 'tabSetup') {
+        var selected = document.getElementById('selModalStation').value;
+        openWorkstationSetup(selected, selected === '__primary__' ? primaryAdminKey : cachedClientKeys[selected]);
+      }
       routeModalPushed = false;
       if (r.modal) {
         var dlg = document.getElementById(r.modal);
@@ -8296,7 +8470,7 @@ ${SHARED_HELPERS}
       // Bare /dashboard (or an unknown view): the last tab, then its address.
       var saved = null;
       try { saved = localStorage.getItem('agentlb-active-tab'); } catch (e) {}
-      initial = saved === 'tabWorkstations' ? 'workstations' : 'accounts';
+      initial = saved === 'tabSetup' ? 'setup' : saved === 'tabWorkstations' ? 'workstations' : 'accounts';
     }
     applyRoute(initial);
     routeTo(initial, true);

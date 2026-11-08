@@ -19,6 +19,7 @@ RUN npm ci --omit=dev \
 # Copy application files
 COPY src/ ./src/
 COPY setup/ ./setup/
+COPY clients/ ./clients/
 COPY LICENSE README.md ./
 
 # Set environment defaults

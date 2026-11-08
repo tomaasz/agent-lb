@@ -112,6 +112,7 @@ for load, expected in [
   it('dashboard offers an AGY quick-install button', () => {
     const html = renderDashboardHtml();
     assert.ok(html.includes('id="btnQuickToolAgy"'));
-    assert.ok(html.includes("/agy-setup.sh | ' + agyEnv + 'bash"));
+    assert.ok(html.includes("agy: '/agylb-setup'"));
+    assert.ok(html.includes('id="chkSetupAgylb"'));
   });
 });

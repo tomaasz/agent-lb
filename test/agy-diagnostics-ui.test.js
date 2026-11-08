@@ -10,7 +10,7 @@ test('AGY pool controls render and invoke real actions without undefined helpers
  const code=html.slice(html.indexOf('function renderAgyAccounts('),html.indexOf('// The routing table',html.indexOf('function renderAgyAccounts(')));
  const node=()=>({textContent:'',children:[],appendChild(n){this.children.push(n);},addEventListener(){}});
  const box=node(),buttons=[];
- const ctx={document:{getElementById:id=>id==='listAgy'?box:node(),createElement:node},agyRenaming:false,agyCheckPending:null,agyCheckAccounts:()=>{},attachListDropTarget(){},t:()=>'',agyT:(pl)=>pl,agyIconButton:(label,title,fn)=>{buttons.push({label,fn});return node();},agyAction:(path,body)=>({path,body}),renderAgyCard:()=>node()};
+ const ctx={document:{getElementById:id=>id==='listAgy'?box:node(),createElement:node},agyRenaming:false,agyCheckPending:null,agyAvailable:a=>!!a.enabled,agyCheckAccounts:()=>{},attachListDropTarget(){},t:()=>'',agyT:(pl)=>pl,agyIconButton:(label,title,fn)=>{buttons.push({label,fn});return node();},agyAction:(path,body)=>({path,body}),renderAgyCard:()=>node()};
  vm.runInNewContext(code,ctx);
  ctx.renderAgyAccounts([{id:'a'}]);
  assert.equal(buttons.length,1);
@@ -93,9 +93,12 @@ test('account card keeps progress visible through re-render and distinguishes ca
  vm.runInContext(source,ctx);
  const account={id:'a',email:'a@example.com',enabled:true,modelCatalog:{models:['gemini-flash-low'],stale:false},diagnostics:{status:'available',checkedAt:100,telemetry:{}}};
  const card=ctx.renderAgyCard(account,0,['a']);
- const modelDetails=card.children.find(n=>n.tag==='details'&&n.className==='dim');
- assert.equal(modelDetails.children[0].textContent,'Modele tego konta (1)');
- assert.equal(modelDetails.children[1].textContent,'gemini-flash-low');
+ const more=card.children.find(n=>n.tag==='details'&&n.className==='agy-details');
+ assert.equal(more.children[0].textContent,'Szczegóły');
+ const modelBox=more.children.find(n=>n.className==='dim');
+ assert.equal(modelBox.children[0].textContent,'Modele tego konta (1)');
+ assert.equal(modelBox.children[1].textContent,'gemini-flash-low');
+ assert.equal(card.children.filter(n=>n.tag==='details').length,1);
  assert.ok(card.children.some(n=>n.textContent==='Sprawdzanie dostępu, planu i limitów…'));
  assert.equal(card.children.find(n=>n.tag==='details').open,true);
  const check=controls.find(n=>n.title==='Sprawdź dostęp, plan i limity');
@@ -107,4 +110,18 @@ test('account card keeps progress visible through re-render and distinguishes ca
  ctx.renderAgyCard(account,0,['a']);
  const idle=controls.find(n=>n.title==='Sprawdź dostęp, plan i limity');
  assert.equal(idle.disabled,false);idle.action();assert.equal(clicked,'a');
+});
+
+test('AGY next-account hint follows pin, then soonest reset; sort puts unusable accounts last', () => {
+ const html=renderDashboardHtml();
+ const a=html.indexOf('var agyQuotaSort');
+ const code=html.slice(a,html.indexOf('function agyPoolSummary(',a));
+ const ctx={agyAvailable:x=>!!x.enabled&&!x.bad,agyQuotaItems:x=>x.items||[]};
+ vm.runInNewContext(code,ctx);
+ const acc=[{id:'a',enabled:true,usage:{models:[{resetAt:300}]}},{id:'b',enabled:true,usage:{models:[{resetAt:100}]}},{id:'c',enabled:true,bad:true}];
+ assert.equal(ctx.agyNextAccount(acc),'b');
+ assert.equal(ctx.agyNextAccount([{...acc[0],pinned:true},acc[1]]),'a');
+ assert.equal(ctx.agyNextAccount([acc[2]]),null);
+ assert.equal(ctx.agyAvgRemaining(acc[2]),-2);
+ assert.equal(ctx.agyAvgRemaining({enabled:true,items:[{remaining:1},{remaining:0.5}]}),0.75);
 });
