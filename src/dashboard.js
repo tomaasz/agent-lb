@@ -6558,6 +6558,7 @@ ${SHARED_HELPERS}
     if (checkingAccess) card.appendChild(el('div', 'agy-state-line', agyT('Sprawdzanie dostępu, planu i limitów…', 'Checking access, plan and quotas…')));
     // One collapsed "Details" block per card; problems stay visible on top.
     var more = el('details', 'agy-details');
+    more.style.userSelect = 'text';
     more.open = !!agyCheckExpanded[a.id];
     more.addEventListener('toggle', function () { agyCheckExpanded[a.id] = more.open; });
     more.appendChild(el('summary', '', agyT('Szczegóły', 'Details')));
@@ -6622,6 +6623,14 @@ ${SHARED_HELPERS}
     head.appendChild(acts);
     card.appendChild(head);
     attachCardDragListeners(card);
+    // The card is draggable, which blocks mouse text selection inside it. While the
+    // pointer is down on text areas, turn dragging off so the text can be copied.
+    card.addEventListener('mousedown', function (e) {
+      if (!(e.target && e.target.closest && e.target.closest('.agy-details, .card-body'))) return;
+      var was = card.draggable;
+      card.draggable = false;
+      document.addEventListener('mouseup', function () { card.draggable = was; }, { once: true });
+    });
 
     var nameRow = el('div', 'card-name-row');
     var nameDisplay = el('div', 'card-name-display');
