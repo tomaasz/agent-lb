@@ -6550,10 +6550,14 @@ ${SHARED_HELPERS}
 
     var checkingAccess = agyCheckPending && (!agyCheckPending.id || agyCheckPending.id === a.id);
     if (checkingAccess) card.appendChild(el('div', 'agy-state-line', agyT('Sprawdzanie dostępu, planu i limitów…', 'Checking access, plan and quotas…')));
+    // One collapsed "Details" block per card; problems stay visible on top.
+    var more = el('details', 'agy-details');
+    more.open = !!agyCheckExpanded[a.id];
+    more.addEventListener('toggle', function () { agyCheckExpanded[a.id] = more.open; });
+    more.appendChild(el('summary', '', agyT('Szczegóły', 'Details')));
+    var diagAlert = null;
     if (a.diagnostics) {
-      var diagnostic = el('details');
-      diagnostic.open = !!agyCheckExpanded[a.id];
-      diagnostic.addEventListener('toggle', function () { agyCheckExpanded[a.id] = diagnostic.open; });
+      var diagnostic = el('div', 'agy-diag');
       var labels = {
         available: agyT('Katalog modeli dostępny', 'Model catalog available'),
         forbidden: agyT('Odmowa dostępu', 'Access denied'),
@@ -6564,8 +6568,8 @@ ${SHARED_HELPERS}
         configuration_error: agyT('Sprawdź konfigurację diagnostyki', 'Check diagnostics configuration'),
         error: agyT('Sprawdzenie nie powiodło się', 'Check failed')
       };
-      diagnostic.appendChild(el('summary', '', labels[a.diagnostics.status] || a.diagnostics.status));
-      diagnostic.appendChild(el('div', '', new Date(a.diagnostics.checkedAt).toLocaleString()));
+      if (a.diagnostics.status !== 'available') diagAlert = el('div', 'agy-state-line spent', labels[a.diagnostics.status] || a.diagnostics.status);
+      diagnostic.appendChild(el('div', '', (labels[a.diagnostics.status] || a.diagnostics.status) + ' · ' + new Date(a.diagnostics.checkedAt).toLocaleString()));
       if (a.diagnostics.status === 'available') diagnostic.appendChild(el('div', 'dim', agyT('Odczyt katalogu nie potwierdza działania generacji.', 'Catalog access does not confirm successful generation.')));
       ['models', 'quotaSummary'].forEach(function (category) {
         var measurement = a.diagnostics.telemetry && a.diagnostics.telemetry[category];
@@ -6579,9 +6583,9 @@ ${SHARED_HELPERS}
         if (!url) return;
         var link = el('a', '', agyT('Otwórz stronę Google', 'Open Google page'));
         link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer';
-        diagnostic.appendChild(link);
+        (diagAlert || diagnostic).appendChild(link);
       });
-      card.appendChild(diagnostic);
+      more.appendChild(diagnostic);
       var observedPlan = a.diagnostics.telemetry && a.diagnostics.telemetry.plan;
       if (observedPlan) plan.textContent = (observedPlan.data.label === 'unknown' ? observedPlan.data.tierId || 'unknown' : observedPlan.data.label) + (observedPlan.stale ? ' (stale)' : '');
     }
@@ -6637,14 +6641,14 @@ ${SHARED_HELPERS}
     if (a.name) card.appendChild(el('div', 'agy-state-line', a.email));
 
     if (a.modelCatalog) {
-      var modelDetails = el('details', 'dim');
+      var modelBox = el('div', 'dim');
       var modelIds = a.modelCatalog.models || [];
-      var modelSummary = el('summary', '', agyT('Modele tego konta', 'Models for this account') + ' (' + modelIds.length + ')' +
-        (a.modelCatalog.stale ? agyT(' · ostatnia znana lista', ' · last known list') : ''));
-      modelDetails.appendChild(modelSummary);
-      modelDetails.appendChild(el('div', '', modelIds.length ? modelIds.join(', ') : agyT('Lista jeszcze niedostępna', 'Model list not available yet')));
-      card.appendChild(modelDetails);
+      modelBox.appendChild(el('div', '', agyT('Modele tego konta', 'Models for this account') + ' (' + modelIds.length + ')' +
+        (a.modelCatalog.stale ? agyT(' · ostatnia znana lista', ' · last known list') : '')));
+      modelBox.appendChild(el('div', '', modelIds.length ? modelIds.join(', ') : agyT('Lista jeszcze niedostępna', 'Model list not available yet')));
+      more.appendChild(modelBox);
     }
+    if (diagAlert) card.appendChild(diagAlert);
 
     var body = el('div', 'card-body');
     if (spent) {
@@ -6666,17 +6670,18 @@ ${SHARED_HELPERS}
     if (queue && queue.queued) body.appendChild(el('div', 'agy-state-line', agyT('W kolejce: ', 'Queued: ') + queue.queued));
     var events = (agyData.events || []).filter(function (e) { return e.accountId === a.id; }).slice(-5).reverse();
     if (events.length) {
-      var history = el('details', 'agy-state-line');
-      history.appendChild(el('summary', '', agyT('Ostatnie zdarzenia', 'Recent events')));
+      var history = el('div', 'agy-state-line');
+      history.appendChild(el('div', '', agyT('Ostatnie zdarzenia', 'Recent events')));
       events.forEach(function (e) {
         history.appendChild(el('div', '', new Date(e.at).toLocaleTimeString() + ' · ' + (e.client || '—') + ' · ' + (e.model || '—') + ' · ' + e.outcome + ' · ' + Math.round(e.durationMs / 1000) + 's'));
       });
-      body.appendChild(history);
+      more.appendChild(history);
     }
     body.appendChild(agyUsageBlock(a));
     var test = agyTests[a.id];
     if (test && !test.running) body.appendChild(el('div', 'agy-test-line ' + (test.ok ? 'ok' : 'bad'), test.text));
     card.appendChild(body);
+    if (more.children.length > 1) card.appendChild(more);
 
     var meta = el('div', 'card-meta');
     var st = a.stats || {};
