@@ -6695,6 +6695,7 @@ ${SHARED_HELPERS}
   }
   function renderAgyAccounts(list) {
     if (agyRenaming) return; // Polling must not replace an active editor.
+    agyLastList = list;
     var box = document.getElementById('listAgy');
     if (!box) return;
     attachListDropTarget(box);
@@ -6727,8 +6728,48 @@ ${SHARED_HELPERS}
       box.appendChild(empty);
       return;
     }
+    var summary = agyPoolSummary(list);
+    if (summary) box.appendChild(summary);
     var ids = list.map(function (a) { return a.id; });
-    list.forEach(function (a, i) { box.appendChild(renderAgyCard(a, i, ids)); });
+    list.forEach(function (a, i) {
+      if (agyQuotaFilter && !agyQuotaItems(a).some(function (m) { return m.label === agyQuotaFilter && m.remaining > 0; })) return;
+      box.appendChild(renderAgyCard(a, i, ids));
+    });
+  }
+  // Pool overview: per model, how many enabled accounts still have quota.
+  var agyQuotaFilter = null;
+  var agyLastList = [];
+  function agyPoolSummary(list) {
+    var stats = {};
+    list.forEach(function (a) {
+      if (!a.enabled) return;
+      agyQuotaItems(a).forEach(function (m) {
+        var st = stats[m.label] || (stats[m.label] = { label: m.label, total: 0, free: 0, reset: Infinity });
+        st.total++;
+        if (m.remaining > 0) st.free++;
+        else {
+          var r = parseTs(m.resetAt);
+          if (!isNaN(r) && r > Date.now() && r < st.reset) st.reset = r;
+        }
+      });
+    });
+    var rows = Object.keys(stats).map(function (k) { return stats[k]; })
+      .sort(function (x, y) { return x.free - y.free || x.label.localeCompare(y.label); });
+    if (!rows.length) return null;
+    var wrap = el('div', 'agy-pool-summary');
+    rows.forEach(function (st) {
+      var on = agyQuotaFilter === st.label;
+      var text = st.label + ': ' + st.free + '/' + st.total + ' ' + agyT('kont ma zapas', 'accounts have quota') +
+        (st.reset < Infinity ? ' · ' + agyT('najbliższy reset za ', 'next reset in ') + fmtIn((st.reset - Date.now()) / 1000) : '');
+      var b = el('button', 'btn btn-xs' + (on ? ' active' : ''), text);
+      b.type = 'button';
+      b.style.cssText = 'display:block;width:100%;text-align:left;margin:2px 0;' + (st.free === 0 ? 'color:var(--err, #f85149);' : '');
+      b.title = agyT('Pokaż tylko konta z zapasem tego modelu', 'Show only accounts with quota for this model');
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      b.addEventListener('click', function () { agyQuotaFilter = on ? null : st.label; renderAgyAccounts(agyLastList); });
+      wrap.appendChild(b);
+    });
+    return wrap;
   }
   // The routing table's Gemini row: catalog ids and how many AGY accounts can serve them.
   function agyRouteRow() {
