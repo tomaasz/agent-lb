@@ -1,3 +1,7 @@
+// Google disabled or banned the account (Terms of Service, PERMISSION_DENIED). The worker
+// reports this as a plain message, without the upstream_access_denied code.
+export const AGY_ACCESS_DENIED = /violation of Terms of Service|PERMISSION_DENIED/i;
+
 // Worker-local authentication/overload must not be confused with Google quota.
 export function classifyAgyFailure(status, text, retryAfter) {
   let error;
@@ -9,7 +13,7 @@ export function classifyAgyFailure(status, text, retryAfter) {
   let reason;
   if (quota) reason = 'quota';
   else if (code === 'upstream_authentication_error' || (googleFailure && /invalid_grant|authentication required|not logged into Antigravity/i.test(message))) reason = 'auth_required';
-  else if (code === 'upstream_access_denied') reason = 'access_denied';
+  else if (code === 'upstream_access_denied' || AGY_ACCESS_DENIED.test(message)) reason = 'access_denied';
   else if (status === 401 || status === 403) reason = 'bridge_auth';
   else if (status === 429 || status === 503 || code === 'busy') reason = 'overloaded';
   else if (status === 504 || code === 'timeout') reason = 'timeout';

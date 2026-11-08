@@ -6786,7 +6786,7 @@ ${SHARED_HELPERS}
   function agyPoolSummary(list) {
     var stats = {};
     list.forEach(function (a) {
-      if (!a.enabled) return;
+      if (!agyAvailable(a)) return; // banned, unverified, logged out or spent accounts have no usable quota
       agyQuotaItems(a).forEach(function (m) {
         var st = stats[m.label] || (stats[m.label] = { label: m.label, total: 0, free: 0, reset: Infinity, seen: {}, blocked: false });
         st.total++;
@@ -6804,7 +6804,7 @@ ${SHARED_HELPERS}
       var st = stats[k];
       if (!st.blocked) return;
       list.forEach(function (a) {
-        if (!a.enabled || st.seen[a.id] || !(a.modelCatalog && (a.modelCatalog.models || []).indexOf(k) >= 0)) return;
+        if (!agyAvailable(a) || st.seen[a.id] || !(a.modelCatalog && (a.modelCatalog.models || []).indexOf(k) >= 0)) return;
         st.total++;
         st.free++;
       });
@@ -6884,6 +6884,11 @@ ${SHARED_HELPERS}
   function agyUsageBlock(a) {
     var wrap = document.createElement('div');
     wrap.className = 'agy-usage';
+    if (a.enabled && (agyDiagnosticRestricted(a) || (a.health && a.health.requiresReview))) {
+      // Old readings would show a healthy 100% for an account Google has blocked.
+      wrap.appendChild(el('div', 'agy-state-line spent', agyT('Konto zablokowane lub wymaga działania w Google — limity nie mają znaczenia.', 'Account blocked or needs action at Google — quota does not matter.')));
+      return wrap;
+    }
     var items = agyQuotaItems(a);
     var note = document.createElement('div');
     note.className = 'agy-usage-note';

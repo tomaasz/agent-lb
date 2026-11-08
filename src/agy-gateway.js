@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { StringDecoder } from 'node:string_decoder';
-import { classifyAgyFailure } from './agy-failures.js';
+import { classifyAgyFailure, AGY_ACCESS_DENIED } from './agy-failures.js';
 
 const MAX_ERROR_BYTES = 1024 * 1024;
 const DEFAULT_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -261,7 +261,8 @@ export function pickAgyTestModel(models) {
 
 /**
  * One tiny completion through the worker of exactly this account. It never
- * falls back to another account and never changes order, pin or quota state.
+ * falls back to another account and never changes order, pin or quota state. The one
+ * exception: a Google ban (Terms of Service / PERMISSION_DENIED) marks the account for review.
  * The worker token only goes out in the Authorization header to 127.0.0.1.
  */
 export async function testAgyAccount({ store, pool, catalog, id, timeoutMs = TEST_TIMEOUT_MS }) {
@@ -298,7 +299,10 @@ export async function testAgyAccount({ store, pool, catalog, id, timeoutMs = TES
       req.end(body);
     });
     const outcome = inspectTestResponse(result);
-    if (!outcome.ok) return { ok: false, error: cleanError(outcome.error, lease.token), ms: Date.now() - started };
+    if (!outcome.ok) {
+      if (AGY_ACCESS_DENIED.test(outcome.error)) store.markFailure?.(id, 'access_denied');
+      return { ok: false, error: cleanError(outcome.error, lease.token), ms: Date.now() - started };
+    }
     return { ok: true, ms: Date.now() - started, model };
   } catch (err) {
     return { ok: false, error: cleanError(err.message, lease?.token), ms: Date.now() - started };
