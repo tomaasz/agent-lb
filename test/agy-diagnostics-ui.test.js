@@ -114,7 +114,7 @@ test('account card keeps progress visible through re-render and distinguishes ca
 
 test('AGY next-account hint follows pin, then soonest reset; sort puts unusable accounts last', () => {
  const html=renderDashboardHtml();
- const a=html.indexOf('var agyQuotaSort'), b=html.indexOf('// Pool overview',a)>0?html.indexOf('// Pool overview',a):html.indexOf('function agyPoolSummary(',a);
+ const a=html.indexOf('var agyQuotaSort');
  const code=html.slice(a,html.indexOf('function agyPoolSummary(',a));
  const ctx={agyAvailable:x=>!!x.enabled&&!x.bad,agyQuotaItems:x=>x.items||[]};
  vm.runInNewContext(code,ctx);
