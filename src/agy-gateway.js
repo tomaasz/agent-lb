@@ -160,16 +160,15 @@ export async function handleAgyCompletion(req, res, {
     const outgoing = Buffer.from(JSON.stringify(parsed));
     const excluded = new Set();
     let lastFailure;
-    let attempts = 0;
     for (;;) {
       let account;
-      while (attempts < 3) {
+      // No attempt cap: `excluded` guarantees each account is tried once, and the deadline bounds total time.
+      for (;;) {
         const candidate = store.pick(excluded, resolved, id => pool.busy?.(id) || 0);
         if (!candidate) break;
         excluded.add(candidate.id);
         if (catalog.supportsAccount && !catalog.supportsAccount(candidate.id, resolved)) continue;
         account = candidate;
-        attempts++;
         break;
       }
       if (!account) {
@@ -192,7 +191,6 @@ export async function handleAgyCompletion(req, res, {
         // The lease may have waited in a queue while this account was disabled
         // or lost its model entitlement. Never send using the obsolete choice.
         if (catalog.supportsAccount && !catalog.supportsAccount(account.id, resolved)) {
-          attempts--;
           continue;
         }
         const result = await attempt(req, res, lease, outgoing, parsed.stream !== false, usage => {
