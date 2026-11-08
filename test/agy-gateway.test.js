@@ -368,3 +368,9 @@ for (const mode of ['routing', 'test']) test(`${mode} rechecks entitlements afte
     else assert.equal(res.statusCode, 429);
   } finally { await new Promise(resolve => worker.server.close(resolve)); }
 });
+
+test('rotation is not capped: the fifth account serves after four exhausted ones', async () => {
+  const q=(_q,r)=>{r.writeHead(429);r.end('{"error":{"message":"AGY quota exhausted"}}');};
+  const out=await run({handlers:{a:q,b:q,c:q,d:q,e:(_q,r)=>{r.writeHead(200);r.end('ok');}},body:{model:'gemini-real-high',stream:false}});
+  assert.equal(out.text,'ok'); assert.equal(out.store.spent.length,4);
+});
