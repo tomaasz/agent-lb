@@ -6511,6 +6511,7 @@ ${SHARED_HELPERS}
     if (latest && latest.at > now - 900000) return latest.outcome === 'success' ? 'verified' : 'error';
     return 'unknown';
   }
+  var agyNextId = null;
   function renderAgyCard(a, i, ids) {
     var status = agyAccountStatus(a, agyData.events, agyTests[a.id], Date.now());
     var spent = a.quotaUntil > Date.now();
@@ -6546,6 +6547,11 @@ ${SHARED_HELPERS}
     else if (a.diagnostics && a.diagnostics.status === 'available') titleGroup.appendChild(el('span', 'badge', agyT('Dostęp do katalogu', 'Catalog access')));
     else titleGroup.appendChild(el('span', 'badge', agyT('Niezweryfikowane', 'Unverified')));
     if (a.pinned) titleGroup.appendChild(el('span', 'badge current', t('agyPinnedBadge')));
+    if (agyNextId === a.id) {
+      var nextBadge = el('span', 'badge badge-healthy', '➜ ' + agyT('następne', 'next'));
+      nextBadge.title = agyT('Konto, które routing wybierze jako następne (szacunek z danych na dashboardzie)', 'Account routing will pick next (estimated from dashboard data)');
+      titleGroup.appendChild(nextBadge);
+    }
     head.appendChild(titleGroup);
 
     var checkingAccess = agyCheckPending && (!agyCheckPending.id || agyCheckPending.id === a.id);
@@ -6731,13 +6737,40 @@ ${SHARED_HELPERS}
     var summary = agyPoolSummary(list);
     if (summary) box.appendChild(summary);
     var ids = list.map(function (a) { return a.id; });
-    list.forEach(function (a, i) {
+    agyNextId = agyNextAccount(list);
+    var order = list.map(function (a, i) { return { a: a, i: i }; });
+    if (agyQuotaSort) order.sort(function (x, y) { return agyAvgRemaining(y.a) - agyAvgRemaining(x.a) || x.i - y.i; });
+    order.forEach(function (o) {
+      var a = o.a;
       if (agyQuotaFilter && !agyQuotaItems(a).some(function (m) { return m.label === agyQuotaFilter && m.remaining > 0; })) return;
-      box.appendChild(renderAgyCard(a, i, ids));
+      var card = renderAgyCard(a, o.i, ids);
+      if (agyQuotaSort) card.draggable = false; // reordering only makes sense in routing order
+      box.appendChild(card);
     });
   }
   // Pool overview: per model, how many enabled accounts still have quota.
   var agyQuotaFilter = null;
+  var agyQuotaSort = false;
+  // Mean remaining share over known models; accounts that cannot serve (or have no data) sort last.
+  function agyAvgRemaining(a) {
+    if (!agyAvailable(a)) return -2;
+    var items = agyQuotaItems(a);
+    if (!items.length) return -1;
+    return items.reduce(function (sum, m) { return sum + m.remaining; }, 0) / items.length;
+  }
+  // Mirrors AgyAccounts.pick(): pinned first, else the available account whose quota resets soonest, then list order.
+  // shortcut: ignores per-model quota and live busy counts the server uses, upgrade if the hint misleads.
+  function agyNextAccount(list) {
+    var pinned = list.find(function (a) { return a.pinned && agyAvailable(a); });
+    if (pinned) return pinned.id;
+    var best = null, bestReset = Infinity;
+    list.forEach(function (a) {
+      if (!agyAvailable(a)) return;
+      var reset = Math.min.apply(null, (a.usage && a.usage.models || []).map(function (m) { return Number(m.resetAt); }).filter(isFinite).concat([Infinity]));
+      if (!best || reset < bestReset) { best = a; bestReset = reset; }
+    });
+    return best ? best.id : null;
+  }
   var agyLastList = [];
   function agyPoolSummary(list) {
     var stats = {};
@@ -6757,6 +6790,11 @@ ${SHARED_HELPERS}
       .sort(function (x, y) { return x.free - y.free || x.label.localeCompare(y.label); });
     if (!rows.length) return null;
     var wrap = el('div', 'agy-pool-summary');
+    var sortBtn = el('button', 'btn btn-xs' + (agyQuotaSort ? ' active' : ''), agyT('Sortuj: ', 'Sort: ') + (agyQuotaSort ? agyT('najwięcej zapasu', 'most quota') : agyT('kolejność routingu', 'routing order')));
+    sortBtn.type = 'button';
+    sortBtn.setAttribute('aria-pressed', agyQuotaSort ? 'true' : 'false');
+    sortBtn.addEventListener('click', function () { agyQuotaSort = !agyQuotaSort; renderAgyAccounts(agyLastList); });
+    wrap.appendChild(sortBtn);
     rows.forEach(function (st) {
       var on = agyQuotaFilter === st.label;
       var text = st.label + ': ' + st.free + '/' + st.total + ' ' + agyT('kont ma zapas', 'accounts have quota') +
