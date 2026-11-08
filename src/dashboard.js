@@ -6583,7 +6583,7 @@ ${SHARED_HELPERS}
         if (!measurement) return;
         diagnostic.appendChild(el('div', 'dim', (category === 'models' ? agyT('Modele', 'Models') : agyT('Okna limitów', 'Quota windows')) + ' · ' + new Date(measurement.observedAt).toLocaleString() + (measurement.stale ? agyT(' · dane nieaktualne', ' · stale data') : '')));
         (measurement.data || []).forEach(function (m) {
-          diagnostic.appendChild(el('div', '', (m.displayName || m.id) + ': ' + (typeof m.remainingFraction === 'number' ? Math.round(m.remainingFraction * 100) + '%' : agyT('brak danych', 'unknown')) + (m.resetAt ? ' · ' + new Date(m.resetAt).toLocaleString() : '')));
+          diagnostic.appendChild(el('div', '', (m.displayName && m.displayName !== m.id ? m.displayName + ' [' + m.id + ']' : m.id) + ': ' + (typeof m.remainingFraction === 'number' ? Math.round(m.remainingFraction * 100) + '%' : agyT('brak danych', 'unknown')) + (m.resetAt ? ' · ' + new Date(m.resetAt).toLocaleString() : '')));
         });
       });
       [a.diagnostics.validationUrl, a.diagnostics.appealUrl].forEach(function (url) {
