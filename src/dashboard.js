@@ -6864,6 +6864,9 @@ ${SHARED_HELPERS}
     if (u && u.models) u.models.forEach(function (m) { put(m.label, m.remaining, m.resetAt, u.updatedAt || 0, 'station'); });
     var q = a.diagnostics && a.diagnostics.telemetry && a.diagnostics.telemetry.quotaSummary;
     if (q && q.data) q.data.forEach(function (m) { put(m.displayName || m.id, m.remainingFraction, m.resetAt, q.observedAt || 0, 'check'); });
+    // Exhausted models from the check (0% left, reset still ahead) get their own bar by id.
+    var mm = a.diagnostics && a.diagnostics.telemetry && a.diagnostics.telemetry.models;
+    if (mm && mm.data) mm.data.forEach(function (m) { if (m.remainingFraction === 0 && m.resetAt > Date.now()) put(m.id, 0, m.resetAt, mm.observedAt || 0, 'check'); });
     // Per-model blocks (Google rejected the model) are 0% left until they expire, even when
     // the account-wide windows above still show room. Added last so they always win.
     agyBlocks(a).forEach(function (k) { byLabel[k] = { label: k, remaining: 0, resetAt: a.modelQuotas[k], at: 0, src: 'block' }; });
