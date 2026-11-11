@@ -6846,7 +6846,9 @@ ${SHARED_HELPERS}
     return [
       { prefix: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
       { prefix: 'gemini-4-argon', label: 'Gemini 4 Argon' },
-      { prefix: 'gemini-4-carbon', label: 'Gemini 4 Carbon' }
+      { prefix: 'gemini-4-carbon', label: 'Gemini 4 Carbon' },
+      { prefix: 'claude-sonnet', label: 'Claude Sonnet', quotaOnly: true },
+      { prefix: 'claude-opus', label: 'Claude Opus', quotaOnly: true }
     ].map(function (family) {
       function matches(id) { return id === family.prefix || id.indexOf(family.prefix + '-') === 0; }
       function variant(id) {
@@ -6854,18 +6856,36 @@ ${SHARED_HELPERS}
         return ({ high: 'High', medium: 'Medium', low: 'Low', tiered: agyT('Odczyt grupy Flash 3.8', 'Flash 3.8 group reading') })[suffix] || suffix || family.label;
       }
       var byId = {};
-      function put(id, remaining, resetAt, at, stale) {
+      function put(id, remaining, resetAt, at, stale, name) {
         if (!matches(id) || typeof remaining !== 'number' || !isFinite(remaining)) return;
-        if (!byId[id] || at > byId[id].at) byId[id] = { label: variant(id), variant: variant(id), remaining: remaining, resetAt: resetAt, at: at, stale: stale || at < Date.now() - 1800000 };
+        if (!byId[id] || at > byId[id].at) byId[id] = { id: id, label: family.quotaOnly ? name || id : variant(id), variant: variant(id), remaining: remaining, resetAt: resetAt, at: at, stale: stale || at < Date.now() - 1800000 };
       }
       var measurement = a.diagnostics && a.diagnostics.telemetry && a.diagnostics.telemetry.models;
-      if (measurement) (measurement.data || []).forEach(function (m) { put(m.id, m.remainingFraction, m.resetAt, measurement.observedAt || 0, measurement.stale); });
+      if (measurement) (measurement.data || []).forEach(function (m) { put(m.id, m.remainingFraction, m.resetAt, measurement.observedAt || 0, measurement.stale, m.displayName); });
       if (a.usage) (a.usage.models || []).forEach(function (m) { put(m.label, m.remaining, m.resetAt, a.usage.updatedAt || 0, false); });
       var catalog = a.modelCatalog;
-      var supported = catalog && catalog.available && !catalog.stale ? (catalog.models || []).some(matches) : null;
+      var supported = !family.quotaOnly && catalog && catalog.available && !catalog.stale ? (catalog.models || []).some(matches) : null;
+      var readings = Object.keys(byId).sort().map(function (id) { return byId[id]; });
+      if (family.quotaOnly) {
+        var grouped = {};
+        readings.forEach(function (m) {
+          var parts = m.id.split('-');
+          var effort = parts[parts.length - 1];
+          var hasEffort = ['high', 'medium', 'low'].indexOf(effort) >= 0;
+          var versionId = hasEffort ? parts.slice(0, -1).join('-') : m.id;
+          var key = JSON.stringify([versionId, m.remaining, m.resetAt, m.at, m.stale]);
+          if (!grouped[key]) grouped[key] = { reading: m, variants: [] };
+          if (hasEffort) grouped[key].variants.push(effort.charAt(0).toUpperCase() + effort.slice(1));
+        });
+        readings = Object.keys(grouped).map(function (key) {
+          var g = grouped[key];
+          if (g.variants.length > 1) g.reading.label = g.reading.label.split(' (')[0] + ' · ' + g.variants.join('/');
+          return g.reading;
+        });
+      }
       return {
-        label: family.label, supported: supported,
-        readings: Object.keys(byId).sort().map(function (id) { return byId[id]; }),
+        label: family.label, supported: supported, quotaOnly: !!family.quotaOnly,
+        readings: readings,
         blocks: agyBlocks(a).filter(matches).map(function (id) { return { label: variant(id), resetAt: a.modelQuotas[id] }; })
       };
     });
@@ -6907,12 +6927,16 @@ ${SHARED_HELPERS}
     agyFocusedQuotas(a).forEach(function (group) {
       var section = el('div', 'agy-model-group');
       section.appendChild(el('strong', '', group.label));
-      if (group.supported === false) {
+      if (group.quotaOnly) {
+        section.appendChild(el('div', 'dim', agyT('Limity raportowane przez Google', 'Quotas reported by Google')));
+      } else if (group.supported === true) {
+        section.appendChild(el('div', 'dim', agyT('Na liście modeli tego konta', 'Listed for this account')));
+      } else if (group.supported === false) {
         section.appendChild(el('div', 'dim', agyT('Brak na liście modeli tego konta', 'Not listed for this account')));
       } else if (group.supported === null) {
         section.appendChild(el('div', 'dim', agyT('Dostęp niepotwierdzony', 'Access unconfirmed')));
       }
-      if (!group.readings.length) section.appendChild(el('div', 'dim', agyT('Brak danych o limicie', 'Quota data unavailable')));
+      if (!group.readings.length) section.appendChild(el('div', 'dim', agyT('Google nie podał limitu ani terminu odnowienia', 'Google did not report a quota or reset time')));
       group.readings.forEach(function (m) {
         section.appendChild(agyQuotaRow(m));
         section.appendChild(el('div', 'agy-quota-reset', agyT('Sprawdzono: ', 'Checked: ') + (m.at ? new Date(m.at).toLocaleString() : agyT('brak daty', 'unknown')) + (m.stale ? agyT(' · dane mogą być nieaktualne', ' · data may be stale') : '')));

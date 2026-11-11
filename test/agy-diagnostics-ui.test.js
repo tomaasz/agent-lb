@@ -147,7 +147,7 @@ test('focused AGY quotas show current families without borrowing legacy or accou
   {id:'gemini-3.8-flash-tiered',remainingFraction:0.1,resetAt:future}
  ]},quotaSummary:{observedAt:Date.now(),data:[{id:'3p-5h',remainingFraction:1,resetAt:future}]}}},modelQuotas:{'gemini-3.8-flash-high':future}};
  const groups=ctx.agyFocusedQuotas(account);
- assert.deepEqual(Array.from(groups,g=>g.label),['Gemini 3.8 Flash','Gemini 4 Argon','Gemini 4 Carbon']);
+ assert.deepEqual(Array.from(groups,g=>g.label),['Gemini 3.8 Flash','Gemini 4 Argon','Gemini 4 Carbon','Claude Sonnet','Claude Opus']);
  assert.equal(groups[0].readings[0].remaining,0.1);
  assert.equal(groups[0].blocks[0].label,'High');
  assert.equal(groups[1].supported,false);
@@ -155,6 +155,24 @@ test('focused AGY quotas show current families without borrowing legacy or accou
  assert.equal(groups[2].supported,true);
  assert.equal(groups[2].readings.length,0,'catalog access and account-wide quota must not invent a model percentage');
  assert.equal(ctx.agyFocusedQuotas({})[0].supported,null);
+});
+
+test('Claude quotas use Google readings, preserve versions, and do not infer access from the Gemini-only catalog',()=>{
+ const html=renderDashboardHtml(),ctx={agyT:pl=>pl,Date};
+ vm.runInNewContext(html.slice(html.indexOf('function agyBlocks('),html.indexOf('function agyQuotaRow(')),ctx);
+ const at=Date.now(),resetAt=at+3600000;
+ const groups=ctx.agyFocusedQuotas({modelCatalog:{available:true,models:['gemini-3.8-flash-high']},diagnostics:{telemetry:{models:{observedAt:at,data:[
+  {id:'claude-sonnet-5-5-high',displayName:'Claude Sonnet 5.5 (High)',remainingFraction:0.8,resetAt},
+  {id:'claude-sonnet-5-5-low',displayName:'Claude Sonnet 5.5 (Low)',remainingFraction:0.8,resetAt},
+  {id:'claude-sonnet-4-6',displayName:'Claude Sonnet 4.6 (Thinking)',remainingFraction:0,resetAt},
+  {id:'claude-opus-5-5-high',displayName:'Claude Opus 5.5 (High)',remainingFraction:0.4,resetAt:resetAt+1}
+ ]}}}});
+ assert.equal(groups[3].supported,null);
+ assert.equal(groups[3].readings.length,2,'equal variant readings are compact, different versions stay separate');
+ assert.match(groups[3].readings.find(m=>m.remaining===0.8).label,/5\.5/);
+ assert.equal(groups[3].readings.find(m=>m.remaining===0).resetAt,resetAt);
+ assert.equal(groups[4].readings[0].remaining,0.4);
+ assert.equal(groups[4].readings[0].resetAt,resetAt+1);
 });
 
 test('focused AGY quotas preserve different variant readings and ignore expired blocks',()=>{
