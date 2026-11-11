@@ -5168,7 +5168,7 @@ export function createProxyRequestListener({
             0;
           if (currentTokens >= maxSessionTokens) {
             const statusCode = resolveSessionBudgetStatusCode(config);
-            const errMessage = `Session token budget exceeded (${currentTokens.toLocaleString()} >= ${maxSessionTokens.toLocaleString()} limit) for session "${sessionId}". Request rejected by hard budget cap.`;
+            const errMessage = `Session token budget exceeded (${currentTokens.toLocaleString('en-US')} >= ${maxSessionTokens.toLocaleString('en-US')} limit) for session "${sessionId}". Request rejected by hard budget cap.`;
             if (!hideActivity) {
               hooks.onRequestEnd?.(reqId, {
                 method: req.method,
