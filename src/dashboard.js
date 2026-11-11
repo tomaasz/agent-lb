@@ -776,6 +776,17 @@ const PAGE = `<!doctype html>
   .agy-test-line.bad { color: var(--bad); }
   .agy-usage { display: flex; flex-direction: column; gap: 3px; }
   .agy-usage .agy-usage-note { font-size: 11px; color: var(--dim); }
+  .agy-details { margin-top: 10px; font-size: 12px; line-height: 1.6; }
+  .agy-details summary { cursor: pointer; }
+  .agy-diag, .agy-model-readings, .agy-model-catalog { margin-top: 8px; }
+  .agy-model-group { border-top: 1px solid var(--line-subtle); padding: 8px 0; }
+  .agy-model-group summary { overflow-wrap: anywhere; }
+  .agy-model-id { display: block; font-size: 11px; overflow-wrap: anywhere; }
+  .agy-model-entry { margin: 6px 0; }
+  .agy-quota-item { padding: 5px 0; }
+  .agy-quota-heading { display: flex; justify-content: space-between; gap: 12px; overflow-wrap: anywhere; }
+  .agy-quota-item .bar { margin: 5px 0; }
+  .agy-quota-reset { font-size: 11px; color: var(--dim); }
   .agy-card .quota { grid-template-columns: minmax(90px, 1.2fr) 1fr auto; }
   .agy-steps { margin: 0 0 8px 18px; padding: 0; font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
   .agy-countdown { font-size: 12px; color: var(--dim); }
@@ -6512,6 +6523,48 @@ ${SHARED_HELPERS}
     if (latest && latest.at > now - 900000) return latest.outcome === 'success' ? 'verified' : 'error';
     return 'unknown';
   }
+  var agyDetailExpanded = {};
+  function agyRememberDetails(details, key) {
+    details.open = !!agyDetailExpanded[key];
+    details.addEventListener('toggle', function () { agyDetailExpanded[key] = details.open; });
+  }
+  function agyModelReadings(measurement, accountId) {
+    var section = el('details', 'agy-model-readings');
+    agyRememberDetails(section, accountId + ':readings');
+    var models = measurement.data || [];
+    section.appendChild(el('summary', '', agyT('Limity modeli', 'Model quotas') + ' (' + models.length + ')'));
+    section.appendChild(el('div', 'dim', agyT('Sprawdzono: ', 'Checked: ') + new Date(measurement.observedAt).toLocaleString() + (measurement.stale ? agyT(' · dane mogą być nieaktualne', ' · data may be stale') : '')));
+    section.appendChild(el('div', 'dim', agyT('Razem pokazujemy wpisy z takim samym zapasem i terminem odnowienia. Nie wiemy, czy korzystają ze wspólnego limitu.', 'Entries with the same remaining quota and reset time are shown together. We do not know whether they share a quota.')));
+    var groups = {};
+    models.forEach(function (m) {
+      var key = JSON.stringify([m.remainingFraction, m.resetAt]);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(m);
+    });
+    Object.keys(groups).forEach(function (key) {
+      var entries = groups[key], first = entries[0];
+      var group = el('details');
+      agyRememberDetails(group, accountId + ':group:' + JSON.stringify(entries.map(function (m) { return m.id; }).sort()));
+      var names = [];
+      entries.forEach(function (m) { var name = m.displayName || m.id; if (names.indexOf(name) < 0) names.push(name); });
+      var left = typeof first.remainingFraction === 'number' ? Math.round(first.remainingFraction * 100) + '% ' + agyT('pozostało', 'left') : agyT('Zapas nieznany', 'Remaining quota unknown');
+      group.appendChild(el('summary', '', left + ' · ' + agyT('wpisów: ', 'entries: ') + entries.length));
+      // The reset remains visible without expanding all of the model identifiers.
+      var block = el('div', 'agy-model-group');
+      block.appendChild(group);
+      var preview = el('div', 'dim', names.slice(0, 2).join(', ') + (names.length > 2 ? ' …' : ''));
+      preview.title = names.join(', ');
+      block.appendChild(preview);
+      block.appendChild(el('div', 'agy-quota-reset', first.resetAt ? agyT('Odnowienie: ', 'Resets: ') + new Date(first.resetAt).toLocaleString() : agyT('Termin odnowienia nieznany', 'Reset time unknown')));
+      entries.forEach(function (m) {
+        var row = el('div', 'agy-model-entry', m.displayName || m.id);
+        if (m.displayName && m.displayName !== m.id) row.appendChild(el('code', 'dim agy-model-id', m.id));
+        group.appendChild(row);
+      });
+      section.appendChild(block);
+    });
+    return section;
+  }
   var agyNextId = null;
   function renderAgyCard(a, i, ids) {
     var status = agyAccountStatus(a, agyData.events, agyTests[a.id], Date.now());
@@ -6568,7 +6621,7 @@ ${SHARED_HELPERS}
     if (a.diagnostics) {
       var diagnostic = el('div', 'agy-diag');
       var labels = {
-        available: agyT('Katalog modeli dostępny', 'Model catalog available'),
+        available: agyT('Lista modeli pobrana', 'Model list retrieved'),
         forbidden: agyT('Odmowa dostępu', 'Access denied'),
         validation_required: agyT('Wymagana weryfikacja Google', 'Google verification required'),
         subscription_required: agyT('Wymagana subskrypcja', 'Subscription required'),
@@ -6579,15 +6632,9 @@ ${SHARED_HELPERS}
       };
       if (a.diagnostics.status !== 'available') diagAlert = el('div', 'agy-state-line spent', labels[a.diagnostics.status] || a.diagnostics.status);
       diagnostic.appendChild(el('div', '', (labels[a.diagnostics.status] || a.diagnostics.status) + ' · ' + new Date(a.diagnostics.checkedAt).toLocaleString()));
-      if (a.diagnostics.status === 'available') diagnostic.appendChild(el('div', 'dim', agyT('Odczyt katalogu nie potwierdza działania generacji.', 'Catalog access does not confirm successful generation.')));
-      ['models', 'quotaSummary'].forEach(function (category) {
-        var measurement = a.diagnostics.telemetry && a.diagnostics.telemetry[category];
-        if (!measurement) return;
-        diagnostic.appendChild(el('div', 'dim', (category === 'models' ? agyT('Modele', 'Models') : agyT('Okna limitów', 'Quota windows')) + ' · ' + new Date(measurement.observedAt).toLocaleString() + (measurement.stale ? agyT(' · dane nieaktualne', ' · stale data') : '')));
-        (measurement.data || []).forEach(function (m) {
-          diagnostic.appendChild(el('div', '', (m.displayName && m.displayName !== m.id ? m.displayName + ' [' + m.id + ']' : m.id) + ': ' + (typeof m.remainingFraction === 'number' ? Math.round(m.remainingFraction * 100) + '%' : agyT('brak danych', 'unknown')) + (m.resetAt ? ' · ' + new Date(m.resetAt).toLocaleString() : '')));
-        });
-      });
+      if (a.diagnostics.status === 'available' && status !== 'verified') diagnostic.appendChild(el('div', 'dim', agyT('Dostęp do listy działa. Aby sprawdzić, czy model odpowiada, kliknij Test.', 'List access works. Click Test to check whether a model responds.')));
+      var modelMeasurement = a.diagnostics.telemetry && a.diagnostics.telemetry.models;
+      if (modelMeasurement) diagnostic.appendChild(agyModelReadings(modelMeasurement, a.id));
       [a.diagnostics.validationUrl, a.diagnostics.appealUrl].forEach(function (url) {
         if (!url) return;
         var link = el('a', '', agyT('Otwórz stronę Google', 'Open Google page'));
@@ -6658,11 +6705,14 @@ ${SHARED_HELPERS}
     if (a.name) card.appendChild(el('div', 'agy-state-line', a.email));
 
     if (a.modelCatalog) {
-      var modelBox = el('div', 'dim');
+      var modelBox = el('details', 'agy-model-catalog');
+      agyRememberDetails(modelBox, a.id + ':catalog');
       var modelIds = a.modelCatalog.models || [];
-      modelBox.appendChild(el('div', '', agyT('Modele tego konta', 'Models for this account') + ' (' + modelIds.length + ')' +
+      modelBox.appendChild(el('summary', '', agyT('Modele do wysyłania zapytań', 'Models for sending requests') + ' (' + modelIds.length + ')' +
         (a.modelCatalog.stale ? agyT(' · ostatnia znana lista', ' · last known list') : '')));
-      modelBox.appendChild(el('div', '', modelIds.length ? modelIds.join(', ') : agyT('Lista jeszcze niedostępna', 'Model list not available yet')));
+      modelBox.appendChild(el('div', 'dim', agyT('Nazwy używane przy wyborze modelu. Mogą różnić się od nazw na liście limitów Google.', 'Names used when selecting a model. They may differ from names in Google’s quota list.')));
+      if (modelIds.length) modelIds.forEach(function (id) { modelBox.appendChild(el('code', 'agy-model-id', id)); });
+      else modelBox.appendChild(el('div', 'dim', agyT('Lista jeszcze niedostępna', 'Model list not available yet')));
       more.appendChild(modelBox);
     }
     if (diagAlert) card.appendChild(diagAlert);
@@ -6876,14 +6926,29 @@ ${SHARED_HELPERS}
       .sort(function (x, y) { return x.remaining - y.remaining || x.label.localeCompare(y.label); });
   }
   function agyQuotaRow(m) {
-    // quotaRow shows used share (red when high); AGY reports what is left.
-    var r = quotaRow(m.label, 1 - m.remaining, m.resetAt);
-    r.firstChild.title = m.label;
-    r.firstChild.style.overflow = 'hidden';
-    r.firstChild.style.textOverflow = 'ellipsis';
-    r.firstChild.style.whiteSpace = 'nowrap';
-    var val = r.lastChild;
-    val.textContent = Math.round(m.remaining * 100) + '% ' + agyT('zostało', 'left') + val.textContent.slice(val.textContent.indexOf('%') + 1);
+    var label = ({
+      'Weekly Limit Remaining': agyT('Limit tygodniowy', 'Weekly quota'),
+      'Five Hour Limit Remaining': agyT('Limit na 5 godzin', '5-hour quota'),
+      '3p-weekly': agyT('Limit tygodniowy', 'Weekly quota'),
+      '3p-5h': agyT('Limit na 5 godzin', '5-hour quota')
+    })[m.label] || m.label;
+    var pct = Math.round(Math.max(0, Math.min(1, m.remaining)) * 100);
+    var r = el('div', 'agy-quota-item');
+    var heading = el('div', 'agy-quota-heading');
+    heading.appendChild(el('span', '', label));
+    heading.appendChild(el('strong', '', pct + '% ' + agyT('pozostało', 'left')));
+    r.appendChild(heading);
+    var bar = el('div', 'bar');
+    bar.setAttribute('role', 'progressbar');
+    bar.setAttribute('aria-label', label);
+    bar.setAttribute('aria-valuemin', '0');
+    bar.setAttribute('aria-valuemax', '100');
+    bar.setAttribute('aria-valuenow', String(pct));
+    var fill = el('i', pct <= 10 ? 'bad' : pct <= 30 ? 'warn' : '');
+    fill.style.width = pct + '%';
+    bar.appendChild(fill);
+    r.appendChild(bar);
+    r.appendChild(el('div', 'agy-quota-reset', m.resetAt ? agyT('Odnowienie: ', 'Resets: ') + new Date(m.resetAt).toLocaleString() : agyT('Termin odnowienia nieznany', 'Reset time unknown')));
     return r;
   }
   function agyUsageBlock(a) {
@@ -6905,7 +6970,7 @@ ${SHARED_HELPERS}
     var reported = items.filter(function (m) { return m.src !== 'block'; });
     var age = reported.length ? Date.now() - Math.max.apply(null, reported.map(function (m) { return m.at; })) : 0;
     if (reported.length) {
-      note.textContent = agyT('Limity sprzed ', 'Quota from ') + agyLeft(age) + agyT('', ' ago') + (age > 30 * 60000 ? agyT(' (mogą być nieaktualne)', ' (may be stale)') : '');
+      note.textContent = agyT('Pozostały zapas · sprawdzono ', 'Remaining quota · checked ') + (age < 60000 ? agyT('przed chwilą', 'just now') : agyLeft(age) + agyT(' temu', ' ago')) + (age > 30 * 60000 ? agyT(' (dane mogą być nieaktualne)', ' (data may be stale)') : '');
       wrap.appendChild(note);
     }
     if (reported.length && age > 30 * 60000) wrap.style.opacity = '0.55'; // stale readings look stale

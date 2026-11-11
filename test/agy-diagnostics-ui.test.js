@@ -95,9 +95,10 @@ test('account card keeps progress visible through re-render and distinguishes ca
  const card=ctx.renderAgyCard(account,0,['a']);
  const more=card.children.find(n=>n.tag==='details'&&n.className==='agy-details');
  assert.equal(more.children[0].textContent,'Szczegóły');
- const modelBox=more.children.find(n=>n.className==='dim');
- assert.equal(modelBox.children[0].textContent,'Modele tego konta (1)');
- assert.equal(modelBox.children[1].textContent,'gemini-flash-low');
+ const modelBox=more.children.find(n=>n.className==='agy-model-catalog');
+ assert.equal(modelBox.tag,'details');
+ assert.equal(modelBox.children[0].textContent,'Modele do wysyłania zapytań (1)');
+ assert.equal(modelBox.children[2].textContent,'gemini-flash-low');
  assert.equal(card.children.filter(n=>n.tag==='details').length,1);
  assert.ok(card.children.some(n=>n.textContent==='Sprawdzanie dostępu, planu i limitów…'));
  assert.equal(card.children.find(n=>n.tag==='details').open,true);
