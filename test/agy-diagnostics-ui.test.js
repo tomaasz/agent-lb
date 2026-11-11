@@ -113,10 +113,10 @@ test('account card keeps progress visible through re-render and distinguishes ca
  assert.equal(idle.disabled,false);idle.action();assert.equal(clicked,'a');
 });
 
-test('AGY next-account hint follows pin, then soonest reset; sort puts unusable accounts last', () => {
+test('AGY next-account hint follows pin, then soonest reset and skips unusable accounts', () => {
  const html=renderDashboardHtml();
- const a=html.indexOf('var agyQuotaSort');
- const code=html.slice(a,html.indexOf('function agyPoolSummary(',a));
+ const a=html.indexOf('function agyNextAccount(');
+ const code=html.slice(a,html.indexOf('// The routing table',a));
  const ctx={agyAvailable:x=>!!x.enabled&&!x.bad,agyQuotaItems:x=>x.items||[],agyBlocks:x=>x.blocks||[]};
  vm.runInNewContext(code,ctx);
  const acc=[{id:'a',enabled:true,usage:{models:[{resetAt:300}]}},{id:'b',enabled:true,usage:{models:[{resetAt:100}]}},{id:'c',enabled:true,bad:true}];
@@ -125,29 +125,6 @@ test('AGY next-account hint follows pin, then soonest reset; sort puts unusable 
  assert.equal(ctx.agyNextAccount([acc[2]]),null);
  assert.equal(ctx.agyNextAccount([{...acc[1],blocks:['m']},acc[0]]),'a'); // model-blocked account is skipped
  assert.equal(ctx.agyNextAccount([{...acc[1],blocks:['m']}]),'b'); // ...unless nothing else is left
- assert.equal(ctx.agyAvgRemaining(acc[2]),-2);
- assert.equal(ctx.agyAvgRemaining({enabled:true,items:[{remaining:1},{remaining:0.5}]}),0.75);
-});
-
-test('per-model blocks show as 0% left and are listed first', () => {
- const html=renderDashboardHtml();
- const a=html.indexOf('function agyBlocks('), b=html.indexOf('function agyQuotaRow(',a);
- const ctx={agyT:pl=>pl,Date};
- vm.runInNewContext(html.slice(a,b),ctx);
- const until=Date.now()+3600_000;
- const items=ctx.agyQuotaItems({usage:{updatedAt:5,models:[{label:'Weekly',remaining:1,resetAt:null}]},modelQuotas:{'gemini-3.8-flash-high':until,old:1}});
- assert.equal(JSON.stringify(items.map(i=>[i.label,i.remaining,i.src])),JSON.stringify([['gemini-3.8-flash-high',0,'block'],['Weekly',1,'station']]));
- assert.equal(items[0].resetAt,until);
-});
-
-test('exhausted models from the check get their own bar; past resets and non-zero models do not', () => {
- const html=renderDashboardHtml();
- const a=html.indexOf('function agyBlocks('), b=html.indexOf('function agyQuotaRow(',a);
- const ctx={agyT:pl=>pl,Date};
- vm.runInNewContext(html.slice(a,b),ctx);
- const f=Date.now()+3600_000, models={observedAt:5,data:[{id:'m-spent',remainingFraction:0,resetAt:f},{id:'m-past',remainingFraction:0,resetAt:1},{id:'m-ok',remainingFraction:0.5,resetAt:f},{id:'m-null',remainingFraction:null,resetAt:f}]};
- const items=ctx.agyQuotaItems({diagnostics:{telemetry:{models}}});
- assert.equal(JSON.stringify(items.map(i=>[i.label,i.remaining])),JSON.stringify([['m-spent',0]]));
 });
 
 test('transient health cooldown is a self-clearing cooldown, not a needs-review error', () => {
@@ -158,4 +135,35 @@ test('transient health cooldown is a self-clearing cooldown, not a needs-review 
  const now=1000, base={enabled:true};
  assert.equal(ctx.agyAccountStatus({...base,health:{reason:'transport',until:now+5,requiresReview:false}},[],null,now),'cooldown');
  assert.equal(ctx.agyAccountStatus({...base,health:{reason:'access_denied',until:null,requiresReview:true}},[],null,now),'error');
+});
+
+test('focused AGY quotas show current families without borrowing legacy or account-wide limits', () => {
+ const html=renderDashboardHtml();
+ const ctx={agyT:pl=>pl,Date};
+ vm.runInNewContext(html.slice(html.indexOf('function agyBlocks('),html.indexOf('function agyQuotaRow(')),ctx);
+ const future=Date.now()+3600000;
+ const account={modelCatalog:{available:true,stale:false,models:['gemini-3.8-flash-high','gemini-4-carbon-low']},diagnostics:{telemetry:{models:{observedAt:Date.now(),data:[
+  {id:'gemini-2.5-flash',remainingFraction:1,resetAt:future},
+  {id:'gemini-3.8-flash-tiered',remainingFraction:0.1,resetAt:future}
+ ]},quotaSummary:{observedAt:Date.now(),data:[{id:'3p-5h',remainingFraction:1,resetAt:future}]}}},modelQuotas:{'gemini-3.8-flash-high':future}};
+ const groups=ctx.agyFocusedQuotas(account);
+ assert.deepEqual(Array.from(groups,g=>g.label),['Gemini 3.8 Flash','Gemini 4 Argon','Gemini 4 Carbon']);
+ assert.equal(groups[0].readings[0].remaining,0.1);
+ assert.equal(groups[0].blocks[0].label,'High');
+ assert.equal(groups[1].supported,false);
+ assert.equal(groups[1].readings.length,0);
+ assert.equal(groups[2].supported,true);
+ assert.equal(groups[2].readings.length,0,'catalog access and account-wide quota must not invent a model percentage');
+ assert.equal(ctx.agyFocusedQuotas({})[0].supported,null);
+});
+
+test('focused AGY quotas preserve different variant readings and ignore expired blocks',()=>{
+ const html=renderDashboardHtml(),ctx={agyT:pl=>pl,Date};
+ vm.runInNewContext(html.slice(html.indexOf('function agyBlocks('),html.indexOf('function agyQuotaRow(')),ctx);
+ const at=Date.now(),future=at+3600000;
+ const groups=ctx.agyFocusedQuotas({usage:{updatedAt:at,models:[{label:'gemini-4-carbon-high',remaining:0.8,resetAt:future}]},diagnostics:{telemetry:{models:{observedAt:at-1,data:[{id:'gemini-4-carbon-high',remainingFraction:0.5,resetAt:future},{id:'gemini-4-carbon-low',remainingFraction:0,resetAt:future+1}]}}},modelQuotas:{'gemini-4-carbon-low':at-1}});
+ assert.equal(groups[2].readings.length,2);
+ assert.equal(groups[2].readings.find(r=>r.variant==='High').remaining,0.8);
+ assert.equal(groups[2].readings.find(r=>r.variant==='Low').remaining,0);
+ assert.equal(groups[2].blocks.length,0);
 });
