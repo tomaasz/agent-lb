@@ -21,7 +21,7 @@ test('AGY known failures and model quotas override recent success before Test is
   assert.equal(status({ ...account, modelQuotas: { gemini: now + 10 } }, success, null, now), 'modelQuota');
   assert.equal(status({ ...account, modelQuotas: { gemini: now - 10 } }, success, null, now), 'verified');
   assert.equal(status({ ...account, health: { requiresReview: true } }, success, null, now), 'error');
-  assert.equal(status({ ...account, health: { until: now + 10 } }, success, null, now), 'error');
+  assert.equal(status({ ...account, health: { until: now + 10 } }, success, null, now), 'cooldown');
   assert.equal(status({ ...account, enabled: false }, success, null, now), 'disabled');
   assert.equal(status({ ...account, usage: { models: [{ remaining: 0, resetAt: now + 1 }] } }, success, null, now), 'modelQuota');
 });
