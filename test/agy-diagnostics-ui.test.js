@@ -138,3 +138,13 @@ test('per-model blocks show as 0% left and are listed first', () => {
  assert.equal(JSON.stringify(items.map(i=>[i.label,i.remaining,i.src])),JSON.stringify([['gemini-3.8-flash-high',0,'block'],['Weekly',1,'station']]));
  assert.equal(items[0].resetAt,until);
 });
+
+test('exhausted models from the check get their own bar; past resets and non-zero models do not', () => {
+ const html=renderDashboardHtml();
+ const a=html.indexOf('function agyBlocks('), b=html.indexOf('function agyQuotaRow(',a);
+ const ctx={agyT:pl=>pl,Date};
+ vm.runInNewContext(html.slice(a,b),ctx);
+ const f=Date.now()+3600_000, models={observedAt:5,data:[{id:'m-spent',remainingFraction:0,resetAt:f},{id:'m-past',remainingFraction:0,resetAt:1},{id:'m-ok',remainingFraction:0.5,resetAt:f},{id:'m-null',remainingFraction:null,resetAt:f}]};
+ const items=ctx.agyQuotaItems({diagnostics:{telemetry:{models}}});
+ assert.equal(JSON.stringify(items.map(i=>[i.label,i.remaining])),JSON.stringify([['m-spent',0]]));
+});
