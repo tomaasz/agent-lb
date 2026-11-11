@@ -6532,7 +6532,7 @@ ${SHARED_HELPERS}
     var section = el('details', 'agy-model-readings');
     agyRememberDetails(section, accountId + ':readings');
     var models = measurement.data || [];
-    section.appendChild(el('summary', '', agyT('Limity modeli', 'Model quotas') + ' (' + models.length + ')'));
+    section.appendChild(el('summary', '', agyT('Odczyty techniczne Google', 'Technical Google readings') + ' (' + models.length + ')'));
     section.appendChild(el('div', 'dim', agyT('Sprawdzono: ', 'Checked: ') + new Date(measurement.observedAt).toLocaleString() + (measurement.stale ? agyT(' · dane mogą być nieaktualne', ' · data may be stale') : '')));
     section.appendChild(el('div', 'dim', agyT('Razem pokazujemy wpisy z takim samym zapasem i terminem odnowienia. Nie wiemy, czy korzystają ze wspólnego limitu.', 'Entries with the same remaining quota and reset time are shown together. We do not know whether they share a quota.')));
     var groups = {};
@@ -6635,6 +6635,16 @@ ${SHARED_HELPERS}
       if (a.diagnostics.status === 'available' && status !== 'verified') diagnostic.appendChild(el('div', 'dim', agyT('Dostęp do listy działa. Aby sprawdzić, czy model odpowiada, kliknij Test.', 'List access works. Click Test to check whether a model responds.')));
       var modelMeasurement = a.diagnostics.telemetry && a.diagnostics.telemetry.models;
       if (modelMeasurement) diagnostic.appendChild(agyModelReadings(modelMeasurement, a.id));
+      var windows = a.diagnostics.telemetry && a.diagnostics.telemetry.quotaSummary;
+      if (windows) {
+        var windowBox = el('details');
+        agyRememberDetails(windowBox, a.id + ':windows');
+        windowBox.appendChild(el('summary', '', agyT('Pozostałe limity Google (bez przypisania do modeli)', 'Other Google quotas (not mapped to models)')));
+        (windows.data || []).forEach(function (m) {
+          if (typeof m.remainingFraction === 'number') windowBox.appendChild(agyQuotaRow({label: m.displayName || m.id, remaining: m.remainingFraction, resetAt: m.resetAt}));
+        });
+        diagnostic.appendChild(windowBox);
+      }
       [a.diagnostics.validationUrl, a.diagnostics.appealUrl].forEach(function (url) {
         if (!url) return;
         var link = el('a', '', agyT('Otwórz stronę Google', 'Open Google page'));
@@ -6730,9 +6740,6 @@ ${SHARED_HELPERS}
       body.appendChild(el('div', 'agy-state-line spent', healthText));
       body.appendChild(agyIconButton('↻', agyT('Ponów po sprawdzeniu konta', 'Retry after reviewing account'), function () { agyAction('accounts/clear-health', { id: a.id }); }));
     }
-    Object.keys(a.modelQuotas || {}).forEach(function (model) {
-      if (a.modelQuotas[model] > Date.now()) body.appendChild(el('div', 'agy-state-line spent', model + ' · ' + agyLeft(a.modelQuotas[model] - Date.now())));
-    });
     var queue = (agyData.queue || []).find(function (q) { return q.accountId === a.id; });
     if (queue && queue.queued) body.appendChild(el('div', 'agy-state-line', agyT('W kolejce: ', 'Queued: ') + queue.queued));
     var events = (agyData.events || []).filter(function (e) { return e.accountId === a.id; }).slice(-5).reverse();
@@ -6762,7 +6769,6 @@ ${SHARED_HELPERS}
   }
   function renderAgyAccounts(list) {
     if (agyRenaming) return; // Polling must not replace an active editor.
-    agyLastList = list;
     var box = document.getElementById('listAgy');
     if (!box) return;
     attachListDropTarget(box);
@@ -6795,29 +6801,11 @@ ${SHARED_HELPERS}
       box.appendChild(empty);
       return;
     }
-    var summary = agyPoolSummary(list);
-    if (summary) box.appendChild(summary);
     var ids = list.map(function (a) { return a.id; });
     agyNextId = agyNextAccount(list);
-    var order = list.map(function (a, i) { return { a: a, i: i }; });
-    if (agyQuotaSort) order.sort(function (x, y) { return agyAvgRemaining(y.a) - agyAvgRemaining(x.a) || x.i - y.i; });
-    order.forEach(function (o) {
-      var a = o.a;
-      if (agyQuotaFilter && !agyQuotaItems(a).some(function (m) { return m.label === agyQuotaFilter && m.remaining > 0; })) return;
-      var card = renderAgyCard(a, o.i, ids);
-      if (agyQuotaSort) card.draggable = false; // reordering only makes sense in routing order
-      box.appendChild(card);
+    list.forEach(function (a, i) {
+      box.appendChild(renderAgyCard(a, i, ids));
     });
-  }
-  // Pool overview: per model, how many enabled accounts still have quota.
-  var agyQuotaFilter = null;
-  var agyQuotaSort = false;
-  // Mean remaining share over known models; accounts that cannot serve (or have no data) sort last.
-  function agyAvgRemaining(a) {
-    if (!agyAvailable(a)) return -2;
-    var items = agyQuotaItems(a);
-    if (!items.length) return -1;
-    return items.reduce(function (sum, m) { return sum + m.remaining; }, 0) / items.length;
   }
   // Mirrors AgyAccounts.pick(): pinned first, else the available account whose quota resets soonest, then list order.
   // shortcut: ignores per-model quota and live busy counts the server uses, upgrade if the hint misleads.
@@ -6833,56 +6821,6 @@ ${SHARED_HELPERS}
       if (!best || reset < bestReset) { best = a; bestReset = reset; }
     });
     return best ? best.id : null;
-  }
-  var agyLastList = [];
-  function agyPoolSummary(list) {
-    var stats = {};
-    list.forEach(function (a) {
-      if (!agyAvailable(a)) return; // banned, unverified, logged out or spent accounts have no usable quota
-      agyQuotaItems(a).forEach(function (m) {
-        var st = stats[m.label] || (stats[m.label] = { label: m.label, total: 0, free: 0, reset: Infinity, seen: {}, blocked: false });
-        st.total++;
-        st.seen[a.id] = true;
-        if (m.src === 'block') st.blocked = true;
-        if (m.remaining > 0) st.free++;
-        else {
-          var r = parseTs(m.resetAt);
-          if (!isNaN(r) && r > Date.now() && r < st.reset) st.reset = r;
-        }
-      });
-    });
-    // A block names one model; accounts that list it in their catalog and are not blocked still have quota.
-    Object.keys(stats).forEach(function (k) {
-      var st = stats[k];
-      if (!st.blocked) return;
-      list.forEach(function (a) {
-        if (!agyAvailable(a) || st.seen[a.id] || !(a.modelCatalog && (a.modelCatalog.models || []).indexOf(k) >= 0)) return;
-        st.total++;
-        st.free++;
-      });
-    });
-    var rows = Object.keys(stats).map(function (k) { return stats[k]; })
-      .sort(function (x, y) { return x.free - y.free || x.label.localeCompare(y.label); });
-    if (!rows.length) return null;
-    var wrap = el('div', 'agy-pool-summary');
-    var sortBtn = el('button', 'btn btn-xs' + (agyQuotaSort ? ' active' : ''), agyT('Sortuj: ', 'Sort: ') + (agyQuotaSort ? agyT('najwięcej zapasu', 'most quota') : agyT('kolejność routingu', 'routing order')));
-    sortBtn.type = 'button';
-    sortBtn.setAttribute('aria-pressed', agyQuotaSort ? 'true' : 'false');
-    sortBtn.addEventListener('click', function () { agyQuotaSort = !agyQuotaSort; renderAgyAccounts(agyLastList); });
-    wrap.appendChild(sortBtn);
-    rows.forEach(function (st) {
-      var on = agyQuotaFilter === st.label;
-      var text = st.label + ': ' + st.free + '/' + st.total + ' ' + agyT('kont ma zapas', 'accounts have quota') +
-        (st.reset < Infinity ? ' · ' + agyT('najbliższy reset za ', 'next reset in ') + fmtIn((st.reset - Date.now()) / 1000) : '');
-      var b = el('button', 'btn btn-xs' + (on ? ' active' : ''), text);
-      b.type = 'button';
-      b.style.cssText = 'display:block;width:100%;text-align:left;margin:2px 0;' + (st.free === 0 ? 'color:var(--err, #f85149);' : '');
-      b.title = agyT('Pokaż tylko konta z zapasem tego modelu', 'Show only accounts with quota for this model');
-      b.setAttribute('aria-pressed', on ? 'true' : 'false');
-      b.addEventListener('click', function () { agyQuotaFilter = on ? null : st.label; renderAgyAccounts(agyLastList); });
-      wrap.appendChild(b);
-    });
-    return wrap;
   }
   // The routing table's Gemini row: catalog ids and how many AGY accounts can serve them.
   function agyRouteRow() {
@@ -6900,30 +6838,37 @@ ${SHARED_HELPERS}
     tr.appendChild(can);
     return tr;
   }
-  // Remaining quota per model: station reports (a.usage) merged with the
-  // account check (diagnostics quotaSummary); the newer reading wins per label.
+  // Explicit per-model blocks are separate from Google quota readings.
   function agyBlocks(a) {
     return Object.keys(a.modelQuotas || {}).filter(function (k) { return a.modelQuotas[k] > Date.now(); });
   }
-  function agyQuotaItems(a) {
-    var byLabel = {};
-    function put(label, remaining, resetAt, at, src) {
-      if (!label || typeof remaining !== 'number' || !isFinite(remaining)) return;
-      var cur = byLabel[label];
-      if (!cur || at > cur.at) byLabel[label] = { label: label, remaining: remaining, resetAt: resetAt, at: at, src: src };
-    }
-    var u = a.usage;
-    if (u && u.models) u.models.forEach(function (m) { put(m.label, m.remaining, m.resetAt, u.updatedAt || 0, 'station'); });
-    var q = a.diagnostics && a.diagnostics.telemetry && a.diagnostics.telemetry.quotaSummary;
-    if (q && q.data) q.data.forEach(function (m) { put(m.displayName || m.id, m.remainingFraction, m.resetAt, q.observedAt || 0, 'check'); });
-    // Exhausted models from the check (0% left, reset still ahead) get their own bar by id.
-    var mm = a.diagnostics && a.diagnostics.telemetry && a.diagnostics.telemetry.models;
-    if (mm && mm.data) mm.data.forEach(function (m) { if (m.remainingFraction === 0 && m.resetAt > Date.now()) put(m.id, 0, m.resetAt, mm.observedAt || 0, 'check'); });
-    // Per-model blocks (Google rejected the model) are 0% left until they expire, even when
-    // the account-wide windows above still show room. Added last so they always win.
-    agyBlocks(a).forEach(function (k) { byLabel[k] = { label: k, remaining: 0, resetAt: a.modelQuotas[k], at: 0, src: 'block' }; });
-    return Object.keys(byLabel).map(function (k) { return byLabel[k]; })
-      .sort(function (x, y) { return x.remaining - y.remaining || x.label.localeCompare(y.label); });
+  function agyFocusedQuotas(a) {
+    return [
+      { prefix: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
+      { prefix: 'gemini-4-argon', label: 'Gemini 4 Argon' },
+      { prefix: 'gemini-4-carbon', label: 'Gemini 4 Carbon' }
+    ].map(function (family) {
+      function matches(id) { return id === family.prefix || id.indexOf(family.prefix + '-') === 0; }
+      function variant(id) {
+        var suffix = id.slice(family.prefix.length).replace(/^-/, '');
+        return ({ high: 'High', medium: 'Medium', low: 'Low', tiered: agyT('Odczyt grupy Flash 3.8', 'Flash 3.8 group reading') })[suffix] || suffix || family.label;
+      }
+      var byId = {};
+      function put(id, remaining, resetAt, at, stale) {
+        if (!matches(id) || typeof remaining !== 'number' || !isFinite(remaining)) return;
+        if (!byId[id] || at > byId[id].at) byId[id] = { label: variant(id), variant: variant(id), remaining: remaining, resetAt: resetAt, at: at, stale: stale || at < Date.now() - 1800000 };
+      }
+      var measurement = a.diagnostics && a.diagnostics.telemetry && a.diagnostics.telemetry.models;
+      if (measurement) (measurement.data || []).forEach(function (m) { put(m.id, m.remainingFraction, m.resetAt, measurement.observedAt || 0, measurement.stale); });
+      if (a.usage) (a.usage.models || []).forEach(function (m) { put(m.label, m.remaining, m.resetAt, a.usage.updatedAt || 0, false); });
+      var catalog = a.modelCatalog;
+      var supported = catalog && catalog.available && !catalog.stale ? (catalog.models || []).some(matches) : null;
+      return {
+        label: family.label, supported: supported,
+        readings: Object.keys(byId).sort().map(function (id) { return byId[id]; }),
+        blocks: agyBlocks(a).filter(matches).map(function (id) { return { label: variant(id), resetAt: a.modelQuotas[id] }; })
+      };
+    });
   }
   function agyQuotaRow(m) {
     var label = ({
@@ -6959,28 +6904,24 @@ ${SHARED_HELPERS}
       wrap.appendChild(el('div', 'agy-state-line spent', agyT('Konto zablokowane lub wymaga działania w Google — limity nie mają znaczenia.', 'Account blocked or needs action at Google — quota does not matter.')));
       return wrap;
     }
-    var items = agyQuotaItems(a);
-    var note = document.createElement('div');
-    note.className = 'agy-usage-note';
-    if (!items.length) {
-      note.textContent = agyT('Limity: brak danych — kliknij 🔎, aby sprawdzić.', 'Quota: no data yet — click 🔎 to check.');
-      wrap.appendChild(note);
-      return wrap;
-    }
-    var reported = items.filter(function (m) { return m.src !== 'block'; });
-    var age = reported.length ? Date.now() - Math.max.apply(null, reported.map(function (m) { return m.at; })) : 0;
-    if (reported.length) {
-      note.textContent = agyT('Pozostały zapas · sprawdzono ', 'Remaining quota · checked ') + (age < 60000 ? agyT('przed chwilą', 'just now') : agyLeft(age) + agyT(' temu', ' ago')) + (age > 30 * 60000 ? agyT(' (dane mogą być nieaktualne)', ' (data may be stale)') : '');
-      wrap.appendChild(note);
-    }
-    if (reported.length && age > 30 * 60000) wrap.style.opacity = '0.55'; // stale readings look stale
-    items.slice(0, 3).forEach(function (m) { wrap.appendChild(agyQuotaRow(m)); });
-    if (items.length > 3) {
-      var more = el('details', 'agy-state-line');
-      more.appendChild(el('summary', '', agyT('Pozostałe modele', 'Other models') + ' (' + (items.length - 3) + ')'));
-      items.slice(3).forEach(function (m) { more.appendChild(agyQuotaRow(m)); });
-      wrap.appendChild(more);
-    }
+    agyFocusedQuotas(a).forEach(function (group) {
+      var section = el('div', 'agy-model-group');
+      section.appendChild(el('strong', '', group.label));
+      if (group.supported === false) {
+        section.appendChild(el('div', 'dim', agyT('Brak na liście modeli tego konta', 'Not listed for this account')));
+      } else if (group.supported === null) {
+        section.appendChild(el('div', 'dim', agyT('Dostęp niepotwierdzony', 'Access unconfirmed')));
+      }
+      if (!group.readings.length) section.appendChild(el('div', 'dim', agyT('Brak danych o limicie', 'Quota data unavailable')));
+      group.readings.forEach(function (m) {
+        section.appendChild(agyQuotaRow(m));
+        section.appendChild(el('div', 'agy-quota-reset', agyT('Sprawdzono: ', 'Checked: ') + (m.at ? new Date(m.at).toLocaleString() : agyT('brak daty', 'unknown')) + (m.stale ? agyT(' · dane mogą być nieaktualne', ' · data may be stale') : '')));
+      });
+      group.blocks.forEach(function (m) {
+        section.appendChild(el('div', 'agy-state-line spent', m.label + agyT(' — zablokowany do ', ' — blocked until ') + new Date(m.resetAt).toLocaleString()));
+      });
+      wrap.appendChild(section);
+    });
     return wrap;
   }
   function agyEl(id) { return document.getElementById(id); }
