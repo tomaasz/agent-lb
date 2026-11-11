@@ -148,3 +148,13 @@ test('exhausted models from the check get their own bar; past resets and non-zer
  const items=ctx.agyQuotaItems({diagnostics:{telemetry:{models}}});
  assert.equal(JSON.stringify(items.map(i=>[i.label,i.remaining])),JSON.stringify([['m-spent',0]]));
 });
+
+test('transient health cooldown is a self-clearing cooldown, not a needs-review error', () => {
+ const html=renderDashboardHtml();
+ const a=html.indexOf('function agyAccountStatus('), b=html.indexOf('function renderAgyCard(',a);
+ const ctx={agyDiagnosticRestricted:()=>false};
+ vm.runInNewContext(html.slice(a,b),ctx);
+ const now=1000, base={enabled:true};
+ assert.equal(ctx.agyAccountStatus({...base,health:{reason:'transport',until:now+5,requiresReview:false}},[],null,now),'cooldown');
+ assert.equal(ctx.agyAccountStatus({...base,health:{reason:'access_denied',until:null,requiresReview:true}},[],null,now),'error');
+});

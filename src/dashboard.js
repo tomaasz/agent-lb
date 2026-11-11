@@ -6496,7 +6496,8 @@ ${SHARED_HELPERS}
   function agyAccountStatus(a, events, test, now) {
     if (!a.enabled) return 'disabled';
     if (a.diagnostics && ['auth_invalid', 'forbidden', 'validation_required', 'subscription_required', 'tos_violation'].indexOf(a.diagnostics.routingStatus || a.diagnostics.status) >= 0) return 'error';
-    if (a.health && (a.health.requiresReview || a.health.until > now)) return 'error';
+    if (a.health && a.health.requiresReview) return 'error';
+    if (a.health && a.health.until > now) return 'cooldown'; // transient failure, clears itself
     if (a.quotaUntil > now) return 'quota';
     if (Object.keys(a.modelQuotas || {}).some(function (m) { return a.modelQuotas[m] > now; })) return 'modelQuota';
     if ((a.usage && a.usage.models || []).some(function (m) {
@@ -6542,6 +6543,7 @@ ${SHARED_HELPERS}
     if (!a.enabled) titleGroup.appendChild(el('span', 'badge bad', t('agyDisabledBadge')));
     else if (spent) titleGroup.appendChild(el('span', 'badge throttled', '⚠️ ' + t('agyLimitSpent')));
     else if (status === 'error') titleGroup.appendChild(el('span', 'badge bad', agyT('Wymaga sprawdzenia', 'Needs review')));
+    else if (status === 'cooldown') titleGroup.appendChild(el('span', 'badge throttled', agyT('Przerwa · ', 'Cooldown · ') + agyLeft(a.health.until - Date.now())));
     else if (status === 'modelQuota') titleGroup.appendChild(el('span', 'badge throttled', agyT('Limit modelu', 'Model quota')));
     else if (status === 'verified') titleGroup.appendChild(el('span', 'badge badge-healthy', agyT('Ostatnio działało', 'Recently successful')));
     else if (a.diagnostics && a.diagnostics.status === 'available') titleGroup.appendChild(el('span', 'badge', agyT('Dostęp do katalogu', 'Catalog access')));
