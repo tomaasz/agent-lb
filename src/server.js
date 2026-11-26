@@ -149,6 +149,7 @@ import {
   codexResponseFailure,
   codexModelCapacity,
   codexStreamLimit,
+  nextLowerCapacityModel,
 } from "./provider-translator.js";
 import { FairShareController } from "./fair-share.js";
 import { ToolCallDedupeCache } from "./tool-call-dedupe.js";
@@ -7242,7 +7243,7 @@ export async function forwardRequest(
     upstreamUrl = `${upstreamFor(account, upstream)}/backend-api/codex/responses`;
     sendBody = translateChatCompletionsToCodexResponses(
       sendBody,
-      substitutedModel(
+      ctx.capacityFallbackModel || substitutedModel(
         ctx.fallbackPolicy,
         ctx.requestedModel || ctx.model,
         "codex",
@@ -7268,7 +7269,7 @@ export async function forwardRequest(
         upstreamUrl = `${upstreamFor(account, upstream)}/backend-api/codex/responses`;
         const openAIBody = translateAnthropicToOpenAI(
           sendBody,
-          substitutedModel(
+          ctx.capacityFallbackModel || substitutedModel(
             ctx.fallbackPolicy,
             ctx.requestedModel || ctx.model,
             "codex",
@@ -7276,7 +7277,7 @@ export async function forwardRequest(
         );
         sendBody = translateChatCompletionsToCodexResponses(
           openAIBody,
-          substitutedModel(
+          ctx.capacityFallbackModel || substitutedModel(
             ctx.fallbackPolicy,
             ctx.requestedModel || ctx.model,
             "codex",
@@ -7315,6 +7316,15 @@ export async function forwardRequest(
         ),
       );
       headers["content-type"] = "application/json";
+    }
+  }
+
+  if (ctx.capacityFallbackModel) {
+    const currentModel = parseRequestModel(sendBody);
+    if (currentModel && currentModel !== ctx.capacityFallbackModel) {
+      sendBody = rewriteModel(sendBody, {
+        [currentModel]: ctx.capacityFallbackModel,
+      });
     }
   }
 
@@ -7580,6 +7590,25 @@ export async function forwardRequest(
         if (isCodexAccount)
           codexLimit = codexUsageLimit(parsed, codexQuotaHeaders);
         if (codexLimit) requestScoped = false;
+
+        if (modelAtCapacity && isCodexAccount && retryCount < maxRetries) {
+          const fallback = nextLowerCapacityModel(parseRequestModel(body));
+          if (fallback) {
+            ctx.capacityFallbackModel = fallback;
+            ctx.hopTo = account.index;
+            console.log(
+              `[AgentLB] Codex model capacity on "${account.name}" — retrying with ${fallback}`,
+            );
+            if (clientGone(res)) {
+              ctx.abandoned = true;
+              return;
+            }
+            return forwardRequest(
+              req, res, body, accountManager, upstream, retryCount + 1,
+              hooks, reqId, ctx, logDir, sx, route,
+            );
+          }
+        }
       } else {
         await upstreamRes.body?.cancel();
       }
@@ -8294,11 +8323,16 @@ export async function forwardRequest(
               timestamp: Date.now(),
             };
           } else {
-            console.log(
-              `[AgentLB] Codex model capacity reached on "${account.name}" (in stream) — switching account`,
-            );
+            const fallback = nextLowerCapacityModel(parseRequestModel(sendBody));
+            if (fallback) {
+              ctx.capacityFallbackModel = fallback;
+              ctx.hopTo = account.index;
+              console.log(
+                `[AgentLB] Codex model capacity on "${account.name}" — retrying with ${fallback}`,
+              );
+            }
           }
-          ctx.tried.add(account.index);
+          if (!ctx.capacityFallbackModel) ctx.tried.add(account.index);
           if (clientGone(res)) {
             ctx.abandoned = true;
             return;

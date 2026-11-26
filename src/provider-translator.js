@@ -12,6 +12,18 @@ import { sanitizeToolPairs } from './tool-pair-sanitize.js';
 export const DEFAULT_FALLBACK_OPENAI_MODEL = 'gpt-4o';
 export const DEFAULT_FALLBACK_ANTHROPIC_MODEL = 'claude-3-5-sonnet-20241022';
 
+const MODEL_CAPACITY_FALLBACKS = {
+  'gpt-6.1-sol': 'gpt-6-sol',
+  'gpt-6-sol': 'gpt-5.6-sol',
+  'gpt-6.1-terra': 'gpt-6-terra',
+  'gpt-6-terra': 'gpt-5.6-terra',
+  'gpt-6-luna': 'gpt-5.6-luna',
+};
+
+export function nextLowerCapacityModel(model) {
+  return MODEL_CAPACITY_FALLBACKS[model] || null;
+}
+
 /**
  * Model mapping fallback from Claude to OpenAI and vice-versa.
  */

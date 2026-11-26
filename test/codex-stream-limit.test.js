@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { codexModelCapacity, codexStreamLimit } from '../src/provider-translator.js';
+import { codexModelCapacity, codexStreamLimit, nextLowerCapacityModel } from '../src/provider-translator.js';
 import { peekSseHead } from '../src/stream-lifecycle.js';
 
 const sse = (...events) => events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join('');
@@ -27,6 +27,16 @@ test('codexStreamLimit ignores other failures and healthy streams', () => {
 test('codexModelCapacity recognizes a capacity failure in a 200 stream', () => {
   const head = sse({ type: 'response.failed', response: { error: { type: 'server_error', message: 'Selected model is at capacity' } } });
   assert.deepEqual(codexModelCapacity(head), { message: 'Selected model is at capacity' });
+});
+
+test('capacity fallback stays in the same model branch', () => {
+  assert.equal(nextLowerCapacityModel('gpt-6.1-sol'), 'gpt-6-sol');
+  assert.equal(nextLowerCapacityModel('gpt-6-sol'), 'gpt-5.6-sol');
+  assert.equal(nextLowerCapacityModel('gpt-5.6-sol'), null);
+  assert.equal(nextLowerCapacityModel('gpt-6.1-terra'), 'gpt-6-terra');
+  assert.equal(nextLowerCapacityModel('gpt-6-terra'), 'gpt-5.6-terra');
+  assert.equal(nextLowerCapacityModel('gpt-5.6-terra'), null);
+  assert.equal(nextLowerCapacityModel('gpt-6-luna'), 'gpt-5.6-luna');
 });
 
 function streamOf(chunks) {

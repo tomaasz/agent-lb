@@ -61,6 +61,12 @@ const chatRequest = (base) => fetch(`${base}/v1/chat/completions`, {
   body: JSON.stringify({ model: 'gpt-5.6-sol', stream: true, messages: [{ role: 'user', content: 'hi' }] }),
 });
 
+const chatRequestModel = (base, model) => fetch(`${base}/v1/chat/completions`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ model, stream: true, messages: [{ role: 'user', content: 'hi' }] }),
+});
+
 const OK_MESSAGE = sse([
   { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-4-5', content: [], usage: { input_tokens: 3, output_tokens: 1 } } },
   { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
@@ -213,9 +219,10 @@ test('codex: usage_limit_reached 429 rotates to the next account and takes the s
   assert.notEqual(am.unavailableReason(am.accounts[0], 'gpt-5.6-sol'), null);
 });
 
-test('API key: model capacity 429 with Retry-After fails over instead of waiting on the same key', async t => {
-  const up = await mockUpstream(t, (req, _body, res) => {
-    if (req.headers.authorization === 'Bearer key-A') {
+test('API key: model capacity 429 retries a lower model in the same branch', async t => {
+  const up = await mockUpstream(t, (req, body, res) => {
+    const request = JSON.parse(body);
+    if (request.model === 'gpt-6.1-sol') {
       res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '600' });
       res.end(JSON.stringify({ error: { message: 'Selected model is at capacity', type: 'server_error' } }));
       return;
@@ -226,10 +233,13 @@ test('API key: model capacity 429 with Retry-After fails over instead of waiting
     { name: 'A', type: 'api-key', apiKey: 'key-A', provider: 'codex', upstream: up.base },
     { name: 'B', type: 'api-key', apiKey: 'key-B', provider: 'codex', upstream: up.base },
   ], up.base);
-  const res = await chatRequest(base);
+  const res = await chatRequestModel(base, 'gpt-6.1-sol');
   assert.equal(res.status, 200);
   await res.text();
-  assert.deepEqual(up.seen.map(s => s.auth), ['Bearer key-A', 'Bearer key-B']);
+  assert.deepEqual(up.seen.map(s => [s.auth, JSON.parse(s.body).model]), [
+    ['Bearer key-A', 'gpt-6.1-sol'],
+    ['Bearer key-A', 'gpt-6-sol'],
+  ]);
 });
 
 test('codex: usage_limit_reached inside a 200 stream rotates to the next account before the client sees anything', async t => {
@@ -256,9 +266,10 @@ test('codex: usage_limit_reached inside a 200 stream rotates to the next account
   assert.notEqual(am.unavailableReason(am.accounts[0], 'gpt-5.6-sol'), null);
 });
 
-test('codex: model capacity inside a 200 stream rotates to the next account', async t => {
-  const up = await mockUpstream(t, (req, _body, res) => {
-    if (req.headers.authorization === 'Bearer tok-1') {
+test('codex: model capacity inside a 200 stream retries a lower model in the same branch', async t => {
+  const up = await mockUpstream(t, (req, body, res) => {
+    const request = JSON.parse(body);
+    if (request.model === 'gpt-6.1-sol') {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       res.end(codexSse([
         { type: 'response.created', response: { id: 'resp_capacity', created_at: 1 } },
@@ -269,10 +280,13 @@ test('codex: model capacity inside a 200 stream rotates to the next account', as
     codexOk(res);
   });
   const { base } = await proxyFor(t, codexAccounts(up.base), up.base);
-  const response = await chatRequest(base);
+  const response = await chatRequestModel(base, 'gpt-6.1-sol');
   assert.equal(response.status, 200);
   assert.doesNotMatch(await response.text(), /model is at capacity/i);
-  assert.deepEqual(up.seen.map(s => s.auth), ['Bearer tok-1', 'Bearer tok-2']);
+  assert.deepEqual(up.seen.map(s => [s.auth, JSON.parse(s.body).model]), [
+    ['Bearer tok-1', 'gpt-6.1-sol'],
+    ['Bearer tok-1', 'gpt-6-sol'],
+  ]);
 });
 
 test('codex: x-codex-* quota headers on live traffic update the account quota', async t => {
