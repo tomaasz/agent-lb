@@ -6672,6 +6672,16 @@ export function codexUsageLimit(body, headers = {}) {
   return { resetSeconds };
 }
 
+/** Whether a 429 says the selected model is full rather than this key. */
+export function isModelCapacityError(body, raw = null) {
+  const text = [body?.error?.message, body?.message, raw?.toString?.("utf8")]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return text.includes("selected model is at capacity") ||
+    text.includes("model is at capacity");
+}
+
 const SOCKET_TRANSIENT = new Set([
   "ECONNRESET",
   "ECONNREFUSED",
@@ -7554,7 +7564,8 @@ export async function forwardRequest(
       // it sends no retry-after.
       let refusal = "";
       let codexLimit = null;
-      if (requestScoped || isCodexAccount) {
+      let modelAtCapacity = false;
+      if (requestScoped || isCodexAccount || retryAfterHeader != null) {
         const raw = await readErrorBody(upstreamRes.body).catch(() => null);
         let parsed = null;
         try {
@@ -7563,6 +7574,8 @@ export async function forwardRequest(
           parsed = null;
         }
         refusal = String(parsed?.error?.message || "");
+        modelAtCapacity = isModelCapacityError(parsed, raw);
+        if (modelAtCapacity) requestScoped = true;
         if (isCodexAccount)
           codexLimit = codexUsageLimit(parsed, codexQuotaHeaders);
         if (codexLimit) requestScoped = false;

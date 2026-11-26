@@ -213,6 +213,25 @@ test('codex: usage_limit_reached 429 rotates to the next account and takes the s
   assert.notEqual(am.unavailableReason(am.accounts[0], 'gpt-5.6-sol'), null);
 });
 
+test('API key: model capacity 429 with Retry-After fails over instead of waiting on the same key', async t => {
+  const up = await mockUpstream(t, (req, _body, res) => {
+    if (req.headers.authorization === 'Bearer key-A') {
+      res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '600' });
+      res.end(JSON.stringify({ error: { message: 'Selected model is at capacity', type: 'server_error' } }));
+      return;
+    }
+    codexOk(res);
+  });
+  const { base } = await proxyFor(t, [
+    { name: 'A', type: 'api-key', apiKey: 'key-A', provider: 'codex', upstream: up.base },
+    { name: 'B', type: 'api-key', apiKey: 'key-B', provider: 'codex', upstream: up.base },
+  ], up.base);
+  const res = await chatRequest(base);
+  assert.equal(res.status, 200);
+  await res.text();
+  assert.deepEqual(up.seen.map(s => s.auth), ['Bearer key-A', 'Bearer key-B']);
+});
+
 test('codex: usage_limit_reached inside a 200 stream rotates to the next account before the client sees anything', async t => {
   const up = await mockUpstream(t, (req, _body, res) => {
     if (req.headers.authorization === 'Bearer tok-1') {
