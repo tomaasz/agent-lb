@@ -256,6 +256,25 @@ test('codex: usage_limit_reached inside a 200 stream rotates to the next account
   assert.notEqual(am.unavailableReason(am.accounts[0], 'gpt-5.6-sol'), null);
 });
 
+test('codex: model capacity inside a 200 stream rotates to the next account', async t => {
+  const up = await mockUpstream(t, (req, _body, res) => {
+    if (req.headers.authorization === 'Bearer tok-1') {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.end(codexSse([
+        { type: 'response.created', response: { id: 'resp_capacity', created_at: 1 } },
+        { type: 'response.failed', response: { id: 'resp_capacity', error: { type: 'server_error', message: 'Selected model is at capacity' } } },
+      ]));
+      return;
+    }
+    codexOk(res);
+  });
+  const { base } = await proxyFor(t, codexAccounts(up.base), up.base);
+  const response = await chatRequest(base);
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(await response.text(), /model is at capacity/i);
+  assert.deepEqual(up.seen.map(s => s.auth), ['Bearer tok-1', 'Bearer tok-2']);
+});
+
 test('codex: x-codex-* quota headers on live traffic update the account quota', async t => {
   const up = await mockUpstream(t, (_req, _body, res) => codexOk(res, {
     'x-codex-primary-used-percent': '42',

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { codexStreamLimit } from '../src/provider-translator.js';
+import { codexModelCapacity, codexStreamLimit } from '../src/provider-translator.js';
 import { peekSseHead } from '../src/stream-lifecycle.js';
 
 const sse = (...events) => events.map(e => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join('');
@@ -22,6 +22,11 @@ test('codexStreamLimit ignores other failures and healthy streams', () => {
   assert.equal(codexStreamLimit(sse({ type: 'response.failed', response: { error: { code: 'server_error', message: 'x' } } })), null);
   assert.equal(codexStreamLimit(sse({ type: 'response.created', response: {} }, { type: 'response.output_text.delta', delta: 'hi' })), null);
   assert.equal(codexStreamLimit(''), null);
+});
+
+test('codexModelCapacity recognizes a capacity failure in a 200 stream', () => {
+  const head = sse({ type: 'response.failed', response: { error: { type: 'server_error', message: 'Selected model is at capacity' } } });
+  assert.deepEqual(codexModelCapacity(head), { message: 'Selected model is at capacity' });
 });
 
 function streamOf(chunks) {

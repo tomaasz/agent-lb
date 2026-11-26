@@ -147,6 +147,7 @@ import {
   createCodexResponsesToOpenAITransformStream,
   translateCodexResponsesToOpenAIResponse,
   codexResponseFailure,
+  codexModelCapacity,
   codexStreamLimit,
 } from "./provider-translator.js";
 import { FairShareController } from "./fair-share.js";
@@ -8276,20 +8277,27 @@ export async function forwardRequest(
     ) {
       const peeked = await peekSseHead(upstreamRes.body).catch(() => null);
       if (peeked) {
+        const modelCapacity = codexModelCapacity(peeked.head);
         const streamLimit = codexStreamLimit(peeked.head);
-        if (streamLimit && retryCount < maxRetries) {
+        if ((modelCapacity || streamLimit) && retryCount < maxRetries) {
           await peeked.body.cancel().catch(() => {});
-          const hold = Math.min(Math.max(streamLimit.resetSeconds || 3600, 1), 3600);
-          console.log(
-            `[AgentLB] Codex usage limit reached on "${account.name}" (in stream) — holding ${hold}s and switching account`,
-          );
-          accountManager.markRateLimited(account.index, hold);
-          account.lastError = {
-            reason: "usage-limit",
-            status: 429,
-            error: streamLimit.message,
-            timestamp: Date.now(),
-          };
+          if (streamLimit) {
+            const hold = Math.min(Math.max(streamLimit.resetSeconds || 3600, 1), 3600);
+            console.log(
+              `[AgentLB] Codex usage limit reached on "${account.name}" (in stream) — holding ${hold}s and switching account`,
+            );
+            accountManager.markRateLimited(account.index, hold);
+            account.lastError = {
+              reason: "usage-limit",
+              status: 429,
+              error: streamLimit.message,
+              timestamp: Date.now(),
+            };
+          } else {
+            console.log(
+              `[AgentLB] Codex model capacity reached on "${account.name}" (in stream) — switching account`,
+            );
+          }
           ctx.tried.add(account.index);
           if (clientGone(res)) {
             ctx.abandoned = true;

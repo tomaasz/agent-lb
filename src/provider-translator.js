@@ -1219,3 +1219,23 @@ export function codexStreamLimit(headText) {
   }
   return null;
 }
+
+/** Whether a Codex SSE head reports that the selected model is at capacity. */
+export function codexModelCapacity(headText) {
+  for (const line of String(headText || '').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) continue;
+    let payload;
+    try { payload = JSON.parse(trimmed.slice(5).trim()); } catch { continue; }
+    const err = payload.type === 'response.failed'
+      ? payload.response?.error
+      : payload.type === 'error'
+        ? payload.error || payload
+        : null;
+    const message = String(err?.message || '').toLowerCase();
+    if (message.includes('selected model is at capacity') || message.includes('model is at capacity')) {
+      return { message: String(err.message) };
+    }
+  }
+  return null;
+}
