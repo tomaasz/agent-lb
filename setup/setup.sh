@@ -597,6 +597,9 @@ fi
 if [ -d "$HOME/.config/Code" ] || [ -d "$HOME/.vscode-server" ] || command -v code >/dev/null 2>&1; then
 	say "✔ VS Code: oficjalne rozszerzenie Claude Code skonfigurowane pod proxy"
 fi
+if [ "$WITH_AGYLB" -eq 1 ]; then
+	say "✔ AGY (pula Google): uruchom 'agylb' (standardowo) lub 'agylb-yolo' (bez pytań o akceptację)"
+fi
 say "✔ Agenty i narzędzia: zmienne zapisano w $ENV_FILE (załadowano do powłoki)"
 say "✔ Serwer proxy: $URL"
 say ""

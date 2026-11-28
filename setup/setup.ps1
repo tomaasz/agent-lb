@@ -1,4 +1,4 @@
-# setup.ps1 — konfiguracja klienta Claude i Codex pod Agent-LB na Windows / PowerShell.
+﻿# setup.ps1 — konfiguracja klienta Claude i Codex pod Agent-LB na Windows / PowerShell.
 #
 # Jeśli w systemie jest Node.js, deleguje zadanie do uniwersalnego setup.js.
 # W przeciwnym wypadku wykonuje natywne kroki w PowerShellu (CLI, VS Code, rejestr zmiennych).
@@ -14,6 +14,7 @@ param(
 	[switch]$Test,
 	[switch]$Uninstall,
 	[switch]$NoInstall,
+	[switch]$WithAgylb,
 	[string]$Url = '',
 	[string]$Key = '',
 	[string]$Lang = ''
@@ -43,6 +44,7 @@ if ($PSScriptRoot) {
 		$nodeArgs = @($jsScript, "--url", $Url, "--lang", $Lang)
 		if ($Uninstall) { $nodeArgs += '--uninstall' }
 		if ($NoInstall) { $nodeArgs += '--no-install' }
+		if ($WithAgylb) { $nodeArgs += '--with-agylb' }
 		if ($Key) { $nodeArgs += @("--key", $Key) }
 		if ($Test) { $nodeArgs += "--test" }
 		& node $nodeArgs
@@ -451,6 +453,26 @@ if ($Test) {
 	}
 }
 
+if ($WithAgylb) {
+	Say ""
+	Say "Instaluję agylb i agylb-yolo (wspólna pula kont Google)..."
+	$prevAgylbKey = $env:AGENT_LB_API_KEY
+	$prevAgylbUrl = $env:AGENT_LB_URL
+	try {
+		$env:AGENT_LB_API_KEY = $Key
+		$env:AGENT_LB_URL = $Url
+		$localAgylb = if ($PSScriptRoot) { Join-Path $PSScriptRoot 'agylb-setup.ps1' } else { '' }
+		if ($localAgylb -and (Test-Path $localAgylb)) {
+			& $localAgylb -Url $Url
+		} else {
+			& ([scriptblock]::Create((Invoke-RestMethod "$Url/agylb-setup.ps1"))) -Url $Url
+		}
+	} finally {
+		$env:AGENT_LB_API_KEY = $prevAgylbKey
+		$env:AGENT_LB_URL = $prevAgylbUrl
+	}
+}
+
 Say ""
 Say "=== Wdrożenie i konfiguracja zakończona sukcesem! ==="
 if (Get-Command claude -ErrorAction SilentlyContinue) {
@@ -460,6 +482,9 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
 if (Get-Command codex -ErrorAction SilentlyContinue) {
 	$cxv = try { & codex --version 2>$null } catch { "gotowy" }
 	Say "✔ OpenAI Codex CLI: $cxv -> uruchom 'codex --profile codexlb' lub 'codex'"
+}
+if ($WithAgylb) {
+	Say "✔ AGY (pula Google): uruchom 'agylb' (standardowo) lub 'agylb-yolo' (bez pytań o akceptację)"
 }
 if (Test-Path $vsCodeDir) {
 	Say "✔ VS Code: oficjalne rozszerzenie Claude Code skonfigurowane pod proxy"

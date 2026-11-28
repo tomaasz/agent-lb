@@ -6,7 +6,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { workstationSetupCommand, stationCanUseAgylb } from '../src/dashboard.js';
+import { workstationSetupCommand, stationCanUseAgylb, renderDashboardHtml } from '../src/dashboard.js';
 import { createProxyServer } from '../src/server.js';
 import { AccountManager } from '../src/account-manager.js';
 
@@ -39,7 +39,25 @@ test('generated shell commands prompt for credentials and have valid quoting', a
   const ps = workstationSetupCommand('https://agentlb.test', '/setup.ps1', 'ps');
   assert.match(ps, /Read-Host.*AsSecureString/);
   assert.match(ps, /finally.*previousKey/);
-  assert.doesNotMatch(ps, /-Key |tc-/);
+  assert.doesNotMatch(ps, /-Key |tc-|-WithAgylb/);
+  const psAgylb = workstationSetupCommand('https://agentlb.test', '/setup.ps1', 'ps', true);
+  assert.match(psAgylb, /-WithAgylb/);
+  assert.doesNotMatch(psAgylb, /-Key |tc-/);
+  const psStandalone = workstationSetupCommand('https://agentlb.test', '/agylb-setup.ps1', 'ps');
+  assert.match(psStandalone, /\/agylb-setup\.ps1/);
+  assert.doesNotMatch(psStandalone, /-Key |tc-/);
+});
+
+test('dashboard setup UI exposes agylb and agylb-yolo for POSIX and Windows PowerShell', () => {
+  const html = renderDashboardHtml();
+  assert.match(html, /id="cmdSetupAgylb"/);
+  assert.match(html, /id="cmdSetupAgylbPs"/);
+  assert.match(html, /id="btnCopySetupAgylbPs"/);
+  assert.match(html, /id="setupAgylbIncludedPs"/);
+  assert.match(html, /agylb-yolo/);
+  assert.equal((html.match(/\bsetupAgylbCopyPs:/g) || []).length, 2, 'setupAgylbCopyPs in PL and EN');
+  assert.match(html, /workstationSetupCommand\(hostUrl, '\/setup\.ps1', 'ps', includeAgylb\)/);
+  assert.match(html, /if \(setupAgylbUserChoice === null\) agylbCheckbox\.checked = true;/);
 });
 
 test('public agylb routes serve only whitelisted code and refuse other platforms', async () => {
@@ -59,7 +77,11 @@ test('public agylb routes serve only whitelisted code and refuse other platforms
     const installer = await fetch(base + '/agylb-setup.sh');
     assert.equal(installer.status, 200);
     assert.match(await installer.text(), /Install interactive agylb/);
-    assert.equal((await fetch(base + '/agylb-setup.ps1')).status, 404);
+    const psInstaller = await fetch(base + '/agylb-setup.ps1');
+    assert.equal(psInstaller.status, 200);
+    const psBody = await psInstaller.text();
+    assert.match(psBody, /Install interactive agylb and agylb-yolo on Windows/);
+    assert.doesNotMatch(psBody, /\bexit \$LASTEXITCODE\b/);
     assert.equal((await fetch(base + '/agylb-setup.js')).status, 404);
     assert.notEqual((await fetch(base + '/clients/config.json')).status, 200);
   } finally {
@@ -93,6 +115,7 @@ test('agylb installer checks access before writing and never exposes keys', asyn
       return true;
     });
     await assert.rejects(fs.access(path.join(dir, '.config/agylb/config.json')));
+    await fs.writeFile(path.join(dir, '.bashrc'), '# user rc\n');
     status = 200;
     const result = await run('bash', ['setup/agylb-setup.sh'], { env });
     assert.doesNotMatch(result.stdout + result.stderr, /tc-private-test|fake-google-secret/);
@@ -100,6 +123,9 @@ test('agylb installer checks access before writing and never exposes keys', asyn
     assert.equal((await fs.stat(configPath)).mode & 0o777, 0o600);
     assert.equal(JSON.parse(await fs.readFile(configPath, 'utf8')).key, 'tc-private-test');
     assert.equal(await fs.readFile(path.join(dir, '.local/bin/agylb'), 'utf8'), await fs.readFile('clients/agylb.py', 'utf8'));
+    assert.match(await fs.readFile(path.join(dir, '.local/bin/agylb-yolo'), 'utf8'), /AGYLB_SKIP_PERMISSIONS=1/);
+    assert.equal((await fs.stat(path.join(dir, '.local/bin/agylb-yolo'))).mode & 0o777, 0o700);
+    assert.equal(((await fs.readFile(path.join(dir, '.bashrc'), 'utf8')).match(/# agylb-path/g) || []).length, 1);
     await assert.rejects(fs.access(path.join(dir, '.gemini/antigravity-cli/antigravity-oauth-token')));
     // The public curl|bash path has no local source tree available.
     const streamedHome = path.join(dir, 'streamed');

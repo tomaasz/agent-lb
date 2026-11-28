@@ -1,33 +1,44 @@
 #!/usr/bin/env python3
-"""Interactive AGY launcher using the shared AgentLB account pool (POSIX)."""
+"""Interactive AGY launcher using the shared AgentLB account pool (POSIX & Windows)."""
 
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
 from pathlib import Path
-import pty
 import re
-import select
 import shutil
 import signal
 import socket
 import subprocess
 import sys
-import termios
 import time
-import tty
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 
-VERSION = "0.2.1"
+if os.name == "nt":
+    import msvcrt
+    fcntl = pty = select = termios = tty = None
+else:
+    import fcntl
+    import pty
+    import select
+    import termios
+    import tty
+    msvcrt = None
+
+VERSION = "0.3.0"
 QUOTA = re.compile(r"RESOURCE_EXHAUSTED \(code 429\):\s*([^()\r\n]*quota[^()\r\n]*)", re.I)
 TOKEN_REL = Path(".gemini/antigravity-cli/antigravity-oauth-token")
+NON_SESSION_SUBCOMMANDS = {
+    "acp", "agent", "agents", "changelog", "conversations", "doctor", "help",
+    "install", "mcp", "mic-serve", "models", "plugin", "plugins",
+    "remote-control", "update", "vscode",
+}
 
 
 class LauncherError(Exception):
@@ -36,9 +47,12 @@ class LauncherError(Exception):
 
 def private_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if path.is_symlink() or path.stat().st_uid != os.getuid():
+    if path.is_symlink():
         raise LauncherError("Niebezpieczny katalog profilu.")
-    path.chmod(0o700)
+    if os.name != "nt":
+        if path.stat().st_uid != os.getuid():
+            raise LauncherError("Niebezpieczny katalog profilu.")
+        path.chmod(0o700)
 
 
 def save_json(path: Path, value: dict) -> None:
@@ -46,7 +60,7 @@ def save_json(path: Path, value: dict) -> None:
     temporary = path.with_name(f".{path.name}-{uuid.uuid4().hex}")
     try:
         fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        with os.fdopen(fd, "w") as stream:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(value, stream)
         os.replace(temporary, path)
     finally:
@@ -55,7 +69,7 @@ def save_json(path: Path, value: dict) -> None:
 
 def load_json(path: Path) -> dict:
     try:
-        with path.open() as stream:
+        with path.open(encoding="utf-8") as stream:
             value = json.load(stream)
     except FileNotFoundError:
         return {}
@@ -68,7 +82,7 @@ def configuration(real_home: Path) -> tuple[str, str]:
     values = {}
     for path in (real_home / ".config/agent-lb.env", real_home / ".config/agybridge/agybridge.env"):
         try:
-            for line in path.read_text().splitlines():
+            for line in path.read_text(encoding="utf-8").splitlines():
                 match = re.match(r"\s*(?:export\s+)?(AGENT_LB_URL|AGENT_LB_API_KEY)=(.*)$", line)
                 if match:
                     values[match[1]] = match[2].strip().strip("\"'")
@@ -150,15 +164,69 @@ class LogWatcher:
 
 
 def child_environment(profile_home: Path) -> dict:
-    env = {key: value for key, value in os.environ.items() if not key.startswith(("AGENT_LB_", "AGENTLB_", "CODEX_LB_", "AGYLB_", "HERMES_AGY_"))}
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.upper().startswith(("AGENT_LB_", "AGENTLB_", "CODEX_LB_", "AGYLB_", "HERMES_AGY_"))
+    }
     env["HOME"] = str(profile_home)
     env["USERPROFILE"] = str(profile_home)
     env["XDG_CONFIG_HOME"] = str(profile_home / '.config')
     env["XDG_CACHE_HOME"] = str(profile_home / '.cache')
     env["XDG_DATA_HOME"] = str(profile_home / '.local/share')
+    if os.name == "nt":
+        drive, tail = os.path.splitdrive(str(profile_home))
+        if drive:
+            env["HOMEDRIVE"] = drive
+            env["HOMEPATH"] = tail or "\\"
     # Keep AGY updates under the normal installation process.
     env["AGY_CLI_DISABLE_AUTO_UPDATE"] = "1"
     return env
+
+
+def _kill_windows_tree(proc: subprocess.Popen) -> None:
+    with contextlib.suppress(OSError, subprocess.SubprocessError):
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+        )
+    with contextlib.suppress(OSError):
+        proc.kill()
+
+
+def run_windows_agy(command: str, args: list[str], env: dict, log: Path) -> tuple[int, str | None]:
+    """Run AGY natively on Windows, inheriting the console while watching quota."""
+    argv = [command, "--log-file", str(log), *args]
+    if command.lower().endswith((".cmd", ".bat")):
+        argv = [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", *argv]
+    proc = subprocess.Popen(argv, env=env)
+    watcher = LogWatcher(log)
+    quota = None
+    stop_at = None
+    previous_sigint = signal.getsignal(signal.SIGINT)
+    try:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        while True:
+            found = watcher.check()
+            if found and not quota:
+                quota = found
+                _kill_windows_tree(proc)
+                stop_at = time.monotonic() + 3
+            if stop_at and time.monotonic() >= stop_at:
+                _kill_windows_tree(proc)
+            status = proc.poll()
+            if status is not None:
+                quota = quota or watcher.check(drain=True)
+                return status, quota
+            time.sleep(0.1)
+    finally:
+        signal.signal(signal.SIGINT, previous_sigint)
+        if proc.poll() is None:
+            _kill_windows_tree(proc)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=3)
 
 
 def run_foreground_agy(command: str, args: list[str], env: dict, log: Path, lock_fd: int) -> tuple[int, str | None]:
@@ -267,6 +335,8 @@ def run_foreground_agy(command: str, args: list[str], env: dict, log: Path, lock
 
 def run_agy(command: str, args: list[str], profile_home: Path, log: Path, lock_fd: int, vscode: bool = False) -> tuple[int, str | None]:
     env = child_environment(profile_home)
+    if os.name == "nt":
+        return run_windows_agy(command, args, env, log)
     if vscode:
         env.update(AGY_ENABLE_HUB='1', ANTIGRAVITY_VSCODE_HOST='1', ANTIGRAVITY_AUTH_SUCCESS_APP='vscode')
         # A desktop Secret Service is shared across HOME directories. Force
@@ -403,7 +473,8 @@ def run_agy(command: str, args: list[str], profile_home: Path, log: Path, lock_f
 
 HELP = """agylb — AGY ze wspólną pulą kont AgentLB
 
-  agylb                    nowa rozmowa
+  agylb                    nowa rozmowa (standardowe uprawnienia)
+  agylb-yolo               nowa rozmowa bez pytań o akceptację (--dangerously-skip-permissions)
   agylb --continue         ostatnia rozmowa w tym katalogu
   agylb models             dostępne modele
   agylb doctor             sprawdzenie programu i dostępu do puli
@@ -415,6 +486,75 @@ w ~/.local/share/agylb/workspaces/. Profil ma osobny HOME; zwykłe agy ma
 osobne ustawienia i historię. Po zmianie konta wznowienie wymaga zatrzymania
 i decyzji użytkownika. Ostatnie polecenie nie jest automatycznie ponawiane.
 """
+
+
+def find_agy_command(real_home: Path) -> str | None:
+    command_name = os.environ.get("AGYLB_COMMAND", "agy")
+    command = shutil.which(command_name)
+    if command:
+        return command
+    if command_name != "agy":
+        return None
+    if os.name == "nt":
+        local_app = Path(os.environ.get("LOCALAPPDATA") or (real_home / "AppData/Local"))
+        candidates = [
+            real_home / ".local/bin/agy.exe",
+            real_home / ".local/bin/agy.cmd",
+            real_home / ".gemini/antigravity-cli/bin/agy.exe",
+            local_app / "Programs/Antigravity/bin/agy.exe",
+            local_app / "antigravity/bin/agy.exe",
+        ]
+    else:
+        candidates = [real_home / ".local/bin/agy"]
+    for candidate in candidates:
+        if candidate.is_file() and (os.name == "nt" or os.access(candidate, os.X_OK)):
+            return str(candidate)
+    return None
+
+
+@contextlib.contextmanager
+def profile_lock(profile: Path):
+    flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+    lock_fd = os.open(profile / "run.lock", flags, 0o600)
+    with os.fdopen(lock_fd, "r+b") as lock:
+        if os.name == "nt":
+            try:
+                if os.fstat(lock.fileno()).st_size == 0:
+                    lock.write(b"0")
+                    lock.flush()
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError:
+                raise LauncherError("agylb już działa w tym katalogu. Zakończ poprzednią sesję.") from None
+            try:
+                yield lock
+            finally:
+                with contextlib.suppress(OSError):
+                    lock.seek(0)
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise LauncherError("agylb już działa w tym katalogu. Zakończ poprzednią sesję.") from None
+            yield lock
+
+
+def skip_permissions_enabled(argv0: str | None = None) -> bool:
+    if os.environ.get("AGYLB_SKIP_PERMISSIONS") == "1":
+        return True
+    name = Path(argv0 if argv0 is not None else sys.argv[0]).stem.lower()
+    return name == "agylb-yolo"
+
+
+def apply_permission_flags(args: list[str], skip_permissions: bool, vscode: bool) -> list[str]:
+    if not skip_permissions or vscode:
+        return args
+    if args and args[0] in NON_SESSION_SUBCOMMANDS:
+        return args
+    if "--dangerously-skip-permissions" in args:
+        return args
+    return ["--dangerously-skip-permissions", *args]
 
 
 def seed_profile(profile_home: Path, account: dict, real_home: Path | None = None) -> None:
@@ -463,6 +603,7 @@ def prepare_vscode(profile: Path, profile_home: Path, account: dict) -> tuple[li
 
 def main(args: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if args is None else args)
+    skip_permissions = skip_permissions_enabled()
     vscode = bool(args and args[0] == 'vscode')
     if vscode:
         if not sys.platform.startswith('linux'):
@@ -479,12 +620,7 @@ def main(args: list[str] | None = None) -> int:
     if any(arg == "--log-file" or arg.startswith("--log-file=") for arg in args):
         raise LauncherError("agylb zarządza logiem; usuń --log-file.")
     real_home = Path.home()
-    command_name = os.environ.get("AGYLB_COMMAND", "agy")
-    command = shutil.which(command_name)
-    if not command and command_name == 'agy':
-        local_agy = real_home / '.local/bin/agy'
-        if local_agy.is_file() and os.access(local_agy, os.X_OK):
-            command = str(local_agy)
+    command = find_agy_command(real_home)
     if not command:
         raise LauncherError("Nie znaleziono programu agy.")
     url, key = configuration(real_home)
@@ -493,12 +629,7 @@ def main(args: list[str] | None = None) -> int:
     workspace_id = hashlib.sha256(str(Path.cwd().resolve()).encode()).hexdigest()[:24]
     profile = root / ("vscode" if vscode else "workspaces") / workspace_id
     private_dir(profile)
-    lock_fd = os.open(profile / "run.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(lock_fd, "w") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise LauncherError("agylb już działa w tym katalogu. Zakończ poprzednią sesję.") from None
+    with profile_lock(profile) as lock:
         state_path = profile / "state.json"
         state = load_json(state_path)
         resume = any(arg in ("-c", "--continue", "--conversation") or arg.startswith("--conversation=") for arg in args)
@@ -521,6 +652,7 @@ def main(args: list[str] | None = None) -> int:
             print(f'Serwer agylb: http://127.0.0.1:{port}. Zostaw ten terminal otwarty. Ctrl+C kończy serwer.', flush=True)
             print('Remote SSH / WSL: otwórz plik na tym samym hoście. Po zmianie konta wybierz Nowa rozmowa.', flush=True)
         conversational = not args or args[0].startswith("-")
+        launch_args = apply_permission_flags(args, skip_permissions, vscode)
         state["accountId"] = account_id
         state["workspace"] = str(Path.cwd())
         if conversational:
@@ -535,7 +667,7 @@ def main(args: list[str] | None = None) -> int:
         for stale in sorted(logs.glob("run-*.log"), reverse=True)[50:]:
             stale.unlink(missing_ok=True)
         print("agylb: konto z puli AgentLB; rozmowy są zapisywane.", file=sys.stderr)
-        status, message = run_agy(command, args, profile_home, log, lock.fileno(), vscode=vscode)
+        status, message = run_agy(command, launch_args, profile_home, log, lock.fileno(), vscode=vscode)
         if not message:
             return status
         state["rotationRequired"] = True
@@ -548,6 +680,8 @@ def main(args: list[str] | None = None) -> int:
         if sys.stdin.isatty() and sys.stdout.isatty():
             answer = input("Uruchomić nową rozmowę na kolejnym koncie? [t/N] ").strip().lower()
             if answer in ("t", "tak"):
+                if skip_permissions:
+                    os.environ["AGYLB_SKIP_PERMISSIONS"] = "1"
                 # Drop prompt/resume arguments: never replay a turn or tool action.
                 return 76
         return 75
@@ -555,10 +689,15 @@ def main(args: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     try:
-        result = main()
-        if result == 76:
-            os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve())])
-        sys.exit(result)
+        next_args = None
+        while True:
+            result = main(next_args)
+            if result == 76:
+                if os.name == "nt":
+                    next_args = []
+                    continue
+                os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve())])
+            sys.exit(result)
     except (LauncherError, OSError, ValueError) as exc:
         # Do not print raw network/config errors: they may contain credentials.
         print(f"agylb: {exc if isinstance(exc, LauncherError) else 'Błąd lokalnego profilu; sprawdź uprawnienia i konfigurację.'}", file=sys.stderr)

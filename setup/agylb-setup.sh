@@ -76,6 +76,7 @@ except urllib.error.HTTPError as exc:
           401: 'Klucz stacji został odrzucony.', 404: 'Brak wolnego konta Google lub plików instalatora na serwerze.'}.get(exc.code, 'Błąd połączenia z AgentLB.'))
 except (OSError, ValueError, SyntaxError, RuntimeError):
     fail('Nie udało się zainstalować agylb. Sprawdź połączenie i uprawnienia.')
-print('Gotowe. Uruchom ~/.local/bin/agylb doctor, potem agylb z katalogu projektu.')
-print('Wymagane PATH: ~/.local/bin. Rozmowy są zapisywane; zmiana konta pyta o nową rozmowę.')
+print('Gotowe. Zainstalowano polecenia: agylb (standardowe uprawnienia) oraz agylb-yolo (bez pytań o akceptację).')
+print('Uruchom: agylb doctor (albo ~/.local/bin/agylb doctor w bieżącym terminalu), potem agylb lub agylb-yolo w katalogu projektu.')
+print('Katalog ~/.local/bin dodano do plików powłoki (jeśli istnieją); otwórz nowy terminal, jeśli polecenie nie jest jeszcze w PATH.')
 PY

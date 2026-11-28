@@ -245,12 +245,53 @@ else:
         self.assertEqual(self.pool.requests, [])
 
     def test_child_environment_isolates_xdg_and_station_key(self):
-        with patch.dict(os.environ, {'AGENT_LB_API_KEY': 'private', 'XDG_CONFIG_HOME': '/original', 'USERPROFILE': '/original'}):
+        with patch.dict(os.environ, {'AGENT_LB_API_KEY': 'private', 'agent_lb_api_key': 'private2', 'AGYLB_SKIP_PERMISSIONS': '1', 'XDG_CONFIG_HOME': '/original', 'USERPROFILE': '/original'}):
             env = agylb.child_environment(Path('/private/profile'))
         self.assertEqual(env['HOME'], '/private/profile')
         self.assertEqual(env['USERPROFILE'], '/private/profile')
         self.assertEqual(env['XDG_CONFIG_HOME'], '/private/profile/.config')
         self.assertNotIn('AGENT_LB_API_KEY', env)
+        self.assertNotIn('agent_lb_api_key', env)
+        self.assertNotIn('AGYLB_SKIP_PERMISSIONS', env)
+
+    def test_yolo_mode_passes_skip_permissions_for_sessions_only(self):
+        trace = self.root / 'trace-yolo'
+        self.env['TRACE_FILE'] = str(trace)
+        self.assertEqual(self.run_cli().returncode, 0)
+        normal_args = json.loads(trace.read_text().splitlines()[-1])
+        self.assertNotIn('--dangerously-skip-permissions', normal_args)
+
+        yolo_env = {**self.env, 'AGYLB_SKIP_PERMISSIONS': '1', 'STUB_MODE': 'ok'}
+        res_session = subprocess.run([sys.executable, str(SCRIPT), '--model', 'gemini-3.8-flash-low'], cwd=self.work,
+                                     env=yolo_env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+        self.assertEqual(res_session.returncode, 0, res_session.stderr)
+        session_args = json.loads(trace.read_text().splitlines()[-1])
+        self.assertIn('--dangerously-skip-permissions', session_args)
+        self.assertIn('--model', session_args)
+
+        res_models = subprocess.run([sys.executable, str(SCRIPT), 'models'], cwd=self.work,
+                                    env=yolo_env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+        self.assertEqual(res_models.returncode, 0, res_models.stderr)
+        models_args = json.loads(trace.read_text().splitlines()[-1])
+        self.assertNotIn('--dangerously-skip-permissions', models_args)
+        self.assertIn('models', models_args)
+
+        res_doctor = subprocess.run([sys.executable, str(SCRIPT), 'doctor'], cwd=self.work,
+                                    env=yolo_env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+        self.assertEqual(res_doctor.returncode, 0, res_doctor.stderr)
+        self.assertIn('dostępna', res_doctor.stdout)
+
+    def test_yolo_mode_preserved_after_quota_rotation(self):
+        trace = self.root / 'trace-yolo-rot'
+        self.env['TRACE_FILE'] = str(trace)
+        self.env['AGYLB_SKIP_PERMISSIONS'] = '1'
+        code, output = self.run_controlling_terminal('quota', b'[t/N]', b't\n')
+        self.assertEqual(code, 0, output)
+        self.assertIn('OK:account-b', output)
+        calls = [json.loads(line) for line in trace.read_text().splitlines()]
+        self.assertEqual(len(calls), 2)
+        self.assertIn('--dangerously-skip-permissions', calls[0])
+        self.assertIn('--dangerously-skip-permissions', calls[1])
 
     def test_quota_reports_reset_and_never_replays_prompt(self):
         self.assertEqual(self.run_cli().returncode, 0)
@@ -518,20 +559,50 @@ class SmallTests(unittest.TestCase):
     def test_installer_is_atomic_private_and_keeps_existing_version(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
+            bashrc = home / '.bashrc'
+            bashrc.write_text('# existing bashrc\n')
+            profile = home / '.profile'
+            profile.write_text('PATH="$HOME/.local/bin:$PATH"\n')
             payload = {'source': SCRIPT.read_text(), 'settings': {'url': 'https://station.invalid', 'key': 'test-station-secret'}}
             command = [sys.executable, '-B', str(SCRIPT.with_name('install_agylb.py'))]
             first = subprocess.run(command, input=json.dumps(payload), capture_output=True, text=True, env={**os.environ, 'HOME': str(home)})
             self.assertEqual(first.returncode, 0, first.stderr)
             executable = home / '.local/bin/agylb'
+            yolo_shim = home / '.local/bin/agylb-yolo'
             config = home / '.config/agylb/config.json'
             self.assertEqual(executable.read_text(), SCRIPT.read_text())
             self.assertEqual(stat.S_IMODE(executable.stat().st_mode), 0o700)
+            self.assertTrue(yolo_shim.is_file())
+            self.assertEqual(stat.S_IMODE(yolo_shim.stat().st_mode), 0o700)
+            self.assertIn('AGYLB_SKIP_PERMISSIONS=1', yolo_shim.read_text())
             self.assertEqual(stat.S_IMODE(config.stat().st_mode), 0o600)
             self.assertNotIn('test-station-secret', first.stdout + first.stderr)
+            self.assertEqual(bashrc.read_text().count('# agylb-path'), 1)
+            self.assertNotIn('# agylb-path', profile.read_text())
             payload['source'] += '\n# next revision\n'
             second = subprocess.run(command, input=json.dumps(payload), capture_output=True, text=True, env={**os.environ, 'HOME': str(home)})
             self.assertEqual(second.returncode, 0, second.stderr)
             self.assertEqual(next(executable.parent.glob('agylb.bak-*')).read_text(), SCRIPT.read_text())
+            self.assertEqual(bashrc.read_text().count('# agylb-path'), 1)
+
+    def test_skip_permissions_detection_and_windows_shims(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(agylb.skip_permissions_enabled('/home/u/.local/bin/agylb'))
+            self.assertTrue(agylb.skip_permissions_enabled('/home/u/.local/bin/agylb-yolo'))
+            self.assertTrue(agylb.skip_permissions_enabled('agylb-yolo.cmd'))
+        self.assertEqual(agylb.apply_permission_flags([], True, False), ['--dangerously-skip-permissions'])
+        self.assertEqual(agylb.apply_permission_flags(['--dangerously-skip-permissions'], True, False), ['--dangerously-skip-permissions'])
+        self.assertEqual(agylb.apply_permission_flags(['models'], True, False), ['models'])
+        self.assertEqual(agylb.apply_permission_flags([], True, True), [])
+
+        spec_inst = importlib.util.spec_from_file_location('install_agylb', SCRIPT.with_name('install_agylb.py'))
+        inst = importlib.util.module_from_spec(spec_inst)
+        spec_inst.loader.exec_module(inst)
+        agylb_cmd, yolo_cmd = inst.windows_shims('C:\\Python312\\python.exe', encoding='cp852')
+        self.assertIn(b'"C:\\Python312\\python.exe" "%~dp0agylb.py" %*', agylb_cmd)
+        self.assertIn(b'set "AGYLB_SKIP_PERMISSIONS=1"', yolo_cmd)
+        self.assertIn(b'"C:\\Python312\\python.exe" "%~dp0agylb.py" %*', yolo_cmd)
+        self.assertNotIn(b'call "%~dp0agylb.cmd"', yolo_cmd)
 
 
 if __name__ == '__main__':

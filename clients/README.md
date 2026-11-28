@@ -1,13 +1,20 @@
 # agylb
 
 Nakładka na prawdziwy Antigravity CLI (`agy`). Pobiera konto Google ze wspólnej
-puli AgentLB. Wymaga Linux/macOS/WSL, Pythona 3.8+ i zainstalowanego `agy`.
+puli AgentLB. Działa na Linux/macOS/WSL oraz natywnie na Windows (PowerShell/cmd);
+wymaga Pythona 3.8+ i zainstalowanego `agy`.
+
+Instalator tworzy dwie komendy (oraz dodaje `~/.local/bin` do `PATH`):
+- `agylb` — standardowe uprawnienia `agy`,
+- `agylb-yolo` — uruchamia `agy --dangerously-skip-permissions` (bez pytań o akceptację).
 
 ```bash
 agylb doctor
 agylb models
 agylb
+agylb-yolo
 agylb --continue
+agylb-yolo --continue
 agylb --model gemini-3.8-flash-low
 agylb vscode
 ```

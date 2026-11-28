@@ -770,9 +770,17 @@ function installAgyBridge() {
 }
 
 function installAgylb() {
-  if (isWin) throw new Error('agylb wymaga Linux, macOS lub WSL. Uruchom instalator w WSL.');
-  const local = path.join(__dirname, 'agylb-setup.sh');
   const env = { ...process.env, AGENT_LB_URL: targetUrl, AGENT_LB_API_KEY: apiKey };
+  if (isWin) {
+    const local = path.join(__dirname, 'agylb-setup.ps1');
+    if (fs.existsSync(local)) {
+      execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', local, '-Url', targetUrl], { env, stdio: 'inherit' });
+    } else {
+      execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', '& ([scriptblock]::Create((irm ($env:AGENT_LB_URL + "/agylb-setup.ps1")))) -Url $env:AGENT_LB_URL'], { env, stdio: 'inherit' });
+    }
+    return;
+  }
+  const local = path.join(__dirname, 'agylb-setup.sh');
   if (fs.existsSync(local)) execFileSync('bash', [local], { env, stdio: 'inherit' });
   else execFileSync('bash', ['-o', 'pipefail', '-c', 'curl -fsSL "$AGENT_LB_URL/agylb-setup.sh" | bash'], { env, stdio: 'inherit' });
 }

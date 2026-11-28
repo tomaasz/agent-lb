@@ -439,7 +439,7 @@ export function workstationSetupCommand(origin, script, platform = 'bash', withA
   function quote(value) { return "'" + value.replace(/'/g, "'\\''") + "'"; }
   if (platform === 'ps') {
     function psQuote(value) { return "'" + value.replace(/'/g, "''") + "'"; }
-    return '& { $previousKey = $env:AGENT_LB_API_KEY; try { $secret = Read-Host "Klucz stacji" -AsSecureString; $env:AGENT_LB_API_KEY = [System.Net.NetworkCredential]::new("", $secret).Password; & ([scriptblock]::Create((irm ' + psQuote(origin + script) + '))) -Url ' + psQuote(origin) + ' } finally { $env:AGENT_LB_API_KEY = $previousKey } }';
+    return '& { $previousKey = $env:AGENT_LB_API_KEY; try { $secret = Read-Host "Klucz stacji" -AsSecureString; $env:AGENT_LB_API_KEY = [System.Net.NetworkCredential]::new("", $secret).Password; & ([scriptblock]::Create((irm ' + psQuote(origin + script) + '))) -Url ' + psQuote(origin) + (withAgylb ? ' -WithAgylb' : '') + ' } finally { $env:AGENT_LB_API_KEY = $previousKey } }';
   }
   var runner = platform === 'node' ? 'node -' : 'bash -s --';
   var inner = 'set -o pipefail; read -rsp "Klucz stacji: " AGENT_LB_API_KEY < /dev/tty || exit 1; printf "\\n"; export AGENT_LB_API_KEY; curl -fsSL ' + quote(origin + script) + ' | ' + runner + ' --url ' + quote(origin) + (withAgylb ? ' --with-agylb' : '');
@@ -1402,7 +1402,7 @@ const PAGE = `<!doctype html>
               <button class="btn btn-xs" id="btnQuickToolOpenCode" type="button" style="padding:2px 8px; font-size:11px;" title="OpenCode">OpenCode</button>
               <button class="btn btn-xs" id="btnQuickToolClaw" type="button" style="padding:2px 8px; font-size:11px;" title="Claw / OpenClaw">Claw</button>
               <button class="btn btn-xs" id="btnQuickToolOrca" type="button" style="padding:2px 8px; font-size:11px;" title="Orca ADE">Orca</button>
-              <button class="btn btn-xs" id="btnQuickToolAgy" type="button" style="padding:2px 8px; font-size:11px;" title="Interaktywne AGY ze wspólną pulą Google — Linux / macOS / WSL">agylb</button>
+              <button class="btn btn-xs" id="btnQuickToolAgy" type="button" style="padding:2px 8px; font-size:11px;" title="Interaktywne AGY ze wspólną pulą Google (agylb + agylb-yolo) — Linux / macOS / WSL / Windows">agylb</button>
               <button class="btn btn-xs" id="btnQuickToolAgent" type="button" style="padding:2px 8px; font-size:11px;" title="Zmienne środowiskowe OpenAI / Anthropic">ENV</button>
             </div>
           </details>
@@ -1455,15 +1455,19 @@ const PAGE = `<!doctype html>
 
       <section id="setupAgylbPanel" style="border:1px solid var(--accent); border-radius:8px; padding:12px 14px; margin-bottom:16px;">
         <h3 style="margin:0 0 8px; color:var(--accent);" data-i18n="setupAgylbTitle">agylb — wspólna pula kont Google</h3>
-        <p style="margin:0 0 8px; font-size:12px;" data-i18n="setupAgylbDesc">Modele AGY na Twoich hostach. Po wyczerpaniu limitu agylb wybiera inne konto i pyta o nową rozmowę.</p>
+        <p style="margin:0 0 8px; font-size:12px;" data-i18n="setupAgylbDesc">Modele AGY na Twoich hostach: polecenia agylb (standardowe uprawnienia) oraz agylb-yolo (bez pytań o akceptację). Po wyczerpaniu limitu wybiera inne konto i pyta o nową rozmowę.</p>
         <div id="setupAgylbStatus" style="margin-bottom:8px; font-size:12px; color:var(--dim);" role="status"></div>
         <button class="btn btn-sm" id="btnEnableSetupAgylb" type="button" style="display:none; margin-bottom:10px;" data-i18n="setupAgylbEnable">Włącz dostęp do agylb dla tej stacji</button>
-        <p style="font-size:12px; margin:0 0 8px;" data-i18n="setupAgylbPlatform">Linux / macOS: uruchom w terminalu. Windows: otwórz terminal WSL. Wymagane: agy i Python 3.8+.</p>
+        <p style="font-size:12px; margin:0 0 8px;" data-i18n="setupAgylbPlatform">Linux / macOS / WSL oraz natywny Windows (PowerShell). Wymagane: agy i Python 3.8+.</p>
+        <div style="font-size:11.5px; color:var(--dim); margin:0 0 4px;">🐧 Linux / macOS / WSL:</div>
         <code class="mono" id="cmdSetupAgylb" style="display:block; word-break:break-all; padding:10px; background:var(--bg); border-radius:6px; font-size:12px;"></code>
-        <button class="btn btn-sm btn-accent" id="btnCopySetupAgylb" style="margin-top:8px;" data-i18n="setupAgylbCopy">📋 Kopiuj instalację agylb</button>
+        <button class="btn btn-sm btn-accent" id="btnCopySetupAgylb" style="margin-top:8px;" data-i18n="setupAgylbCopy">📋 Kopiuj instalację agylb (Linux / macOS / WSL)</button>
+        <div style="font-size:11.5px; color:var(--dim); margin:10px 0 4px;">🪟 Windows (PowerShell):</div>
+        <code class="mono" id="cmdSetupAgylbPs" style="display:block; word-break:break-all; padding:10px; background:var(--bg); border-radius:6px; font-size:12px;"></code>
+        <button class="btn btn-sm btn-accent" id="btnCopySetupAgylbPs" style="margin-top:8px;" data-i18n="setupAgylbCopyPs">📋 Kopiuj instalację agylb (Windows PowerShell)</button>
         <p style="font-size:12px; margin:10px 0 0;" data-i18n="setupAgylbVscode">VS Code + rozszerzenie Google Antigravity (Linux / WSL): po instalacji uruchom agylb vscode w katalogu projektu. Zostaw terminal otwarty i otwórz wypisany plik agylb.code-workspace w tym samym VS Code (Remote SSH / WSL dla zdalnego hosta).</p>
         <div style="margin-top:12px; font-size:12px;">
-          <label><input id="chkSetupAgylb" type="checkbox"> <span data-i18n="setupAgylbInclude">Dodaj też agylb do instalatora Claude Code i Codex dla Linux / macOS / WSL poniżej</span></label>
+          <label><input id="chkSetupAgylb" type="checkbox"> <span data-i18n="setupAgylbInclude">Dodaj też agylb i agylb-yolo do instalatora Claude Code i Codex poniżej (Linux / macOS / WSL oraz Windows PowerShell)</span></label>
         </div>
       </section>
 
@@ -1488,7 +1492,7 @@ const PAGE = `<!doctype html>
               <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
               <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
               <div style="color:var(--dim);">OpenCode, Hermes, Aider, Claw i Orca: osobne instalatory w opcjach poniżej.</div>
-              <div id="setupAgylbIncluded" style="display:none; color:var(--ok);">✔ agylb — pula Google, zapis rozmów i pytanie po wyczerpaniu limitu</div>
+              <div id="setupAgylbIncluded" style="display:none; color:var(--ok);">✔ agylb + agylb-yolo — pula Google, PATH, zapis rozmów i tryb bez pytań o akceptację</div>
             </div>
           </div>
 
@@ -1571,7 +1575,7 @@ const PAGE = `<!doctype html>
               <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
               <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
               <div style="color:var(--dim);">Pozostałe narzędzia konfiguruj osobnymi instalatorami.</div>
-              <div style="color:var(--dim);">AGY przez agylb: wybierz kartę Linux / macOS / WSL i uruchom polecenie w WSL.</div>
+              <div id="setupAgylbIncludedPs" style="display:none; color:var(--ok);">✔ agylb + agylb-yolo — natywnie na Windows (PATH + bez pytań o akceptację)</div>
             </div>
           </div>
 
@@ -2227,14 +2231,15 @@ const PAGE = `<!doctype html>
       tabWorkstationsTitle: 'Stacje robocze & Narzędzia',
       tabSetupTitle: 'Konfiguracja stacji',
       setupAgylbTitle: 'agylb — wspólna pula kont Google',
-      setupAgylbDesc: 'Modele AGY na Twoich hostach. Po wyczerpaniu limitu agylb wybiera inne konto i pyta o nową rozmowę.',
-      setupAgylbPlatform: 'Linux / macOS: uruchom w terminalu. Windows: otwórz terminal WSL. Wymagane: agy i Python 3.8+.',
-      setupAgylbCopy: '📋 Kopiuj instalację agylb',
+      setupAgylbDesc: 'Modele AGY na Twoich hostach: polecenia agylb (standardowe uprawnienia) oraz agylb-yolo (bez pytań o akceptację). Po wyczerpaniu limitu wybiera inne konto i pyta o nową rozmowę.',
+      setupAgylbPlatform: 'Linux / macOS / WSL oraz natywny Windows (PowerShell). Wymagane: agy i Python 3.8+.',
+      setupAgylbCopy: '📋 Kopiuj instalację agylb (Linux / macOS / WSL)',
+      setupAgylbCopyPs: '📋 Kopiuj instalację agylb (Windows PowerShell)',
       setupAgylbEnable: 'Włącz dostęp do agylb dla tej stacji',
       setupAgylbVscode: 'VS Code + rozszerzenie Google Antigravity (Linux / WSL): po instalacji uruchom agylb vscode w katalogu projektu. Zostaw terminal otwarty i otwórz wypisany plik agylb.code-workspace w tym samym VS Code (Remote SSH / WSL dla zdalnego hosta).',
       setupAgylbNoAccess: 'Ta stacja nie ma jeszcze dostępu do kont Google. Kliknij przycisk poniżej i potwierdź zgodę, aby odblokować wybór agylb.',
       setupAgylbRestricted: 'agylb wymaga aktywnej stacji bez ograniczeń modeli, dostawców i tokenów. Wybierz taką stację z listy.',
-      setupAgylbInclude: 'Dodaj też agylb do instalatora Claude Code i Codex dla Linux / macOS / WSL poniżej',
+      setupAgylbInclude: 'Dodaj też agylb i agylb-yolo do instalatora Claude Code i Codex poniżej (Linux / macOS / WSL oraz Windows PowerShell)',
       setupNoStations: 'Najpierw dodaj stację w zakładce Stacje robocze',
       accountsHeading: 'Konta Claude & Codex',
       accountsHint: '💡 Przeciągnij kartę ⠿ w kolumnie, aby zmienić priorytet',
@@ -2544,14 +2549,15 @@ const PAGE = `<!doctype html>
       tabWorkstationsTitle: 'Workstations & Tools',
       tabSetupTitle: 'Workstation Setup',
       setupAgylbTitle: 'agylb — shared Google account pool',
-      setupAgylbDesc: 'AGY models across your hosts. When quota runs out, agylb selects another account and asks to start a new conversation.',
-      setupAgylbPlatform: 'Linux / macOS: run in a terminal. Windows: open a WSL terminal. Requires agy and Python 3.8+.',
-      setupAgylbCopy: '📋 Copy agylb installation',
+      setupAgylbDesc: 'AGY models across your hosts: agylb (standard permissions) and agylb-yolo (auto-approve without prompts). When quota runs out, selects another account and asks to start a new conversation.',
+      setupAgylbPlatform: 'Linux / macOS / WSL and native Windows (PowerShell). Requires agy and Python 3.8+.',
+      setupAgylbCopy: '📋 Copy agylb installation (Linux / macOS / WSL)',
+      setupAgylbCopyPs: '📋 Copy agylb installation (Windows PowerShell)',
       setupAgylbEnable: 'Enable agylb access for this workstation',
       setupAgylbVscode: 'VS Code + Google Antigravity extension (Linux / WSL): after installation, run agylb vscode in your project folder. Keep the terminal open and open the printed agylb.code-workspace file in the same VS Code (Remote SSH / WSL for a remote host).',
       setupAgylbNoAccess: 'This workstation does not have Google account access yet. Use the button below and confirm to unlock agylb.',
       setupAgylbRestricted: 'agylb requires an active workstation without model, provider or token restrictions. Select one from the list.',
-      setupAgylbInclude: 'Also add agylb to the Claude Code and Codex installer for Linux / macOS / WSL below',
+      setupAgylbInclude: 'Also add agylb and agylb-yolo to the Claude Code and Codex installer below (Linux / macOS / WSL and Windows PowerShell)',
       setupNoStations: 'First add a workstation in the Workstations tab',
       accountsHeading: 'Claude & Codex Accounts',
       accountsHint: '💡 Drag card ⠿ in column to adjust queue priority',
@@ -4105,6 +4111,7 @@ ${SHARED_HELPERS}
   var setupStationPolicies = [];
   var modalStationKey = '';
   var modalKeyVisible = false;
+  var setupAgylbUserChoice = null;
   // Purge credentials persisted by older versions; revealed keys stay in memory.
   function saveCachedKeys() {
     try { localStorage.removeItem('agentlb_cached_keys'); } catch (e) {}
@@ -5058,16 +5065,24 @@ ${SHARED_HELPERS}
     if (agylbCheckbox) {
       agylbCheckbox.disabled = !agylbAllowed;
       if (!agylbAllowed) agylbCheckbox.checked = false;
+      else if (setupAgylbUserChoice === null) agylbCheckbox.checked = true;
+      else agylbCheckbox.checked = setupAgylbUserChoice;
     }
     var includeAgylb = agylbAllowed && agylbCheckbox && agylbCheckbox.checked;
     document.getElementById('cmdSetupAgylb').textContent = agylbAllowed ? workstationSetupCommand(hostUrl, '/agylb-setup.sh') : '';
     document.getElementById('btnCopySetupAgylb').disabled = !agylbAllowed;
+    var cmdAgylbPs = document.getElementById('cmdSetupAgylbPs');
+    if (cmdAgylbPs) cmdAgylbPs.textContent = agylbAllowed ? workstationSetupCommand(hostUrl, '/agylb-setup.ps1', 'ps') : '';
+    var btnCopyAgylbPs = document.getElementById('btnCopySetupAgylbPs');
+    if (btnCopyAgylbPs) btnCopyAgylbPs.disabled = !agylbAllowed;
     var agylbStatus = document.getElementById('setupAgylbStatus');
     if (agylbStatus) agylbStatus.textContent = agylbAllowed
-      ? 'Pula Google dostępna. Po instalacji: agylb doctor, agylb models, agylb --continue.'
+      ? 'Pula Google dostępna. Po instalacji: agylb doctor, agylb (standardowo), agylb-yolo (bez pytań o akceptację), agylb --continue.'
       : t(canEnableAgylb ? 'setupAgylbNoAccess' : 'setupAgylbRestricted');
     var included = document.getElementById('setupAgylbIncluded');
     if (included) included.style.display = includeAgylb ? '' : 'none';
+    var includedPs = document.getElementById('setupAgylbIncludedPs');
+    if (includedPs) includedPs.style.display = includeAgylb ? '' : 'none';
 
     var elName = document.getElementById('createdClientName');
     if (elName) elName.textContent = name || 'stacja';
@@ -5078,7 +5093,7 @@ ${SHARED_HELPERS}
     if (copyKey) copyKey.disabled = !modalStationKey;
 
     var cmdBashMain = workstationSetupCommand(hostUrl, '/setup.sh', 'bash', includeAgylb);
-    var cmdPsMain = workstationSetupCommand(hostUrl, '/setup.ps1', 'ps');
+    var cmdPsMain = workstationSetupCommand(hostUrl, '/setup.ps1', 'ps', includeAgylb);
 
     var elBashMain = document.getElementById('cmdSetupBashMain');
     if (elBashMain) elBashMain.textContent = cmdBashMain;
@@ -5442,9 +5457,9 @@ ${SHARED_HELPERS}
     var quickScripts = { all: '/setup', claude: '/claude-setup', codex: '/codex-setup', hermes: '/hermes-setup', opencode: '/opencode-setup', claw: '/claw-setup', orca: '/orca-setup', agy: '/agylb-setup' };
     var selectedScript = quickScripts[currentQuickTool || 'all'];
     var agyDenied = currentQuickTool === 'agy' && !stationCanUseAgylb(setupStationPolicies.find(function (entry) { return entry.name === selectedStationName; }));
-    var unsupportedPs = currentQuickTab === 'ps' && ['hermes', 'opencode', 'claw', 'orca', 'agy'].includes(currentQuickTool);
+    var unsupportedPs = currentQuickTab === 'ps' && ['hermes', 'opencode', 'claw', 'orca'].includes(currentQuickTool);
     if (selectedScript && !unsupportedPs) {
-      cmd = workstationSetupCommand(hostUrl, selectedScript + (currentQuickTab === 'ps' && currentQuickTool !== 'agy' ? '.ps1' : '.sh'), currentQuickTab === 'ps' && currentQuickTool !== 'agy' ? 'ps' : 'bash');
+      cmd = workstationSetupCommand(hostUrl, selectedScript + (currentQuickTab === 'ps' ? '.ps1' : '.sh'), currentQuickTab === 'ps' ? 'ps' : 'bash');
     }
     if (unsupportedPs) cmd = '# To narzędzie: wybierz Linux / macOS / WSL i uruchom instalator w WSL.';
     if (agyDenied) cmd = '# agylb: ta stacja nie ma dostępu do puli Google.';
@@ -7695,6 +7710,7 @@ ${SHARED_HELPERS}
     this.textContent = modalKeyVisible ? 'Ukryj klucz' : 'Pokaż klucz';
   });
   document.getElementById('chkSetupAgylb').addEventListener('change', function () {
+    setupAgylbUserChoice = this.checked;
     updateModalCommands(document.getElementById('selModalStation').value, modalStationKey);
   });
   document.getElementById('btnEnableSetupAgylb').addEventListener('click', function () {
@@ -7705,6 +7721,7 @@ ${SHARED_HELPERS}
   });
   bindCopy('btnCopySetupBashMain', 'cmdSetupBashMain', 'Polecenie instalatora (Linux)');
   bindCopy('btnCopySetupAgylb', 'cmdSetupAgylb', 'Instalacja agylb (Linux / macOS / WSL)');
+  bindCopy('btnCopySetupAgylbPs', 'cmdSetupAgylbPs', 'Instalacja agylb (Windows PowerShell)');
   bindCopy('btnCopyAgentPrompt', 'cmdAgentPrompt', 'Prompt dla agenta');
   bindCopy('btnCopyJcodeSetupBash', 'cmdJcodeSetupBash', 'Polecenie jcode (Linux/WSL)');
   bindCopy('btnCopySetupPowershellMain', 'cmdSetupPowershellMain', 'Polecenie instalatora (Windows)');
