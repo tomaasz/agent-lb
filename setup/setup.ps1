@@ -1,4 +1,4 @@
-# setup.ps1 — konfiguracja klienta Claude i Codex pod Agent-LB na Windows / PowerShell.
+﻿# setup.ps1 — konfiguracja klienta Claude i Codex pod Agent-LB na Windows / PowerShell.
 #
 # Jeśli w systemie jest Node.js, deleguje zadanie do uniwersalnego setup.js.
 # W przeciwnym wypadku wykonuje natywne kroki w PowerShellu (CLI, VS Code, rejestr zmiennych).
@@ -111,20 +111,20 @@ function Ensure-CliPackage([string]$cmdName, [string]$pkgName, [string]$title) {
 	}
 }
 
-function Check-WslIntegration([string]$serverUrl, [string]$clientKey) {
+function Check-WslIntegration([string]$serverUrl) {
 	$wslCmd = Get-Command wsl -ErrorAction SilentlyContinue
 	if (-not $wslCmd) { return }
 	try {
 		$wslOutput = & wsl.exe -l -q 2>$null
-		$distros = @($wslOutput | Where-Object { $_ -and $_.Trim() } | ForEach-Object { $_.Trim() })
+		$distros = @($wslOutput | ForEach-Object { ($_ -replace "`0", "").Trim() } | Where-Object { $_ })
 		if ($distros.Count -gt 0) {
 			$distroStr = $distros -join ', '
 			Say ""
 			Say "----------------------------------------------------------------------"
 			Say "💡 [WSL] Wykryto podsystem WSL w systemie Windows: $distroStr"
 			Say "   Aby wdrożyć Claude i Codex również wewnątrz WSL (np. Debian/Ubuntu):"
-			Say "   Otwórz terminal WSL i uruchom:"
-			Say "   curl -fsSL $serverUrl/setup.sh | bash -s -- --key $clientKey"
+			Say "   Otwórz terminal WSL i uruchom (instalator zapyta o klucz stacji):"
+			Say "   curl -fsSL $serverUrl/setup.sh | bash -s -- --url $serverUrl"
 			Say "----------------------------------------------------------------------"
 		}
 	} catch {}
@@ -279,7 +279,7 @@ Say "--- Weryfikacja środowiska i instalacja narzędzi CLI ---"
 Check-And-Ensure-Node
 Ensure-CliPackage "claude" "@anthropic-ai/claude-code" "Claude Code CLI"
 Ensure-CliPackage "codex" "@openai/codex" "OpenAI Codex CLI"
-Check-WslIntegration $Url $Key
+Check-WslIntegration $Url
 Say "--------------------------------------------------------"
 Say ""
 
@@ -342,16 +342,15 @@ if (Test-Path $vsCodeDir) {
 			$vsSettings = Get-Content -Raw -Path $vsCodeSettingsPath | ConvertFrom-Json -AsHashtable
 		}
 		$vsSettings["claudeCode.disableLoginPrompt"] = $true
-		$claudeEnvironmentVariables = @(@{ name = "ANTHROPIC_BASE_URL"; value = $Url })
-		if ($oauthSession) { $claudeEnvironmentVariables += @{ name = "ANTHROPIC_CUSTOM_HEADERS"; value = "x-api-key: $Key" } }
-		else { $claudeEnvironmentVariables += @{ name = "ANTHROPIC_API_KEY"; value = $Key } }
-		$claudeEnvironmentVariables = if ($vsSettings.ContainsKey("claudeCode.environmentVariables")) {
-			@($vsSettings["claudeCode.environmentVariables"]) | Where-Object { $_.name -ne "ANTHROPIC_BASE_URL" }
-		} else { @() }
+		$claudeEnvironmentVariables = @(
+			if ($vsSettings.ContainsKey("claudeCode.environmentVariables")) {
+				@($vsSettings["claudeCode.environmentVariables"]) | Where-Object { $_ -and $_.name -ne "ANTHROPIC_BASE_URL" }
+			}
+		)
 		$claudeEnvironmentVariables += @{ name = "ANTHROPIC_BASE_URL"; value = $Url }
 		if ($oauthSession) {
 			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_API_KEY" -and $_.name -ne "ANTHROPIC_AUTH_TOKEN" })
-			$existingHdr = ($claudeEnvironmentVariables | Where-Object { $_.name -eq "ANTHROPIC_CUSTOM_HEADERS" }).value
+			$existingHdr = ($claudeEnvironmentVariables | Where-Object { $_.name -eq "ANTHROPIC_CUSTOM_HEADERS" } | Select-Object -First 1).value
 			$updatedHdr = Set-CustomHeader $existingHdr "x-api-key" $Key
 			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_CUSTOM_HEADERS" })
 			$claudeEnvironmentVariables += @{ name = "ANTHROPIC_CUSTOM_HEADERS"; value = $updatedHdr }
@@ -359,7 +358,7 @@ if (Test-Path $vsCodeDir) {
 			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_API_KEY" -and $_.name -ne "ANTHROPIC_AUTH_TOKEN" })
 			$claudeEnvironmentVariables += @{ name = "ANTHROPIC_API_KEY"; value = $Key }
 			$claudeEnvironmentVariables += @{ name = "ANTHROPIC_AUTH_TOKEN"; value = $Key }
-			$existingHdr = ($claudeEnvironmentVariables | Where-Object { $_.name -eq "ANTHROPIC_CUSTOM_HEADERS" }).value
+			$existingHdr = ($claudeEnvironmentVariables | Where-Object { $_.name -eq "ANTHROPIC_CUSTOM_HEADERS" } | Select-Object -First 1).value
 			$rem = Remove-CustomHeader $existingHdr "x-api-key"
 			$claudeEnvironmentVariables = @($claudeEnvironmentVariables | Where-Object { $_.name -ne "ANTHROPIC_CUSTOM_HEADERS" })
 			if ($rem) { $claudeEnvironmentVariables += @{ name = "ANTHROPIC_CUSTOM_HEADERS"; value = $rem } }

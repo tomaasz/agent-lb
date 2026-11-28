@@ -82,6 +82,7 @@ test('public agylb routes serve only whitelisted code and refuse other platforms
       assert.equal(psRes.status, 200, psEndpoint);
       const text = await psRes.text();
       assert.equal(text.charCodeAt(0) === 0xfeff, false, `${psEndpoint} must not start with UTF-8 BOM`);
+      assert.doesNotMatch(text, /--key \$clientKey/, `${psEndpoint} must never print workstation keys`);
     }
     const psInstaller = await fetch(base + '/agylb-setup.ps1');
     assert.equal(psInstaller.status, 200);
