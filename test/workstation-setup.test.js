@@ -77,6 +77,12 @@ test('public agylb routes serve only whitelisted code and refuse other platforms
     const installer = await fetch(base + '/agylb-setup.sh');
     assert.equal(installer.status, 200);
     assert.match(await installer.text(), /Install interactive agylb/);
+    for (const psEndpoint of ['/setup.ps1', '/agylb-setup.ps1', '/claude-setup.ps1', '/codex-setup.ps1']) {
+      const psRes = await fetch(base + psEndpoint);
+      assert.equal(psRes.status, 200, psEndpoint);
+      const text = await psRes.text();
+      assert.equal(text.charCodeAt(0) === 0xfeff, false, `${psEndpoint} must not start with UTF-8 BOM`);
+    }
     const psInstaller = await fetch(base + '/agylb-setup.ps1');
     assert.equal(psInstaller.status, 200);
     const psBody = await psInstaller.text();

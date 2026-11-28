@@ -532,6 +532,9 @@ export function createProxyServer(
           return;
         }
 
+        // A leading UTF-8 BOM breaks PowerShell [scriptblock]::Create((irm ...)) before param().
+        content = content.replace(/^\uFEFF/, "");
+
         // Dynamically bake requesting server origin into script if requested over HTTP
         const reqProto =
           req.headers["x-forwarded-proto"] ||

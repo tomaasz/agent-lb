@@ -1,4 +1,4 @@
-﻿# setup.ps1 — konfiguracja klienta Claude i Codex pod Agent-LB na Windows / PowerShell.
+# setup.ps1 — konfiguracja klienta Claude i Codex pod Agent-LB na Windows / PowerShell.
 #
 # Jeśli w systemie jest Node.js, deleguje zadanie do uniwersalnego setup.js.
 # W przeciwnym wypadku wykonuje natywne kroki w PowerShellu (CLI, VS Code, rejestr zmiennych).
