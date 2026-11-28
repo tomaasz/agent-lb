@@ -41,6 +41,10 @@ async function listBackups(dir) {
 test('setup hardening', async t => {
   const statusServer = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
+    if (req.url === '/v1/models') {
+      res.end(JSON.stringify({ data: [{ id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash High' }] }));
+      return;
+    }
     res.end('{}');
   });
   await new Promise(resolve => statusServer.listen(0, '127.0.0.1', resolve));
@@ -153,6 +157,129 @@ test('setup hardening', async t => {
           await fs.rm(home, { recursive: true, force: true });
         }
       });
+
+      await t.test(`${installer.name}: auto-detects and configures IDEs, OpenCode, Aider, OpenClaw and Herdr only when present`, async () => {
+        const home = await fs.mkdtemp(path.join(os.tmpdir(), 'agent-lb-apps-'));
+        const fakeBin = path.join(home, 'fake-bin');
+        const herdrLog = path.join(home, 'herdr.log');
+        await fs.mkdir(fakeBin, { recursive: true });
+        await fs.writeFile(
+          path.join(fakeBin, 'herdr'),
+          `#!/bin/sh\necho "$@" >> "${herdrLog}"\nexit 0\n`,
+          { mode: 0o755 },
+        );
+        // Minimal safe PATH so host-installed hermes/opencode/etc. don't skew detection.
+        const env = { ...childEnv(home), PATH: `${fakeBin}:/usr/bin:/bin` };
+        try {
+          await fs.mkdir(path.join(home, '.config', 'Cursor', 'User'), { recursive: true });
+          // JSONC with comments, URL containing '//' inside a string, and trailing comma.
+          await fs.writeFile(
+            path.join(home, '.config', 'Cursor', 'User', 'settings.json'),
+            '{\n  // user comment\n  "editor.fontSize": 15,\n  "custom.endpoint": "https://example.test/api//v1",\n}\n',
+          );
+          await fs.mkdir(path.join(home, '.config', 'Antigravity', 'User'), { recursive: true });
+          // Malformed IDE settings must be skipped, never wiped to {}.
+          await fs.mkdir(path.join(home, '.config', 'VSCodium', 'User'), { recursive: true });
+          await fs.writeFile(path.join(home, '.config', 'VSCodium', 'User', 'settings.json'), '{ broken json');
+          await fs.mkdir(path.join(home, '.config', 'opencode'), { recursive: true });
+          await fs.writeFile(
+            path.join(home, '.config', 'opencode', 'opencode.json'),
+            JSON.stringify({ provider: { other: { options: { baseURL: 'https://other.example/v1' } } } }),
+          );
+          await fs.mkdir(path.join(home, '.local', 'share', 'opencode'), { recursive: true });
+          await fs.writeFile(
+            path.join(home, '.local', 'share', 'opencode', 'auth.json'),
+            JSON.stringify({ other: { type: 'api', key: 'keep-me' } }),
+          );
+          await fs.mkdir(path.join(home, '.openclaw'), { recursive: true });
+          await fs.writeFile(
+            path.join(home, '.openclaw', 'openclaw.json'),
+            JSON.stringify({ models: { providers: { other: { baseUrl: 'https://other.example/v1' } } } }),
+          );
+          await fs.writeFile(path.join(home, '.aider.conf.yml'), 'dark-mode: true\nmodel: custom/my-model\n');
+
+          for (let i = 0; i < 2; i++) await installer.run(['--url', proxyUrl, '--key', key], env);
+
+          // Detected IDEs configured; JSONC preserved; malformed IDE untouched; absent Windsurf/Hermes untouched.
+          for (const ide of ['Cursor', 'Antigravity']) {
+            const vs = JSON.parse(await fs.readFile(path.join(home, '.config', ide, 'User', 'settings.json'), 'utf8'));
+            assert.equal(vs['claudeCode.disableLoginPrompt'], true);
+            assert.ok(vs['claudeCode.environmentVariables'].some(e => e.name === 'ANTHROPIC_BASE_URL' && e.value === proxyUrl));
+          }
+          const cursorInstalled = JSON.parse(await fs.readFile(path.join(home, '.config', 'Cursor', 'User', 'settings.json'), 'utf8'));
+          assert.equal(cursorInstalled['editor.fontSize'], 15);
+          assert.equal(cursorInstalled['custom.endpoint'], 'https://example.test/api//v1');
+          assert.equal(
+            await fs.readFile(path.join(home, '.config', 'VSCodium', 'User', 'settings.json'), 'utf8'),
+            '{ broken json',
+            'malformed IDE settings.json must not be overwritten',
+          );
+          await assert.rejects(fs.access(path.join(home, '.config', 'Windsurf')));
+          await assert.rejects(fs.access(path.join(home, '.hermes')));
+
+          // OpenCode configured with dynamic Gemini model from /v1/models and private auth.json.
+          const ocCfg = JSON.parse(await fs.readFile(path.join(home, '.config', 'opencode', 'opencode.json'), 'utf8'));
+          assert.equal(ocCfg.provider.agentlb.options.baseURL, `${proxyUrl}/v1`);
+          assert.equal(ocCfg.provider.agentlb.options.apiKey, key);
+          assert.equal(ocCfg.provider.other.options.baseURL, 'https://other.example/v1');
+          assert.ok(ocCfg.provider.agentlb.models['gemini-3.8-flash-high']);
+          const ocAuthPath = path.join(home, '.local', 'share', 'opencode', 'auth.json');
+          assert.equal((await fs.stat(ocAuthPath)).mode & 0o777, 0o600);
+          assert.equal(JSON.parse(await fs.readFile(ocAuthPath, 'utf8')).agentlb.key, key);
+
+          // Aider preserves user model and settings, idempotent managed block.
+          const aiderYml = await fs.readFile(path.join(home, '.aider.conf.yml'), 'utf8');
+          assert.match(aiderYml, /^dark-mode: true$/m);
+          assert.match(aiderYml, /^model: custom\/my-model$/m);
+          assert.equal((aiderYml.match(/# >>> agentlb/g) || []).length, 1);
+          assert.doesNotMatch(aiderYml, /gpt-5\.6-sol/, 'user model must not be overridden');
+
+          // OpenClaw configured privately.
+          const clawPath = path.join(home, '.openclaw', 'openclaw.json');
+          assert.equal((await fs.stat(clawPath)).mode & 0o777, 0o600);
+          assert.equal(JSON.parse(await fs.readFile(clawPath, 'utf8')).models.providers.agentlb.baseUrl, `${proxyUrl}/v1`);
+
+          // Herdr integrations invoked for detected agents.
+          const herdrCalls = await fs.readFile(herdrLog, 'utf8');
+          assert.match(herdrCalls, /integration install claude/);
+          assert.match(herdrCalls, /integration install codex/);
+          assert.match(herdrCalls, /integration install opencode/);
+
+          // Now create ~/.hermes, re-run install to verify Hermes .env config + private mode.
+          await fs.mkdir(path.join(home, '.hermes'), { recursive: true });
+          await fs.writeFile(path.join(home, '.hermes', '.env'), 'OTHER_VAR=keep\n');
+          await installer.run(['--url', proxyUrl, '--key', key], env);
+          const hermesEnvPath = path.join(home, '.hermes', '.env');
+          assert.equal((await fs.stat(hermesEnvPath)).mode & 0o777, 0o600);
+          const hermesInstalled = await fs.readFile(hermesEnvPath, 'utf8');
+          assert.match(hermesInstalled, /^OTHER_VAR=keep$/m);
+          assert.match(hermesInstalled, new RegExp(`^AGENT_LB_API_KEY=${key}$`, 'm'));
+
+          // Uninstall cleans Cursor/Antigravity (including hideOnboarding), Aider, OpenCode, OpenClaw, and Hermes while keeping user data.
+          await installer.run(['--uninstall'], env);
+          const cursorAfter = JSON.parse(await fs.readFile(path.join(home, '.config', 'Cursor', 'User', 'settings.json'), 'utf8'));
+          assert.equal(cursorAfter['claudeCode.environmentVariables'], undefined);
+          assert.equal(cursorAfter['claudeCode.hideOnboarding'], undefined);
+          assert.equal(cursorAfter['editor.fontSize'], 15);
+          const aiderAfter = await fs.readFile(path.join(home, '.aider.conf.yml'), 'utf8');
+          assert.doesNotMatch(aiderAfter, /# >>> agentlb/);
+          assert.match(aiderAfter, /dark-mode: true/);
+          const ocCfgAfter = JSON.parse(await fs.readFile(path.join(home, '.config', 'opencode', 'opencode.json'), 'utf8'));
+          assert.equal(ocCfgAfter.provider.agentlb, undefined);
+          assert.equal(ocCfgAfter.provider.other.options.baseURL, 'https://other.example/v1');
+          const ocAuthAfter = JSON.parse(await fs.readFile(ocAuthPath, 'utf8'));
+          assert.equal(ocAuthAfter.agentlb, undefined);
+          assert.equal(ocAuthAfter.other.key, 'keep-me');
+          const clawAfter = JSON.parse(await fs.readFile(clawPath, 'utf8'));
+          assert.equal(clawAfter.models.providers.agentlb, undefined);
+          assert.equal(clawAfter.models.providers.other.baseUrl, 'https://other.example/v1');
+          const hermesAfter = await fs.readFile(hermesEnvPath, 'utf8');
+          assert.match(hermesAfter, /^OTHER_VAR=keep$/m);
+          assert.doesNotMatch(hermesAfter, /AGENT_LB_/);
+        } finally {
+          await fs.rm(home, { recursive: true, force: true });
+        }
+      });
     }
 
     await t.test('setup.sh does not mass-kill codex or install system packages silently', async () => {
@@ -162,6 +289,13 @@ test('setup hardening', async t => {
       assert.match(src, /INSTALL_NODE" -ne 1/);
       const js = await fs.readFile('setup/setup.js', 'utf8');
       assert.doesNotMatch(js, /sudo npm install -g \$\{pkgName\}`,/);
+    });
+
+    await t.test('setup.ps1 stays compatible with Windows PowerShell 5.1 and BOM-free UTF-8', async () => {
+      const ps1 = await fs.readFile('setup/setup.ps1', 'utf8');
+      assert.ok(!ps1.startsWith('\uFEFF'), 'setup.ps1 must not start with UTF-8 BOM');
+      assert.doesNotMatch(ps1, /ConvertFrom-Json[^\n]*-AsHashtable/, 'Windows PowerShell 5.1 lacks -AsHashtable');
+      assert.doesNotMatch(ps1, /Set-Content[^\n]*-Encoding\s+utf8\b/i, 'Set-Content -Encoding utf8 writes a BOM on PowerShell 5.1');
     });
   } finally {
     await new Promise(resolve => statusServer.close(resolve));

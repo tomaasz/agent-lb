@@ -1489,9 +1489,9 @@ const PAGE = `<!doctype html>
             </div>
             <p style="font-size:12px; color:var(--dim); margin:0 0 10px;">Skopiuj klucz stacji. Polecenie poprosi o jego wklejenie i nie zapisze go w historii.</p>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
-              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code / Cursor / Windsurf / VSCodium / Antigravity)</div>
               <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
-              <div style="color:var(--dim);">OpenCode, Hermes, Aider, Claw i Orca: osobne instalatory w opcjach poniżej.</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ Auto-wykrywane aplikacje:</span> OpenCode, Herdr, Aider, Hermes, OpenClaw (tylko zainstalowane)</div>
               <div id="setupAgylbIncluded" style="display:none; color:var(--ok);">✔ agylb + agylb-yolo — pula Google, PATH, zapis rozmów i tryb bez pytań o akceptację</div>
             </div>
           </div>
@@ -1572,9 +1572,9 @@ const PAGE = `<!doctype html>
               <code class="mono" id="cmdSetupPowershellMain" style="display:block; word-break:break-all; font-size:12.5px; color:#e6edf3; font-weight:600;"></code>
             </div>
             <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:6px; font-size:11.5px; color:var(--dim);">
-              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code + OAuth)</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ Claude Code</span> (CLI + VS Code / Cursor / Windsurf / VSCodium / Antigravity)</div>
               <div><span style="color:var(--ok); font-weight:600;">✔ OpenAI Codex</span> (CLI + config.toml + VS Code)</div>
-              <div style="color:var(--dim);">Pozostałe narzędzia konfiguruj osobnymi instalatorami.</div>
+              <div><span style="color:var(--ok); font-weight:600;">✔ Auto-wykrywane aplikacje:</span> OpenCode, Herdr, Aider, Hermes, OpenClaw (tylko zainstalowane)</div>
               <div id="setupAgylbIncludedPs" style="display:none; color:var(--ok);">✔ agylb + agylb-yolo — natywnie na Windows (PATH + bez pytań o akceptację)</div>
             </div>
           </div>

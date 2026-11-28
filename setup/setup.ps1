@@ -1,4 +1,4 @@
-﻿# setup.ps1 — konfiguracja klienta Claude i Codex pod Agent-LB na Windows / PowerShell.
+# setup.ps1 — konfiguracja klienta Claude i Codex pod Agent-LB na Windows / PowerShell.
 #
 # Jeśli w systemie jest Node.js, deleguje zadanie do uniwersalnego setup.js.
 # W przeciwnym wypadku wykonuje natywne kroki w PowerShellu (CLI, VS Code, rejestr zmiennych).
@@ -153,6 +153,95 @@ function Remove-CustomHeader([string]$existing, [string]$name) {
 	return $null
 }
 
+function Write-Utf8NoBom([string]$Path, [string]$Content) {
+	$enc = [System.Text.UTF8Encoding]::new($false)
+	[System.IO.File]::WriteAllText($Path, $Content, $enc)
+}
+
+function Strip-JsonComments([string]$Text) {
+	if (-not $Text) { return '' }
+	$sb = [System.Text.StringBuilder]::new($Text.Length)
+	$inStr = $false; $esc = $false
+	for ($i = 0; $i -lt $Text.Length; $i++) {
+		$c = $Text[$i]
+		$n = if ($i + 1 -lt $Text.Length) { $Text[$i + 1] } else { [char]0 }
+		if ($inStr) {
+			[void]$sb.Append($c)
+			if ($esc) { $esc = $false }
+			elseif ($c -eq '\') { $esc = $true }
+			elseif ($c -eq '"') { $inStr = $false }
+			continue
+		}
+		if ($c -eq '"') { $inStr = $true; [void]$sb.Append($c); continue }
+		if ($c -eq '/' -and $n -eq '/') {
+			$i += 2
+			while ($i -lt $Text.Length -and $Text[$i] -ne "`n" -and $Text[$i] -ne "`r") { $i++ }
+			$i--
+			continue
+		}
+		if ($c -eq '/' -and $n -eq '*') {
+			$i += 2
+			while ($i + 1 -lt $Text.Length -and -not ($Text[$i] -eq '*' -and $Text[$i + 1] -eq '/')) {
+				if ($Text[$i] -eq "`n" -or $Text[$i] -eq "`r") { [void]$sb.Append($Text[$i]) }
+				$i++
+			}
+			$i++
+			continue
+		}
+		[void]$sb.Append($c)
+	}
+	$s2 = $sb.ToString()
+	$out = [System.Text.StringBuilder]::new($s2.Length)
+	$inStr = $false; $esc = $false
+	for ($i = 0; $i -lt $s2.Length; $i++) {
+		$c = $s2[$i]
+		if ($inStr) {
+			[void]$out.Append($c)
+			if ($esc) { $esc = $false }
+			elseif ($c -eq '\') { $esc = $true }
+			elseif ($c -eq '"') { $inStr = $false }
+			continue
+		}
+		if ($c -eq '"') { $inStr = $true; [void]$out.Append($c); continue }
+		if ($c -eq ',') {
+			$j = $i + 1
+			while ($j -lt $s2.Length -and [char]::IsWhiteSpace($s2[$j])) { $j++ }
+			if ($j -lt $s2.Length -and ($s2[$j] -eq '}' -or $s2[$j] -eq ']')) { continue }
+		}
+		[void]$out.Append($c)
+	}
+	return $out.ToString()
+}
+
+function ConvertTo-HashtableRecursive($Obj) {
+	if ($null -eq $Obj) { return $null }
+	if ($Obj -is [System.Collections.IDictionary]) {
+		$ht = @{}
+		foreach ($k in $Obj.Keys) { $ht[$k] = ConvertTo-HashtableRecursive $Obj[$k] }
+		return $ht
+	}
+	if ($Obj -is [pscustomobject]) {
+		$ht = @{}
+		foreach ($prop in $Obj.PSObject.Properties) { $ht[$prop.Name] = ConvertTo-HashtableRecursive $prop.Value }
+		return $ht
+	}
+	if ($Obj -is [System.Collections.IEnumerable] -and -not ($Obj -is [string])) {
+		$arr = @()
+		foreach ($item in $Obj) { $arr += ,(ConvertTo-HashtableRecursive $item) }
+		return ,$arr
+	}
+	return $Obj
+}
+
+function Read-JsonHashtable([string]$Path) {
+	$raw = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::UTF8)
+	if (-not $raw.Trim()) { return @{} }
+	$parsed = (Strip-JsonComments $raw) | ConvertFrom-Json
+	$ht = ConvertTo-HashtableRecursive $parsed
+	if (-not ($ht -is [hashtable])) { throw "Plik $Path nie zawiera obiektu JSON." }
+	return $ht
+}
+
 if ($Uninstall) {
 	$homeDir = if ($HOME) { $HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } else { '.' }
 	foreach ($p in @(
@@ -162,8 +251,7 @@ if ($Uninstall) {
 	$settingsPath = Join-Path $homeDir '.claude\settings.json'
 	if (Test-Path $settingsPath) {
 		try {
-			$data = Get-Content -Raw -Path $settingsPath | ConvertFrom-Json -AsHashtable
-			if ($data.env -is [hashtable]) { $data.env.Remove('ANTHROPIC_BASE_URL'); $data.env.Remove('ANTHROPIC_API_KEY'); $data.env.Remove('ANTHROPIC_CUSTOM_HEADERS') }
+			$data = Read-JsonHashtable $settingsPath
 			if ($data.env -is [hashtable]) {
 				$data.env.Remove('ANTHROPIC_BASE_URL')
 				$data.env.Remove('ANTHROPIC_API_KEY')
@@ -172,19 +260,18 @@ if ($Uninstall) {
 				if ($rem) { $data.env['ANTHROPIC_CUSTOM_HEADERS'] = $rem }
 				else { $data.env.Remove('ANTHROPIC_CUSTOM_HEADERS') }
 			}
-			Backup-ConfigFile $settingsPath
-			$data | ConvertTo-Json -Depth 20 | Set-Content -Path $settingsPath -Encoding utf8
+			Write-Utf8NoBom $settingsPath (($data | ConvertTo-Json -Depth 20) + "`n")
 		} catch { Say "[Uwaga] Nie udało się zaktualizować $settingsPath" }
 	}
 	$vsAppData = if ($env:APPDATA) { $env:APPDATA } else { Join-Path $homeDir 'AppData\Roaming' }
-	$vsPath = Join-Path $vsAppData 'Code\User\settings.json'
-	if (Test-Path $vsPath) {
+	foreach ($ideDir in @('Code', 'Code - Insiders', 'Cursor', 'Windsurf', 'VSCodium', 'Antigravity')) {
+		$vsPath = Join-Path $vsAppData "$ideDir\User\settings.json"
+		if (-not (Test-Path $vsPath)) { continue }
 		try {
-			$vs = Get-Content -Raw -Path $vsPath | ConvertFrom-Json -AsHashtable
-			$vs.Remove('claudeCode.environmentVariables')
+			$vs = Read-JsonHashtable $vsPath
 			if ($vs.ContainsKey('claudeCode.environmentVariables')) {
-				$envVars = @($vs['claudeCode.environmentVariables']) | Where-Object { $_.name -ne 'ANTHROPIC_BASE_URL' -and $_.name -ne 'ANTHROPIC_API_KEY' }
-				$existingHdr = ($vs['claudeCode.environmentVariables'] | Where-Object { $_.name -eq 'ANTHROPIC_CUSTOM_HEADERS' }).value
+				$envVars = @($vs['claudeCode.environmentVariables'] | Where-Object { $_ -and $_.name -ne 'ANTHROPIC_BASE_URL' -and $_.name -ne 'ANTHROPIC_API_KEY' -and $_.name -ne 'ANTHROPIC_AUTH_TOKEN' })
+				$existingHdr = ($envVars | Where-Object { $_.name -eq 'ANTHROPIC_CUSTOM_HEADERS' } | Select-Object -First 1).value
 				$rem = Remove-CustomHeader $existingHdr 'x-api-key'
 				$envVars = @($envVars | Where-Object { $_.name -ne 'ANTHROPIC_CUSTOM_HEADERS' })
 				if ($rem) { $envVars += @{ name = 'ANTHROPIC_CUSTOM_HEADERS'; value = $rem } }
@@ -192,9 +279,62 @@ if ($Uninstall) {
 				else { $vs.Remove('claudeCode.environmentVariables') }
 			}
 			$vs.Remove('claudeCode.disableLoginPrompt')
-			Backup-ConfigFile $vsPath
-			$vs | ConvertTo-Json -Depth 20 | Set-Content -Path $vsPath -Encoding utf8
+			$vs.Remove('claudeCode.hideOnboarding')
+			Write-Utf8NoBom $vsPath (($vs | ConvertTo-Json -Depth 20) + "`n")
 		} catch { Say "[Uwaga] Nie udało się zaktualizować $vsPath" }
+	}
+	$codexTomlPath = Join-Path (if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $homeDir '.codex' }) 'config.toml'
+	if (Test-Path $codexTomlPath) {
+		try {
+			$rawToml = [System.IO.File]::ReadAllText($codexTomlPath, [System.Text.Encoding]::UTF8)
+			$cleanToml = [regex]::Replace($rawToml, '(?ms)^# >>> codexlb.*?^# <<< codexlb[^\r\n]*\r?\n?', '').Trim()
+			Write-Utf8NoBom $codexTomlPath $(if ($cleanToml) { "$cleanToml`n" } else { '' })
+		} catch { Say "[Uwaga] Nie udało się wyczyścić $codexTomlPath" }
+	}
+	$aiderPath = Join-Path $homeDir '.aider.conf.yml'
+	if (Test-Path $aiderPath) {
+		try {
+			$rawAider = [System.IO.File]::ReadAllText($aiderPath, [System.Text.Encoding]::UTF8)
+			$cleanAider = [regex]::Replace($rawAider, '(?ms)^# >>> agentlb.*?^# <<< agentlb[^\r\n]*\r?\n?', '').Trim()
+			Write-Utf8NoBom $aiderPath $(if ($cleanAider) { "$cleanAider`n" } else { '' })
+		} catch { Say "[Uwaga] Nie udało się wyczyścić $aiderPath" }
+	}
+	$ocCfgPath = Join-Path $homeDir '.config\opencode\opencode.json'
+	if (Test-Path $ocCfgPath) {
+		try {
+			$oc = Read-JsonHashtable $ocCfgPath
+			$changed = $false
+			if ($oc.ContainsKey('provider') -and ($oc['provider'] -is [hashtable]) -and $oc['provider'].ContainsKey('agentlb')) { $oc['provider'].Remove('agentlb'); $changed = $true }
+			if ($oc.ContainsKey('providers') -and ($oc['providers'] -is [hashtable]) -and $oc['providers'].ContainsKey('agentlb')) { $oc['providers'].Remove('agentlb'); $changed = $true }
+			if ($changed) { Write-Utf8NoBom $ocCfgPath (($oc | ConvertTo-Json -Depth 20) + "`n") }
+		} catch { Say "[Uwaga] Nie udało się wyczyścić $ocCfgPath" }
+	}
+	foreach ($ocAuthPath in @((Join-Path $homeDir '.local\share\opencode\auth.json'), (Join-Path $vsAppData 'opencode\auth.json'))) {
+		if (-not (Test-Path $ocAuthPath)) { continue }
+		try {
+			$ocA = Read-JsonHashtable $ocAuthPath
+			if ($ocA.ContainsKey('agentlb')) {
+				$ocA.Remove('agentlb')
+				Write-Utf8NoBom $ocAuthPath (($ocA | ConvertTo-Json -Depth 20) + "`n")
+			}
+		} catch { Say "[Uwaga] Nie udało się wyczyścić $ocAuthPath" }
+	}
+	$clawPath = Join-Path $homeDir '.openclaw\openclaw.json'
+	if (Test-Path $clawPath) {
+		try {
+			$claw = Read-JsonHashtable $clawPath
+			if ($claw.ContainsKey('models') -and ($claw['models'] -is [hashtable]) -and $claw['models'].ContainsKey('providers') -and ($claw['models']['providers'] -is [hashtable]) -and $claw['models']['providers'].ContainsKey('agentlb')) {
+				$claw['models']['providers'].Remove('agentlb')
+				Write-Utf8NoBom $clawPath (($claw | ConvertTo-Json -Depth 20) + "`n")
+			}
+		} catch { Say "[Uwaga] Nie udało się wyczyścić $clawPath" }
+	}
+	$hermesEnv = Join-Path $homeDir '.hermes\.env'
+	if (Test-Path $hermesEnv) {
+		try {
+			$hLines = @([System.IO.File]::ReadAllLines($hermesEnv, [System.Text.Encoding]::UTF8) | Where-Object { $_ -notmatch '^\s*(?:export\s+)?(AGENT_LB_URL|AGENT_LB_API_KEY)=' })
+			Write-Utf8NoBom $hermesEnv $(if ($hLines.Count -gt 0) { ($hLines -join "`n") + "`n" } else { '' })
+		} catch { Say "[Uwaga] Nie udało się wyczyścić $hermesEnv" }
 	}
 	try {
 		[Environment]::SetEnvironmentVariable('ANTHROPIC_BASE_URL', $null, 'User')
@@ -306,42 +446,55 @@ $claudeDir = Join-Path $homeDir ".claude"
 if (-not (Test-Path $claudeDir)) { New-Item -ItemType Directory -Path $claudeDir -Force | Out-Null }
 $claudeSettingsPath = Join-Path $claudeDir "settings.json"
 $claudeSettings = @{}
+$claudeOk = $true
 if (Test-Path $claudeSettingsPath) {
 	try {
-		$claudeSettings = Get-Content -Raw -Path $claudeSettingsPath | ConvertFrom-Json -AsHashtable
-	} catch {}
+		$claudeSettings = Read-JsonHashtable $claudeSettingsPath
+	} catch {
+		Say "[Uwaga] Nie można sparsować ${claudeSettingsPath}: $($_.Exception.Message). Pomijam, aby nie nadpisać pliku."
+		$claudeOk = $false
+	}
 }
-if (-not $claudeSettings.ContainsKey("env")) { $claudeSettings["env"] = @{} }
-$claudeSettings["env"]["ANTHROPIC_BASE_URL"] = $Url
-if ($oauthSession) {
-	$claudeSettings["env"].Remove('ANTHROPIC_API_KEY')
-	$claudeSettings["env"]["ANTHROPIC_CUSTOM_HEADERS"] = "x-api-key: $Key"
-	$existingHdr = if ($claudeSettings["env"].ContainsKey('ANTHROPIC_CUSTOM_HEADERS')) { $claudeSettings["env"]['ANTHROPIC_CUSTOM_HEADERS'] } else { "" }
-	$claudeSettings["env"]['ANTHROPIC_CUSTOM_HEADERS'] = Set-CustomHeader $existingHdr 'x-api-key' $Key
-} else {
-	$claudeSettings["env"]["ANTHROPIC_API_KEY"] = $Key
-	$claudeSettings["env"].Remove('ANTHROPIC_CUSTOM_HEADERS')
-	$claudeSettings["env"]['ANTHROPIC_API_KEY'] = $Key
-	$existingHdr = if ($claudeSettings["env"].ContainsKey('ANTHROPIC_CUSTOM_HEADERS')) { $claudeSettings["env"]['ANTHROPIC_CUSTOM_HEADERS'] } else { "" }
-	$rem = Remove-CustomHeader $existingHdr 'x-api-key'
-	if ($rem) { $claudeSettings["env"]['ANTHROPIC_CUSTOM_HEADERS'] = $rem }
-	else { $claudeSettings["env"].Remove('ANTHROPIC_CUSTOM_HEADERS') }
+if ($claudeOk) {
+	if (-not $claudeSettings.ContainsKey("env") -or -not ($claudeSettings["env"] -is [hashtable])) { $claudeSettings["env"] = @{} }
+	$claudeSettings["env"]["ANTHROPIC_BASE_URL"] = $Url
+	if ($oauthSession) {
+		$claudeSettings["env"].Remove('ANTHROPIC_API_KEY')
+		$existingHdr = if ($claudeSettings["env"].ContainsKey('ANTHROPIC_CUSTOM_HEADERS')) { $claudeSettings["env"]['ANTHROPIC_CUSTOM_HEADERS'] } else { "" }
+		$claudeSettings["env"]['ANTHROPIC_CUSTOM_HEADERS'] = Set-CustomHeader $existingHdr 'x-api-key' $Key
+	} else {
+		$claudeSettings["env"]['ANTHROPIC_API_KEY'] = $Key
+		$existingHdr = if ($claudeSettings["env"].ContainsKey('ANTHROPIC_CUSTOM_HEADERS')) { $claudeSettings["env"]['ANTHROPIC_CUSTOM_HEADERS'] } else { "" }
+		$rem = Remove-CustomHeader $existingHdr 'x-api-key'
+		if ($rem) { $claudeSettings["env"]['ANTHROPIC_CUSTOM_HEADERS'] = $rem }
+		else { $claudeSettings["env"].Remove('ANTHROPIC_CUSTOM_HEADERS') }
+	}
+	$null = Backup-ConfigFile $claudeSettingsPath
+	Write-Utf8NoBom $claudeSettingsPath (($claudeSettings | ConvertTo-Json -Depth 10) + "`n")
+	Say "[OK] Zaktualizowano $claudeSettingsPath (CLI Claude Code)."
 }
-$null = Backup-ConfigFile $claudeSettingsPath
-$claudeSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $claudeSettingsPath -Encoding utf8
-Say "[OK] Zaktualizowano $claudeSettingsPath (CLI Claude Code)."
 
-# -------------------------------------------------- VS Code settings.json
+# -------------------------------------------------- VS Code & pokrewne edytory IDE settings.json
 $appData = if ($env:APPDATA) { $env:APPDATA } else { Join-Path $homeDir "AppData\Roaming" }
-$vsCodeDir = Join-Path $appData "Code\User"
-$vsCodeSettingsPath = Join-Path $vsCodeDir "settings.json"
-if (Test-Path $vsCodeDir) {
+$configuredIdes = @()
+foreach ($ide in @(
+	@{ dir = 'Code'; label = 'VS Code' },
+	@{ dir = 'Code - Insiders'; label = 'VS Code Insiders' },
+	@{ dir = 'Cursor'; label = 'Cursor' },
+	@{ dir = 'Windsurf'; label = 'Windsurf' },
+	@{ dir = 'VSCodium'; label = 'VSCodium' },
+	@{ dir = 'Antigravity'; label = 'Antigravity IDE' }
+)) {
+	$ideDir = Join-Path $appData "$($ide.dir)\User"
+	$ideSettingsPath = Join-Path $ideDir "settings.json"
+	if (-not (Test-Path $ideDir)) { continue }
 	try {
 		$vsSettings = @{}
-		if (Test-Path $vsCodeSettingsPath) {
-			$vsSettings = Get-Content -Raw -Path $vsCodeSettingsPath | ConvertFrom-Json -AsHashtable
+		if (Test-Path $ideSettingsPath) {
+			$vsSettings = Read-JsonHashtable $ideSettingsPath
 		}
 		$vsSettings["claudeCode.disableLoginPrompt"] = $true
+		$vsSettings["claudeCode.hideOnboarding"] = $true
 		$claudeEnvironmentVariables = @(
 			if ($vsSettings.ContainsKey("claudeCode.environmentVariables")) {
 				@($vsSettings["claudeCode.environmentVariables"]) | Where-Object { $_ -and $_.name -ne "ANTHROPIC_BASE_URL" }
@@ -364,11 +517,12 @@ if (Test-Path $vsCodeDir) {
 			if ($rem) { $claudeEnvironmentVariables += @{ name = "ANTHROPIC_CUSTOM_HEADERS"; value = $rem } }
 		}
 		$vsSettings["claudeCode.environmentVariables"] = $claudeEnvironmentVariables
-		$null = Backup-ConfigFile $vsCodeSettingsPath
-		$vsSettings | ConvertTo-Json -Depth 10 | Set-Content -Path $vsCodeSettingsPath -Encoding utf8
-		Say "[OK] Zaktualizowano ustawienia oficjalnego rozszerzenia Claude Code w VS Code ($vsCodeSettingsPath)."
+		$null = Backup-ConfigFile $ideSettingsPath
+		Write-Utf8NoBom $ideSettingsPath (($vsSettings | ConvertTo-Json -Depth 10) + "`n")
+		Say "[OK] Zaktualizowano ustawienia rozszerzenia Claude Code w $($ide.label) ($ideSettingsPath)."
+		$configuredIdes += $ide.label
 	} catch {
-		Say "[Uwaga] Nie udało się zaktualizować VS Code: $($_.Exception.Message)"
+		Say "[Uwaga] Nie udało się zaktualizować $($ide.label): $($_.Exception.Message)"
 	}
 }
 
@@ -472,6 +626,192 @@ if ($WithAgylb) {
 	}
 }
 
+# -------------------------------------------------- Auto-wykrywanie popularnych aplikacji
+$extraApps = @()
+
+# OpenCode
+$ocConfigDir = Join-Path $homeDir '.config\opencode'
+$ocAppDataDir = Join-Path $appData 'opencode'
+if ((Get-Command opencode -ErrorAction SilentlyContinue) -or (Test-Path $ocConfigDir) -or (Test-Path $ocAppDataDir)) {
+	try {
+		$ocConfigPath = Join-Path $ocConfigDir 'opencode.json'
+		$ocAuthDir = Join-Path $homeDir '.local\share\opencode'
+		$ocAuthPath = Join-Path $ocAuthDir 'auth.json'
+
+		$ocCfg = if (Test-Path $ocConfigPath) { Read-JsonHashtable $ocConfigPath } else { @{} }
+		$ocAuth = if (Test-Path $ocAuthPath) { Read-JsonHashtable $ocAuthPath } else { @{} }
+		$winAuthPath = Join-Path $ocAppDataDir 'auth.json'
+		$winAuth = if ((Test-Path $ocAppDataDir) -and (Test-Path $winAuthPath)) { Read-JsonHashtable $winAuthPath } else { @{} }
+
+		$ocModels = [ordered]@{
+			'claude-fable-5-1' = @{ name = 'Claude Fable 5.1' }
+			'claude-fable-5' = @{ name = 'Claude Fable 5' }
+			'claude-opus-5-5' = @{ name = 'Claude Opus 5.5' }
+			'claude-opus-5' = @{ name = 'Claude Opus 5' }
+			'claude-opus-4-8' = @{ name = 'Claude Opus 4.8' }
+			'claude-opus-4-7' = @{ name = 'Claude Opus 4.7' }
+			'claude-opus-4-6' = @{ name = 'Claude Opus 4.6' }
+			'claude-sonnet-5-5' = @{ name = 'Claude Sonnet 5.5' }
+			'claude-sonnet-5' = @{ name = 'Claude Sonnet 5' }
+			'claude-sonnet-4-6' = @{ name = 'Claude Sonnet 4.6' }
+			'claude-haiku-5-5' = @{ name = 'Claude Haiku 5.5' }
+			'claude-haiku-4-5-20251001' = @{ name = 'Claude Haiku 4.5' }
+			'codex' = @{ name = 'OpenAI Codex (GPT-5.6 Sol)' }
+			'gpt-5.6-sol' = @{ name = 'GPT-5.6 Sol' }
+			'gpt-6-astra' = @{ name = 'GPT-6 Astra' }
+			'gpt-6-sol' = @{ name = 'GPT-6 Sol' }
+			'gpt-6-luna' = @{ name = 'GPT-6 Luna' }
+			'gpt-5.6-terra' = @{ name = 'GPT-5.6 Terra' }
+			'gpt-5.6-luna' = @{ name = 'GPT-5.6 Luna' }
+			'gpt-5.3-codex' = @{ name = 'GPT-5.3-Codex' }
+			'gpt-5.2-codex' = @{ name = 'GPT-5.2-Codex' }
+			'gpt-5.5' = @{ name = 'GPT-5.5' }
+			'gpt-4.1' = @{ name = 'GPT-4.1' }
+			'gpt-4o' = @{ name = 'GPT-4o' }
+		}
+		try {
+			$mResp = Invoke-RestMethod -Uri "$Url/v1/models" -Headers @{ 'x-api-key' = $Key; 'Authorization' = "Bearer $Key" } -MaximumRedirection 0 -TimeoutSec 8
+			if ($mResp -and $mResp.data) {
+				foreach ($m in $mResp.data) {
+					if ($m.id -and ($m.id -match '^[A-Za-z0-9._:-]{1,100}$') -and (-not $ocModels.Contains($m.id))) {
+						$ocModels[$m.id] = @{ name = $(if ($m.name) { $m.name } else { $m.id }) }
+					}
+				}
+			}
+		} catch {}
+
+		if (-not $ocCfg.ContainsKey('provider') -or -not ($ocCfg['provider'] -is [hashtable])) { $ocCfg['provider'] = @{} }
+		$ocCfg['provider']['agentlb'] = @{
+			npm = '@ai-sdk/openai-compatible'
+			name = 'AgentLB (All Models)'
+			options = @{ baseURL = "$Url/v1"; apiKey = $Key }
+			models = $ocModels
+		}
+		if (-not $ocCfg.ContainsKey('providers') -or -not ($ocCfg['providers'] -is [hashtable])) { $ocCfg['providers'] = @{} }
+		$ocCfg['providers']['agentlb'] = @{
+			npm = '@ai-sdk/openai-compatible'
+			name = 'AgentLB (All Models)'
+			package = '@opencode/ai/providers/openai-compatible'
+			settings = @{ baseURL = "$Url/v1" }
+			options = @{ baseURL = "$Url/v1"; apiKey = $Key }
+			apiKey = $Key
+			models = $ocModels
+		}
+		$ocAuth['agentlb'] = @{ type = 'api'; key = $Key }
+
+		if (-not (Test-Path $ocConfigDir)) { New-Item -ItemType Directory -Path $ocConfigDir -Force | Out-Null }
+		if (-not (Test-Path $ocAuthDir)) { New-Item -ItemType Directory -Path $ocAuthDir -Force | Out-Null }
+		$null = Backup-ConfigFile $ocConfigPath
+		Write-Utf8NoBom $ocConfigPath (($ocCfg | ConvertTo-Json -Depth 10) + "`n")
+		$null = Backup-ConfigFile $ocAuthPath
+		Write-Utf8NoBom $ocAuthPath (($ocAuth | ConvertTo-Json -Depth 10) + "`n")
+		if (Test-Path $ocAppDataDir) {
+			$winAuth['agentlb'] = @{ type = 'api'; key = $Key }
+			$null = Backup-ConfigFile $winAuthPath
+			Write-Utf8NoBom $winAuthPath (($winAuth | ConvertTo-Json -Depth 10) + "`n")
+		}
+		Say "[OK] Skonfigurowano OpenCode ($ocConfigPath)."
+		$extraApps += 'OpenCode'
+	} catch {
+		Say "[Uwaga] Nie udało się skonfigurować OpenCode: $($_.Exception.Message)"
+	}
+}
+
+# Aider
+$aiderConfPath = Join-Path $homeDir '.aider.conf.yml'
+if ((Get-Command aider -ErrorAction SilentlyContinue) -or (Test-Path $aiderConfPath) -or (Test-Path (Join-Path $homeDir '.aider'))) {
+	try {
+		$existingAider = if (Test-Path $aiderConfPath) { [System.IO.File]::ReadAllText($aiderConfPath, [System.Text.Encoding]::UTF8) } else { '' }
+		$restAider = [regex]::Replace($existingAider, '(?ms)^# >>> agentlb.*?^# <<< agentlb[^\r\n]*\r?\n?', '').Trim()
+		$hasModel = $restAider -match '(?m)^\s*model\s*:'
+		$qUrl = ConvertTo-Json "$Url/v1"
+		$qKey = ConvertTo-Json $Key
+		$aiderBlock = "# >>> agentlb >>> (zarzadzane przez setup AgentLB)`nopenai-api-base: $qUrl`nopenai-api-key: $qKey`n"
+		if (-not $hasModel) { $aiderBlock += "model: `"openai/gpt-5.6-sol`"`n" }
+		$aiderBlock += "# <<< agentlb <<<`n"
+		$newAider = if ($restAider) { "$restAider`n`n$aiderBlock" } else { $aiderBlock }
+		$null = Backup-ConfigFile $aiderConfPath
+		Write-Utf8NoBom $aiderConfPath $newAider
+		Say "[OK] Skonfigurowano Aider ($aiderConfPath)."
+		$extraApps += 'Aider'
+	} catch {
+		Say "[Uwaga] Nie udało się skonfigurować Aider: $($_.Exception.Message)"
+	}
+}
+
+# OpenClaw
+$clawDir = Join-Path $homeDir '.openclaw'
+if ((Get-Command openclaw -ErrorAction SilentlyContinue) -or (Test-Path $clawDir)) {
+	try {
+		$clawPath = Join-Path $clawDir 'openclaw.json'
+		$clawCfg = if (Test-Path $clawPath) { Read-JsonHashtable $clawPath } else { @{} }
+		if (-not $clawCfg.ContainsKey('models') -or -not ($clawCfg['models'] -is [hashtable])) { $clawCfg['models'] = @{} }
+		if (-not $clawCfg['models'].ContainsKey('providers') -or -not ($clawCfg['models']['providers'] -is [hashtable])) { $clawCfg['models']['providers'] = @{} }
+		$clawCfg['models']['providers']['agentlb'] = @{
+			baseUrl = "$Url/v1"
+			api = 'openai-completions'
+			apiKey = $Key
+		}
+		if (-not (Test-Path $clawDir)) { New-Item -ItemType Directory -Path $clawDir -Force | Out-Null }
+		$null = Backup-ConfigFile $clawPath
+		Write-Utf8NoBom $clawPath (($clawCfg | ConvertTo-Json -Depth 10) + "`n")
+		Say "[OK] Skonfigurowano OpenClaw ($clawPath)."
+		$extraApps += 'OpenClaw'
+	} catch {
+		Say "[Uwaga] Nie udało się skonfigurować OpenClaw: $($_.Exception.Message)"
+	}
+}
+
+# Hermes Agent
+$hermesDir = Join-Path $homeDir '.hermes'
+if ((Get-Command hermes -ErrorAction SilentlyContinue) -or (Test-Path $hermesDir)) {
+	try {
+		if (-not (Test-Path $hermesDir)) { New-Item -ItemType Directory -Path $hermesDir -Force | Out-Null }
+		$hermesEnv = Join-Path $hermesDir '.env'
+		$lines = @()
+		if (Test-Path $hermesEnv) {
+			$lines = @([System.IO.File]::ReadAllLines($hermesEnv, [System.Text.Encoding]::UTF8) | Where-Object { $_ -and ($_ -notmatch '^\s*(?:export\s+)?(AGENT_LB_URL|AGENT_LB_API_KEY)=') })
+		}
+		$lines += "AGENT_LB_URL=$Url"
+		$lines += "AGENT_LB_API_KEY=$Key"
+		$null = Backup-ConfigFile $hermesEnv
+		Write-Utf8NoBom $hermesEnv (($lines -join "`n") + "`n")
+		Say "[OK] Zaktualizowano $hermesEnv (Hermes Agent)."
+		$extraApps += 'Hermes Agent'
+	} catch {
+		Say "[Uwaga] Nie udało się skonfigurować Hermes Agent: $($_.Exception.Message)"
+	}
+}
+
+# Herdr
+$herdrDir = Join-Path $appData 'herdr'
+$herdrCmd = Get-Command herdr -ErrorAction SilentlyContinue
+if ($herdrCmd -or (Test-Path $herdrDir)) {
+	$herdrDone = @()
+	if ($herdrCmd) {
+		$candidates = @(
+			@{ name = 'claude'; ok = [bool]((Get-Command claude -ErrorAction SilentlyContinue) -or (Test-Path (Join-Path $homeDir '.claude'))) },
+			@{ name = 'codex'; ok = [bool]((Get-Command codex -ErrorAction SilentlyContinue) -or (Test-Path (Join-Path $homeDir '.codex'))) },
+			@{ name = 'opencode'; ok = [bool]((Get-Command opencode -ErrorAction SilentlyContinue) -or (Test-Path $ocConfigDir)) },
+			@{ name = 'agy'; ok = [bool]((Get-Command agy -ErrorAction SilentlyContinue) -or (Test-Path (Join-Path $homeDir '.local\bin\agylb.cmd'))) }
+		)
+		foreach ($c in $candidates) {
+			if (-not $c.ok) { continue }
+			try {
+				& $herdrCmd.Source integration install $c.name 2>$null | Out-Null
+				if ($LASTEXITCODE -eq 0) { $herdrDone += $c.name }
+			} catch {}
+		}
+	}
+	if ($herdrDone.Count -gt 0) {
+		$hList = $herdrDone -join ', '
+		Say "[OK] Zintegrowano Herdr dla wykrytych agentów: $hList."
+		$extraApps += "Herdr ($hList)"
+	} else {
+		$extraApps += 'Herdr'
+	}
+}
+
 Say ""
 Say "=== Wdrożenie i konfiguracja zakończona sukcesem! ==="
 if (Get-Command claude -ErrorAction SilentlyContinue) {
@@ -485,8 +825,11 @@ if (Get-Command codex -ErrorAction SilentlyContinue) {
 if ($WithAgylb) {
 	Say "✔ AGY (pula Google): uruchom 'agylb' (standardowo) lub 'agylb-yolo' (bez pytań o akceptację)"
 }
-if (Test-Path $vsCodeDir) {
-	Say "✔ VS Code: oficjalne rozszerzenie Claude Code skonfigurowane pod proxy"
+if ($configuredIdes.Count -gt 0) {
+	Say "✔ Edytory IDE: $($configuredIdes -join ', ') (rozszerzenie Claude Code skonfigurowane pod proxy)"
+}
+if ($extraApps.Count -gt 0) {
+	Say "✔ Wykryte i skonfigurowane aplikacje: $($extraApps -join ', ')"
 }
 Say "✔ Zmienne środowiskowe: zapisane w rejestrze użytkownika Windows"
 Say "✔ Serwer proxy: $Url"

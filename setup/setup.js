@@ -388,22 +388,336 @@ function writeJsonSafe(filePath, value, mode = 0o600) {
 }
 
 // Every place the installer may write Claude Code extension settings:
-// desktop VS Code plus VS Code Server (Remote-SSH / WSL), stable and insiders.
-function vscodeSettingsDirs() {
+// VS Code and VS Code-family IDEs (Cursor, Windsurf, VSCodium, Insiders, Antigravity)
+// plus Remote-SSH / WSL server directories.
+const IDE_APPS = [
+  { dir: "Code", label: "VS Code" },
+  { dir: "Code - Insiders", label: "VS Code Insiders" },
+  { dir: "Cursor", label: "Cursor" },
+  { dir: "Windsurf", label: "Windsurf" },
+  { dir: "VSCodium", label: "VSCodium" },
+  { dir: "Antigravity", label: "Antigravity IDE" },
+];
+
+function vscodeSettingsTargets() {
   const home = os.homedir();
   const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
-  const dirs = [
-    isWin
-      ? path.join(appData, "Code", "User")
+  const targets = [];
+  for (const app of IDE_APPS) {
+    const dir = isWin
+      ? path.join(appData, app.dir, "User")
       : isMac
-        ? path.join(home, "Library", "Application Support", "Code", "User")
-        : path.join(home, ".config", "Code", "User"),
-  ];
-  for (const serverBase of [".vscode-server", ".vscode-server-insiders"]) {
-    dirs.push(path.join(home, serverBase, "data", "Machine"));
-    dirs.push(path.join(home, serverBase, "data", "User"));
+        ? path.join(home, "Library", "Application Support", app.dir, "User")
+        : path.join(home, ".config", app.dir, "User");
+    targets.push({ dir, label: app.label, isServer: false });
   }
-  return dirs;
+  for (const [serverBase, label] of [
+    [".vscode-server", "VS Code Server"],
+    [".vscode-server-insiders", "VS Code Insiders Server"],
+    [".cursor-server", "Cursor Server"],
+    [".windsurf-server", "Windsurf Server"],
+    [".antigravity-server", "Antigravity Server"],
+  ]) {
+    targets.push({ dir: path.join(home, serverBase, "data", "Machine"), label, isServer: true });
+    targets.push({ dir: path.join(home, serverBase, "data", "User"), label, isServer: true });
+  }
+  return targets;
+}
+
+function vscodeSettingsDirs() {
+  return vscodeSettingsTargets().map((t) => t.dir);
+}
+
+const OPENCODE_BASE_MODELS = {
+  "claude-fable-5-1": { name: "Claude Fable 5.1" },
+  "claude-fable-5": { name: "Claude Fable 5" },
+  "claude-opus-5-5": { name: "Claude Opus 5.5" },
+  "claude-opus-5": { name: "Claude Opus 5" },
+  "claude-opus-4-8": { name: "Claude Opus 4.8" },
+  "claude-opus-4-7": { name: "Claude Opus 4.7" },
+  "claude-opus-4-6": { name: "Claude Opus 4.6" },
+  "claude-sonnet-5-5": { name: "Claude Sonnet 5.5" },
+  "claude-sonnet-5": { name: "Claude Sonnet 5" },
+  "claude-sonnet-4-6": { name: "Claude Sonnet 4.6" },
+  "claude-haiku-5-5": { name: "Claude Haiku 5.5" },
+  "claude-haiku-4-5-20251001": { name: "Claude Haiku 4.5" },
+  "codex": { name: "OpenAI Codex (GPT-5.6 Sol)" },
+  "gpt-5.6-sol": { name: "GPT-5.6 Sol" },
+  "gpt-6-astra": { name: "GPT-6 Astra" },
+  "gpt-6-sol": { name: "GPT-6 Sol" },
+  "gpt-6-luna": { name: "GPT-6 Luna" },
+  "gpt-5.6-terra": { name: "GPT-5.6 Terra" },
+  "gpt-5.6-luna": { name: "GPT-5.6 Luna" },
+  "gpt-5.3-codex": { name: "GPT-5.3-Codex" },
+  "gpt-5.2-codex": { name: "GPT-5.2-Codex" },
+  "gpt-5.5": { name: "GPT-5.5" },
+  "gpt-4.1": { name: "GPT-4.1" },
+  "gpt-4o": { name: "GPT-4o" },
+};
+
+function fetchRemoteModels(urlStr, key) {
+  return new Promise((resolve) => {
+    let parsed;
+    try {
+      parsed = new URL("/v1/models", urlStr);
+    } catch {
+      return resolve([]);
+    }
+    const client = parsed.protocol === "https:" ? https : http;
+    const req = client.request(
+      parsed,
+      {
+        method: "GET",
+        headers: {
+          "x-api-key": key,
+          Authorization: `Bearer ${key}`,
+          "User-Agent": "agentlb-setup/2.1",
+        },
+        timeout: 8000,
+      },
+      (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          return resolve([]);
+        }
+        const chunks = [];
+        let size = 0;
+        res.on("data", (chunk) => {
+          size += chunk.length;
+          if (size <= 1048576) chunks.push(chunk);
+        });
+        res.on("end", () => {
+          if (size > 1048576) return resolve([]);
+          try {
+            const data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+            if (!Array.isArray(data?.data)) return resolve([]);
+            resolve(
+              data.data
+                .filter((m) => m && typeof m.id === "string" && /^[A-Za-z0-9._:-]{1,100}$/.test(m.id))
+                .slice(0, 150)
+                .map((m) => ({ id: m.id, name: typeof m.name === "string" && m.name ? m.name : m.id })),
+            );
+          } catch {
+            resolve([]);
+          }
+        });
+      },
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      resolve([]);
+    });
+    req.on("error", () => resolve([]));
+    req.end();
+  });
+}
+
+function stripAiderManagedBlocks(text) {
+  const out = [];
+  let skip = false;
+  for (const line of String(text || "").split(/\r?\n/)) {
+    if (/^# >>> agentlb/.test(line)) {
+      skip = true;
+      continue;
+    }
+    if (/^# <<< agentlb/.test(line)) {
+      skip = false;
+      continue;
+    }
+    if (!skip) out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+function configureOpenCode(urlStr, key, remoteModels) {
+  const home = os.homedir();
+  const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+  const configDir = path.join(home, ".config", "opencode");
+  const appDataDir = path.join(appData, "opencode");
+  if (!hasCommand("opencode") && !fs.existsSync(configDir) && !(isWin && fs.existsSync(appDataDir))) {
+    return false;
+  }
+  const configPath = path.join(configDir, "opencode.json");
+  const authPath = path.join(home, ".local", "share", "opencode", "auth.json");
+  try {
+    const cfg = fs.existsSync(configPath) ? JSON.parse(stripJsonComments(fs.readFileSync(configPath, "utf8"))) : {};
+    if (!cfg || typeof cfg !== "object" || Array.isArray(cfg)) throw new Error("opencode.json nie jest obiektem JSON");
+    const auth = fs.existsSync(authPath) ? JSON.parse(stripJsonComments(fs.readFileSync(authPath, "utf8"))) : {};
+    if (!auth || typeof auth !== "object" || Array.isArray(auth)) throw new Error("auth.json nie jest obiektem JSON");
+
+    const models = { ...OPENCODE_BASE_MODELS };
+    for (const m of remoteModels || []) {
+      if (!Object.hasOwn(models, m.id)) models[m.id] = { name: m.name };
+    }
+    cfg.provider = cfg.provider || {};
+    cfg.provider.agentlb = {
+      npm: "@ai-sdk/openai-compatible",
+      name: "AgentLB (All Models)",
+      options: { baseURL: `${urlStr}/v1`, apiKey: key },
+      models,
+    };
+    cfg.providers = cfg.providers || {};
+    cfg.providers.agentlb = {
+      npm: "@ai-sdk/openai-compatible",
+      name: "AgentLB (All Models)",
+      package: "@opencode/ai/providers/openai-compatible",
+      settings: { baseURL: `${urlStr}/v1` },
+      options: { baseURL: `${urlStr}/v1`, apiKey: key },
+      apiKey: key,
+      models,
+    };
+    auth.agentlb = { type: "api", key };
+
+    fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(path.dirname(authPath), { recursive: true, mode: 0o700 });
+    writeJsonSafe(configPath, cfg, 0o600);
+    writeJsonSafe(authPath, auth, 0o600);
+    if (isWin && fs.existsSync(appDataDir)) {
+      const winAuthPath = path.join(appDataDir, "auth.json");
+      const winAuth = fs.existsSync(winAuthPath) ? safeReadJson(winAuthPath) || {} : {};
+      winAuth.agentlb = { type: "api", key };
+      writeJsonSafe(winAuthPath, winAuth, 0o600);
+    }
+    console.log(`[OK] Skonfigurowano OpenCode (${configPath}).`);
+    return true;
+  } catch (err) {
+    console.warn(`[Ostrzeżenie] Nie udało się skonfigurować OpenCode: ${err.message}`);
+    return false;
+  }
+}
+
+function configureAider(urlStr, key) {
+  const home = os.homedir();
+  const aiderConf = path.join(home, ".aider.conf.yml");
+  if (!hasCommand("aider") && !fs.existsSync(aiderConf) && !fs.existsSync(path.join(home, ".aider"))) {
+    return false;
+  }
+  try {
+    const existing = fs.existsSync(aiderConf) ? fs.readFileSync(aiderConf, "utf8") : "";
+    const rest = stripAiderManagedBlocks(existing).trim();
+    const hasModel = /^\s*model\s*:/m.test(rest);
+    const yamlQuote = (v) => JSON.stringify(String(v));
+    let block = "# >>> agentlb >>> (zarzadzane przez setup AgentLB)\n";
+    block += `openai-api-base: ${yamlQuote(`${urlStr}/v1`)}\n`;
+    block += `openai-api-key: ${yamlQuote(key)}\n`;
+    if (!hasModel) block += `model: ${yamlQuote(`openai/${CODEX_MODEL}`)}\n`;
+    block += "# <<< agentlb <<<\n";
+    const next = (rest ? `${rest}\n\n` : "") + block;
+    if (next !== existing) {
+      backupPath(aiderConf);
+      writeTextAtomic(aiderConf, next, 0o600);
+    }
+    console.log(`[OK] Skonfigurowano Aider (${aiderConf}).`);
+    return true;
+  } catch (err) {
+    console.warn(`[Ostrzeżenie] Nie udało się skonfigurować Aider: ${err.message}`);
+    return false;
+  }
+}
+
+function configureOpenClaw(urlStr, key) {
+  const home = os.homedir();
+  const clawDir = path.join(home, ".openclaw");
+  if (!hasCommand("openclaw") && !fs.existsSync(clawDir)) return false;
+  const cfgPath = path.join(clawDir, "openclaw.json");
+  try {
+    const cfg = fs.existsSync(cfgPath) ? JSON.parse(stripJsonComments(fs.readFileSync(cfgPath, "utf8"))) : {};
+    if (!cfg || typeof cfg !== "object" || Array.isArray(cfg)) throw new Error("openclaw.json nie jest obiektem JSON");
+    cfg.models = cfg.models || {};
+    cfg.models.providers = cfg.models.providers || {};
+    cfg.models.providers.agentlb = {
+      baseUrl: `${urlStr}/v1`,
+      api: "openai-completions",
+      apiKey: key,
+    };
+    fs.mkdirSync(clawDir, { recursive: true, mode: 0o700 });
+    writeJsonSafe(cfgPath, cfg, 0o600);
+    console.log(`[OK] Skonfigurowano OpenClaw (${cfgPath}).`);
+    return true;
+  } catch (err) {
+    console.warn(`[Ostrzeżenie] Nie udało się skonfigurować OpenClaw: ${err.message}`);
+    return false;
+  }
+}
+
+function writeHermesEnv(hermesDir, urlStr, key) {
+  fs.mkdirSync(hermesDir, { recursive: true, mode: 0o700 });
+  const envPath = path.join(hermesDir, ".env");
+  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
+  const kept = existing
+    .split(/\r?\n/)
+    .filter((l) => l !== "" && !/^\s*(?:export\s+)?(AGENT_LB_API_KEY|AGENTLB_API_KEY|AGENT_LB_URL)=/.test(l));
+  kept.push(`AGENT_LB_URL=${urlStr}`);
+  kept.push(`AGENT_LB_API_KEY=${key}`);
+  backupPath(envPath);
+  writeTextAtomic(envPath, `${kept.join("\n")}\n`, 0o600);
+  console.log(`[OK] Zaktualizowano ${envPath} (Hermes Agent).`);
+}
+
+function configureHermes(urlStr, key) {
+  const home = os.homedir();
+  const hermesDir = path.join(home, ".hermes");
+  if (!hasCommand("hermes") && !fs.existsSync(hermesDir)) return false;
+  if (isWin) {
+    try {
+      writeHermesEnv(hermesDir, urlStr, key);
+      return true;
+    } catch (err) {
+      console.warn(`[Ostrzeżenie] Nie udało się skonfigurować Hermes Agent: ${err.message}`);
+      return false;
+    }
+  }
+  const local = path.join(__dirname, "hermes-setup.sh");
+  const env = { ...process.env, AGENT_LB_URL: urlStr, AGENT_LB_API_KEY: key };
+  try {
+    if (fs.existsSync(local)) {
+      execFileSync("bash", [local, "--url", urlStr], { env, stdio: "inherit" });
+    } else {
+      execFileSync("bash", ["-o", "pipefail", "-c", 'curl -fsSL "$AGENT_LB_URL/hermes-setup.sh" | bash -s -- --url "$AGENT_LB_URL"'], { env, stdio: "inherit" });
+    }
+    return true;
+  } catch (err) {
+    try {
+      writeHermesEnv(hermesDir, urlStr, key);
+      return true;
+    } catch (fallbackErr) {
+      console.warn(`[Ostrzeżenie] Nie udało się skonfigurować Hermes Agent (pomijam): ${err.message}; ${fallbackErr.message}`);
+      return false;
+    }
+  }
+}
+
+function configureHerdr() {
+  const home = os.homedir();
+  const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+  const herdrDir = isWin ? path.join(appData, "herdr") : path.join(home, ".config", "herdr");
+  const hasBin = hasCommand("herdr");
+  if (!hasBin && !fs.existsSync(herdrDir)) return null;
+  const installed = [];
+  if (hasBin) {
+    const candidates = [
+      ["claude", hasCommand("claude") || fs.existsSync(path.join(home, ".claude"))],
+      ["codex", hasCommand("codex") || fs.existsSync(path.join(home, ".codex"))],
+      ["opencode", hasCommand("opencode") || fs.existsSync(path.join(home, ".config", "opencode"))],
+      ["agy", hasCommand("agy") || fs.existsSync(path.join(home, ".local", "bin", isWin ? "agylb.cmd" : "agylb"))],
+    ];
+    for (const [agent, present] of candidates) {
+      if (!present) continue;
+      try {
+        execFileSync("herdr", ["integration", "install", agent], {
+          stdio: "ignore",
+          timeout: 15000,
+        });
+        installed.push(agent);
+      } catch {
+        // Older Herdr versions may not know every agent; stay non-fatal.
+      }
+    }
+    if (installed.length) {
+      console.log(`[OK] Zintegrowano Herdr dla wykrytych agentów: ${installed.join(", ")}.`);
+    }
+  }
+  return { detected: true, installed };
 }
 
 // Codex configuration.  The codex-lb provider is made the top-level default,
@@ -539,6 +853,8 @@ function uninstallClientSettings() {
     if (Array.isArray(vs["claudeCode.environmentVariables"])) {
       let envVars = vs["claudeCode.environmentVariables"].filter(
         (e) =>
+          e &&
+          typeof e === "object" &&
           e.name !== "ANTHROPIC_BASE_URL" &&
           e.name !== "ANTHROPIC_API_KEY" &&
           e.name !== "ANTHROPIC_AUTH_TOKEN",
@@ -555,6 +871,7 @@ function uninstallClientSettings() {
       delete vs["claudeCode.environmentVariables"];
     }
     delete vs["claudeCode.disableLoginPrompt"];
+    delete vs["claudeCode.hideOnboarding"];
     writeJsonSafe(vscodePath, vs);
   }
   const codexPath = path.join(home, ".codex", "config.json");
@@ -579,6 +896,59 @@ function uninstallClientSettings() {
       console.warn(
         `[Ostrzeżenie] Nie udało się wyczyścić ~/.codex/config.toml: ${err.message}`,
       );
+    }
+  }
+  const aiderPath = path.join(home, ".aider.conf.yml");
+  if (fs.existsSync(aiderPath)) {
+    try {
+      const cleanedAider = stripAiderManagedBlocks(fs.readFileSync(aiderPath, "utf8")).trim();
+      writeTextAtomic(aiderPath, cleanedAider ? `${cleanedAider}\n` : "", 0o600);
+    } catch (err) {
+      console.warn(`[Ostrzeżenie] Nie udało się wyczyścić ~/.aider.conf.yml: ${err.message}`);
+    }
+  }
+  const ocCfgPath = path.join(home, ".config", "opencode", "opencode.json");
+  const ocCfg = safeReadJson(ocCfgPath);
+  if (ocCfg && typeof ocCfg === "object" && !Array.isArray(ocCfg)) {
+    let changed = false;
+    if (ocCfg.provider && typeof ocCfg.provider === "object" && Object.hasOwn(ocCfg.provider, "agentlb")) {
+      delete ocCfg.provider.agentlb;
+      changed = true;
+    }
+    if (ocCfg.providers && typeof ocCfg.providers === "object" && Object.hasOwn(ocCfg.providers, "agentlb")) {
+      delete ocCfg.providers.agentlb;
+      changed = true;
+    }
+    if (changed) writeTextAtomic(ocCfgPath, JSON.stringify(ocCfg, null, 2) + "\n", 0o600);
+  }
+  const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+  for (const authPath of [
+    path.join(home, ".local", "share", "opencode", "auth.json"),
+    ...(isWin ? [path.join(appData, "opencode", "auth.json")] : []),
+  ]) {
+    const ocAuth = safeReadJson(authPath);
+    if (ocAuth && typeof ocAuth === "object" && !Array.isArray(ocAuth) && Object.hasOwn(ocAuth, "agentlb")) {
+      delete ocAuth.agentlb;
+      writeTextAtomic(authPath, JSON.stringify(ocAuth, null, 2) + "\n", 0o600);
+    }
+  }
+  const clawPath = path.join(home, ".openclaw", "openclaw.json");
+  const clawCfg = safeReadJson(clawPath);
+  if (clawCfg?.models?.providers && typeof clawCfg.models.providers === "object" && Object.hasOwn(clawCfg.models.providers, "agentlb")) {
+    delete clawCfg.models.providers.agentlb;
+    writeTextAtomic(clawPath, JSON.stringify(clawCfg, null, 2) + "\n", 0o600);
+  }
+  const hermesEnvPath = path.join(home, ".hermes", ".env");
+  if (fs.existsSync(hermesEnvPath)) {
+    try {
+      const rawHermes = fs.readFileSync(hermesEnvPath, "utf8");
+      const cleanedHermes = rawHermes
+        .split(/\r?\n/)
+        .filter((l) => !/^\s*(?:export\s+)?(AGENT_LB_API_KEY|AGENTLB_API_KEY|AGENT_LB_URL)=/.test(l))
+        .join("\n");
+      if (cleanedHermes !== rawHermes) writeTextAtomic(hermesEnvPath, cleanedHermes, 0o600);
+    } catch (err) {
+      console.warn(`[Ostrzeżenie] Nie udało się wyczyścić ~/.hermes/.env: ${err.message}`);
     }
   }
   for (const file of [
@@ -917,7 +1287,14 @@ async function main() {
     if (!fs.existsSync(claudeDir)) {
       fs.mkdirSync(claudeDir, { recursive: true, mode: 0o700 });
     }
-    let claudeSettings = safeReadJson(claudeSettingsPath) || {};
+    let claudeSettings = {};
+    if (fs.existsSync(claudeSettingsPath)) {
+      const parsed = safeReadJson(claudeSettingsPath);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("istniejący plik settings.json jest nieprawidłowy — pomijam, aby nie utracić danych");
+      }
+      claudeSettings = parsed;
+    }
     claudeSettings.env = claudeSettings.env || {};
     claudeSettings.env.ANTHROPIC_BASE_URL = targetUrl;
     if (oauthSession) {
@@ -943,28 +1320,40 @@ async function main() {
     );
   }
 
-  // 5. Konfiguracja oficjalnego rozszerzenia Claude Code w VS Code
+  // 5. Konfiguracja oficjalnego rozszerzenia Claude Code w VS Code i edytorach VS Code-like
+  const configuredIdes = [];
   if (!skipVscode) {
-    const vscodeDirs = vscodeSettingsDirs();
-    const vscodeSettingsDir = vscodeDirs[0];
+    const vscodeTargets = vscodeSettingsTargets();
 
-    let configuredAny = false;
-    for (const dir of vscodeDirs) {
+    for (const target of vscodeTargets) {
+      const dir = target.dir;
       if (
         fs.existsSync(dir) ||
-        (dir.includes(".vscode-server") &&
+        (target.isServer &&
           fs.existsSync(path.dirname(path.dirname(dir))))
       ) {
         try {
           fs.mkdirSync(dir, { recursive: true });
           const vscodeSettingsFile = path.join(dir, "settings.json");
-          let vsSettings = safeReadJson(vscodeSettingsFile) || {};
+          let vsSettings = {};
+          if (fs.existsSync(vscodeSettingsFile)) {
+            const parsed = safeReadJson(vscodeSettingsFile);
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+              console.warn(
+                `[Ostrzeżenie] Pomijam ${target.label} (${vscodeSettingsFile}) — plik JSON jest nieprawidłowy.`,
+              );
+              continue;
+            }
+            vsSettings = parsed;
+          }
           vsSettings["claudeCode.disableLoginPrompt"] = true;
           vsSettings["claudeCode.hideOnboarding"] = true;
           let envVars = Array.isArray(
             vsSettings["claudeCode.environmentVariables"],
           )
-            ? [...vsSettings["claudeCode.environmentVariables"]]
+            ? vsSettings["claudeCode.environmentVariables"].filter(
+                (e) => e && typeof e === "object",
+              )
             : [];
           envVars = envVars.filter((e) => e.name !== "ANTHROPIC_BASE_URL");
           envVars.push({ name: "ANTHROPIC_BASE_URL", value: targetUrl });
@@ -1007,19 +1396,19 @@ async function main() {
 
           writeJsonSafe(vscodeSettingsFile, vsSettings, 0o600);
           console.log(
-            `[OK] Skonfigurowano oficjalne rozszerzenie Claude Code w VS Code (${vscodeSettingsFile}).`,
+            `[OK] Skonfigurowano oficjalne rozszerzenie Claude Code w ${target.label} (${vscodeSettingsFile}).`,
           );
-          configuredAny = true;
+          if (!configuredIdes.includes(target.label)) configuredIdes.push(target.label);
         } catch (err) {
           console.warn(
-            `[Ostrzeżenie] Nie udało się zaktualizować VS Code w ${dir}: ${err.message}`,
+            `[Ostrzeżenie] Nie udało się zaktualizować ${target.label} w ${dir}: ${err.message}`,
           );
         }
       }
     }
-    if (!configuredAny) {
+    if (configuredIdes.length === 0) {
       console.log(
-        `[INFO] Nie wykryto katalogu VS Code (${vscodeSettingsDir}) — pominięto konfigurację rozszerzenia IDE.`,
+        `[INFO] Nie wykryto katalogu VS Code ani pokrewnych edytorów — pominięto konfigurację rozszerzenia IDE.`,
       );
     }
   }
@@ -1033,7 +1422,14 @@ async function main() {
       if (!fs.existsSync(codexDir)) {
         fs.mkdirSync(codexDir, { recursive: true, mode: 0o700 });
       }
-      let codexConfig = safeReadJson(codexConfigFile) || {};
+      let codexConfig = {};
+      if (fs.existsSync(codexConfigFile)) {
+        const parsed = safeReadJson(codexConfigFile);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("istniejący plik config.json jest nieprawidłowy — pomijam, aby nie utracić danych");
+        }
+        codexConfig = parsed;
+      }
       codexConfig.base_url = `${targetUrl}/backend-api/codex`;
       writeJsonSafe(codexConfigFile, codexConfig, 0o600);
       console.log(
@@ -1191,29 +1587,61 @@ async function main() {
     }
   }
 
-  // 8. Opcjonalnie: prawdziwy AGY lokalnie przez agybridge
+  // 8. Opcjonalnie: prawdziwy AGY lokalnie przez agybridge oraz agylb
   if (withAgy) installAgyBridge();
   if (withAgylb) installAgylb();
+
+  // 9. Auto-wykryte popularne narzędzia (tylko gdy zainstalowane na tym hoście)
+  const remoteModels = await fetchRemoteModels(targetUrl, apiKey);
+  const configuredOpenCode = configureOpenCode(targetUrl, apiKey, remoteModels);
+  const configuredAider = configureAider(targetUrl, apiKey);
+  const configuredOpenClaw = configureOpenClaw(targetUrl, apiKey);
+  const configuredHermes = configureHermes(targetUrl, apiKey);
+  const herdrResult = configureHerdr();
 
   console.log("\n=== Konfiguracja zakończona sukcesem! ===");
   console.log(
     "1. Claude Code CLI: będzie automatycznie łączyć się przez AgentLB w każdym terminalu.",
   );
   console.log(
-    "2. Rozszerzenie VS Code: po zrestartowaniu okna VS Code będzie używać Twojego proxy i klucza.",
-  );
-  console.log(
-    "3. Inne narzędzia (Cursor, Cline, Continue, Roo Code): jako Base URL ustaw " +
-      targetUrl +
-      ", a jako klucz swój tc-...",
+    "2. Edytory IDE (" +
+      (configuredIdes.length ? configuredIdes.join(", ") : "VS Code / Cursor / Windsurf / VSCodium / Antigravity") +
+      "): po przeładowaniu okna użyją proxy i klucza.",
   );
   if (setupCodex || fs.existsSync(codexDir)) {
     console.log(
-      "4. OpenAI Codex CLI: dostawca codex-lb (" +
+      "3. OpenAI Codex CLI: dostawca codex-lb (" +
         targetUrl +
         "/backend-api/codex) — 'codex' lub 'codex --profile codexlb'; klucz z CODEX_LB_API_KEY w nowym terminalu.",
     );
   }
+  if (withAgylb) {
+    console.log(
+      "4. AGY (pula Google): 'agylb' (standardowe uprawnienia) lub 'agylb-yolo' (bez pytań o akceptację).",
+    );
+  }
+  const extraTools = [];
+  if (configuredOpenCode) extraTools.push("OpenCode (provider 'agentlb')");
+  if (herdrResult) {
+    extraTools.push(
+      herdrResult.installed.length
+        ? `Herdr (hooki: ${herdrResult.installed.join(", ")})`
+        : "Herdr (wykryty)",
+    );
+  }
+  if (configuredAider) extraTools.push("Aider (~/.aider.conf.yml)");
+  if (configuredOpenClaw) extraTools.push("OpenClaw (provider 'agentlb')");
+  if (configuredHermes) extraTools.push("Hermes Agent (provider 'agentlb')");
+  if (extraTools.length) {
+    console.log("✔ Wykryte i skonfigurowane aplikacje: " + extraTools.join(", "));
+  }
+  console.log(
+    "✔ Inne narzędzia (Cline, Continue, Roo Code): Base URL " +
+      targetUrl +
+      "/v1 (OpenAI) lub " +
+      targetUrl +
+      " (Anthropic), klucz stacji tc-...",
+  );
 }
 
 main().catch((err) => {

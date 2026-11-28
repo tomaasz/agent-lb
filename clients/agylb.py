@@ -557,6 +557,17 @@ def apply_permission_flags(args: list[str], skip_permissions: bool, vscode: bool
     return ["--dangerously-skip-permissions", *args]
 
 
+def _write_bytes_atomic(path: Path, data: bytes) -> None:
+    tmp = path.with_name(f".{path.name}-{uuid.uuid4().hex}")
+    try:
+        fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def seed_profile(profile_home: Path, account: dict, real_home: Path | None = None) -> None:
     token_path = profile_home / TOKEN_REL
     if not token_path.exists():
@@ -567,10 +578,19 @@ def seed_profile(profile_home: Path, account: dict, real_home: Path | None = Non
     if real_home:
         user_hooks = real_home / ".gemini/config/hooks.json"
         profile_hooks = profile_home / ".gemini/config/hooks.json"
-        if user_hooks.is_file() and not profile_hooks.exists():
+        if user_hooks.is_file():
             private_dir(profile_hooks.parent)
-            with contextlib.suppress(OSError):
-                profile_hooks.symlink_to(user_hooks)
+            if not profile_hooks.exists() and not profile_hooks.is_symlink():
+                try:
+                    profile_hooks.symlink_to(user_hooks)
+                except OSError:
+                    with contextlib.suppress(OSError):
+                        _write_bytes_atomic(profile_hooks, user_hooks.read_bytes())
+            elif not profile_hooks.is_symlink():
+                with contextlib.suppress(OSError):
+                    data = user_hooks.read_bytes()
+                    if profile_hooks.read_bytes() != data:
+                        _write_bytes_atomic(profile_hooks, data)
 
 
 def prepare_vscode(profile: Path, profile_home: Path, account: dict) -> tuple[list[str], Path, int]:

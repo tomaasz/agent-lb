@@ -604,6 +604,24 @@ class SmallTests(unittest.TestCase):
         self.assertIn(b'"C:\\Python312\\python.exe" "%~dp0agylb.py" %*', yolo_cmd)
         self.assertNotIn(b'call "%~dp0agylb.cmd"', yolo_cmd)
 
+    def test_seed_profile_copies_herdr_hooks_when_symlink_unavailable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            real_home = root / 'real-home'
+            profile_home = root / 'profile-home'
+            user_hooks = real_home / '.gemini/config/hooks.json'
+            user_hooks.parent.mkdir(parents=True)
+            user_hooks.write_text('{"hooks": ["v1"]}', encoding='utf-8')
+            account = {'token': {'token': {'refresh_token': 'fake'}}}
+            with patch.object(Path, 'symlink_to', side_effect=OSError('no symlink privilege')):
+                agylb.seed_profile(profile_home, account, real_home=real_home)
+                profile_hooks = profile_home / '.gemini/config/hooks.json'
+                self.assertEqual(profile_hooks.read_text(encoding='utf-8'), '{"hooks": ["v1"]}')
+                self.assertEqual(stat.S_IMODE(profile_hooks.stat().st_mode), 0o600)
+                user_hooks.write_text('{"hooks": ["v2"]}', encoding='utf-8')
+                agylb.seed_profile(profile_home, account, real_home=real_home)
+                self.assertEqual(profile_hooks.read_text(encoding='utf-8'), '{"hooks": ["v2"]}')
+
 
 if __name__ == '__main__':
     unittest.main()

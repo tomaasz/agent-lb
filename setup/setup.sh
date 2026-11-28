@@ -192,19 +192,85 @@ PY
 	fi
 	if command -v python3 >/dev/null 2>&1; then
 		SETUP_HOME="$HOME" python3 - <<'PY' || true
-import json, os
+import json, os, uuid
 home = os.environ['SETUP_HOME']
-for base in ('.config/Code/User', '.vscode-server/data/Machine', '.vscode-server/data/User',
-             '.vscode-server-insiders/data/Machine', '.vscode-server-insiders/data/User'):
+
+def strip_json_comments(s):
+    out = []
+    i, n = 0, len(s)
+    in_str = esc = False
+    while i < n:
+        c = s[i]
+        nxt = s[i + 1] if i + 1 < n else ''
+        if in_str:
+            out.append(c)
+            if esc: esc = False
+            elif c == '\\': esc = True
+            elif c == '"': in_str = False
+            i += 1
+            continue
+        if c == '"':
+            in_str = True
+            out.append(c); i += 1; continue
+        if c == '/' and nxt == '/':
+            i += 2
+            while i < n and s[i] not in '\r\n': i += 1
+            continue
+        if c == '/' and nxt == '*':
+            i += 2
+            while i + 1 < n and not (s[i] == '*' and s[i + 1] == '/'):
+                if s[i] in '\r\n': out.append(s[i])
+                i += 1
+            i += 2; continue
+        out.append(c); i += 1
+    s2 = ''.join(out)
+    cleaned = []
+    in_str = esc = False
+    i, n = 0, len(s2)
+    while i < n:
+        c = s2[i]
+        if in_str:
+            cleaned.append(c)
+            if esc: esc = False
+            elif c == '\\': esc = True
+            elif c == '"': in_str = False
+            i += 1; continue
+        if c == '"':
+            in_str = True; cleaned.append(c); i += 1; continue
+        if c == ',':
+            j = i + 1
+            while j < n and s2[j].isspace(): j += 1
+            if j < n and s2[j] in '}]':
+                i += 1; continue
+        cleaned.append(c); i += 1
+    return ''.join(cleaned)
+
+def write_atomic(p, text, mode=0o600):
+    tmp = os.path.join(os.path.dirname(p), f'.{os.path.basename(p)}.tmp-{uuid.uuid4().hex}')
+    try:
+        fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(text)
+            os.fchmod(f.fileno(), mode)
+        os.replace(tmp, p)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+apps = ('Code', 'Code - Insiders', 'Cursor', 'Windsurf', 'VSCodium', 'Antigravity')
+bases = [f'.config/{a}/User' for a in apps] + [f'Library/Application Support/{a}/User' for a in apps]
+for srv in ('.vscode-server', '.vscode-server-insiders', '.cursor-server', '.windsurf-server', '.antigravity-server'):
+    bases.extend((f'{srv}/data/Machine', f'{srv}/data/User'))
+for base in bases:
     p = os.path.join(home, base, 'settings.json')
     try:
-        with open(p, encoding='utf-8') as f: data = json.load(f)
+        with open(p, encoding='utf-8') as f: data = json.loads(strip_json_comments(f.read()))
     except Exception:
         continue
     if not isinstance(data, dict):
         continue
     env_vars = [e for e in data.get('claudeCode.environmentVariables', [])
-                if e.get('name') not in ('ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN')]
+                if isinstance(e, dict) and e.get('name') not in ('ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN')]
     for e in env_vars:
         if e.get('name') == 'ANTHROPIC_CUSTOM_HEADERS':
             e['value'] = '\n'.join(l.strip() for l in str(e.get('value', '')).splitlines()
@@ -213,9 +279,67 @@ for base in ('.config/Code/User', '.vscode-server/data/Machine', '.vscode-server
     if env_vars: data['claudeCode.environmentVariables'] = env_vars
     else: data.pop('claudeCode.environmentVariables', None)
     data.pop('claudeCode.disableLoginPrompt', None)
-    with open(p, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2); f.write('\n')
+    data.pop('claudeCode.hideOnboarding', None)
+    write_atomic(p, json.dumps(data, indent=2) + '\n')
+
+# Clean OpenCode, OpenClaw, and Hermes AgentLB keys on uninstall
+oc_cfg = os.path.join(home, '.config', 'opencode', 'opencode.json')
+if os.path.isfile(oc_cfg):
+    try:
+        with open(oc_cfg, encoding='utf-8') as f: data = json.loads(strip_json_comments(f.read()))
+        if isinstance(data, dict):
+            changed = False
+            for section in ('provider', 'providers'):
+                if isinstance(data.get(section), dict) and 'agentlb' in data[section]:
+                    data[section].pop('agentlb', None)
+                    changed = True
+            if changed:
+                write_atomic(oc_cfg, json.dumps(data, indent=2) + '\n')
+    except Exception:
+        pass
+
+oc_auth = os.path.join(home, '.local', 'share', 'opencode', 'auth.json')
+if os.path.isfile(oc_auth):
+    try:
+        with open(oc_auth, encoding='utf-8') as f: data = json.loads(strip_json_comments(f.read()))
+        if isinstance(data, dict) and 'agentlb' in data:
+            data.pop('agentlb', None)
+            write_atomic(oc_auth, json.dumps(data, indent=2) + '\n')
+    except Exception:
+        pass
+
+claw_cfg = os.path.join(home, '.openclaw', 'openclaw.json')
+if os.path.isfile(claw_cfg):
+    try:
+        with open(claw_cfg, encoding='utf-8') as f: data = json.loads(strip_json_comments(f.read()))
+        if isinstance(data, dict) and isinstance(data.get('models'), dict) and isinstance(data['models'].get('providers'), dict):
+            if 'agentlb' in data['models']['providers']:
+                data['models']['providers'].pop('agentlb', None)
+                write_atomic(claw_cfg, json.dumps(data, indent=2) + '\n')
+    except Exception:
+        pass
+
+hermes_env = os.path.join(home, '.hermes', '.env')
+if os.path.isfile(hermes_env):
+    try:
+        with open(hermes_env, encoding='utf-8') as f: raw = f.read()
+        lines = [l for l in raw.splitlines() if not l.lstrip().startswith(('AGENT_LB_API_KEY=', 'export AGENT_LB_API_KEY=', 'AGENT_LB_URL=', 'export AGENT_LB_URL='))]
+        new_text = ('\n'.join(lines) + '\n') if lines else ''
+        if new_text != raw:
+            write_atomic(hermes_env, new_text)
+    except Exception:
+        pass
 PY
+	fi
+	if [ -f "$HOME/.aider.conf.yml" ]; then
+		awk '
+			/^# >>> agentlb/ { skip=1; next }
+			/^# <<< agentlb/ { skip=0; next }
+			!skip { print }
+		' "$HOME/.aider.conf.yml" > "$HOME/.aider.conf.yml.tmp.$$" \
+			&& chmod 600 "$HOME/.aider.conf.yml.tmp.$$" 2>/dev/null \
+			&& mv "$HOME/.aider.conf.yml.tmp.$$" "$HOME/.aider.conf.yml" \
+			|| rm -f "$HOME/.aider.conf.yml.tmp.$$"
 	fi
 	if [ -f "$HOME/.codex/codexlb.config.toml" ] && head -1 "$HOME/.codex/codexlb.config.toml" | grep -qxF "# zarzadzane przez setup AgentLB (profil codexlb)"; then
 		rm -f "$HOME/.codex/codexlb.config.toml"
@@ -402,36 +526,135 @@ with open(p, 'w', encoding='utf-8') as f:
 PY
 fi
 
-# Konfiguracja oficjalnego rozszerzenia Claude Code w VS Code (zarówno desktop jak i Remote SSH)
+# Konfiguracja oficjalnego rozszerzenia Claude Code w VS Code i edytorach VS Code-like (desktop + Remote SSH)
+CONFIGURED_IDES=""
 if command -v python3 >/dev/null 2>&1; then
-	SETUP_URL="$URL" SETUP_KEY="$KEY" SETUP_OAUTH="$OAUTH_SESSION" python3 - <<'PY' 2>/dev/null || true
-import json, os
+	CONFIGURED_IDES="$(SETUP_URL="$URL" SETUP_KEY="$KEY" SETUP_OAUTH="$OAUTH_SESSION" python3 - <<'PY' 2>/dev/null || true
+import json, os, shutil, sys, uuid
 
 url = os.environ['SETUP_URL']
 key = os.environ['SETUP_KEY']
 oauth = os.environ.get('SETUP_OAUTH') == '1'
+home = os.path.expanduser('~')
 
-targets = [
-    os.path.expanduser('~/.config/Code/User/settings.json'),
-    os.path.expanduser('~/.vscode-server/data/Machine/settings.json'),
-    os.path.expanduser('~/.vscode-server/data/User/settings.json'),
-    os.path.expanduser('~/.vscode-server-insiders/data/Machine/settings.json'),
-    os.path.expanduser('~/.vscode-server-insiders/data/User/settings.json')
+def strip_json_comments(s):
+    out = []
+    i, n = 0, len(s)
+    in_str = esc = False
+    while i < n:
+        c = s[i]
+        nxt = s[i + 1] if i + 1 < n else ''
+        if in_str:
+            out.append(c)
+            if esc: esc = False
+            elif c == '\\': esc = True
+            elif c == '"': in_str = False
+            i += 1
+            continue
+        if c == '"':
+            in_str = True; out.append(c); i += 1; continue
+        if c == '/' and nxt == '/':
+            i += 2
+            while i < n and s[i] not in '\r\n': i += 1
+            continue
+        if c == '/' and nxt == '*':
+            i += 2
+            while i + 1 < n and not (s[i] == '*' and s[i + 1] == '/'):
+                if s[i] in '\r\n': out.append(s[i])
+                i += 1
+            i += 2; continue
+        out.append(c); i += 1
+    s2 = ''.join(out)
+    cleaned = []
+    in_str = esc = False
+    i, n = 0, len(s2)
+    while i < n:
+        c = s2[i]
+        if in_str:
+            cleaned.append(c)
+            if esc: esc = False
+            elif c == '\\': esc = True
+            elif c == '"': in_str = False
+            i += 1; continue
+        if c == '"':
+            in_str = True; cleaned.append(c); i += 1; continue
+        if c == ',':
+            j = i + 1
+            while j < n and s2[j].isspace(): j += 1
+            if j < n and s2[j] in '}]':
+                i += 1; continue
+        cleaned.append(c); i += 1
+    return ''.join(cleaned)
+
+def write_atomic(p, text, mode=0o600):
+    tmp = os.path.join(os.path.dirname(p), f'.{os.path.basename(p)}.tmp-{uuid.uuid4().hex}')
+    try:
+        fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(text)
+            os.fchmod(f.fileno(), mode)
+        os.replace(tmp, p)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+apps = [
+    ('Code', 'VS Code'),
+    ('Code - Insiders', 'VS Code Insiders'),
+    ('Cursor', 'Cursor'),
+    ('Windsurf', 'Windsurf'),
+    ('VSCodium', 'VSCodium'),
+    ('Antigravity', 'Antigravity IDE'),
 ]
+targets = []
+for app_dir, label in apps:
+    targets.append((os.path.join(home, '.config', app_dir, 'User', 'settings.json'), label, False))
+    targets.append((os.path.join(home, 'Library', 'Application Support', app_dir, 'User', 'settings.json'), label, False))
+for srv, label in [
+    ('.vscode-server', 'VS Code Server'),
+    ('.vscode-server-insiders', 'VS Code Insiders Server'),
+    ('.cursor-server', 'Cursor Server'),
+    ('.windsurf-server', 'Windsurf Server'),
+    ('.antigravity-server', 'Antigravity Server'),
+]:
+    targets.append((os.path.join(home, srv, 'data', 'Machine', 'settings.json'), label, True))
+    targets.append((os.path.join(home, srv, 'data', 'User', 'settings.json'), label, True))
 
-def update_file(p):
+configured = []
+
+def update_file(p, label, is_server):
     d = os.path.dirname(p)
     if not os.path.isdir(d):
+        if not is_server:
+            return
         base = os.path.dirname(d)
         if not os.path.isdir(base):
             return
         os.makedirs(d, exist_ok=True)
-    try:
-        with open(p, encoding='utf-8') as f: data = json.load(f)
-    except Exception: data = {}
+    if os.path.islink(p):
+        return
+    data = {}
+    if os.path.isfile(p):
+        try:
+            with open(p, encoding='utf-8') as f: raw = f.read()
+            if raw.strip():
+                parsed = json.loads(strip_json_comments(raw))
+                if not isinstance(parsed, dict):
+                    return
+                data = parsed
+        except Exception:
+            print(f'warning: skipping malformed {p}', file=sys.stderr)
+            return
+        bak = p + '.bak-agent-lb'
+        if not os.path.exists(bak):
+            try:
+                shutil.copy2(p, bak)
+                os.chmod(bak, 0o600)
+            except Exception:
+                pass
     data['claudeCode.disableLoginPrompt'] = True
     data['claudeCode.hideOnboarding'] = True
-    env_vars = [e for e in data.get('claudeCode.environmentVariables', []) if e.get('name') not in ('ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN')]
+    env_vars = [e for e in data.get('claudeCode.environmentVariables', []) if isinstance(e, dict) and e.get('name') not in ('ANTHROPIC_BASE_URL', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN')]
     env_vars.append({'name': 'ANTHROPIC_BASE_URL', 'value': url})
     if oauth:
         existing_hdr = next((e.get('value', '') for e in env_vars if e.get('name') == 'ANTHROPIC_CUSTOM_HEADERS'), '')
@@ -448,13 +671,18 @@ def update_file(p):
         if lines:
             env_vars.append({'name': 'ANTHROPIC_CUSTOM_HEADERS', 'value': '\n'.join(lines)})
     data['claudeCode.environmentVariables'] = env_vars
-    with open(p, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2)
-        f.write('\n')
+    write_atomic(p, json.dumps(data, indent=2) + '\n')
+    if label not in configured:
+        configured.append(label)
 
-for t in targets:
-    update_file(t)
+for t, label, is_server in targets:
+    update_file(t, label, is_server)
+
+if configured:
+    print(', '.join(configured))
 PY
+)"
+	[ -n "$CONFIGURED_IDES" ] && say "[OK] Skonfigurowano rozszerzenie Claude Code w IDE: $CONFIGURED_IDES."
 fi
 
 # Konfiguracja ~/.codex (OpenAI Codex CLI: config.toml oraz config.json)
@@ -580,6 +808,384 @@ if [ "$WITH_AGY" -eq 1 ]; then
 	fi
 fi
 
+# Auto-wykrywanie i konfiguracja popularnych aplikacji (tylko gdy są obecne na hoście)
+EXTRA_APPS=""
+
+if command -v opencode >/dev/null 2>&1 || [ -d "$HOME/.config/opencode" ]; then
+	if command -v python3 >/dev/null 2>&1; then
+		if SETUP_URL="$URL" SETUP_KEY="$KEY" SETUP_HOME="$HOME" python3 - <<'PY' 2>/dev/null; then
+import json, os, re, shutil, urllib.request, uuid
+home = os.environ['SETUP_HOME']
+url = os.environ['SETUP_URL'].rstrip('/')
+key = os.environ['SETUP_KEY']
+cfg_dir = os.path.join(home, '.config', 'opencode')
+auth_dir = os.path.join(home, '.local', 'share', 'opencode')
+cfg_path = os.path.join(cfg_dir, 'opencode.json')
+auth_path = os.path.join(auth_dir, 'auth.json')
+
+def strip_json_comments(s):
+    out = []
+    i, n = 0, len(s)
+    in_str = esc = False
+    while i < n:
+        c = s[i]
+        nxt = s[i + 1] if i + 1 < n else ''
+        if in_str:
+            out.append(c)
+            if esc: esc = False
+            elif c == '\\': esc = True
+            elif c == '"': in_str = False
+            i += 1; continue
+        if c == '"':
+            in_str = True; out.append(c); i += 1; continue
+        if c == '/' and nxt == '/':
+            i += 2
+            while i < n and s[i] not in '\r\n': i += 1
+            continue
+        if c == '/' and nxt == '*':
+            i += 2
+            while i + 1 < n and not (s[i] == '*' and s[i + 1] == '/'):
+                if s[i] in '\r\n': out.append(s[i])
+                i += 1
+            i += 2; continue
+        out.append(c); i += 1
+    s2 = ''.join(out)
+    cleaned = []
+    in_str = esc = False
+    i, n = 0, len(s2)
+    while i < n:
+        c = s2[i]
+        if in_str:
+            cleaned.append(c)
+            if esc: esc = False
+            elif c == '\\': esc = True
+            elif c == '"': in_str = False
+            i += 1; continue
+        if c == '"':
+            in_str = True; cleaned.append(c); i += 1; continue
+        if c == ',':
+            j = i + 1
+            while j < n and s2[j].isspace(): j += 1
+            if j < n and s2[j] in '}]':
+                i += 1; continue
+        cleaned.append(c); i += 1
+    return ''.join(cleaned)
+
+def write_atomic(p, text, mode=0o600):
+    if os.path.islink(p):
+        raise RuntimeError('Refusing to overwrite symlink')
+    tmp = os.path.join(os.path.dirname(p), f'.{os.path.basename(p)}.tmp-{uuid.uuid4().hex}')
+    try:
+        fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(text)
+            os.fchmod(f.fileno(), mode)
+        os.replace(tmp, p)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+cfg = {}
+if os.path.isfile(cfg_path):
+    with open(cfg_path, encoding='utf-8') as f:
+        cfg = json.loads(strip_json_comments(f.read()))
+    if not isinstance(cfg, dict):
+        raise ValueError('opencode.json must be an object')
+auth = {}
+if os.path.isfile(auth_path):
+    with open(auth_path, encoding='utf-8') as f:
+        auth = json.loads(strip_json_comments(f.read()))
+    if not isinstance(auth, dict):
+        raise ValueError('auth.json must be an object')
+
+models = {
+    'claude-fable-5-1': {'name': 'Claude Fable 5.1'},
+    'claude-fable-5': {'name': 'Claude Fable 5'},
+    'claude-opus-5-5': {'name': 'Claude Opus 5.5'},
+    'claude-opus-5': {'name': 'Claude Opus 5'},
+    'claude-opus-4-8': {'name': 'Claude Opus 4.8'},
+    'claude-opus-4-7': {'name': 'Claude Opus 4.7'},
+    'claude-opus-4-6': {'name': 'Claude Opus 4.6'},
+    'claude-sonnet-5-5': {'name': 'Claude Sonnet 5.5'},
+    'claude-sonnet-5': {'name': 'Claude Sonnet 5'},
+    'claude-sonnet-4-6': {'name': 'Claude Sonnet 4.6'},
+    'claude-haiku-5-5': {'name': 'Claude Haiku 5.5'},
+    'claude-haiku-4-5-20251001': {'name': 'Claude Haiku 4.5'},
+    'codex': {'name': 'OpenAI Codex (GPT-5.6 Sol)'},
+    'gpt-5.6-sol': {'name': 'GPT-5.6 Sol'},
+    'gpt-6-astra': {'name': 'GPT-6 Astra'},
+    'gpt-6-sol': {'name': 'GPT-6 Sol'},
+    'gpt-6-luna': {'name': 'GPT-6 Luna'},
+    'gpt-5.6-terra': {'name': 'GPT-5.6 Terra'},
+    'gpt-5.6-luna': {'name': 'GPT-5.6 Luna'},
+    'gpt-5.3-codex': {'name': 'GPT-5.3-Codex'},
+    'gpt-5.2-codex': {'name': 'GPT-5.2-Codex'},
+    'gpt-5.5': {'name': 'GPT-5.5'},
+    'gpt-4.1': {'name': 'GPT-4.1'},
+    'gpt-4o': {'name': 'GPT-4o'},
+}
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+try:
+    req = urllib.request.Request(url + '/v1/models', headers={'x-api-key': key, 'Authorization': 'Bearer ' + key})
+    with urllib.request.build_opener(NoRedirect).open(req, timeout=8) as resp:
+        data = json.loads(resp.read(1048576))
+    for item in (data.get('data') if isinstance(data, dict) else []) or []:
+        mid = item.get('id') if isinstance(item, dict) else None
+        if isinstance(mid, str) and re.fullmatch(r'[A-Za-z0-9._:-]{1,100}', mid) and mid not in models:
+            models[mid] = {'name': item.get('name') or mid}
+except Exception:
+    pass
+
+cfg.setdefault('provider', {})['agentlb'] = {
+    'npm': '@ai-sdk/openai-compatible',
+    'name': 'AgentLB (All Models)',
+    'options': {'baseURL': url + '/v1', 'apiKey': key},
+    'models': models,
+}
+cfg.setdefault('providers', {})['agentlb'] = {
+    'npm': '@ai-sdk/openai-compatible',
+    'name': 'AgentLB (All Models)',
+    'package': '@opencode/ai/providers/openai-compatible',
+    'settings': {'baseURL': url + '/v1'},
+    'options': {'baseURL': url + '/v1', 'apiKey': key},
+    'apiKey': key,
+    'models': models,
+}
+auth['agentlb'] = {'type': 'api', 'key': key}
+
+for p, obj in ((cfg_path, cfg), (auth_path, auth)):
+    os.makedirs(os.path.dirname(p), exist_ok=True, mode=0o700)
+    if os.path.isfile(p) and not os.path.exists(p + '.bak-agent-lb'):
+        try:
+            shutil.copy2(p, p + '.bak-agent-lb')
+            os.chmod(p + '.bak-agent-lb', 0o600)
+        except Exception:
+            pass
+    write_atomic(p, json.dumps(obj, indent=2) + '\n')
+PY
+			say "[OK] Skonfigurowano OpenCode ($HOME/.config/opencode/opencode.json)."
+			EXTRA_APPS="${EXTRA_APPS:+$EXTRA_APPS, }OpenCode"
+		else
+			say "[Ostrzeżenie] Nie udało się skonfigurować OpenCode."
+		fi
+	fi
+fi
+
+if command -v aider >/dev/null 2>&1 || [ -f "$HOME/.aider.conf.yml" ] || [ -d "$HOME/.aider" ]; then
+	if command -v python3 >/dev/null 2>&1; then
+		if SETUP_URL="$URL" SETUP_KEY="$KEY" SETUP_HOME="$HOME" python3 - <<'PY' 2>/dev/null; then
+import json, os, re, shutil, uuid
+p = os.path.join(os.environ['SETUP_HOME'], '.aider.conf.yml')
+if os.path.islink(p):
+    raise RuntimeError('Refusing to overwrite symlink')
+url = os.environ['SETUP_URL'].rstrip('/')
+key = os.environ['SETUP_KEY']
+existing = open(p, encoding='utf-8').read() if os.path.isfile(p) else ''
+rest = re.sub(r'^# >>> agentlb.*?^# <<< agentlb[^\n]*\n?', '', existing, flags=re.S | re.M).strip()
+has_model = bool(re.search(r'^\s*model\s*:', rest, flags=re.M))
+block = (
+    '# >>> agentlb >>> (zarzadzane przez setup AgentLB)\n'
+    f'openai-api-base: {json.dumps(url + "/v1")}\n'
+    f'openai-api-key: {json.dumps(key)}\n'
+    + ('' if has_model else 'model: "openai/gpt-5.6-sol"\n')
+    + '# <<< agentlb <<<\n'
+)
+new = (rest + '\n\n' if rest else '') + block
+if new != existing:
+    if os.path.isfile(p) and not os.path.exists(p + '.bak-agent-lb'):
+        try:
+            shutil.copy2(p, p + '.bak-agent-lb')
+            os.chmod(p + '.bak-agent-lb', 0o600)
+        except Exception:
+            pass
+    tmp = os.path.join(os.path.dirname(p), f'.{os.path.basename(p)}.tmp-{uuid.uuid4().hex}')
+    try:
+        fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            f.write(new)
+            os.fchmod(f.fileno(), 0o600)
+        os.replace(tmp, p)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+PY
+			say "[OK] Skonfigurowano Aider ($HOME/.aider.conf.yml)."
+			EXTRA_APPS="${EXTRA_APPS:+$EXTRA_APPS, }Aider"
+		fi
+	fi
+fi
+
+if command -v openclaw >/dev/null 2>&1 || [ -d "$HOME/.openclaw" ]; then
+	if command -v python3 >/dev/null 2>&1; then
+		if SETUP_URL="$URL" SETUP_KEY="$KEY" SETUP_HOME="$HOME" python3 - <<'PY' 2>/dev/null; then
+import json, os, shutil, uuid
+p = os.path.join(os.environ['SETUP_HOME'], '.openclaw', 'openclaw.json')
+if os.path.islink(p):
+    raise RuntimeError('Refusing to overwrite symlink')
+
+def strip_json_comments(s):
+    out = []
+    i, n = 0, len(s)
+    in_str = esc = False
+    while i < n:
+        c = s[i]
+        nxt = s[i + 1] if i + 1 < n else ''
+        if in_str:
+            out.append(c)
+            if esc: esc = False
+            elif c == '\\': esc = True
+            elif c == '"': in_str = False
+            i += 1; continue
+        if c == '"':
+            in_str = True; out.append(c); i += 1; continue
+        if c == '/' and nxt == '/':
+            i += 2
+            while i < n and s[i] not in '\r\n': i += 1
+            continue
+        if c == '/' and nxt == '*':
+            i += 2
+            while i + 1 < n and not (s[i] == '*' and s[i + 1] == '/'):
+                if s[i] in '\r\n': out.append(s[i])
+                i += 1
+            i += 2; continue
+        out.append(c); i += 1
+    s2 = ''.join(out)
+    cleaned = []
+    in_str = esc = False
+    i, n = 0, len(s2)
+    while i < n:
+        c = s2[i]
+        if in_str:
+            cleaned.append(c)
+            if esc: esc = False
+            elif c == '\\': esc = True
+            elif c == '"': in_str = False
+            i += 1; continue
+        if c == '"':
+            in_str = True; cleaned.append(c); i += 1; continue
+        if c == ',':
+            j = i + 1
+            while j < n and s2[j].isspace(): j += 1
+            if j < n and s2[j] in '}]':
+                i += 1; continue
+        cleaned.append(c); i += 1
+    return ''.join(cleaned)
+
+cfg = {}
+if os.path.isfile(p):
+    with open(p, encoding='utf-8') as f:
+        cfg = json.loads(strip_json_comments(f.read()))
+    if not isinstance(cfg, dict):
+        raise ValueError('openclaw.json must be an object')
+    if not os.path.exists(p + '.bak-agent-lb'):
+        try:
+            shutil.copy2(p, p + '.bak-agent-lb')
+            os.chmod(p + '.bak-agent-lb', 0o600)
+        except Exception:
+            pass
+os.makedirs(os.path.dirname(p), exist_ok=True, mode=0o700)
+cfg.setdefault('models', {}).setdefault('providers', {})['agentlb'] = {
+    'baseUrl': os.environ['SETUP_URL'].rstrip('/') + '/v1',
+    'api': 'openai-completions',
+    'apiKey': os.environ['SETUP_KEY'],
+}
+tmp = os.path.join(os.path.dirname(p), f'.{os.path.basename(p)}.tmp-{uuid.uuid4().hex}')
+try:
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        json.dump(cfg, f, indent=2)
+        f.write('\n')
+        os.fchmod(f.fileno(), 0o600)
+    os.replace(tmp, p)
+finally:
+    if os.path.exists(tmp):
+        os.unlink(tmp)
+PY
+			say "[OK] Skonfigurowano OpenClaw ($HOME/.openclaw/openclaw.json)."
+			EXTRA_APPS="${EXTRA_APPS:+$EXTRA_APPS, }OpenClaw"
+		fi
+	fi
+fi
+
+if command -v hermes >/dev/null 2>&1 || [ -d "$HOME/.hermes" ]; then
+	HERMES_SETUP=''
+	HERMES_OK=0
+	if [ -f "${BASH_SOURCE[0]:-}" ]; then HERMES_SETUP="$(dirname "${BASH_SOURCE[0]}")/hermes-setup.sh"; fi
+	if [ -n "$HERMES_SETUP" ] && [ -f "$HERMES_SETUP" ]; then
+		AGENT_LB_URL="$URL" AGENT_LB_API_KEY="$KEY" bash "$HERMES_SETUP" --url "$URL" </dev/null && HERMES_OK=1 || true
+	else
+		(set -o pipefail; curl -fsSL "$URL/hermes-setup.sh" | AGENT_LB_URL="$URL" AGENT_LB_API_KEY="$KEY" bash -s -- --url "$URL") </dev/null && HERMES_OK=1 || true
+	fi
+	if [ "$HERMES_OK" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+		if SETUP_URL="$URL" SETUP_KEY="$KEY" SETUP_HOME="$HOME" python3 - <<'PY' 2>/dev/null; then
+import os, re, shutil, uuid
+d = os.path.join(os.environ['SETUP_HOME'], '.hermes')
+p = os.path.join(d, '.env')
+if os.path.islink(p):
+    raise RuntimeError('Refusing to overwrite symlink')
+os.makedirs(d, exist_ok=True, mode=0o700)
+lines = []
+if os.path.isfile(p):
+    if not os.path.exists(p + '.bak-agent-lb'):
+        try:
+            shutil.copy2(p, p + '.bak-agent-lb')
+            os.chmod(p + '.bak-agent-lb', 0o600)
+        except Exception:
+            pass
+    with open(p, encoding='utf-8') as f:
+        for l in f.read().splitlines():
+            if l and not re.match(r'^\s*(?:export\s+)?(AGENT_LB_API_KEY|AGENTLB_API_KEY|AGENT_LB_URL)=', l):
+                lines.append(l)
+lines.append('AGENT_LB_URL=' + os.environ['SETUP_URL'].rstrip('/'))
+lines.append('AGENT_LB_API_KEY=' + os.environ['SETUP_KEY'])
+tmp = os.path.join(d, f'..env.tmp-{uuid.uuid4().hex}')
+try:
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines) + '\n')
+        os.fchmod(f.fileno(), 0o600)
+    os.replace(tmp, p)
+finally:
+    if os.path.exists(tmp):
+        os.unlink(tmp)
+PY
+			say "[OK] Zaktualizowano $HOME/.hermes/.env (Hermes Agent)."
+			HERMES_OK=1
+		fi
+	fi
+	if [ "$HERMES_OK" -eq 1 ]; then
+		EXTRA_APPS="${EXTRA_APPS:+$EXTRA_APPS, }Hermes Agent"
+	else
+		say "[Ostrzeżenie] Nie udało się skonfigurować Hermes Agent (pomijam)."
+	fi
+fi
+
+if command -v herdr >/dev/null 2>&1 || [ -d "$HOME/.config/herdr" ]; then
+	HERDR_DONE=""
+	if command -v herdr >/dev/null 2>&1; then
+		for ha in claude codex opencode agy; do
+			present=0
+			case "$ha" in
+				claude) (command -v claude >/dev/null 2>&1 || [ -d "$HOME/.claude" ]) && present=1 ;;
+				codex) (command -v codex >/dev/null 2>&1 || [ -d "$HOME/.codex" ]) && present=1 ;;
+				opencode) (command -v opencode >/dev/null 2>&1 || [ -d "$HOME/.config/opencode" ]) && present=1 ;;
+				agy) (command -v agy >/dev/null 2>&1 || [ -x "$HOME/.local/bin/agylb" ]) && present=1 ;;
+			esac
+			if [ "$present" -eq 1 ] && herdr integration install "$ha" </dev/null >/dev/null 2>&1; then
+				HERDR_DONE="${HERDR_DONE:+$HERDR_DONE, }$ha"
+			fi
+		done
+	fi
+	if [ -n "$HERDR_DONE" ]; then
+		say "[OK] Zintegrowano Herdr dla agentów: $HERDR_DONE."
+		EXTRA_APPS="${EXTRA_APPS:+$EXTRA_APPS, }Herdr ($HERDR_DONE)"
+	else
+		EXTRA_APPS="${EXTRA_APPS:+$EXTRA_APPS, }Herdr"
+	fi
+fi
+
 # Nie zabijamy procesów Codex hurtem (to przerywało trwające sesje użytkownika) —
 # działające okna wczytają nową konfigurację po przeładowaniu.
 if pgrep -u "$(id -u)" -f "codex.*app-server" >/dev/null 2>&1; then
@@ -594,11 +1200,16 @@ fi
 if command -v codex >/dev/null 2>&1; then
 	say "✔ OpenAI Codex CLI: $(codex --version 2>/dev/null || echo 'gotowy') -> uruchom 'codex --profile codexlb' lub 'codex'"
 fi
-if [ -d "$HOME/.config/Code" ] || [ -d "$HOME/.vscode-server" ] || command -v code >/dev/null 2>&1; then
+if [ -n "$CONFIGURED_IDES" ]; then
+	say "✔ Edytory IDE: $CONFIGURED_IDES (rozszerzenie Claude Code skonfigurowane pod proxy)"
+elif [ -d "$HOME/.config/Code" ] || [ -d "$HOME/.vscode-server" ] || command -v code >/dev/null 2>&1; then
 	say "✔ VS Code: oficjalne rozszerzenie Claude Code skonfigurowane pod proxy"
 fi
 if [ "$WITH_AGYLB" -eq 1 ]; then
 	say "✔ AGY (pula Google): uruchom 'agylb' (standardowo) lub 'agylb-yolo' (bez pytań o akceptację)"
+fi
+if [ -n "$EXTRA_APPS" ]; then
+	say "✔ Wykryte i skonfigurowane aplikacje: $EXTRA_APPS"
 fi
 say "✔ Agenty i narzędzia: zmienne zapisano w $ENV_FILE (załadowano do powłoki)"
 say "✔ Serwer proxy: $URL"
